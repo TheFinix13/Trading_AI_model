@@ -8,64 +8,95 @@
     :root {
       --bg: #0e1117; --panel: #161b22; --panel-2: #1c2129;
       --border: #2a3038; --text: #d6dde6; --muted: #8a939e;
-      --green: #2ea043; --red: #cf222e; --blue: #1f6feb; --amber: #d29922;
+      --green: #2ea043; --red: #cf222e; --blue: #58a6ff; --amber: #d29922;
+      --hl: #e6edf3;
     }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
            background: var(--bg); color: var(--text); }
-    header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex;
-             align-items: center; gap: 16px; background: var(--panel); flex-wrap: wrap; }
-    a.back { color: var(--blue); text-decoration: none; font-size: 14px; }
+    a.back { color: var(--blue); text-decoration: none; font-size: 13px;
+             padding: 12px 24px; display: inline-block; }
     a.back:hover { text-decoration: underline; }
-    h1 { margin: 0; font-size: 20px; font-weight: 600; }
-    .verdict { display: inline-block; padding: 2px 12px; border-radius: 12px; font-size: 12px;
-               font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 8px; }
-    .verdict.win { background: var(--green); }
-    .verdict.loss { background: var(--red); }
-    .verdict.open { background: var(--blue); }
+
+    .report {
+      max-width: 980px; margin: 0 auto 40px; padding: 24px 32px;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 14px; line-height: 1.65; color: var(--text);
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    }
+    .rule { color: var(--border); user-select: none; letter-spacing: -1px;
+            font-size: 13px; line-height: 1.2; }
+    .title { color: var(--hl); font-weight: 700; font-size: 16px;
+             padding: 4px 0; display: flex; justify-content: space-between;
+             flex-wrap: wrap; gap: 12px; align-items: baseline; }
+    .verdict { font-size: 11px; padding: 2px 10px; border-radius: 10px;
+               font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+    .verdict.win { background: var(--green); color: #fff; }
+    .verdict.loss { background: var(--red); color: #fff; }
+    .verdict.open { background: var(--blue); color: #fff; }
     .verdict.incomplete { background: var(--amber); color: #000; }
-    main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 24px; max-width: 1400px; }
-    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
-    .card.full { grid-column: 1 / -1; }
-    .card h2 { margin: 0 0 14px; font-size: 12px; text-transform: uppercase;
-               letter-spacing: 0.06em; color: var(--muted); }
-    dl { margin: 0; display: grid; grid-template-columns: 140px 1fr; row-gap: 8px; column-gap: 12px; }
-    dt { color: var(--muted); font-size: 13px; }
-    dd { margin: 0; font-size: 14px; font-family: ui-monospace, SF Mono, Menlo, monospace; }
-    .pos { color: var(--green); }
-    .neg { color: var(--red); }
-    .summary p { line-height: 1.7; font-size: 15px; margin: 0 0 12px; }
-    .summary p:last-child { margin-bottom: 0; }
-    .conf-block { padding: 14px 16px; background: var(--panel-2); border-left: 3px solid var(--blue);
-                  margin-bottom: 10px; border-radius: 0 6px 6px 0; }
-    .conf-block.htf { border-left-color: var(--amber); }
-    .conf-block .ctitle { font-weight: 600; font-size: 14px; margin: 0 0 6px;
-                          color: var(--blue); text-transform: uppercase; letter-spacing: 0.04em; }
-    .conf-block.htf .ctitle { color: var(--amber); }
-    .conf-block .body { font-size: 14px; line-height: 1.5; }
-    .conf-block .facts { margin: 8px 0 0; padding: 0; list-style: none; display: flex;
-                          flex-wrap: wrap; gap: 6px; }
-    .conf-block .facts li { background: var(--bg); padding: 3px 10px; border-radius: 4px;
-                             font-size: 12px; font-family: ui-monospace, monospace; color: var(--muted); }
-    .market-grid { display: grid; grid-template-columns: 130px 1fr; gap: 10px 14px; font-size: 14px; }
-    .market-grid dt { color: var(--muted); }
-    .market-grid dd { margin: 0; }
-    .warning { background: rgba(210,153,34,0.15); border: 1px solid var(--amber); color: var(--amber);
-               padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; font-size: 14px; line-height: 1.5; }
-    .feature-grid { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; font-size: 13px;
-                    font-family: ui-monospace, SF Mono, Menlo, monospace; }
-    .feature-grid .name { color: var(--muted); }
-    .feature-grid .val { text-align: right; }
-    details summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 8px 0; }
-    details[open] summary { color: var(--text); }
+
+    .meta-line { padding: 4px 0 8px; }
+    .meta-line .k { color: var(--muted); }
+    .meta-line .v { color: var(--hl); }
+    .meta-line .sep { color: var(--border); padding: 0 6px; }
+
+    h2.section { color: var(--blue); font-weight: 700; font-size: 14px;
+                 letter-spacing: 0.06em; margin: 16px 0 4px; padding: 0;
+                 text-transform: uppercase; }
+    h2.section.outcome { color: var(--amber); }
+
+    .bullet { padding: 2px 0 2px 22px; position: relative; }
+    .bullet::before { content: "•"; color: var(--blue); position: absolute; left: 6px; }
+    .bullet.htf::before { color: var(--amber); }
+    .bullet .label { color: var(--muted); }
+    .bullet .tag { color: var(--blue); font-weight: 600; }
+    .bullet.htf .tag { color: var(--amber); }
+    .bullet .desc { color: var(--text); }
+
+    .feat-block { padding: 4px 22px 8px 22px;
+                  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+                  column-gap: 22px; row-gap: 2px; }
+    .feat-block .feat .k { color: var(--muted); }
+    .feat-block .feat .v { color: var(--hl); }
+
+    .out-line { padding: 2px 0 2px 22px; color: var(--text); }
+    .out-line .k { color: var(--muted); }
+    .out-line .v { color: var(--hl); }
+    .pos { color: var(--green); font-weight: 700; }
+    .neg { color: var(--red); font-weight: 700; }
+
+    .warning {
+      margin: 8px 22px; padding: 10px 14px;
+      background: rgba(207,34,46,0.10); border-left: 3px solid var(--red);
+      color: var(--red); border-radius: 0 4px 4px 0;
+      font-size: 13px; line-height: 1.5;
+    }
+
+    details { margin: 16px 0 0 22px; }
+    details summary { cursor: pointer; color: var(--muted); font-size: 13px;
+                      padding: 6px 0; user-select: none; }
+    details summary:hover { color: var(--text); }
+    .raw-grid { display: grid; grid-template-columns: 1fr auto;
+                gap: 2px 14px; font-size: 13px; margin-top: 4px; }
+    .raw-grid .name { color: var(--muted); }
+    .raw-grid .val { text-align: right; color: var(--hl); }
   </style>
 </head>
 <body>
-  <header>
-    <a class="back" href="/">&larr; back to dashboard</a>
-    <h1>
-      Trade #{{ trade.id }} &middot; {{ symbol }} {{ trade.sig_tf or "?" }}
-      &middot; {{ trade.direction|upper }}
+  <a class="back" href="/">&larr; back to dashboard</a>
+
+  <div class="report">
+    <div class="rule">══════════════════════════════════════════════════════════════════════════════</div>
+    <div class="title">
+      <span>Trade #{{ trade.id }}
+        <span class="rule">|</span>
+        {{ narrative.detected_local }}
+        <span class="rule">|</span>
+        {{ symbol }} {{ trade.sig_tf or "?" }}
+        <span class="rule">|</span>
+        {{ trade.direction|upper }}
+      </span>
       {% if narrative.is_force_closed %}
         <span class="verdict incomplete">INCOMPLETE</span>
       {% elif is_winner is none %}
@@ -75,103 +106,105 @@
       {% else %}
         <span class="verdict loss">LOSS</span>
       {% endif %}
-    </h1>
-    <span style="color:var(--muted);font-size:12px;margin-left:auto;">All times shown in {{ display_tz }}</span>
-  </header>
-
-  <main>
-    {% if narrative.outcome_warning %}
-    <div class="card full" style="grid-column:1/-1;padding:0;border:0;background:transparent;">
-      <div class="warning"><strong>⚠ Force-closed.</strong> {{ narrative.outcome_warning }}</div>
     </div>
-    {% endif %}
+    <div class="rule">══════════════════════════════════════════════════════════════════════════════</div>
 
-    <div class="card full">
-      <h2>Plain-English summary</h2>
-      <div class="summary">
-        {% for p in narrative.summary_paragraphs %}
-        <p>{{ p|safe }}</p>
-        {% endfor %}
-      </div>
-    </div>
-
-    <div class="card full">
-      <h2>Why the bot took this trade ({{ narrative.confluence_blocks|length }} confluence{{ 's' if narrative.confluence_blocks|length != 1 else '' }})</h2>
-      {% if not narrative.confluence_blocks %}
-      <div style="color: var(--muted);">No confluences were recorded for this trade. This usually means the trade was generated entirely by the ML discovery model (raw bar pattern); see the feature snapshot below.</div>
+    <div class="meta-line">
+      &nbsp;&nbsp;<span class="k">Entry:</span>  <span class="v">{{ "%.5f"|format(trade.entry_price) }}</span>
+      <span class="sep">·</span>
+      <span class="k">Stop:</span> <span class="v">{{ "%.5f"|format(trade.stop_price) }}</span>
+      <span class="k">({{ "%.1f"|format(trade.sig_stop_pips or 0) }} pips)</span>
+      <span class="sep">·</span>
+      <span class="k">TP:</span> <span class="v">{{ "%.5f"|format(trade.tp_price) }}</span>
+      <span class="k">(R:R 1:{{ "%.2f"|format(trade.sig_rr or 0) }})</span>
+      <span class="sep">·</span>
+      <span class="k">Lot:</span> <span class="v">{{ trade.lot_size }}</span>
+      {% if trade.ml_score is not none %}
+        <span class="sep">·</span>
+        <span class="k">ML score:</span> <span class="v">{{ "%.3f"|format(trade.ml_score) }}</span>
       {% endif %}
-      {% for block in narrative.confluence_blocks %}
-      <div class="conf-block {% if 'htf' in block.tag %}htf{% endif %}">
-        <div class="ctitle">{{ block.title }}</div>
-        <div class="body">{{ block.body }}</div>
-        {% if block.facts %}
-        <ul class="facts">
-          {% for f in block.facts %}<li>{{ f }}</li>{% endfor %}
-        </ul>
-        {% endif %}
+    </div>
+
+    <h2 class="section">WHY THIS TRADE WAS TAKEN</h2>
+    {% if not narrative.confluence_blocks %}
+    <div class="bullet"><span class="desc" style="color:var(--muted);font-style:italic;">no confluences recorded</span></div>
+    {% endif %}
+    {% for block in narrative.confluence_blocks %}
+    <div class="bullet {% if 'htf' in block.tag %}htf{% endif %}">
+      <span class="label">confluence:</span>
+      <span class="tag">{{ block.tag }}</span>
+      &nbsp;<span class="desc">— {{ block.body }}</span>
+      {% if block.facts %}
+      <div style="padding-left:14px;color:var(--muted);font-size:13px;">
+        {{ block.facts|join('  ·  ') }}
       </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="bullet" style="margin-top:6px;">
+      <span class="desc">market state at entry:</span>
+    </div>
+    <div class="feat-block">
+      <span class="feat"><span class="k">regime         =</span> <span class="v">{{ narrative.market_state.regime }}</span></span>
+      <span class="feat"><span class="k">range_loc      =</span> <span class="v">{{ narrative.market_state.location }}</span></span>
+      <span class="feat"><span class="k">ma21           =</span> <span class="v">{{ narrative.market_state.ma_state }}</span></span>
+      <span class="feat"><span class="k">session        =</span> <span class="v">{{ narrative.market_state.session }}</span></span>
+    </div>
+
+    <div class="bullet" style="margin-top:6px;">
+      <span class="desc">top numerical features (most influential):</span>
+    </div>
+    <div class="feat-block">
+      {% for name, value in features[:8] %}
+      <span class="feat"><span class="k">{{ "%-18s"|format(name) }}=</span>
+        <span class="v">{% if value is number %}{{ "%+.3f"|format(value) }}{% else %}{{ value }}{% endif %}</span>
+      </span>
       {% endfor %}
     </div>
 
-    <div class="card">
-      <h2>Market state at entry</h2>
-      <dl class="market-grid">
-        <dt>Volatility</dt><dd>{{ narrative.market_state.regime }}</dd>
-        <dt>Range location</dt><dd>{{ narrative.market_state.location }}</dd>
-        <dt>Trend (MA21)</dt><dd>{{ narrative.market_state.ma_state }}</dd>
-        <dt>Session</dt><dd>{{ narrative.market_state.session }}</dd>
-      </dl>
+    <h2 class="section outcome">OUTCOME</h2>
+    {% if trade.exit_time %}
+    <div class="out-line">
+      <span class="k">Exited at</span>
+      <span class="v">{{ "%.5f"|format(trade.exit_price) }}</span>
+      <span class="k">on</span>
+      <span class="v">{{ narrative.exit_local }}</span>
+      <span class="k">(reason:</span> <span class="v">{{ trade.exit_reason }}</span><span class="k">)</span>
     </div>
+    <div class="out-line">
+      <span class="k">P&amp;L:</span>
+      <span class="{% if (trade.pnl_pips or 0) >= 0 %}pos{% else %}neg{% endif %}">
+        {{ "%+.1f"|format(trade.pnl_pips or 0) }} pips = ${{ "%+.2f"|format(trade.pnl or 0) }}
+      </span>
+      <span class="k">  |  Commission:</span> <span class="v">${{ "%.2f"|format(trade.commission or 0) }}</span>
+      <span class="k">  |  Result:</span>
+      <span class="{% if is_winner %}pos{% elif is_winner is not none %}neg{% endif %}">
+        {% if narrative.is_force_closed %}INCOMPLETE{% elif is_winner %}WIN{% elif is_winner is not none %}LOSS{% endif %}
+      </span>
+    </div>
+    {% if narrative.outcome_warning %}
+    <div class="warning">⚠ &nbsp; {{ narrative.outcome_warning }}</div>
+    {% endif %}
+    {% else %}
+    <div class="out-line"><span class="desc">trade is still open</span></div>
+    {% endif %}
 
-    <div class="card">
-      <h2>Setup details</h2>
-      <dl>
-        <dt>Direction</dt><dd>{{ trade.direction|upper }}</dd>
-        <dt>Timeframe</dt><dd>{{ trade.sig_tf or "?" }}</dd>
-        <dt>Detected at</dt><dd>{{ narrative.detected_local }}</dd>
-        <dt>Entry time</dt><dd>{{ narrative.entry_local }}</dd>
-        <dt>Entry price</dt><dd>{{ "%.5f"|format(trade.entry_price) }}</dd>
-        <dt>Stop</dt><dd>{{ "%.5f"|format(trade.stop_price) }} ({{ "%.1f"|format(trade.sig_stop_pips or 0) }} pips)</dd>
-        <dt>Take profit</dt><dd>{{ "%.5f"|format(trade.tp_price) }}</dd>
-        <dt>R:R</dt><dd>1:{{ "%.2f"|format(trade.sig_rr or 0) }}</dd>
-        <dt>Lot size</dt><dd>{{ trade.lot_size }}</dd>
-        {% if trade.ml_score is not none %}
-        <dt>ML score</dt><dd>{{ "%.3f"|format(trade.ml_score) }}</dd>
-        {% else %}
-        <dt>ML score</dt><dd style="color:var(--muted);">— (no scorer for this TF)</dd>
-        {% endif %}
-      </dl>
-    </div>
+    <div class="rule" style="margin-top:8px;">══════════════════════════════════════════════════════════════════════════════</div>
 
-    <div class="card full">
-      <h2>Outcome</h2>
-      <dl>
-        {% if trade.exit_time %}
-        <dt>Exit time</dt><dd>{{ narrative.exit_local }}</dd>
-        <dt>Exit price</dt><dd>{{ "%.5f"|format(trade.exit_price) }}</dd>
-        <dt>Reason</dt><dd>{{ trade.exit_reason }}{% if narrative.is_force_closed %} <span style="color:var(--amber);">(incomplete — see warning above)</span>{% endif %}</dd>
-        <dt>P&amp;L pips</dt><dd class="{% if (trade.pnl_pips or 0) >= 0 %}pos{% else %}neg{% endif %}">{{ "%+.1f"|format(trade.pnl_pips or 0) }}</dd>
-        <dt>P&amp;L $</dt><dd class="{% if (trade.pnl or 0) >= 0 %}pos{% else %}neg{% endif %}">${{ "%+.2f"|format(trade.pnl or 0) }}</dd>
-        <dt>Commission</dt><dd>${{ "%.2f"|format(trade.commission or 0) }}</dd>
-        {% else %}
-        <dt>Status</dt><dd>still open</dd>
-        {% endif %}
-      </dl>
-    </div>
+    <details>
+      <summary>Raw feature snapshot at entry ({{ features|length }} features) — click to expand</summary>
+      <div class="raw-grid">
+        {% for name, value in features %}
+        <span class="name">{{ name }}</span>
+        <span class="val">{% if value is number %}{{ "%+.4f"|format(value) }}{% else %}{{ value }}{% endif %}</span>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
 
-    <div class="card full">
-      <details>
-        <summary>Raw feature snapshot at entry ({{ features|length }} features) — for ML auditing</summary>
-        <div class="feature-grid" style="margin-top:12px;">
-          {% for name, value in features %}
-          <span class="name">{{ name }}</span>
-          <span class="val">
-            {% if value is number %}{{ "%+.4f"|format(value) }}{% else %}{{ value }}{% endif %}
-          </span>
-          {% endfor %}
-        </div>
-      </details>
-    </div>
-  </main>
+  <div style="text-align:center;color:var(--muted);font-size:12px;padding-bottom:24px;">
+    All times in {{ display_tz }}
+  </div>
 </body>
 </html>

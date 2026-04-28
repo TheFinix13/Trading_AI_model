@@ -161,10 +161,34 @@ def _group_summary(trades: list[dict], by: str):
               f"{b['pips']:>9.1f}  ${b['pnl']:>+9.2f}")
 
 
-def _explain_trade_row(conn, trade_id: int):
-    """Reconstruct a TradeExplanation from journal rows. Doesn't reconstruct full
-    Setup objects (we don't store the raw zone/fvg objects), but renders all the
-    information we have: timestamps, prices, confluences, ML score, MAE/MFE-equivalent."""
+def _fmt_time(iso_str: str | None, tz_name: str = "America/New_York") -> str:
+    """Render an ISO UTC timestamp in user-friendly local time. Falls back to UTC
+    on any parse failure."""
+    if not iso_str:
+        return "—"
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        from datetime import timezone as _tz
+        tz = _tz.utc
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        return dt.astimezone(tz).strftime("%Y-%m-%d %H:%M %Z")
+    except Exception:
+        return iso_str[:16]
+
+
+def _explain_trade_row(conn, trade_id: int, tz_name: str = "America/New_York"):
+    """Print a compact, human-readable narrative for a single trade.
+
+    Format mirrors the dashboard /trade/{id} page exactly so users see the same
+    output whether they're in the terminal or the browser. Output blocks:
+        title bar         — id, detected time (TZ), symbol, TF, direction
+        compact one-line  — entry, stop+pips, tp+rr, lot, ML score
+        WHY THIS TRADE WAS TAKEN
+        OUTCOME
+    """
     row = conn.execute(
         """SELECT t.*, s.confluences, s.features_json, s.ml_score, s.timeframe AS sig_tf,
                   s.detected_at, s.stop_pips, s.rr
@@ -178,41 +202,75 @@ def _explain_trade_row(conn, trade_id: int):
     confs = json.loads(t.get("confluences") or "[]")
     feats = json.loads(t.get("features_json") or "{}")
 
-    title = (f"Trade #{t['id']}  |  {t['detected_at']}  |  {t['symbol']} {t.get('sig_tf','?')}  "
-             f"|  {(t.get('direction') or '?').upper()}")
-    summary = [
-        f"Entry  : {t.get('entry_price')}  at {t.get('entry_time')}",
-        f"Stop   : {t.get('stop_price')}   ({t.get('stop_pips')} pips)",
-        f"TP     : {t.get('tp_price')}     (R:R 1:{t.get('rr')})",
-        f"Lot    : {t.get('lot_size')}",
-    ]
+    detected_str = _fmt_time(t.get("detected_at") or t.get("entry_time"), tz_name)
+    title = (f"Trade #{t['id']}  |  {detected_str}  |  {t['symbol']} "
+             f"{t.get('sig_tf') or '?'}  |  {(t.get('direction') or '?').upper()}")
+
+    # Compact one-line summary. Round prices to 5dp, pips to 1dp.
+    entry = t.get("entry_price") or 0
+    stop = t.get("stop_price") or 0
+    tp = t.get("tp_price") or 0
+    stop_pips = t.get("stop_pips") or 0
+    rr = t.get("rr") or 0
+    lot = t.get("lot_size") or 0
+    summary_one_line = (f"Entry: {entry:.5f}  Stop: {stop:.5f} ({stop_pips:.1f} pips)"
+                         f"  TP: {tp:.5f} (R:R 1:{rr:.2f})  Lot: {lot}")
+    summary = [summary_one_line]
     if t.get("ml_score") is not None:
         summary.append(f"ML score: {t['ml_score']:.3f}")
 
-    why = [ExplanationLine(text=f"confluence: {c}") for c in confs]
-    if not confs:
-        why = [ExplanationLine(text="(no confluences recorded — discoverer or rule with empty list)")]
+    why: list[ExplanationLine] = []
+    if confs:
+        for c in confs:
+            why.append(ExplanationLine(text=f"confluence: {c}"))
+    else:
+        why.append(ExplanationLine(text="(no confluences recorded — discoverer or rule with empty list)"))
     if feats:
-        # Show top 5 feature values so the user can see what state the market was in
-        important = sorted(feats.items(), key=lambda kv: -abs(float(kv[1] or 0)))[:5]
+        # Top 6 features by |magnitude| in 2-column chunks, matching the report layout.
+        important = sorted(feats.items(), key=lambda kv: -abs(float(kv[1] or 0)))[:6]
         why.append(ExplanationLine(text=""))
         why.append(ExplanationLine(text="market state at entry (top features):"))
+        # Pair them into rows of 2 for compact output.
+        rows = []
+        cur: list[str] = []
         for name, value in important:
             try:
-                why.append(ExplanationLine(text=f"  {name} = {float(value):+.4f}"))
+                cell = f"{name:>20s} = {float(value):+.2f}"
             except (ValueError, TypeError):
-                why.append(ExplanationLine(text=f"  {name} = {value}"))
+                cell = f"{name:>20s} = {value}"
+            cur.append(cell)
+            if len(cur) == 2:
+                rows.append(cur)
+                cur = []
+        if cur:
+            rows.append(cur)
+        for r in rows:
+            why.append(ExplanationLine(text="  ".join(r)))
 
     outcome: list[str] = []
     if t.get("exit_time"):
-        is_win = (t.get("pnl") or 0) > 0
+        is_force_closed = t.get("exit_reason") == "end_of_data"
+        if is_force_closed:
+            verdict = "INCOMPLETE"
+        elif (t.get("pnl") or 0) > 0:
+            verdict = "WIN"
+        else:
+            verdict = "LOSS"
+        exit_price = t.get("exit_price") or 0
+        pnl_pips = t.get("pnl_pips") or 0
+        pnl = t.get("pnl") or 0
+        commission = t.get("commission") or 0
+        exit_str = _fmt_time(t.get("exit_time"), tz_name)
         outcome = [
             "",
             "OUTCOME",
-            f"  Exited at {t.get('exit_price')} on {t.get('exit_time')}  (reason: {t.get('exit_reason')})",
-            f"  P&L: {t.get('pnl_pips'):+.1f} pips = ${t.get('pnl'):+.2f}",
-            f"  Result: {'WIN' if is_win else 'LOSS'}",
+            f"  Exited at {exit_price:.5f} on {exit_str}  (reason: {t.get('exit_reason')})",
+            f"  P&L: {pnl_pips:+.1f} pips = ${pnl:+.2f}  |  "
+            f"Commission: ${commission:.2f}  |  Result: {verdict}",
         ]
+        if is_force_closed:
+            outcome.append("  ⚠  Force-closed (backtest dataset ended). Trade never hit SL or TP — "
+                           "do NOT count as a real win/loss.")
 
     e = TradeExplanation(title=title, summary_lines=summary,
                           why_taken=why, risk_lines=[], outcome_lines=outcome)
