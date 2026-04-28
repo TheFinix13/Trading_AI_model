@@ -41,10 +41,12 @@ detectors:
   liquidity_wick_min_ratio: 2.0
 
 rules:
-  # Edge validation defaults. The zone is the core S/D concept and is required. We let
-  # zone-only setups through and rely on the ML scorer to filter low-quality ones.
-  # Tighten back up (min_confluences: 2-3) for a "premium grade" rules-only mode.
-  min_confluences: 1
+  # Edge validation defaults. The zone is the core S/D concept and is required.
+  # min_confluences: 2 keeps "zone-only" weak setups out of the journal — historical
+  # data shows 60% of H4 trades that fired on 'zone' alone were noise. The ML scorer
+  # provides additional filtering on D1 (where it's trained), but the rule engine
+  # should never wave through 1-confluence setups in the first place.
+  min_confluences: 2
   required_factors:
     - zone
   optional_factors:

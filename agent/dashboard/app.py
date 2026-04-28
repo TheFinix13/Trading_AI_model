@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -18,6 +19,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from agent.analysis.explain import explain_journaled_trade
 from agent.config import load_config
 from agent.journal.db import Journal
 
@@ -26,6 +28,29 @@ app = FastAPI(title="EURUSD AI Agent Dashboard")
 
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+
+def _to_local(iso_str: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
+    """Convert a UTC ISO timestamp to the configured display TZ.
+    Bars/journal stay in UTC; this is purely cosmetic for the dashboard."""
+    if not iso_str:
+        return "—"
+    try:
+        from zoneinfo import ZoneInfo
+        tz = ZoneInfo(cfg.display_timezone)
+    except Exception:
+        from datetime import timezone
+        tz = timezone.utc
+    try:
+        dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+        return dt.astimezone(tz).strftime(fmt)
+    except Exception:
+        return iso_str[:16]
+
+
+# Jinja filter so templates can write `{{ t.entry_time | localtime }}`
+templates.env.filters["localtime"] = _to_local
+templates.env.filters["localtime_short"] = lambda s: _to_local(s, "%m-%d %H:%M")
 if (BASE_DIR / "static").exists():
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
@@ -40,11 +65,19 @@ def index(request: Request):
     trades = journal.all_trades()
     equity = journal.equity_curve()
     open_trades = [t for t in trades if t.get("exit_time") is None]
-    closed = [t for t in trades if t.get("exit_time") is not None]
+    closed_all = [t for t in trades if t.get("exit_time") is not None]
 
-    win_count = sum(1 for t in closed if (t.get("pnl") or 0) > 0)
-    win_rate = (win_count / len(closed)) if closed else 0.0
-    total_pnl = sum((t.get("pnl") or 0) for t in closed)
+    # Force-closed trades pollute headline stats — they never actually hit SL or TP.
+    # We count them separately and mark them in the UI but exclude from PF / win-rate.
+    real = [t for t in closed_all if t.get("exit_reason") != "end_of_data"]
+    n_force_closed = len(closed_all) - len(real)
+
+    win_count = sum(1 for t in real if (t.get("pnl") or 0) > 0)
+    win_rate = (win_count / len(real)) if real else 0.0
+    total_pnl = sum((t.get("pnl") or 0) for t in real)
+    gross_win = sum((t.get("pnl") or 0) for t in real if (t.get("pnl") or 0) > 0)
+    gross_loss = abs(sum((t.get("pnl") or 0) for t in real if (t.get("pnl") or 0) < 0))
+    profit_factor = (gross_win / gross_loss) if gross_loss > 0 else 0.0
 
     last_balance = equity[-1]["balance"] if equity else cfg.demo.start_balance
     progress_pct = (last_balance - cfg.demo.start_balance) / max(
@@ -59,8 +92,9 @@ def index(request: Request):
         "index.html",
         {
             "open_trades": open_trades,
-            "closed_trades": closed[-50:][::-1],
+            "closed_trades": closed_all[-50:][::-1],
             "win_rate": win_rate,
+            "profit_factor": profit_factor,
             "total_pnl": total_pnl,
             "last_balance": last_balance,
             "demo_start": cfg.demo.start_balance,
@@ -70,7 +104,9 @@ def index(request: Request):
             "active_model": active_model,
             "mode": cfg.mode,
             "symbol": cfg.symbol,
-            "n_trades": len(closed),
+            "n_trades": len(real),
+            "n_force_closed": n_force_closed,
+            "display_tz": cfg.display_timezone,
         },
     )
 
@@ -109,8 +145,15 @@ def health():
 
 @app.get("/trade/{trade_id}", response_class=HTMLResponse)
 def trade_detail(request: Request, trade_id: int):
-    """Render a single trade's full narrative (confluences, features, outcome).
-    The data comes straight from the SQLite journal that the backtester writes to."""
+    """Rich, plain-English narrative for one trade — pulled from the journal.
+
+    The page answers "WHY did the bot take this trade?" with a structured breakdown:
+      1. Top-line summary (entry/exit/result in NY time + dollars)
+      2. Each confluence as a titled paragraph with the actual numbers
+      3. Market state at entry (regime / location / MA / session)
+      4. Force-closed warning when the trade was incomplete (end_of_data)
+      5. Raw feature snapshot for power-users / ML auditing
+    """
     journal = _journal()
     row = journal._conn.execute(
         """SELECT t.*, s.confluences, s.features_json, s.ml_score, s.timeframe AS sig_tf,
@@ -125,13 +168,14 @@ def trade_detail(request: Request, trade_id: int):
 
     confluences = json.loads(t.get("confluences") or "[]")
     features = json.loads(t.get("features_json") or "{}")
-    # Sort features by absolute magnitude — most-meaningful first
     sorted_features = sorted(
         features.items(),
         key=lambda kv: -abs(float(kv[1] or 0)) if isinstance(kv[1], (int, float)) else 0,
     )
 
     is_winner = (t.get("pnl") or 0) > 0 if t.get("exit_time") else None
+    narrative = explain_journaled_trade(t, confluences, features,
+                                          display_tz_name=cfg.display_timezone)
 
     return templates.TemplateResponse(
         request,
@@ -143,5 +187,7 @@ def trade_detail(request: Request, trade_id: int):
             "is_winner": is_winner,
             "symbol": cfg.symbol,
             "mode": cfg.mode,
+            "narrative": narrative,
+            "display_tz": cfg.display_timezone,
         },
     )

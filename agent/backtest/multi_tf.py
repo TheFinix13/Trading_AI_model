@@ -67,6 +67,7 @@ def run_multi_tf(
     journal: Journal | None = None,
     scorer=None,
     score_threshold: float = 0.55,
+    bias_only_tfs: set[Timeframe] | None = None,
 ) -> MultiTFResult:
     """Run an independent backtest per provided timeframe, then merge.
 
@@ -76,7 +77,14 @@ def run_multi_tf(
 
     HTF bias: when both LTF (M15/H1) and HTF (D1, H4) bars are provided AND
     cfg.rules.htf_bias_mode != 'off', the LTF backtests automatically consult the HTF
-    bars for trend / active-zone confirmation."""
+    bars for trend / active-zone confirmation.
+
+    `bias_only_tfs`: TFs that contribute to HTF bias / zones but never generate their
+    own entries. By default H4 is bias-only — entries come from M15/H1 (with H4 used
+    purely for top-down direction), per the trader's preferred workflow. D1 still
+    generates entries because its calibrated scorer has proven OOS edge."""
+    if bias_only_tfs is None:
+        bias_only_tfs = {Timeframe.H4}
     # Pre-build HTF bias computers from any D1/H4 bars we have. M15/H1/M5/M1 backtests
     # will receive them and the rule engine will consult them per setup.
     htf_biases: list[HTFBiasComputer] = []
@@ -105,6 +113,10 @@ def run_multi_tf(
         for tf, bars in bars_by_tf.items():
             if not bars:
                 log.warning("Multi-TF: no bars for %s, skipping", tf.value)
+                continue
+            if tf in bias_only_tfs:
+                log.info("Multi-TF: %s is bias-only — no entries generated from this TF", tf.value)
+                per_tf_trades[tf] = []
                 continue
             log.info("Multi-TF backtest: %s (%d bars)", tf.value, len(bars))
             # D1/H4 don't consume HTF bias (they ARE the HTF). M15/H1/M5/M1 do.
