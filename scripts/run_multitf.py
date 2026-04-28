@@ -63,6 +63,10 @@ def main():
                              "scorer's training window ended to get a leakage-free measurement.")
     parser.add_argument("--end-date", type=str, default=None,
                         help="ISO date (YYYY-MM-DD). Backtest only bars before this date.")
+    parser.add_argument("--bias-only-tfs", nargs="*", default=["H4"],
+                        help="TFs used ONLY for HTF bias/zone context (no entries from them). "
+                             "Default: H4. Set to empty list ('--bias-only-tfs') to allow entries "
+                             "on every loaded TF.")
     args = parser.parse_args()
 
     cfg = load_config()
@@ -142,8 +146,18 @@ def main():
         scorer = SetupScorer.load(args.scorer_path)
         log.info("Loaded scorer from %s (threshold=%.2f)", args.scorer_path, args.score_threshold)
 
+    bias_only = set()
+    for tf_str in (args.bias_only_tfs or []):
+        try:
+            bias_only.add(Timeframe(tf_str))
+        except ValueError:
+            log.warning("--bias-only-tfs: skipping unknown TF %s", tf_str)
+    if bias_only:
+        log.info("Bias-only TFs (no entries): %s", sorted(t.value for t in bias_only))
+
     result = run_multi_tf(cfg, bars_by_tf, journal=journal,
-                           scorer=scorer, score_threshold=args.score_threshold)
+                           scorer=scorer, score_threshold=args.score_threshold,
+                           bias_only_tfs=bias_only)
 
     print()
     print("MULTI-TIMEFRAME BACKTEST")

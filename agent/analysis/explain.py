@@ -195,6 +195,191 @@ def explain_trade(trade: Trade, ml_model=None, ml_feature_cols: list[str] | None
     return explanation
 
 
+# ---------------------------------------------------------------------------
+# Journal-aware narratives (what the dashboard /trade/{id} page renders).
+# Doesn't require the full Setup object — only the journaled row + features dict.
+# ---------------------------------------------------------------------------
+
+# Plain-English templates keyed by confluence tag, used when reconstructing
+# narratives from the journal (where we don't have the full Setup object).
+_JOURNAL_TEMPLATES: dict[str, dict[str, str]] = {
+    "zone": {
+        "title": "Supply / demand zone",
+        "long": ("Price retraced into a fresh demand zone. The zone formed from a strong "
+                 "bullish impulse leaving an order-flow imbalance. We expect institutional "
+                 "buyers to defend the zone."),
+        "short": ("Price rallied back into a fresh supply zone. The zone formed from a strong "
+                  "bearish impulse leaving an order-flow imbalance. We expect institutional "
+                  "sellers to defend the zone."),
+    },
+    "bos": {
+        "title": "Break of Structure",
+        "long":  "Recent price action broke a prior swing high, confirming bullish momentum.",
+        "short": "Recent price action broke a prior swing low, confirming bearish momentum.",
+    },
+    "fvg": {
+        "title": "Fair Value Gap",
+        "long":  "An unfilled bullish FVG sits below the entry, providing a magnet of liquidity.",
+        "short": "An unfilled bearish FVG sits above the entry, providing a magnet of liquidity.",
+    },
+    "fib_382": {"title": "Fib 38.2%", "long": "Price tagged the shallow 38.2% retracement.", "short": "Price tagged the shallow 38.2% retracement."},
+    "fib_500": {"title": "Fib 50%",   "long": "Price tagged the 50% retracement (mid of swing).", "short": "Price tagged the 50% retracement."},
+    "fib_618": {"title": "Fib 61.8% (golden)", "long": "Price tagged the golden-ratio retracement — classic bullish entry zone.", "short": "Price tagged the golden-ratio retracement — classic bearish entry zone."},
+    "fib_786": {"title": "Fib 78.6%", "long": "Price retraced 78.6% of the prior swing — deep retest.", "short": "Price retraced 78.6% of the prior swing — deep retest."},
+    "trendline": {"title": "Trendline touch", "long": "Price tagged a rising trendline support.", "short": "Price tagged a falling trendline resistance."},
+    "liquidity_wick": {"title": "Liquidity wick (sweep)", "long": "A long wick swept resting liquidity below a swing low before reversing — classic bullish stop hunt.", "short": "A long wick swept resting liquidity above a swing high before reversing — classic bearish stop hunt."},
+    "discoverer": {"title": "ML pattern", "long": "The discovery model recognised a learned bullish pattern.", "short": "The discovery model recognised a learned bearish pattern."},
+    "htf_bias_long": {"title": "HTF bias bullish", "long": "Higher timeframes (H4 / D1) trend up — entries align with the dominant flow.", "short": ""},
+    "htf_bias_short": {"title": "HTF bias bearish", "long": "", "short": "Higher timeframes (H4 / D1) trend down — entries align with the dominant flow."},
+    "htf_zone_long": {"title": "HTF demand zone", "long": "Price is reacting from a higher-timeframe demand zone (D1 / H4).", "short": ""},
+    "htf_zone_short": {"title": "HTF supply zone", "long": "", "short": "Price is reacting from a higher-timeframe supply zone (D1 / H4)."},
+}
+
+
+def explain_journaled_trade(
+    trade_row: dict,
+    confluences: list[str],
+    features: dict[str, float],
+    *,
+    display_tz_name: str = "America/New_York",
+) -> dict:
+    """Produce the rich, structured narrative the dashboard renders.
+
+    The dashboard has a journal row (entry, exit, prices, lot) and a feature snapshot.
+    From those it reconstructs *why* the trade was taken, in plain English, plus a
+    market-state summary that any human can sanity-check against their own chart.
+
+    Returns a JSON-friendly dict — the template just iterates over it."""
+    direction = "long" if trade_row.get("direction") == "long" else "short"
+
+    # Time conversion: store UTC, display in user's TZ (default NY for charting parity).
+    try:
+        from zoneinfo import ZoneInfo
+        local_tz = ZoneInfo(display_tz_name)
+    except Exception:
+        from datetime import timezone
+        local_tz = timezone.utc
+
+    def _fmt_local(iso_str: str | None) -> str:
+        if not iso_str:
+            return "—"
+        try:
+            dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
+            return dt.astimezone(local_tz).strftime("%a %Y-%m-%d %H:%M %Z")
+        except Exception:
+            return iso_str[:16]
+
+    # 1. Confluences as rich sections (title + paragraph + concrete number)
+    confluence_blocks: list[dict] = []
+    for tag in confluences:
+        tpl = _JOURNAL_TEMPLATES.get(tag, {"title": tag, "long": "", "short": ""})
+        body = tpl.get(direction) or tpl.get("long") or tag
+        block = {"tag": tag, "title": tpl["title"], "body": body, "facts": []}
+        if tag == "zone" and features.get("zone_impulse_pips"):
+            block["facts"].append(f"Impulse: {features['zone_impulse_pips']:.0f} pips")
+            if features.get("zone_age_bars"):
+                block["facts"].append(f"Zone age: {features['zone_age_bars']:.0f} bars")
+            if features.get("dist_to_zone_pips") is not None:
+                block["facts"].append(f"Distance to zone mid at entry: {features['dist_to_zone_pips']:.1f} pips")
+        elif tag == "bos" and features.get("bos_age_bars") is not None:
+            block["facts"].append(f"BOS age: {features['bos_age_bars']:.0f} bars")
+            block["facts"].append(f"BOS aligned with trade dir: {'yes' if features.get('bos_aligned') else 'no'}")
+        elif tag.startswith("fib_"):
+            key = f"{tag}_dist_pips"
+            if key in features:
+                block["facts"].append(f"Distance to level at entry: {features[key]:.1f} pips")
+        elif tag == "liquidity_wick" and features.get("wick_ratio"):
+            block["facts"].append(f"Wick ratio: {features['wick_ratio']:.1f}× body")
+        confluence_blocks.append(block)
+
+    # 2. Market context (regime / momentum) — categorise features for the eye
+    atr14 = features.get("atr_14_pips", 0.0)
+    atr50 = features.get("atr_50_pips", 0.0)
+    atr_ratio = features.get("atr_ratio", 1.0)
+    if atr_ratio > 1.2:
+        regime = f"Volatile (ATR14 {atr14:.0f} > ATR50 {atr50:.0f}, ratio {atr_ratio:.2f}×)"
+    elif atr_ratio < 0.85:
+        regime = f"Compressed (ATR14 {atr14:.0f} < ATR50 {atr50:.0f}, ratio {atr_ratio:.2f}×)"
+    else:
+        regime = f"Normal (ATR14 {atr14:.0f}, ATR50 {atr50:.0f}, ratio {atr_ratio:.2f}×)"
+
+    pos50 = features.get("price_position_50", 0.5)
+    if pos50 < 0.25:
+        location = f"Near 50-bar low (position {pos50:.0%}) — discount zone"
+    elif pos50 > 0.75:
+        location = f"Near 50-bar high (position {pos50:.0%}) — premium zone"
+    else:
+        location = f"Mid 50-bar range (position {pos50:.0%})"
+
+    above_ma21 = features.get("above_ma21", 0.5) > 0.5
+    dist_ma21 = features.get("dist_to_ma21_pips", 0.0)
+    ma_state = (f"Above MA21 by {dist_ma21:.1f} pips"
+                if above_ma21 else f"Below MA21 by {abs(dist_ma21):.1f} pips")
+
+    hour_utc = int(features.get("hour", -1)) if features.get("hour") is not None else -1
+    if features.get("is_overlap"):
+        session = f"London/NY overlap ({hour_utc}:00 UTC) — peak liquidity"
+    elif features.get("is_london"):
+        session = f"London session ({hour_utc}:00 UTC)"
+    elif features.get("is_ny"):
+        session = f"NY session ({hour_utc}:00 UTC)"
+    else:
+        session = f"Off-session ({hour_utc}:00 UTC)" if hour_utc >= 0 else "—"
+
+    # 3. Outcome notes
+    is_force_closed = trade_row.get("exit_reason") == "end_of_data"
+    outcome_warning = None
+    if is_force_closed:
+        outcome_warning = ("This trade was force-closed because the backtest dataset ended "
+                          "while the position was still open. Neither stop-loss nor take-profit "
+                          "was actually hit — the P&L shown is just mark-to-market at the last bar's close. "
+                          "DO NOT count this as a real win or loss.")
+
+    # 4. Top-line summary
+    pnl = trade_row.get("pnl") or 0
+    pnl_pips = trade_row.get("pnl_pips") or 0
+    rr = trade_row.get("sig_rr") or 0
+    stop_pips = trade_row.get("sig_stop_pips") or 0
+    ml_score = trade_row.get("ml_score")
+
+    summary_paragraphs = [
+        (f"On <strong>{_fmt_local(trade_row.get('detected_at') or trade_row.get('entry_time'))}</strong>, "
+         f"the bot detected a <strong>{direction}</strong> setup on EURUSD "
+         f"<strong>{trade_row.get('sig_tf') or '?'}</strong> with "
+         f"<strong>{len(confluences)} confluence{'s' if len(confluences) != 1 else ''}</strong>: "
+         f"{', '.join(confluences) if confluences else '<em>none recorded</em>'}."),
+        (f"It entered at <strong>{trade_row.get('entry_price', 0):.5f}</strong> with a "
+         f"<strong>{stop_pips:.1f}-pip stop</strong> targeting "
+         f"<strong>1:{rr:.2f}</strong> reward. "
+         + (f"ML scorer probability: <strong>{ml_score:.3f}</strong>. "
+            if ml_score is not None else "No ML scorer was applied to this timeframe. ")),
+    ]
+    if trade_row.get("exit_time"):
+        summary_paragraphs.append(
+            f"Exited at <strong>{trade_row.get('exit_price', 0):.5f}</strong> on "
+            f"<strong>{_fmt_local(trade_row.get('exit_time'))}</strong> via "
+            f"<em>{trade_row.get('exit_reason')}</em>: "
+            f"<strong>{pnl_pips:+.1f} pips (${pnl:+.2f})</strong>."
+        )
+
+    return {
+        "direction": direction,
+        "summary_paragraphs": summary_paragraphs,
+        "confluence_blocks": confluence_blocks,
+        "market_state": {
+            "regime": regime,
+            "location": location,
+            "ma_state": ma_state,
+            "session": session,
+        },
+        "is_force_closed": is_force_closed,
+        "outcome_warning": outcome_warning,
+        "entry_local": _fmt_local(trade_row.get("entry_time")),
+        "exit_local": _fmt_local(trade_row.get("exit_time")),
+        "detected_local": _fmt_local(trade_row.get("detected_at")),
+    }
+
+
 def format_explanation(e: TradeExplanation) -> str:
     """Pretty-print a TradeExplanation to a single string, ready for terminal/CLI."""
     lines: list[str] = []

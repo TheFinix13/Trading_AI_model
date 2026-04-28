@@ -139,6 +139,9 @@ class Config(BaseModel):
     backtest_gate: BacktestGateConfig = BacktestGateConfig()
 
     mode: str = "backtest"
+    # IANA timezone name for dashboard display. Bars/journal stay in UTC; this is
+    # purely cosmetic. Set to America/New_York to match standard FX charting (NY close).
+    display_timezone: str = "America/New_York"
     mt5_login: str = ""
     mt5_password: str = ""
     mt5_server: str = ""

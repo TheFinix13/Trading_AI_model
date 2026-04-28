@@ -211,9 +211,31 @@ python scripts/run_multitf.py --use-cache-only --tfs M15 H1 H4 D1 --analyze-loss
 
 Useful flags:
 - `--journal` writes every signal/trade/skip to SQLite for inspection
+- `--start-date YYYY-MM-DD` runs only on bars from that date onward — **critical for
+  out-of-sample validation** when a scorer was trained on earlier data
 - `--htf-bias strict` rejects LTF setups against D1 trend
 - `--block-days Wed Fri` blocks specific weekdays the journal flagged as bad
 - `--scorer-path PATH --score-threshold 0.55` plugs in a trained ML scorer
+- `--bias-only-tfs H4 D1` marks higher TFs as bias-providing only (no entries)
+
+### Recommended OOS validation
+
+After training the scorer on data ending 2024-10-27, run a leakage-free check:
+
+```bash
+python scripts/run_multitf.py --use-cache-only \
+  --tfs M15 H1 H4 D1 \
+  --htf-bias advisory \
+  --journal --reset-journal \
+  --start-date 2024-10-28 \
+  --scorer-path models/scorer_EURUSD_D1.joblib
+```
+
+The `--start-date` flag ensures the scorer is only applied to bars it has never seen
+during training. Numbers reported by this run are the honest performance you can expect
+on fresh data — typically lower than in-sample numbers. **The H4 timeframe is bias-only
+by default** (entries come from M15/H1, with H4 supplying top-down trend context),
+matching the workflow most discretionary traders actually use.
 
 ### Loss diagnostics
 
@@ -475,9 +497,9 @@ A: Yahoo enforces a 730-day cap on intraday data. Use Dukascopy instead:
 
 **Q: The backtest finds 0 trades.**
 A: Check `--use-cache-only` is pointing at actual cached data
-(`ls data/EURUSD/`). If empty, run `download_data.py` first. If full but still
-0 trades, lower `rules.min_confluences` to 1 and `required_factors: [zone]` in
-config (the defaults are already loose enough).
+(`ls data/parquet/`). If empty, run `download_data.py` first. The default
+`rules.min_confluences` is **2** (zone + at least one other) — to be more permissive
+for testing, lower it to 1 in `config/default.yaml`.
 
 **Q: Profit factor is below 1 — strategy is losing money?**
 A: Yes, the rules-only strategy without ML filtering has positive expectancy on

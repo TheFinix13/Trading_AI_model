@@ -77,12 +77,16 @@
       <div class="progress"><div style="width: {{ progress_pct }}%"></div></div>
     </div>
     <div class="card">
-      <h2>Total P&amp;L</h2>
+      <h2>Total P&amp;L (real trades only)</h2>
       <div class="stat {% if total_pnl >= 0 %}green{% else %}red{% endif %}">
         ${{ "%.2f"|format(total_pnl) }}
       </div>
       <div style="color: var(--muted); font-size: 12px; margin-top: 4px;">
-        {{ n_trades }} closed trades &middot; win rate {{ "%.1f"|format(win_rate*100) }}%
+        {{ n_trades }} trades &middot; WR {{ "%.1f"|format(win_rate*100) }}% &middot;
+        PF {{ "%.2f"|format(profit_factor) }}
+        {% if n_force_closed %}<br>
+        <span style="color:var(--amber);">{{ n_force_closed }} force-closed (excluded)</span>
+        {% endif %}
       </div>
     </div>
     <div class="card">
@@ -94,7 +98,7 @@
     </div>
 
     <div class="card full">
-      <h2>Open positions</h2>
+      <h2>Open positions <span style="font-weight:400;color:var(--muted);font-size:11px;">— times in {{ display_tz }}</span></h2>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Direction</th><th>Lot</th><th>Entry</th><th>Stop</th><th>TP</th><th>Open since</th></tr></thead>
@@ -109,7 +113,7 @@
               <td>{{ "%.5f"|format(t.entry_price) }}</td>
               <td>{{ "%.5f"|format(t.stop_price) }}</td>
               <td>{{ "%.5f"|format(t.tp_price) }}</td>
-              <td>{{ t.entry_time[:16] }}</td>
+              <td>{{ t.entry_time | localtime }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -118,20 +122,25 @@
     </div>
 
     <div class="card full">
-      <h2>Recent closed trades (50) <span style="font-weight:400;color:var(--muted);font-size:11px;">— click any row for full reasoning</span></h2>
+      <h2>Recent closed trades (50)
+        <span style="font-weight:400;color:var(--muted);font-size:11px;">
+          — times in <strong>{{ display_tz }}</strong> &middot; click any row for full reasoning
+        </span>
+      </h2>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>#</th><th>Time</th><th>Dir</th><th>Lot</th><th>Entry</th><th>Exit</th><th>Reason</th><th>P&amp;L pips</th><th>P&amp;L $</th></tr></thead>
+          <thead><tr><th>#</th><th>Exit time ({{ display_tz }})</th><th>TF</th><th>Dir</th><th>Lot</th><th>Entry</th><th>Exit</th><th>Reason</th><th>P&amp;L pips</th><th>P&amp;L $</th></tr></thead>
           <tbody>
             {% for t in closed_trades %}
-            <tr style="cursor:pointer" onclick="location.href='/trade/{{ t.id }}'">
+            <tr style="cursor:pointer; {% if t.exit_reason == 'end_of_data' %}opacity:0.55;{% endif %}" onclick="location.href='/trade/{{ t.id }}'">
               <td style="color:var(--muted)">{{ t.id }}</td>
-              <td>{{ t.exit_time[:16] if t.exit_time else "-" }}</td>
+              <td>{{ t.exit_time | localtime }}</td>
+              <td style="color:var(--muted)">{{ (t.mode or '')|replace('backtest_','') }}</td>
               <td>{{ t.direction }}</td>
               <td>{{ t.lot_size }}</td>
               <td>{{ "%.5f"|format(t.entry_price) }}</td>
               <td>{{ "%.5f"|format(t.exit_price) if t.exit_price else "-" }}</td>
-              <td>{{ t.exit_reason }}</td>
+              <td>{% if t.exit_reason == 'end_of_data' %}<span style="color:var(--amber);">end_of_data ⚠</span>{% else %}{{ t.exit_reason }}{% endif %}</td>
               <td class="{% if (t.pnl_pips or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">{{ "%.1f"|format(t.pnl_pips or 0) }}</td>
               <td class="{% if (t.pnl or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">{{ "%.2f"|format(t.pnl or 0) }}</td>
             </tr>
