@@ -1,0 +1,24 @@
+{
+  "iter": 2,
+  "train_start": "2021-06-15 22:00:00+00:00",
+  "train_end": "2022-02-03 14:00:00+00:00",
+  "val_start": "2022-02-03 15:00:00+00:00",
+  "val_end": "2022-04-04 05:00:00+00:00",
+  "n_trades": 133,
+  "profit_factor": 1.171304556593868,
+  "win_rate": 0.41353383458646614,
+  "expectancy": 8.246501074103874,
+  "max_dd_pct": 0.07885878571433386,
+  "loss_categories": {
+    "reversal": 24,
+    "stopped_on_retrace": 22,
+    "never_worked": 18,
+    "spike_out": 14
+  },
+  "calib_long_brier": null,
+  "calib_long_ece": null,
+  "calib_long_overconfident": null,
+  "calib_short_brier": null,
+  "calib_short_ece": null,
+  "calib_short_overconfident": null
+}

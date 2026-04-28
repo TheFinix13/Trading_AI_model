@@ -1,0 +1,128 @@
+{
+  "D1": {
+    "history": [
+      {
+        "iter": 1,
+        "train_start": "2021-04-29 00:00:00+00:00",
+        "train_end": "2023-11-17 00:00:00+00:00",
+        "val_start": "2023-01-19 00:00:00+00:00",
+        "val_end": "2024-07-09 00:00:00+00:00",
+        "n_trades": 46,
+        "profit_factor": 0.6948541988051228,
+        "win_rate": 0.30434782608695654,
+        "expectancy": -17.17599378882288,
+        "max_dd_pct": 0.08635857142857858,
+        "loss_categories": {
+          "reversal": 11,
+          "spike_out": 7,
+          "never_worked": 8,
+          "stopped_on_retrace": 6
+        },
+        "calib_long_brier": 0.21723158660806896,
+        "calib_long_ece": 0.15293197502680875,
+        "calib_long_overconfident": true,
+        "calib_short_brier": 0.2727906072405249,
+        "calib_short_ece": 0.24832742581650902,
+        "calib_short_overconfident": true
+      },
+      {
+        "iter": 2,
+        "train_start": "2021-08-24 00:00:00+00:00",
+        "train_end": "2024-03-14 00:00:00+00:00",
+        "val_start": "2023-05-16 00:00:00+00:00",
+        "val_end": "2024-11-03 00:00:00+00:00",
+        "n_trades": 54,
+        "profit_factor": 0.7189957621723925,
+        "win_rate": 0.2962962962962963,
+        "expectancy": -14.131792328045579,
+        "max_dd_pct": 0.12754874882276934,
+        "loss_categories": {
+          "reversal": 9,
+          "never_worked": 10,
+          "stopped_on_retrace": 11,
+          "spike_out": 8
+        },
+        "calib_long_brier": 0.20702003449165277,
+        "calib_long_ece": 0.10990584894693396,
+        "calib_long_overconfident": true,
+        "calib_short_brier": 0.24801115327194298,
+        "calib_short_ece": 0.21990899892699695,
+        "calib_short_overconfident": true
+      },
+      {
+        "iter": 3,
+        "train_start": "2021-12-19 00:00:00+00:00",
+        "train_end": "2024-07-09 00:00:00+00:00",
+        "val_start": "2023-09-10 00:00:00+00:00",
+        "val_end": "2025-02-27 00:00:00+00:00",
+        "n_trades": 54,
+        "profit_factor": 1.0812282849048849,
+        "win_rate": 0.37037037037037035,
+        "expectancy": 3.7001256613727924,
+        "max_dd_pct": 0.07903723608211588,
+        "loss_categories": {
+          "reversal": 11,
+          "stopped_on_retrace": 4,
+          "never_worked": 12,
+          "spike_out": 7
+        },
+        "calib_long_brier": 0.23877194432364127,
+        "calib_long_ece": 0.1587353828925282,
+        "calib_long_overconfident": true,
+        "calib_short_brier": 0.1816679703243581,
+        "calib_short_ece": 0.10371426755240862,
+        "calib_short_overconfident": true
+      },
+      {
+        "iter": 4,
+        "train_start": "2022-04-14 00:00:00+00:00",
+        "train_end": "2024-11-03 00:00:00+00:00",
+        "val_start": "2024-01-05 00:00:00+00:00",
+        "val_end": "2025-06-24 00:00:00+00:00",
+        "n_trades": 48,
+        "profit_factor": 0.947560875569664,
+        "win_rate": 0.375,
+        "expectancy": -2.654010416669023,
+        "max_dd_pct": 0.06566556524390196,
+        "loss_categories": {
+          "never_worked": 11,
+          "spike_out": 8,
+          "reversal": 7,
+          "stopped_on_retrace": 4
+        },
+        "calib_long_brier": 0.22658708795263593,
+        "calib_long_ece": 0.1623957052153067,
+        "calib_long_overconfident": true,
+        "calib_short_brier": 0.2564500883409967,
+        "calib_short_ece": 0.1976622635494769,
+        "calib_short_overconfident": true
+      },
+      {
+        "iter": 5,
+        "train_start": "2022-08-09 00:00:00+00:00",
+        "train_end": "2025-02-27 00:00:00+00:00",
+        "val_start": "2024-05-01 00:00:00+00:00",
+        "val_end": "2025-10-19 00:00:00+00:00",
+        "n_trades": 48,
+        "profit_factor": 0.9114608626483303,
+        "win_rate": 0.3333333333333333,
+        "expectancy": -4.34634672619297,
+        "max_dd_pct": 0.10712295631643665,
+        "loss_categories": {
+          "stopped_on_retrace": 10,
+          "spike_out": 4,
+          "never_worked": 8,
+          "reversal": 10
+        },
+        "calib_long_brier": 0.20397927706382774,
+        "calib_long_ece": 0.09472347727589461,
+        "calib_long_overconfident": true,
+        "calib_short_brier": 0.23367324523612096,
+        "calib_short_ece": 0.20636135122269694,
+        "calib_short_overconfident": true
+      }
+    ],
+    "champion_pf": -Infinity,
+    "n_iters": 5
+  }
+}

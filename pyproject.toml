@@ -1,0 +1,71 @@
+[project]
+name = "eurusd-ai-agent"
+version = "0.1.0"
+description = "Personal AI trading agent for EURUSD on Exness MT5 using supply/demand + FVG + fib + trendline confluence"
+requires-python = ">=3.11"
+authors = [{ name = "the1finix" }]
+license = { text = "MIT" }
+readme = "README.md"
+dependencies = [
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "pyarrow>=15.0",
+    "pydantic>=2.6",
+    "python-dotenv>=1.0",
+    "PyYAML>=6.0",
+    "scikit-learn>=1.4",
+    "xgboost>=2.0",
+    "matplotlib>=3.8",
+    "mplfinance>=0.12",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "jinja2>=3.1",
+    "rich>=13.7",
+    "click>=8.1",
+    "schedule>=1.2",
+    "yfinance>=0.2.40",
+    "dukascopy-python>=4.0",
+    "httpx>=0.27",
+    "shap>=0.45",
+]
+
+[project.optional-dependencies]
+mt5 = [
+    "MetaTrader5>=5.0.45 ; sys_platform == 'win32'",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.3",
+    "mypy>=1.9",
+    "ipykernel>=6.29",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+eurusd-agent = "agent.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true

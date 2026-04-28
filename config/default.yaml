@@ -1,0 +1,102 @@
+symbol: EURUSD
+timeframes:
+  htf: D1
+  mtf: H4
+  ltf: H1
+  ttf: M15
+
+primary_timeframe: H1
+
+risk:
+  pct_target: 0.01
+  pct_floor: 0.03
+  pct_floor_threshold_account: 300
+  daily_dd_halt_pct: 0.03
+  max_open_positions: 1
+  lot_step: 0.01
+  lot_min: 0.01
+  lot_hard_cap_under_300: 0.01
+  lot_hard_cap_under_1000: 0.10
+  lot_hard_cap: 1.0
+
+session:
+  timezone: Europe/London
+  no_trade_windows:
+    - name: friday_close
+      day_of_week: 4
+      from: "20:00"
+      to: "23:59"
+    - name: sunday_open
+      day_of_week: 6
+      from: "20:00"
+      to: "23:59"
+
+detectors:
+  swing_lookback: 5
+  zone_min_impulse_pips: 30
+  zone_max_age_bars: 500
+  fvg_min_size_pips: 5
+  fib_levels: [0.382, 0.5, 0.618, 0.786]
+  trendline_min_swings: 2
+  liquidity_wick_min_ratio: 2.0
+
+rules:
+  # Edge validation defaults. The zone is the core S/D concept and is required. We let
+  # zone-only setups through and rely on the ML scorer to filter low-quality ones.
+  # Tighten back up (min_confluences: 2-3) for a "premium grade" rules-only mode.
+  min_confluences: 1
+  required_factors:
+    - zone
+  optional_factors:
+    - bos
+    - fib
+    - trendline
+    - liquidity_wick
+    - htf_alignment
+  rr_min: 1.5
+  stop_buffer_pips: 5
+  # Pre-filter: when true, reject setups whose stop_pips exceeds what a live $100 account
+  # can absorb at 0.01 lot within the 3% risk floor (= 30 pips on EURUSD). Use for live-prep
+  # validation; leave false for pure edge validation on a $10k backtest balance.
+  enforce_live_stop_cap: false
+  live_min_balance: 100
+  # Higher-timeframe bias filter: 'off' | 'advisory' | 'strict'
+  # 'advisory' tags every setup with HTF context for the ML model to learn from.
+  # 'strict' rejects any LTF setup that contradicts D1 EMA20 trend direction.
+  htf_bias_mode: "off"
+  htf_bias_min_slope_pips: 0.5
+
+ml:
+  enabled: true
+  prob_threshold: 0.55
+  walkforward_train_months: 24
+  walkforward_test_months: 3
+  refit_frequency: weekly
+
+backtest:
+  # NOTE: backtest balance is for *edge validation* only. Live deployment uses
+  # demo.start_balance ($100). $10k here lets the risk manager size correctly so the
+  # backtest tells us whether the strategy itself has edge in expectation.
+  initial_balance: 10000.0
+  spread_pips: 1.0
+  commission_per_lot: 7.0
+  slippage_pips: 0.5
+  pip_value_per_lot: 10.0
+  # Move stop to breakeven (or +be_lock_r) once trade goes 1R in favor. Designed to
+  # convert spike-outs (where MFE was 3R+ before reversal) from -1R losers into ~0R.
+  move_be_at_r: 1.0
+  be_lock_r: 0.0
+
+demo:
+  start_balance: 100.0
+  target_balance: 1000.0
+  max_dd_pct: 0.25
+  max_single_trade_profit_share: 0.15
+  min_trades_required: 200
+
+backtest_gate:
+  profit_factor_min: 1.3
+  max_dd_pct: 0.20
+  min_trades: 100
+  require_oos_pass: true
+  require_regime_pass: true
