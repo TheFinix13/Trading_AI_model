@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trade #{{ trade.id }} — {{ symbol }}</title>
+  <style>
+    :root {
+      --bg: #0e1117; --panel: #161b22; --panel-2: #1c2129;
+      --border: #2a3038; --text: #d6dde6; --muted: #8a939e;
+      --green: #2ea043; --red: #cf222e; --blue: #1f6feb;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           background: var(--bg); color: var(--text); }
+    header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex;
+             align-items: center; gap: 16px; background: var(--panel); }
+    a.back { color: var(--blue); text-decoration: none; font-size: 14px; }
+    a.back:hover { text-decoration: underline; }
+    h1 { margin: 0; font-size: 20px; font-weight: 600; }
+    .verdict { display: inline-block; padding: 2px 12px; border-radius: 12px; font-size: 12px;
+               font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 8px; }
+    .verdict.win { background: var(--green); }
+    .verdict.loss { background: var(--red); }
+    .verdict.open { background: var(--blue); }
+    main { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 24px; max-width: 1400px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+    .card.full { grid-column: 1 / -1; }
+    .card h2 { margin: 0 0 14px; font-size: 12px; text-transform: uppercase;
+               letter-spacing: 0.06em; color: var(--muted); }
+    dl { margin: 0; display: grid; grid-template-columns: 130px 1fr; row-gap: 8px; column-gap: 12px; }
+    dt { color: var(--muted); font-size: 13px; }
+    dd { margin: 0; font-size: 14px; font-family: ui-monospace, SF Mono, Menlo, monospace; }
+    .pos { color: var(--green); }
+    .neg { color: var(--red); }
+    .conf-list { list-style: none; padding: 0; margin: 0; }
+    .conf-list li { padding: 10px 12px; background: var(--panel-2); border-left: 3px solid var(--blue);
+                    margin-bottom: 6px; font-size: 14px; border-radius: 0 4px 4px 0; }
+    .conf-list li.htf { border-color: #d29922; }
+    .feature-grid { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; font-size: 13px;
+                    font-family: ui-monospace, SF Mono, Menlo, monospace; }
+    .feature-grid .name { color: var(--muted); }
+    .feature-grid .val { text-align: right; }
+    .narrative { background: var(--panel-2); padding: 16px; border-radius: 6px; line-height: 1.6;
+                 font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="back" href="/">&larr; back to dashboard</a>
+    <h1>
+      Trade #{{ trade.id }} &middot; {{ symbol }} {{ trade.sig_tf or "?" }}
+      &middot; {{ trade.direction|upper }}
+      {% if is_winner is none %}<span class="verdict open">OPEN</span>
+      {% elif is_winner %}<span class="verdict win">WIN</span>
+      {% else %}<span class="verdict loss">LOSS</span>{% endif %}
+    </h1>
+  </header>
+
+  <main>
+    <div class="card full">
+      <h2>Plain-English summary</h2>
+      <div class="narrative">
+        On <strong>{{ trade.detected_at[:16] if trade.detected_at else trade.entry_time[:16] }}</strong> UTC,
+        the bot detected a <strong>{{ trade.direction }}</strong> setup on {{ symbol }} {{ trade.sig_tf or "" }}
+        with the following confluences:
+        <strong>{% if confluences %}{{ confluences|join(", ") }}{% else %}none recorded{% endif %}</strong>.
+        It entered at <strong>{{ "%.5f"|format(trade.entry_price) }}</strong> with a stop
+        of <strong>{{ "%.1f"|format(trade.sig_stop_pips or 0) }} pips</strong> targeting
+        a <strong>1:{{ "%.2f"|format(trade.sig_rr or 0) }}</strong> reward.
+        {% if trade.ml_score is not none %}The ML scorer gave this setup a probability of
+        <strong>{{ "%.3f"|format(trade.ml_score) }}</strong>.{% endif %}
+        {% if trade.exit_time %}
+          The trade closed at <strong>{{ "%.5f"|format(trade.exit_price) }}</strong>
+          on <strong>{{ trade.exit_time[:16] }}</strong> via <em>{{ trade.exit_reason }}</em>
+          for a P&amp;L of
+          <strong class="{% if (trade.pnl or 0) >= 0 %}pos{% else %}neg{% endif %}">
+            {{ "%.1f"|format(trade.pnl_pips or 0) }} pips
+            (${{ "%.2f"|format(trade.pnl or 0) }})
+          </strong>.
+        {% else %}
+          The trade is still open.
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Setup details</h2>
+      <dl>
+        <dt>Direction</dt><dd>{{ trade.direction|upper }}</dd>
+        <dt>Timeframe</dt><dd>{{ trade.sig_tf or "?" }}</dd>
+        <dt>Detected at</dt><dd>{{ trade.detected_at }}</dd>
+        <dt>Entry</dt><dd>{{ "%.5f"|format(trade.entry_price) }}</dd>
+        <dt>Stop</dt><dd>{{ "%.5f"|format(trade.stop_price) }} ({{ "%.1f"|format(trade.sig_stop_pips or 0) }} pips)</dd>
+        <dt>Take profit</dt><dd>{{ "%.5f"|format(trade.tp_price) }}</dd>
+        <dt>R:R</dt><dd>1:{{ "%.2f"|format(trade.sig_rr or 0) }}</dd>
+        <dt>Lot size</dt><dd>{{ trade.lot_size }}</dd>
+        {% if trade.ml_score is not none %}
+        <dt>ML score</dt><dd>{{ "%.3f"|format(trade.ml_score) }}</dd>
+        {% endif %}
+      </dl>
+    </div>
+
+    <div class="card">
+      <h2>Outcome</h2>
+      <dl>
+        {% if trade.exit_time %}
+        <dt>Exit time</dt><dd>{{ trade.exit_time }}</dd>
+        <dt>Exit price</dt><dd>{{ "%.5f"|format(trade.exit_price) }}</dd>
+        <dt>Reason</dt><dd>{{ trade.exit_reason }}</dd>
+        <dt>P&amp;L pips</dt><dd class="{% if (trade.pnl_pips or 0) >= 0 %}pos{% else %}neg{% endif %}">{{ "%.1f"|format(trade.pnl_pips or 0) }}</dd>
+        <dt>P&amp;L $</dt><dd class="{% if (trade.pnl or 0) >= 0 %}pos{% else %}neg{% endif %}">${{ "%.2f"|format(trade.pnl or 0) }}</dd>
+        <dt>Commission</dt><dd>${{ "%.2f"|format(trade.commission or 0) }}</dd>
+        {% else %}
+        <dt colspan=2>Trade still open.</dt>
+        {% endif %}
+      </dl>
+    </div>
+
+    <div class="card full">
+      <h2>Why the bot took this trade</h2>
+      <ul class="conf-list">
+        {% for c in confluences %}
+        <li class="{% if 'htf' in c %}htf{% endif %}">{{ c }}</li>
+        {% endfor %}
+        {% if not confluences %}
+        <li style="border-color: var(--muted);">No confluences recorded for this trade.</li>
+        {% endif %}
+      </ul>
+    </div>
+
+    <div class="card full">
+      <h2>Market state at entry (top features)</h2>
+      <div class="feature-grid">
+        {% for name, value in features[:30] %}
+        <span class="name">{{ name }}</span>
+        <span class="val">
+          {% if value is number %}{{ "%+.4f"|format(value) }}{% else %}{{ value }}{% endif %}
+        </span>
+        {% endfor %}
+      </div>
+      {% if features|length > 30 %}
+      <div style="margin-top:12px; color:var(--muted); font-size:12px;">
+        + {{ features|length - 30 }} more features (full data via /api/trades).
+      </div>
+      {% endif %}
+    </div>
+  </main>
+</body>
+</html>

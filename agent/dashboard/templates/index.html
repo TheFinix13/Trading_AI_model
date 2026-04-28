@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EURUSD AI Agent</title>
+  <style>
+    :root {
+      --bg: #0e1117;
+      --panel: #161b22;
+      --panel-2: #1c2129;
+      --border: #2a3038;
+      --text: #d6dde6;
+      --muted: #8a939e;
+      --green: #2ea043;
+      --red: #cf222e;
+      --blue: #1f6feb;
+      --amber: #d29922;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           background: var(--bg); color: var(--text); }
+    header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex;
+             align-items: center; justify-content: space-between; background: var(--panel); }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    .pill { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px;
+            text-transform: uppercase; letter-spacing: 0.05em; }
+    .pill.live { background: var(--red); }
+    .pill.paper { background: var(--blue); }
+    .pill.backtest { background: var(--amber); color: #000; }
+    main { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 16px 24px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+    .card h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase;
+               letter-spacing: 0.06em; color: var(--muted); }
+    .stat { font-size: 28px; font-weight: 600; }
+    .stat.green { color: var(--green); }
+    .stat.red { color: var(--red); }
+    .progress { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; margin-top: 12px; }
+    .progress > div { height: 100%; background: var(--green); transition: width 0.3s; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px;
+         letter-spacing: 0.05em; }
+    .pnl-pos { color: var(--green); }
+    .pnl-neg { color: var(--red); }
+    .full { grid-column: 1 / -1; }
+    button { background: var(--red); color: white; border: 0; padding: 8px 16px; border-radius: 4px;
+             font-size: 13px; cursor: pointer; }
+    button.resume { background: var(--green); }
+    .kill-banner { background: var(--red); color: white; padding: 12px 24px; text-align: center;
+                   font-weight: 600; }
+  </style>
+</head>
+<body>
+  {% if kill_active %}
+  <div class="kill-banner">KILL SWITCH ACTIVE — agent halted</div>
+  {% endif %}
+  <header>
+    <h1>EURUSD AI Agent <span class="pill {{ mode }}">{{ mode }}</span></h1>
+    <div>
+      {% if kill_active %}
+      <button class="resume" onclick="fetch('/api/resume',{method:'POST'}).then(()=>location.reload())">Resume</button>
+      {% else %}
+      <button onclick="fetch('/api/kill',{method:'POST'}).then(()=>location.reload())">Kill switch</button>
+      {% endif %}
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <h2>Balance</h2>
+      <div class="stat">${{ "%.2f"|format(last_balance) }}</div>
+      <div style="color: var(--muted); font-size: 12px; margin-top: 4px;">
+        Demo gate: ${{ "%.0f"|format(demo_start) }} &rarr; ${{ "%.0f"|format(demo_target) }}
+      </div>
+      <div class="progress"><div style="width: {{ progress_pct }}%"></div></div>
+    </div>
+    <div class="card">
+      <h2>Total P&amp;L</h2>
+      <div class="stat {% if total_pnl >= 0 %}green{% else %}red{% endif %}">
+        ${{ "%.2f"|format(total_pnl) }}
+      </div>
+      <div style="color: var(--muted); font-size: 12px; margin-top: 4px;">
+        {{ n_trades }} closed trades &middot; win rate {{ "%.1f"|format(win_rate*100) }}%
+      </div>
+    </div>
+    <div class="card">
+      <h2>Active Model</h2>
+      <div class="stat">{% if active_model %}{{ active_model.version }}{% else %}rules-only{% endif %}</div>
+      <div style="color: var(--muted); font-size: 12px; margin-top: 4px;">
+        {% if active_model %}{{ active_model.trained_at[:10] }}{% else %}no ML scorer active{% endif %}
+      </div>
+    </div>
+
+    <div class="card full">
+      <h2>Open positions</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Direction</th><th>Lot</th><th>Entry</th><th>Stop</th><th>TP</th><th>Open since</th></tr></thead>
+          <tbody>
+            {% if not open_trades %}
+            <tr><td colspan="6" style="color: var(--muted); text-align:center;">no open positions</td></tr>
+            {% endif %}
+            {% for t in open_trades %}
+            <tr>
+              <td>{{ t.direction }}</td>
+              <td>{{ t.lot_size }}</td>
+              <td>{{ "%.5f"|format(t.entry_price) }}</td>
+              <td>{{ "%.5f"|format(t.stop_price) }}</td>
+              <td>{{ "%.5f"|format(t.tp_price) }}</td>
+              <td>{{ t.entry_time[:16] }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card full">
+      <h2>Recent closed trades (50) <span style="font-weight:400;color:var(--muted);font-size:11px;">— click any row for full reasoning</span></h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Time</th><th>Dir</th><th>Lot</th><th>Entry</th><th>Exit</th><th>Reason</th><th>P&amp;L pips</th><th>P&amp;L $</th></tr></thead>
+          <tbody>
+            {% for t in closed_trades %}
+            <tr style="cursor:pointer" onclick="location.href='/trade/{{ t.id }}'">
+              <td style="color:var(--muted)">{{ t.id }}</td>
+              <td>{{ t.exit_time[:16] if t.exit_time else "-" }}</td>
+              <td>{{ t.direction }}</td>
+              <td>{{ t.lot_size }}</td>
+              <td>{{ "%.5f"|format(t.entry_price) }}</td>
+              <td>{{ "%.5f"|format(t.exit_price) if t.exit_price else "-" }}</td>
+              <td>{{ t.exit_reason }}</td>
+              <td class="{% if (t.pnl_pips or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">{{ "%.1f"|format(t.pnl_pips or 0) }}</td>
+              <td class="{% if (t.pnl or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">{{ "%.2f"|format(t.pnl or 0) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
