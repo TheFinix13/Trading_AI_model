@@ -43,14 +43,18 @@ htmlcov/
 .tox/
 
 # Project-specific
-data/                    # cached parquet bars (re-fetchable)
-models/                  # trained models (re-trainable)
-*.db                     # SQLite journals
+# cached parquet bars (re-fetchable)
+data/
+# trained models (re-trainable, can be very large)
+models/
+# SQLite journals
+*.db
 *.db-journal
 journal.db
 journal.db-shm
 journal.db-wal
-kill.txt                 # runtime kill switch
+# runtime kill switch
+kill.txt
 
 # Secrets — never commit
 .env
