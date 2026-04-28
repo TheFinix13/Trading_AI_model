@@ -20,7 +20,7 @@ from agent.analysis.losses import analyze, format_report
 from agent.backtest.metrics import compute_metrics
 from agent.backtest.multi_tf import run_multi_tf
 from agent.config import load_config
-from agent.data.loader import BarLoader, df_to_bars
+from agent.data.loader import BarLoader, df_to_bars, filter_bars_by_date
 from agent.journal.db import Journal
 from agent.model.scorer import SetupScorer
 from agent.types import Bar, Timeframe
@@ -57,6 +57,12 @@ def main():
                              "setups with predicted probability >= --score-threshold are taken.")
     parser.add_argument("--score-threshold", type=float, default=0.55,
                         help="min predicted probability to take a setup (used with --scorer-path)")
+    parser.add_argument("--start-date", type=str, default=None,
+                        help="ISO date (YYYY-MM-DD). Backtest only bars on/after this date. "
+                             "Critical for out-of-sample validation: pass the day after your "
+                             "scorer's training window ended to get a leakage-free measurement.")
+    parser.add_argument("--end-date", type=str, default=None,
+                        help="ISO date (YYYY-MM-DD). Backtest only bars before this date.")
     args = parser.parse_args()
 
     cfg = load_config()
@@ -73,6 +79,18 @@ def main():
 
     end = datetime.now(tz=timezone.utc)
     start = end - timedelta(days=args.years * 365)
+
+    # Optional explicit date window for out-of-sample validation. When supplied,
+    # this overrides --years for filtering purposes (we still fetch the full window
+    # so detector warm-up has prior context, then crop to the window for the run).
+    window_start: datetime | None = None
+    window_end: datetime | None = None
+    if args.start_date:
+        window_start = datetime.fromisoformat(args.start_date).replace(tzinfo=timezone.utc)
+        log.info("Backtest window starts: %s (out-of-sample mode)", window_start.date())
+    if args.end_date:
+        window_end = datetime.fromisoformat(args.end_date).replace(tzinfo=timezone.utc)
+        log.info("Backtest window ends:   %s", window_end.date())
 
     bars_by_tf: dict[Timeframe, list[Bar]] = {}
     for tf_str in args.tfs:
@@ -94,7 +112,13 @@ def main():
             continue
 
         bars = df_to_bars(df, tf)
-        log.info("Loaded %d bars %s %s", len(bars), symbol, tf.value)
+        if window_start or window_end:
+            before = len(bars)
+            bars = filter_bars_by_date(bars, start=window_start, end=window_end)
+            log.info("Loaded %d bars %s %s (filtered %d → %d for window)",
+                     len(bars), symbol, tf.value, before, len(bars))
+        else:
+            log.info("Loaded %d bars %s %s", len(bars), symbol, tf.value)
         bars_by_tf[tf] = bars
 
     if not bars_by_tf:
