@@ -80,11 +80,13 @@ def run_multi_tf(
     bars for trend / active-zone confirmation.
 
     `bias_only_tfs`: TFs that contribute to HTF bias / zones but never generate their
-    own entries. By default H4 is bias-only — entries come from M15/H1 (with H4 used
-    purely for top-down direction), per the trader's preferred workflow. D1 still
-    generates entries because its calibrated scorer has proven OOS edge."""
+    own entries. Default: {H4, D1}. Trades on the daily are unrealistic for retail
+    sub-$1k accounts (stops are too wide, hold times too long, drawdown too volatile).
+    Higher timeframes are ONLY for analysis — directional bias and zone/level mapping —
+    and entries fire on the lower timeframes (M5/M15/H1) where you can actually manage
+    risk and exit positions intra-day."""
     if bias_only_tfs is None:
-        bias_only_tfs = {Timeframe.H4}
+        bias_only_tfs = {Timeframe.H4, Timeframe.D1}
     # Pre-build HTF bias computers from any D1/H4 bars we have. M15/H1/M5/M1 backtests
     # will receive them and the rule engine will consult them per setup.
     htf_biases: list[HTFBiasComputer] = []

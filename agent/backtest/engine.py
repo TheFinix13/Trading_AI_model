@@ -105,6 +105,97 @@ class Backtester:
                 setup = self.engine.evaluate_precomputed(ctx, i)
                 if setup is not None:
                     setup.features = extract_features(setup, bars, i)
+
+                    # ---- False-breakout filter ----------------------------------
+                    # Reject the classic stop-hunt: the detection bar wicked beyond
+                    # the trade direction but closed back inside. For a long, that
+                    # means low pierced below the zone bottom (stops swept) but the
+                    # close came back above it. Same logic mirrored for shorts.
+                    if (self.cfg.rules.reject_false_breakouts
+                            and setup.zone is not None):
+                        z = setup.zone
+                        det = bars[i]
+                        if setup.direction == Direction.LONG:
+                            wicked_below = det.low < z.bottom
+                            closed_back_inside = det.close > z.bottom
+                            if wicked_below and closed_back_inside and (det.close - det.low) > 2 * (det.high - det.close):
+                                skipped += 1
+                                skip_reasons["false_breakout"] = skip_reasons.get("false_breakout", 0) + 1
+                                if self.journal is not None:
+                                    self.journal.log_signal(
+                                        setup, self.journal_symbol, "skip_false_breakout",
+                                        f"detection bar wicked below zone bottom {z.bottom:.5f} "
+                                        f"(low={det.low:.5f}) but closed back inside ({det.close:.5f})",
+                                    )
+                                equity.append((bar.time, balance))
+                                continue
+                        else:
+                            wicked_above = det.high > z.top
+                            closed_back_inside = det.close < z.top
+                            if wicked_above and closed_back_inside and (det.high - det.close) > 2 * (det.close - det.low):
+                                skipped += 1
+                                skip_reasons["false_breakout"] = skip_reasons.get("false_breakout", 0) + 1
+                                if self.journal is not None:
+                                    self.journal.log_signal(
+                                        setup, self.journal_symbol, "skip_false_breakout",
+                                        f"detection bar wicked above zone top {z.top:.5f} "
+                                        f"(high={det.high:.5f}) but closed back inside ({det.close:.5f})",
+                                    )
+                                equity.append((bar.time, balance))
+                                continue
+
+                    # ---- Candle-close confirmation gate -------------------------
+                    # Wait one extra bar after detection. Bar i+1 must close in the
+                    # trade direction without hitting the proposed stop. If yes, the
+                    # actual entry slips to bar i+2 open (one extra bar of delay).
+                    # This filters the spike-and-reverse fakes that gave us bad M15
+                    # entries (like trade #9 the user flagged).
+                    entry_bar_offset = 1  # default: enter on next bar
+                    if self.cfg.rules.require_close_confirmation:
+                        if i >= len(bars) - 2:
+                            # No room for confirmation bar AND entry bar.
+                            equity.append((bar.time, balance))
+                            continue
+                        confirm_bar = bars[i + 1]
+                        is_bullish_close = confirm_bar.close > confirm_bar.open
+                        if setup.direction == Direction.LONG:
+                            confirmed = is_bullish_close and confirm_bar.low > setup.stop
+                        else:
+                            confirmed = (not is_bullish_close) and confirm_bar.high < setup.stop
+                        setup.entry_confirmation = {
+                            "required": "True",
+                            "confirm_bar_time": confirm_bar.time.isoformat(),
+                            "confirm_bar_open": f"{confirm_bar.open:.5f}",
+                            "confirm_bar_close": f"{confirm_bar.close:.5f}",
+                            "confirm_candle_dir": "bullish" if is_bullish_close else "bearish",
+                            "confirmed": "True" if confirmed else "False",
+                            "stop_violated_during_confirmation": (
+                                "True" if (
+                                    (setup.direction == Direction.LONG and confirm_bar.low <= setup.stop)
+                                    or (setup.direction == Direction.SHORT and confirm_bar.high >= setup.stop)
+                                ) else "False"
+                            ),
+                        }
+                        if not confirmed:
+                            skipped += 1
+                            skip_reasons["no_confirmation"] = skip_reasons.get("no_confirmation", 0) + 1
+                            if self.journal is not None:
+                                self.journal.log_signal(
+                                    setup, self.journal_symbol, "skip_no_confirmation",
+                                    f"bar {confirm_bar.time:%H:%M} closed "
+                                    f"{'bullish' if is_bullish_close else 'bearish'} "
+                                    f"vs required {'bullish' if setup.direction == Direction.LONG else 'bearish'}",
+                                )
+                            equity.append((bar.time, balance))
+                            continue
+                        entry_bar_offset = 2  # skip detection bar + confirmation bar
+                    else:
+                        setup.entry_confirmation = {"required": "False"}
+
+                    if i + entry_bar_offset >= len(bars):
+                        equity.append((bar.time, balance))
+                        continue
+
                     score = None
                     if self.scorer is not None:
                         score = self.scorer(setup.features)
@@ -137,8 +228,8 @@ class Backtester:
                                 actual_risk_pct=decision.actual_risk_pct, ml_score=score,
                             )
                     else:
-                        next_bar = bars[i + 1]
-                        open_trade = self._open_trade(setup, next_bar, decision.lot_size)
+                        entry_bar = bars[i + entry_bar_offset]
+                        open_trade = self._open_trade(setup, entry_bar, decision.lot_size)
                         if self.journal is not None:
                             sig_id = self.journal.log_signal(
                                 setup, self.journal_symbol, "approved", "",

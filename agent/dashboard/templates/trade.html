@@ -1,4 +1,4 @@
-<!doctype html>
+<!-- <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -53,6 +53,17 @@
     .bullet .tag { color: var(--blue); font-weight: 600; }
     .bullet.htf .tag { color: var(--amber); }
     .bullet .desc { color: var(--text); }
+    .tf-pill { display: inline-block; font-size: 11px; padding: 1px 7px;
+                margin-left: 4px; border-radius: 8px; background: rgba(88,166,255,0.15);
+                color: var(--blue); font-weight: 600; letter-spacing: 0.04em; vertical-align: 2px; }
+    .bullet.htf .tf-pill { background: rgba(210,153,34,0.15); color: var(--amber); }
+
+    .conf-section { color: var(--green); font-weight: 700; font-size: 14px;
+                     letter-spacing: 0.06em; margin: 18px 0 4px; padding: 0;
+                     text-transform: uppercase; }
+    .conf-row { padding: 4px 0 4px 22px; color: var(--text); line-height: 1.55; }
+    .conf-row.skipped { color: var(--red); }
+    .conf-row.skipped .k { color: var(--red); }
 
     .feat-block { padding: 4px 22px 8px 22px;
                   display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -133,6 +144,7 @@
     <div class="bullet {% if 'htf' in block.tag %}htf{% endif %}">
       <span class="label">confluence:</span>
       <span class="tag">{{ block.tag }}</span>
+      <span class="tf-pill">{{ block.tf }}</span>
       &nbsp;<span class="desc">— {{ block.body }}</span>
       {% if block.facts %}
       <div style="padding-left:14px;color:var(--muted);font-size:13px;">
@@ -162,6 +174,13 @@
       </span>
       {% endfor %}
     </div>
+
+    {% if narrative.confirmation_lines %}
+    <h2 class="conf-section">ENTRY CONFIRMATION</h2>
+    {% for line in narrative.confirmation_lines %}
+    <div class="conf-row">{{ line }}</div>
+    {% endfor %}
+    {% endif %}
 
     <h2 class="section outcome">OUTCOME</h2>
     {% if trade.exit_time %}
@@ -205,6 +224,318 @@
 
   <div style="text-align:center;color:var(--muted);font-size:12px;padding-bottom:24px;">
     All times in {{ display_tz }}
+  </div>
+</body>
+</html> -->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trade #{{ trade.id }} — {{ symbol }}</title>
+  <style>
+    /* Basic color variables for a clean dark theme */
+    :root {
+      --bg-color: #0e1117;
+      --card-bg: #161b22;
+      --border-color: #30363d;
+      --text-main: #c9d1d9;
+      --text-muted: #8b949e;
+      --accent-blue: #58a6ff;
+      --accent-green: #2ea043;
+      --accent-red: #f85149;
+      --accent-yellow: #d29922;
+    }
+
+    /* General page setup */
+    body { 
+      margin: 0; 
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg-color); 
+      color: var(--text-main); 
+      line-height: 1.6;
+    }
+
+    /* Links */
+    a.back { 
+      color: var(--accent-blue); 
+      text-decoration: none; 
+      font-size: 14px;
+      display: inline-block; 
+      margin-bottom: 20px;
+    }
+
+    a.back:hover { 
+      text-decoration: underline; 
+    }
+
+    /* Main container card */
+    .report-card {
+      max-width: 900px; 
+      margin: 0 auto; 
+      padding: 40px;
+      background-color: var(--card-bg); 
+      border: 1px solid var(--border-color); 
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    /* Headers and Titles */
+    .header-section {
+      display: flex; 
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 20px;
+      margin-bottom: 20px;
+    }
+
+    .title { 
+      font-size: 20px; 
+      font-weight: 600; 
+      color: #ffffff;
+    }
+
+    .title-separator {
+      color: var(--border-color);
+      margin: 0 10px;
+    }
+
+    /* Verdict Badges */
+    .verdict-badge { 
+      font-size: 12px; 
+      padding: 6px 12px; 
+      border-radius: 20px;
+      font-weight: bold; 
+      text-transform: uppercase; 
+      letter-spacing: 1px;
+    }
+
+    .verdict-badge.win { background-color: var(--accent-green); color: #ffffff; }
+    .verdict-badge.loss { background-color: var(--accent-red); color: #ffffff; }
+    .verdict-badge.open { background-color: var(--accent-blue); color: #ffffff; }
+    .verdict-badge.incomplete { background-color: var(--accent-yellow); color: #000000; }
+
+    /* Meta Info (Entry, Stop, TP) */
+    .meta-info { 
+      background-color: rgba(255, 255, 255, 0.03);
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+
+    .meta-info span.label { color: var(--text-muted); margin-right: 5px; }
+    .meta-info span.value { color: var(--accent-blue); font-weight: bold; margin-right: 15px; }
+
+    /* Section Headings */
+    h2.section-title { 
+      color: var(--text-main); 
+      font-weight: 600; 
+      font-size: 16px;
+      margin-top: 30px; 
+      margin-bottom: 15px; 
+      border-bottom: 1px dashed var(--border-color);
+      padding-bottom: 5px;
+    }
+
+    /* List Items */
+    .list-item { 
+      margin-bottom: 12px; 
+      padding-left: 20px;
+      position: relative;
+    }
+
+    .list-item::before { 
+      content: "•"; 
+      color: var(--accent-blue); 
+      position: absolute; 
+      left: 0; 
+    }
+
+    .list-item .tag-name { color: var(--accent-blue); font-weight: bold; }
+    .list-item .description { color: var(--text-main); }
+    .list-item .sub-facts { color: var(--text-muted); font-size: 13px; margin-top: 4px; display: block; }
+
+    /* Grid for Features */
+    .feature-grid { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      background-color: rgba(255, 255, 255, 0.02);
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+    }
+
+    .feature-item .label { color: var(--text-muted); font-family: monospace;}
+    .feature-item .value { color: var(--text-main); font-weight: bold; }
+
+    /* Outcome text colors */
+    .text-positive { color: var(--accent-green); font-weight: bold; }
+    .text-negative { color: var(--accent-red); font-weight: bold; }
+
+    /* Warning Box */
+    .warning-box {
+      margin-top: 20px; 
+      padding: 15px;
+      background-color: rgba(248, 81, 73, 0.1); 
+      border-left: 4px solid var(--accent-red);
+      color: var(--accent-red); 
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    /* Dropdown for Raw Data */
+    details { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border-color); }
+    summary { cursor: pointer; color: var(--text-muted); font-size: 14px; user-select: none; }
+    summary:hover { color: var(--text-main); }
+    
+    .raw-data-grid { 
+      display: grid; 
+      grid-template-columns: 1fr 1fr 1fr; 
+      gap: 8px; 
+      font-size: 12px; 
+      margin-top: 15px; 
+      font-family: monospace;
+    }
+    .raw-data-grid .name { color: var(--text-muted); }
+    .raw-data-grid .val { color: var(--accent-blue); }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 12px;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="/">&larr; Back to Dashboard</a>
+
+  <div class="report-card">
+    
+    <div class="header-section">
+      <div class="title">
+        Trade #{{ trade.id }} 
+        <span class="title-separator">|</span> {{ narrative.detected_local }} 
+        <span class="title-separator">|</span> {{ symbol }} {{ trade.sig_tf or "?" }} 
+        <span class="title-separator">|</span> {{ trade.direction|upper }}
+      </div>
+      
+      <div>
+        {% if narrative.is_force_closed %}
+          <span class="verdict-badge incomplete">INCOMPLETE</span>
+        {% elif is_winner is none %}
+          <span class="verdict-badge open">OPEN</span>
+        {% elif is_winner %}
+          <span class="verdict-badge win">WIN</span>
+        {% else %}
+          <span class="verdict-badge loss">LOSS</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="meta-info">
+      <span class="label">Entry:</span> <span class="value">{{ "%.5f"|format(trade.entry_price) }}</span>
+      <span class="label">Stop:</span> <span class="value">{{ "%.5f"|format(trade.stop_price) }} ({{ "%.1f"|format(trade.sig_stop_pips or 0) }} pips)</span>
+      <span class="label">TP:</span> <span class="value">{{ "%.5f"|format(trade.tp_price) }} (1:{{ "%.2f"|format(trade.sig_rr or 0) }})</span>
+      <span class="label">Lot:</span> <span class="value">{{ trade.lot_size }}</span>
+      {% if trade.ml_score is not none %}
+        <span class="label">ML Score:</span> <span class="value">{{ "%.3f"|format(trade.ml_score) }}</span>
+      {% endif %}
+    </div>
+
+    <h2 class="section-title">Why This Trade Was Taken</h2>
+    
+    {% if not narrative.confluence_blocks %}
+      <div class="list-item"><span class="description" style="font-style:italic;">No confluences recorded for this trade.</span></div>
+    {% endif %}
+    
+    {% for block in narrative.confluence_blocks %}
+      <div class="list-item">
+        <span class="tag-name">{{ block.tag }}</span>
+        <span class="description">— {{ block.body }}</span>
+        {% if block.facts %}
+          <span class="sub-facts">{{ block.facts|join(' • ') }}</span>
+        {% endif %}
+      </div>
+    {% endfor %}
+
+    <h2 class="section-title">Market State at Entry</h2>
+    <div class="feature-grid">
+      <div class="feature-item">
+        <span class="label">Regime:</span> <span class="value">{{ narrative.market_state.regime }}</span>
+      </div>
+      <div class="feature-item">
+        <span class="label">Range Location:</span> <span class="value">{{ narrative.market_state.location }}</span>
+      </div>
+      <div class="feature-item">
+        <span class="label">MA21 State:</span> <span class="value">{{ narrative.market_state.ma_state }}</span>
+      </div>
+      <div class="feature-item">
+        <span class="label">Session:</span> <span class="value">{{ narrative.market_state.session }}</span>
+      </div>
+    </div>
+
+    <h2 class="section-title">Top Influential Features</h2>
+    <div class="feature-grid">
+      {% for name, value in features[:8] %}
+        <div class="feature-item">
+          <span class="label">{{ name }}:</span>
+          <span class="value">
+            {% if value is number %}{{ "%+.3f"|format(value) }}{% else %}{{ value }}{% endif %}
+          </span>
+        </div>
+      {% endfor %}
+    </div>
+
+    <h2 class="section-title">Outcome</h2>
+    {% if trade.exit_time %}
+      <div class="list-item">
+        <span class="description">Exited at <strong>{{ "%.5f"|format(trade.exit_price) }}</strong> on <strong>{{ narrative.exit_local }}</strong></span>
+        <span class="sub-facts">Reason: {{ trade.exit_reason }}</span>
+      </div>
+      <div class="list-item">
+        <span class="description">
+          P&amp;L: 
+          <span class="{% if (trade.pnl_pips or 0) >= 0 %}text-positive{% else %}text-negative{% endif %}">
+            {{ "%+.1f"|format(trade.pnl_pips or 0) }} pips (${{ "%+.2f"|format(trade.pnl or 0) }})
+          </span>
+        </span>
+        <span class="sub-facts">Commission: ${{ "%.2f"|format(trade.commission or 0) }}</span>
+      </div>
+      
+      {% if narrative.outcome_warning %}
+        <div class="warning-box">
+          <strong>Notice:</strong> {{ narrative.outcome_warning }}
+        </div>
+      {% endif %}
+      
+    {% else %}
+      <div class="list-item"><span class="description">This trade is currently open.</span></div>
+    {% endif %}
+
+    <details>
+      <summary>View Raw Feature Snapshot ({{ features|length }} features)</summary>
+      <div class="raw-data-grid">
+        {% for name, value in features %}
+          <div>
+            <span class="name">{{ name }}:</span>
+            <span class="val">{% if value is number %}{{ "%+.4f"|format(value) }}{% else %}{{ value }}{% endif %}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </details>
+
+  </div>
+
+  <div class="footer">
+    All times are displayed in {{ display_tz }}
   </div>
 </body>
 </html>

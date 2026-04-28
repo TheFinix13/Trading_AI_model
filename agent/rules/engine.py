@@ -261,6 +261,12 @@ class RuleEngine:
             entry = cur.close
             tp = entry - (stop - entry) * self.cfg.rules.rr_min
 
+        # All native confluences (zone/fvg/bos/fib/trendline/wick) detected by this
+        # engine instance came from the setup's own TF — tag them so the user knows
+        # exactly which chart to look at for each signal.
+        setup_tf = cur.timeframe.value
+        confluence_tfs = {c: setup_tf for c in confluences}
+
         setup = Setup(
             direction=direction,
             timeframe=cur.timeframe,
@@ -270,6 +276,7 @@ class RuleEngine:
             stop=stop,
             take_profit=tp,
             confluences=confluences,
+            confluence_tfs=confluence_tfs,
             zone=zone,
             fvg=active_fvg,
             fib=active_fib,
@@ -301,22 +308,27 @@ class RuleEngine:
         mode = self.cfg.rules.htf_bias_mode
         if mode != "off" and self.htf_biases and cur.timeframe.value in ("M1", "M5", "M15", "H1"):
             agrees = True
-            tags: list[str] = []
+            tags_with_tf: list[tuple[str, str]] = []  # (tag, source_tf)
             for hb in self.htf_biases:
                 bias = hb.bias_at(cur.time, current_price=cur.close)
+                src = bias.source_tf or "?"
                 if bias.direction is not None:
                     if bias.direction == direction:
-                        tags.append(f"htf_bias_{'long' if direction == Direction.LONG else 'short'}")
+                        tag = f"htf_bias_{'long' if direction == Direction.LONG else 'short'}"
+                        tags_with_tf.append((tag, src))
                     else:
                         agrees = False
                 if direction == Direction.LONG and bias.in_demand_zone:
-                    tags.append("htf_zone_long")
+                    tags_with_tf.append(("htf_zone_long", src))
                 if direction == Direction.SHORT and bias.in_supply_zone:
-                    tags.append("htf_zone_short")
+                    tags_with_tf.append(("htf_zone_short", src))
             if mode == "strict" and not agrees:
                 return None
-            for t in tags:
+            for t, src in tags_with_tf:
                 if t not in setup.confluences:
                     setup.confluences.append(t)
+                # Map each HTF tag to its source TF (D1 / H4) so the explainer
+                # renders 'htf_bias_long (D1)' instead of just 'htf_bias_long'.
+                setup.confluence_tfs[t] = src
 
         return setup

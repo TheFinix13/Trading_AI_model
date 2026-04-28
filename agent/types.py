@@ -155,12 +155,21 @@ class Setup:
     take_profit: float
 
     confluences: list[str] = field(default_factory=list)
+    # Maps each confluence tag to the timeframe that produced it. Native confluences
+    # detected on the setup's own TF map to setup.timeframe; HTF context tags
+    # (htf_bias_*, htf_zone_*) map to the HTF source (D1 or H4). Used for the
+    # per-confluence "(M15)" / "(D1)" labels in the trade narrative so the user
+    # can verify each signal on the correct chart.
+    confluence_tfs: dict[str, str] = field(default_factory=dict)
     zone: Zone | None = None
     fvg: FVG | None = None
     fib: FibLevel | None = None
     bos: BreakOfStructure | None = None
     trendline: Trendline | None = None
     liquidity_wick: LiquidityWick | None = None
+    # Whether the engine waited for a confirmation candle before allowing entry.
+    # Populated by the backtester when rules.require_close_confirmation is True.
+    entry_confirmation: dict[str, str] | None = None
 
     features: dict[str, float] = field(default_factory=dict)
     ml_score: float | None = None

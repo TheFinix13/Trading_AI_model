@@ -156,9 +156,10 @@ def trade_detail(request: Request, trade_id: int):
     """
     journal = _journal()
     row = journal._conn.execute(
-        """SELECT t.*, s.confluences, s.features_json, s.ml_score, s.timeframe AS sig_tf,
+        """SELECT t.*, s.confluences, s.confluence_tfs_json,
+                  s.features_json, s.ml_score, s.timeframe AS sig_tf,
                   s.detected_at, s.stop_pips AS sig_stop_pips, s.rr AS sig_rr,
-                  s.decision_reason
+                  s.decision_reason, s.entry_confirmation_json
            FROM trades t LEFT JOIN signals s ON t.signal_id = s.id
            WHERE t.id = ?""", (trade_id,)
     ).fetchone()
@@ -168,14 +169,20 @@ def trade_detail(request: Request, trade_id: int):
 
     confluences = json.loads(t.get("confluences") or "[]")
     features = json.loads(t.get("features_json") or "{}")
+    confluence_tfs = json.loads(t.get("confluence_tfs_json") or "{}")
+    entry_confirmation = json.loads(t.get("entry_confirmation_json") or "null")
     sorted_features = sorted(
         features.items(),
         key=lambda kv: -abs(float(kv[1] or 0)) if isinstance(kv[1], (int, float)) else 0,
     )
 
     is_winner = (t.get("pnl") or 0) > 0 if t.get("exit_time") else None
-    narrative = explain_journaled_trade(t, confluences, features,
-                                          display_tz_name=cfg.display_timezone)
+    narrative = explain_journaled_trade(
+        t, confluences, features,
+        display_tz_name=cfg.display_timezone,
+        confluence_tfs=confluence_tfs,
+        entry_confirmation=entry_confirmation,
+    )
 
     return templates.TemplateResponse(
         request,
