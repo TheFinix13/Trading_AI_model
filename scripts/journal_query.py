@@ -190,8 +190,10 @@ def _explain_trade_row(conn, trade_id: int, tz_name: str = "America/New_York"):
         OUTCOME
     """
     row = conn.execute(
-        """SELECT t.*, s.confluences, s.features_json, s.ml_score, s.timeframe AS sig_tf,
-                  s.detected_at, s.stop_pips, s.rr
+        """SELECT t.*, s.confluences, s.confluence_tfs_json,
+                  s.features_json, s.ml_score, s.timeframe AS sig_tf,
+                  s.detected_at, s.stop_pips, s.rr,
+                  s.entry_confirmation_json
            FROM trades t LEFT JOIN signals s ON t.signal_id = s.id
            WHERE t.id = ?""", (trade_id,)
     ).fetchone()
@@ -201,6 +203,8 @@ def _explain_trade_row(conn, trade_id: int, tz_name: str = "America/New_York"):
     t = dict(row)
     confs = json.loads(t.get("confluences") or "[]")
     feats = json.loads(t.get("features_json") or "{}")
+    conf_tfs = json.loads(t.get("confluence_tfs_json") or "{}")
+    entry_conf = json.loads(t.get("entry_confirmation_json") or "null")
 
     detected_str = _fmt_time(t.get("detected_at") or t.get("entry_time"), tz_name)
     title = (f"Trade #{t['id']}  |  {detected_str}  |  {t['symbol']} "
@@ -222,9 +226,27 @@ def _explain_trade_row(conn, trade_id: int, tz_name: str = "America/New_York"):
     why: list[ExplanationLine] = []
     if confs:
         for c in confs:
-            why.append(ExplanationLine(text=f"confluence: {c}"))
+            tf_label = conf_tfs.get(c, t.get("sig_tf") or "?")
+            why.append(ExplanationLine(text=f"confluence: {c}  ({tf_label})"))
     else:
         why.append(ExplanationLine(text="(no confluences recorded — discoverer or rule with empty list)"))
+
+    # Entry confirmation block (the candle-close gate the engine ran).
+    if entry_conf:
+        why.append(ExplanationLine(text=""))
+        why.append(ExplanationLine(text="entry confirmation:"))
+        if entry_conf.get("required") in ("True", True):
+            cb_time = _fmt_time(entry_conf.get("confirm_bar_time"), tz_name)
+            cb_dir = entry_conf.get("confirm_candle_dir", "?")
+            cb_open = entry_conf.get("confirm_bar_open", "?")
+            cb_close = entry_conf.get("confirm_bar_close", "?")
+            confirmed = entry_conf.get("confirmed") in ("True", True)
+            stop_violated = entry_conf.get("stop_violated_during_confirmation") in ("True", True)
+            why.append(ExplanationLine(text=f"  bar @ {cb_time}  open={cb_open} → close={cb_close} ({cb_dir})"))
+            why.append(ExplanationLine(text=f"  result: {'CONFIRMED' if confirmed else 'REJECTED'}"
+                                            f"{'  (stop violated during bar)' if stop_violated else ''}"))
+        else:
+            why.append(ExplanationLine(text="  none required"))
     if feats:
         # Top 6 features by |magnitude| in 2-column chunks, matching the report layout.
         important = sorted(feats.items(), key=lambda kv: -abs(float(kv[1] or 0)))[:6]

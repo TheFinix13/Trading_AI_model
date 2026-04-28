@@ -63,10 +63,10 @@ def main():
                              "scorer's training window ended to get a leakage-free measurement.")
     parser.add_argument("--end-date", type=str, default=None,
                         help="ISO date (YYYY-MM-DD). Backtest only bars before this date.")
-    parser.add_argument("--bias-only-tfs", nargs="*", default=["H4"],
+    parser.add_argument("--bias-only-tfs", nargs="*", default=["H4", "D1"],
                         help="TFs used ONLY for HTF bias/zone context (no entries from them). "
-                             "Default: H4. Set to empty list ('--bias-only-tfs') to allow entries "
-                             "on every loaded TF.")
+                             "Default: H4 D1 (entries only on M5/M15/H1). Pass an empty list "
+                             "('--bias-only-tfs' with no args) to allow entries on every TF.")
     args = parser.parse_args()
 
     cfg = load_config()

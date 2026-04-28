@@ -22,12 +22,14 @@ CREATE TABLE IF NOT EXISTS signals (
     stop_pips REAL NOT NULL,
     rr REAL NOT NULL,
     confluences TEXT NOT NULL,
+    confluence_tfs_json TEXT,            -- maps each confluence to its source TF
     features_json TEXT NOT NULL,
     ml_score REAL,
     decision TEXT NOT NULL,
     decision_reason TEXT,
     lot_size REAL,
     actual_risk_pct REAL,
+    entry_confirmation_json TEXT,        -- {bar_close, candle_dir, etc.}; null if no gate
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -92,6 +94,17 @@ class Journal:
         except sqlite3.DatabaseError:
             pass
         self._conn.executescript(SCHEMA)
+        # Migrate older journals that pre-date confluence_tfs_json / entry_confirmation_json.
+        # ALTER TABLE … ADD COLUMN is the cheapest path; we ignore "duplicate column"
+        # errors since they fire when the column was already present.
+        for migration in (
+            "ALTER TABLE signals ADD COLUMN confluence_tfs_json TEXT",
+            "ALTER TABLE signals ADD COLUMN entry_confirmation_json TEXT",
+        ):
+            try:
+                self._conn.execute(migration)
+            except sqlite3.OperationalError:
+                pass
         self._conn.commit()
         self._autocommit = autocommit
 
@@ -128,11 +141,16 @@ class Journal:
         actual_risk_pct: float = 0.0,
         ml_score: float | None = None,
     ) -> int:
+        confluence_tfs_json = json.dumps(getattr(setup, "confluence_tfs", {}) or {})
+        entry_conf_json = (json.dumps(setup.entry_confirmation)
+                            if getattr(setup, "entry_confirmation", None) else None)
         cur = self._conn.execute(
             """INSERT INTO signals (detected_at, symbol, timeframe, direction, entry, stop, take_profit,
-                                    stop_pips, rr, confluences, features_json, ml_score, decision,
-                                    decision_reason, lot_size, actual_risk_pct)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                    stop_pips, rr, confluences, confluence_tfs_json,
+                                    features_json, ml_score, decision,
+                                    decision_reason, lot_size, actual_risk_pct,
+                                    entry_confirmation_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 setup.detected_at.isoformat(),
                 symbol,
@@ -144,12 +162,14 @@ class Journal:
                 setup.stop_pips,
                 setup.rr,
                 json.dumps(setup.confluences),
+                confluence_tfs_json,
                 json.dumps(setup.features),
                 ml_score,
                 decision,
                 decision_reason,
                 lot_size,
                 actual_risk_pct,
+                entry_conf_json,
             ),
         )
         self._maybe_commit()

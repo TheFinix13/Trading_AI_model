@@ -78,6 +78,20 @@ class RulesConfig(BaseModel):
     htf_bias_mode: str = "off"
     htf_bias_min_slope_pips: float = 0.5  # below this, HTF trend is treated as neutral
 
+    # Candle-close confirmation gate. When True, after a setup is detected on bar i,
+    # the engine waits for bar i+1 to close in the trade direction (bullish close
+    # for long, bearish close for short) AND for bar i+1's range to NOT have hit
+    # the proposed stop. Only then is entry placed at bar i+2 open. This blocks
+    # the classic "spike-and-reverse" / fake-breakout entries that gave the M15
+    # journal so many same-day losses.
+    require_close_confirmation: bool = True
+
+    # False-breakout filter. When True, setups whose detection bar wicked beyond
+    # the entry zone but closed back inside (a stop-hunt fake) are rejected.
+    # This is the protection that would have blocked trade #9 in the user's
+    # journal critique.
+    reject_false_breakouts: bool = True
+
 
 class MLConfig(BaseModel):
     enabled: bool = True
