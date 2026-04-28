@@ -381,7 +381,11 @@ def explain_journaled_trade(
 
 
 def format_explanation(e: TradeExplanation) -> str:
-    """Pretty-print a TradeExplanation to a single string, ready for terminal/CLI."""
+    """Pretty-print a TradeExplanation to a single string, ready for terminal/CLI.
+
+    Uses '•' for content bullets and indents continuation/section lines without
+    the bullet so headers like 'market state at entry...' aren't mistaken for
+    confluence entries."""
     lines: list[str] = []
     lines.append("=" * 78)
     lines.append(e.title)
@@ -394,7 +398,15 @@ def format_explanation(e: TradeExplanation) -> str:
         lines.append("  (no recorded confluences)")
     else:
         for w in e.why_taken:
-            lines.append("  • " + w.text)
+            text = w.text
+            if not text.strip():
+                lines.append("")
+            elif text.startswith("confluence:") or text.startswith("(no "):
+                lines.append("  • " + text)
+            else:
+                # Section labels ('market state at entry...') and feature rows
+                # are continuation content — render without a bullet.
+                lines.append("    " + text)
     if e.risk_lines:
         lines.append("")
         lines.append("RISK / REWARD")
