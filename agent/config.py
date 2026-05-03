@@ -92,6 +92,64 @@ class RulesConfig(BaseModel):
     # journal critique.
     reject_false_breakouts: bool = True
 
+    # ----- Precision gates (added 2026-05-03 from W18 detector audit) ---------
+    # The audit (`scripts/audit_detectors.py`) showed that, on the user's first
+    # ingested week, three signal classes generated almost all the bleed:
+    #
+    #   * `session_london_ny_overlap` alone   ->  20% WR / -153 pips / 10 trades
+    #   * `bos`-only entries                  ->  39% WR / -144 pips / 18 trades
+    #   * `zone`-only entries                 ->  47% WR /  -84 pips / 38 trades
+    #
+    # While the precision *winners* clustered tightly around an FVG / sweep /
+    # daily-level partner. We expose the relevant filters here so backtests and
+    # live runs can be tuned without touching code. Defaults reflect what the
+    # audit said was correct for EURUSD this week; tune as more weeks land.
+
+    # If True, reject any setup whose confluence stack lacks a "displacement"
+    # tag — something that says price has *committed* (FVG just left behind, or
+    # a fresh liquidity sweep). This is what turns a level (zone / fib / BOS
+    # alone) into a level price is *acting on*.
+    #
+    # Empirical justification (W18 audit, scripts/audit_detectors.py):
+    #   * fvg + zone               -> 80% WR (v1) / 89% WR (v2)
+    #   * sweep_swing_* + zone     -> 100% WR
+    #   * bare zone or bare bos    -> 39-47% WR, -84 to -144 pips
+    #
+    # Daily-level proximity (`near_PDX`) is necessary but not sufficient — it
+    # marks where to look, not whether to enter. We exclude it from the
+    # precision-partner whitelist so it can't single-handedly let a noisy
+    # bos-only setup pass.
+    require_precision_partner: bool = True
+    precision_partner_tags: list[str] = [
+        "fvg",
+        "sweep_PDH", "sweep_PDL", "sweep_PDM",
+        "sweep_PWH", "sweep_PWL", "sweep_PWM",
+        "sweep_swing_high", "sweep_swing_low",
+        "sweep_equal_highs", "sweep_equal_lows",
+    ]
+    # Sessions to block trading in. London/NY-overlap was a -153p loser; we
+    # require a precision partner there even if `require_precision_partner` is
+    # off, OR we just block it outright. Default: block.
+    blocked_session_tags: list[str] = ["session_london_ny_overlap"]
+    # When `bos` is part of the stack, additionally require an FVG or a sweep.
+    # BOS-only entries had 39% WR and bled -144 pips this week.
+    require_fvg_or_sweep_with_bos: bool = True
+
+    # Per-timeframe minimum confluence override. H1 chops with 2-confluence
+    # setups (33% WR / -$378 in the W18 audit), so we require 3 there. M5/M15
+    # remain at the global `min_confluences`. Set to {} to disable.
+    min_confluences_per_tf: dict[str, int] = {"H1": 3}
+
+    # New-York-time hours of day in which trading is blocked. Tuned from the
+    # 3-year detector audit (data/agent_3yr_v5_M15H1.db, 2023-05 to 2026-05):
+    #   * NY 03:00 (London open chop):    44.9% WR / -448 pips / 69 trades
+    #   * NY 04:00 (London early):        45.5% WR / -214 pips / 55 trades
+    #   * NY 12:00 (London close):        44.5% WR / -402 pips / 146 trades
+    #   * NY 13:00 (NY pre-close chop):   32.9% WR / -857 pips / 70 trades
+    # All four are statistically significant losing windows. Set to [] to
+    # disable time-of-day blocking. Re-tune via `scripts/audit_detectors.py`.
+    blocked_hours_ny: list[int] = [3, 4, 12, 13]
+
 
 class MLConfig(BaseModel):
     enabled: bool = True

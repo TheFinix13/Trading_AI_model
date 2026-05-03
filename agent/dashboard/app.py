@@ -1,12 +1,14 @@
 """FastAPI dashboard: open positions, today's setups, equity curve, kill switch toggle.
 
-Two pages:
-  /            — overview: balance, recent trades, kill switch, active model.
-  /trade/{id}  — full narrative for a single trade: confluences in plain English,
-                  feature snapshot at entry, MAE/MFE, outcome.
+Pages:
+  /             — overview: balance, recent trades, kill switch, active model.
+  /trade/{id}   — full narrative for a single trade (rules-engine reasoning).
+  /lessons      — your discretionary trading journal (human_lessons table).
+  /lesson/{id}  — one lesson + agent's side-by-side diff.
+  /chat         — talk to the agent in natural language (uses local Ollama).
 
 Per-trade explainability is the whole reason the journal was wired into the backtest;
-this page is where it surfaces visually."""
+this dashboard is where it surfaces visually."""
 from __future__ import annotations
 
 import json
@@ -14,14 +16,19 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 
 from agent.analysis.explain import explain_journaled_trade
 from agent.config import load_config
+from agent.conversation.context import ContextBuilder
 from agent.journal.db import Journal
+from agent.llm.chat import ChatService
+from agent.llm.ollama import OllamaUnavailable
+from agent.llm.vision import ChartVision
 
 cfg = load_config()
 app = FastAPI(title="EURUSD AI Agent Dashboard")
@@ -55,8 +62,36 @@ if (BASE_DIR / "static").exists():
     app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
 
+# ChatService is process-wide so chat history is preserved across requests
+# (per session_id stored in the journal).  For multi-user we'd cache per-user.
+_chat_service: ChatService | None = None
+_context_builder: ContextBuilder | None = None
+_chart_vision: ChartVision | None = None
+
+
 def _journal() -> Journal:
     return Journal(cfg.journal_db)
+
+
+def _chat() -> ChatService:
+    global _chat_service
+    if _chat_service is None:
+        _chat_service = ChatService()
+    return _chat_service
+
+
+def _vision() -> ChartVision:
+    global _chart_vision
+    if _chart_vision is None:
+        _chart_vision = ChartVision()
+    return _chart_vision
+
+
+def _ctx_builder() -> ContextBuilder:
+    global _context_builder
+    if _context_builder is None:
+        _context_builder = ContextBuilder.from_config()
+    return _context_builder
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -86,6 +121,7 @@ def index(request: Request):
 
     kill_active = cfg.kill_switch_file.exists()
     active_model = journal.active_model()
+    n_lessons = len(journal.all_lessons())
 
     return templates.TemplateResponse(
         request,
@@ -107,6 +143,7 @@ def index(request: Request):
             "n_trades": len(real),
             "n_force_closed": n_force_closed,
             "display_tz": cfg.display_timezone,
+            "n_lessons": n_lessons,
         },
     )
 
@@ -140,7 +177,12 @@ def resume():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "mode": cfg.mode, "symbol": cfg.symbol}
+    chat_ok = False
+    try:
+        chat_ok = _chat().is_available()
+    except Exception:
+        pass
+    return {"ok": True, "mode": cfg.mode, "symbol": cfg.symbol, "llm_available": chat_ok}
 
 
 @app.get("/trade/{trade_id}", response_class=HTMLResponse)
@@ -198,3 +240,251 @@ def trade_detail(request: Request, trade_id: int):
             "display_tz": cfg.display_timezone,
         },
     )
+
+
+# ----- human lessons ----------------------------------------------------------
+
+@app.get("/lessons", response_class=HTMLResponse)
+def lessons_index(request: Request):
+    journal = _journal()
+    rows = journal.all_lessons()
+    rows.reverse()  # newest first
+    # Decorate each row with a parsed confluences list for the table.
+    for r in rows:
+        try:
+            r["confluences_parsed"] = json.loads(r.get("confluences_json") or "[]")
+        except Exception:
+            r["confluences_parsed"] = []
+    return templates.TemplateResponse(
+        request, "lessons.html",
+        {"lessons": rows, "mode": cfg.mode, "n_lessons": len(rows)},
+    )
+
+
+@app.get("/weekly", response_class=HTMLResponse)
+def weekly_index(request: Request):
+    journal = _journal()
+    rows = journal.all_weekly_logs()
+    return templates.TemplateResponse(
+        request, "weekly.html",
+        {"weeks": rows, "mode": cfg.mode, "n_weeks": len(rows)},
+    )
+
+
+@app.get("/weekly/{week_id}", response_class=HTMLResponse)
+def weekly_detail(request: Request, week_id: int):
+    journal = _journal()
+    week = journal.get_weekly_log(week_id)
+    if week is None:
+        raise HTTPException(status_code=404, detail=f"Weekly log #{week_id} not found")
+    # All lessons that came from this week (linked via weekly_log_id).
+    rows = journal._conn.execute(
+        "SELECT id, trade_date, direction, entry_price, tp_price, pnl_pips "
+        "FROM human_lessons WHERE weekly_log_id=? ORDER BY trade_date, id",
+        (week_id,)
+    ).fetchall()
+    lessons = [dict(r) for r in rows]
+    return templates.TemplateResponse(
+        request, "weekly_detail.html",
+        {"week": week, "lessons": lessons, "mode": cfg.mode},
+    )
+
+
+@app.get("/lesson/{lesson_id}", response_class=HTMLResponse)
+def lesson_detail(request: Request, lesson_id: int):
+    journal = _journal()
+    lesson = journal.get_lesson(lesson_id)
+    if lesson is None:
+        raise HTTPException(status_code=404, detail=f"Lesson #{lesson_id} not found")
+    try:
+        lesson["confluences_parsed"] = json.loads(lesson.get("confluences_json") or "[]")
+    except Exception:
+        lesson["confluences_parsed"] = []
+    diffs = journal.disagreements_for_lesson(lesson_id)
+    for d in diffs:
+        try:
+            d["agent_confluences_parsed"] = json.loads(d.get("agent_confluences_json") or "[]")
+        except Exception:
+            d["agent_confluences_parsed"] = []
+    return templates.TemplateResponse(
+        request, "lesson.html",
+        {"lesson": lesson, "diffs": diffs, "mode": cfg.mode},
+    )
+
+
+# ----- chat -------------------------------------------------------------------
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: int | None = None
+
+
+@app.get("/chat", response_class=HTMLResponse)
+def chat_index(request: Request, session_id: int | None = None):
+    journal = _journal()
+    sessions = journal.list_chat_sessions(limit=20)
+    history = journal.chat_history(session_id) if session_id else []
+    chat_available = False
+    chat_model = ""
+    vision_available = False
+    vision_model = ""
+    try:
+        c = _chat()
+        chat_available = c.is_available()
+        chat_model = c.model
+    except Exception:
+        pass
+    try:
+        v = _vision()
+        vision_available = v.is_available()
+        vision_model = v.model or ""
+    except Exception:
+        pass
+    return templates.TemplateResponse(
+        request, "chat.html",
+        {
+            "sessions": sessions,
+            "history": history,
+            "current_session_id": session_id,
+            "mode": cfg.mode,
+            "chat_available": chat_available,
+            "chat_model": chat_model,
+            "vision_available": vision_available,
+            "vision_model": vision_model,
+        },
+    )
+
+
+@app.post("/api/chat")
+def api_chat(req: ChatRequest):
+    journal = _journal()
+    if req.session_id is None:
+        session_id = journal.create_chat_session(title=req.message[:60])
+    else:
+        session_id = req.session_id
+
+    try:
+        ctx = _ctx_builder().build(req.message)
+    except Exception:
+        ctx = None
+    journal.append_chat_message(session_id, "user", req.message,
+                                 {"context": ctx} if ctx else None)
+    try:
+        chat = _chat()
+        if not chat.is_available():
+            raise OllamaUnavailable("Ollama daemon offline or model missing")
+        reply = chat.ask(req.message, context=ctx)
+    except OllamaUnavailable as e:
+        reply = (f"(Local LLM unavailable: {e})\n\n"
+                 f"To enable chat, run:\n"
+                 f"  brew install ollama && brew services start ollama\n"
+                 f"  ollama pull {(_chat().model if _chat_service else 'qwen2.5:7b-instruct')}")
+    journal.append_chat_message(session_id, "assistant", reply)
+    return {"session_id": session_id, "reply": reply}
+
+
+@app.post("/api/chart_analyze")
+async def api_chart_analyze(
+    image: UploadFile = File(...),
+    note: str = Form(""),
+    session_id: int | None = Form(None),
+):
+    """Vision pass on an uploaded chart screenshot.
+
+    Workflow:
+      1. Receive a PNG/JPEG from the dashboard's chat file-drop input.
+      2. Run the vision LLM with the trader's-eye system prompt; get back a
+         structured `ChartReading` (timeframe, direction, key levels, narrative).
+      3. Persist the user's upload and the assistant's structured response into
+         the chat session so it's part of the conversation history.
+
+    The structured reading is what later questions in the same session can
+    reference (e.g. "what's the next likely move?" → chat LLM has the prior
+    vision narrative in its context window).
+    """
+    if image.content_type and not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="upload must be an image")
+    raw = await image.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="empty file upload")
+
+    journal = _journal()
+    title = (note.strip() or f"Chart upload: {image.filename}")[:60]
+    if session_id is None:
+        session_id = journal.create_chat_session(title=title)
+
+    user_msg = note.strip() or f"[uploaded chart: {image.filename}]"
+    journal.append_chat_message(session_id, "user", user_msg, {
+        "upload": {"filename": image.filename, "size": len(raw),
+                   "content_type": image.content_type},
+    })
+
+    # Build a short price-context block so the vision LLM can sanity-check the
+    # numbers it reads off the chart against what EURUSD is actually trading at
+    # in our data cache. Without this, llava-style models happily report "1.23"
+    # on a 1.17xxx chart because they don't know the symbol's real range.
+    price_context = ""
+    try:
+        price_context = _ctx_builder()._latest_price_snapshot() or ""
+    except Exception:
+        pass
+
+    augmented_note = note.strip()
+    if price_context:
+        augmented_note = (
+            f"{augmented_note}\n\n"
+            f"Reference data (from local cache, NOT visible in the image):\n"
+            f"{price_context}"
+        ).strip()
+
+    try:
+        vision = _vision()
+        if not vision.is_available():
+            raise OllamaUnavailable("no vision model installed")
+        reading = vision.analyse(raw, extra_context=augmented_note)
+    except OllamaUnavailable as e:
+        msg = (
+            f"(Vision LLM unavailable: {e})\n\n"
+            f"To enable chart analysis run:\n"
+            f"  ollama pull llava-phi3   # smaller, faster (~3GB)\n"
+            f"  # OR\n"
+            f"  ollama pull llama3.2-vision:11b   # higher quality (~8GB)"
+        )
+        journal.append_chat_message(session_id, "assistant", msg)
+        return JSONResponse(
+            status_code=503,
+            content={"session_id": session_id, "error": str(e), "reply": msg},
+        )
+
+    rd = reading.to_dict()
+    summary_lines = [
+        f"**Chart read** (model: `{reading.model}`)",
+        f"- Timeframe: `{rd['timeframe']}`",
+        f"- Direction bias: `{rd['direction_bias']}`",
+        f"- Estimated current price: `{rd['current_price_estimate']}`",
+        f"- Session: `{rd['session_context']}`",
+    ]
+    if rd["key_levels"]:
+        summary_lines.append("- Key levels:")
+        for lv in rd["key_levels"][:8]:
+            summary_lines.append(
+                f"  - {lv.get('label','?')} @ {lv.get('price')} ({lv.get('kind','?')})"
+            )
+    if rd["active_zones"]:
+        summary_lines.append("- Active zones: " + "; ".join(rd["active_zones"][:4]))
+    if rd["narrative"]:
+        summary_lines.append("")
+        summary_lines.append(f"> {rd['narrative']}")
+    if rd["trade_idea"]:
+        ti = rd["trade_idea"]
+        summary_lines.append("")
+        summary_lines.append(
+            f"**Trade idea:** {ti.get('direction','wait')} | entry={ti.get('entry')} "
+            f"stop={ti.get('stop')} tp={ti.get('tp')}"
+        )
+        if ti.get("rationale"):
+            summary_lines.append(f"_{ti['rationale']}_")
+    summary = "\n".join(summary_lines)
+
+    journal.append_chat_message(session_id, "assistant", summary, {"vision": rd})
+    return {"session_id": session_id, "reply": summary, "reading": rd}

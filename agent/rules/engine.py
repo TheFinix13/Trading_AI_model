@@ -13,9 +13,13 @@ from datetime import datetime
 from agent.config import Config
 from agent.detectors.atr import atr
 from agent.detectors.bos import detect_bos, latest_bos
+from agent.detectors.daily_levels import DailyLevels, compute_daily_levels, nearest_level
 from agent.detectors.fib import auto_fib
 from agent.detectors.fvg import detect_fvgs
 from agent.detectors.liquidity import detect_liquidity_wicks
+from agent.detectors.liquidity_sweep import LiquiditySweep, detect_liquidity_sweeps
+from agent.detectors.range_phase import RangePhase, label_range_phases
+from agent.detectors.sessions import is_kill_zone, label_bars
 from agent.detectors.swings import detect_swings, last_swing
 from agent.detectors.trendlines import fit_trendlines
 from agent.detectors.zones import detect_zones, fresh_zones
@@ -38,6 +42,11 @@ class PrecomputedContext:
     wicks: list[LiquidityWick] = field(default_factory=list)
     fib_by_index: dict[int, FibLevel] = field(default_factory=dict)
     atr_by_index: dict[int, float] = field(default_factory=dict)
+    # New ICT-style context tracks added in the "trader-partner" iteration:
+    daily_levels: list[DailyLevels] = field(default_factory=list)
+    liquidity_sweeps: list[LiquiditySweep] = field(default_factory=list)
+    range_phases: list[RangePhase] = field(default_factory=list)
+    session_labels: list[str] = field(default_factory=list)
 
 
 def _tf_scale(bars: list[Bar]) -> float:
@@ -85,6 +94,25 @@ def precompute(bars: list[Bar], cfg: Config, fib_recompute_every: int = 25) -> P
             running = sum(window) / max(len(window), 1)
             ctx.atr_by_index[i] = running
 
+    # New ICT-flavoured context. All read-only and per-bar so we can slice by index.
+    ctx.session_labels = label_bars(bars)
+    ctx.daily_levels = compute_daily_levels(bars)
+    ctx.range_phases = label_range_phases(bars)
+    # Liquidity sweeps don't need scaling — confirm_pips/buffer are already pip-denominated.
+    # Skip on D1/H4 where the concept is less meaningful (PDH on a daily chart IS the chart).
+    if bars and bars[0].timeframe.value in ("M1", "M5", "M15", "H1"):
+        try:
+            ctx.liquidity_sweeps = detect_liquidity_sweeps(
+                bars,
+                swing_lookback=cfg.detectors.swing_lookback,
+                pierce_buffer_pips=1.0,
+                confirm_pips=5.0,
+                confirm_max_bars=3,
+            )
+        except Exception as e:  # detector noise on synthetic / very short series
+            log.debug("liquidity_sweep precompute skipped: %s", e)
+            ctx.liquidity_sweeps = []
+
     return ctx
 
 
@@ -105,7 +133,14 @@ class RuleEngine:
         if is_no_trade_day(cur.time, self.cfg.session.no_trade_days, self.cfg.session.timezone):
             return None
 
-        zones = [z for z in ctx.zones if z.created_bar_index <= at_index]
+        # Age filter happens here (not in detector) so historical bars in a
+        # multi-year backtest see zones from THEIR own past, not just the
+        # last N bars of the input series. See `detect_zones()` docstring.
+        zones = [
+            z for z in ctx.zones
+            if z.created_bar_index <= at_index
+            and (at_index - z.created_bar_index) <= self.cfg.detectors.zone_max_age_bars
+        ]
         fvgs = [f for f in ctx.fvgs if f.created_bar_index <= at_index]
         bos_list = [b for b in ctx.bos_list if b.broken_bar_index <= at_index]
         wicks = [w for w in ctx.wicks if w.bar_index <= at_index]
@@ -117,7 +152,22 @@ class RuleEngine:
 
         a = ctx.atr_by_index.get(at_index, 0.0)
 
-        return self._build_best(ctx.bars, at_index, zones, fvgs, bos_list, fib, trendlines, wicks, a)
+        # New ICT-flavoured slices
+        daily_levels = ctx.daily_levels[at_index] if ctx.daily_levels and at_index < len(ctx.daily_levels) else None
+        range_phase = ctx.range_phases[at_index] if ctx.range_phases and at_index < len(ctx.range_phases) else None
+        session = ctx.session_labels[at_index] if ctx.session_labels and at_index < len(ctx.session_labels) else None
+        # Sweeps in the recent window (only those whose CONFIRM bar is at or before now,
+        # i.e. fully observable). 5-bar lookback is enough for "fresh" sweeps.
+        recent_sweeps = [
+            s for s in ctx.liquidity_sweeps
+            if s.confirm_bar_index <= at_index and (at_index - s.sweep_bar_index) <= 5
+        ]
+
+        return self._build_best(
+            ctx.bars, at_index, zones, fvgs, bos_list, fib, trendlines, wicks, a,
+            daily_levels=daily_levels, range_phase=range_phase, session=session,
+            recent_sweeps=recent_sweeps,
+        )
 
     def evaluate(self, bars: list[Bar], at_index: int) -> Setup | None:
         """Slow path: detect from scratch on bars[:at_index+1]. Use precompute() + evaluate_precomputed()
@@ -139,6 +189,12 @@ class RuleEngine:
             min_impulse_pips=self.cfg.detectors.zone_min_impulse_pips * scale,
             max_age_bars=self.cfg.detectors.zone_max_age_bars,
         )
+        # See evaluate_precomputed: age must be applied at use time. Slow path
+        # always queries the latest bar so we filter relative to len(window)-1.
+        zones = [
+            z for z in zones
+            if (at_index - z.created_bar_index) <= self.cfg.detectors.zone_max_age_bars
+        ]
         fvgs = detect_fvgs(window, min_size_pips=self.cfg.detectors.fvg_min_size_pips * scale)
         bos_list = detect_bos(window, swing_lookback=self.cfg.detectors.swing_lookback)
         fib = auto_fib(window, swing_lookback=self.cfg.detectors.swing_lookback,
@@ -147,11 +203,38 @@ class RuleEngine:
         wicks = detect_liquidity_wicks(window, min_wick_ratio=self.cfg.detectors.liquidity_wick_min_ratio,
                                        swing_lookback=self.cfg.detectors.swing_lookback)
         a = atr(window, period=14)
-        return self._build_best(window, at_index, zones, fvgs, bos_list, fib, trendlines, wicks, a)
 
-    def _build_best(self, bars, at_index, zones, fvgs, bos_list, fib, trendlines, wicks, a):
-        long_setup = self._build(Direction.LONG, bars, at_index, zones, fvgs, bos_list, fib, trendlines, wicks, a)
-        short_setup = self._build(Direction.SHORT, bars, at_index, zones, fvgs, bos_list, fib, trendlines, wicks, a)
+        # ICT-flavoured context (slow path mirrors precompute's outputs)
+        daily_levels_list = compute_daily_levels(window)
+        daily_levels = daily_levels_list[-1] if daily_levels_list else None
+        phases = label_range_phases(window)
+        range_phase = phases[-1] if phases else None
+        session_label_list = label_bars(window[-1:])
+        session = session_label_list[0] if session_label_list else None
+        recent_sweeps: list[LiquiditySweep] = []
+        if window and window[0].timeframe.value in ("M1", "M5", "M15", "H1"):
+            try:
+                all_sweeps = detect_liquidity_sweeps(window)
+                recent_sweeps = [s for s in all_sweeps if (at_index - s.sweep_bar_index) <= 5]
+            except Exception:
+                pass
+
+        return self._build_best(
+            window, at_index, zones, fvgs, bos_list, fib, trendlines, wicks, a,
+            daily_levels=daily_levels, range_phase=range_phase, session=session,
+            recent_sweeps=recent_sweeps,
+        )
+
+    def _build_best(self, bars, at_index, zones, fvgs, bos_list, fib, trendlines, wicks, a, *,
+                    daily_levels=None, range_phase=None, session=None, recent_sweeps=None):
+        long_setup = self._build(Direction.LONG, bars, at_index, zones, fvgs, bos_list,
+                                  fib, trendlines, wicks, a,
+                                  daily_levels=daily_levels, range_phase=range_phase,
+                                  session=session, recent_sweeps=recent_sweeps or [])
+        short_setup = self._build(Direction.SHORT, bars, at_index, zones, fvgs, bos_list,
+                                   fib, trendlines, wicks, a,
+                                   daily_levels=daily_levels, range_phase=range_phase,
+                                   session=session, recent_sweeps=recent_sweeps or [])
 
         candidates = [s for s in (long_setup, short_setup) if s is not None]
         if not candidates:
@@ -170,6 +253,11 @@ class RuleEngine:
         trendlines,
         wicks,
         atr_value: float,
+        *,
+        daily_levels: DailyLevels | None = None,
+        range_phase: RangePhase | None = None,
+        session: str | None = None,
+        recent_sweeps: list[LiquiditySweep] | None = None,
     ) -> Setup | None:
         cur = bars[at_index]
         confluences: list[str] = []
@@ -234,6 +322,76 @@ class RuleEngine:
                 confluences.append("liquidity_wick")
                 break
 
+        # ---- ICT context: daily levels, sweeps, sessions, range phases -----
+        # These get tagged with their *source* timeframe in confluence_tfs so the
+        # explainer renders e.g. "near_PDH (D1)" and "session_ny (M15)".
+        ict_tfs: dict[str, str] = {}
+
+        # Daily/weekly anchor levels — entry within tolerance of PDH/PDL/PDM/PWH/PWL.
+        # These come from D1 data even when applied to a M15 setup, so tag with D1.
+        if daily_levels is not None:
+            near = nearest_level(daily_levels, cur.close, max_pips=max(8.0, tol_pips * 0.5))
+            if near is not None:
+                tag = f"near_{near[0]}"
+                if tag not in confluences:
+                    confluences.append(tag)
+                ict_tfs[tag] = "D1"
+
+        # Recent liquidity sweep aligned with our trade direction.
+        #
+        # Direction-semantics safeguard (added 2026-05-03 W18 H1 audit):
+        # the detector classifies levels as upper/lower targets purely by
+        # price position, not semantics. So when EURUSD has fallen well
+        # below PWL, PWL becomes an *upper* target and a wick-through-PWL
+        # bar can emit `sweep_PWL` with direction=SHORT (a "buyside sweep
+        # of PWL"). That's mathematically correct (stops above PWL got
+        # taken) but semantically misleading and produced -38p / -25p H1
+        # losers in the W18 audit. We enforce ICT-style semantics here:
+        #   * HIGH-type level (PDH/PWH/swing_high/equal_highs) -> SHORT only
+        #   * LOW-type  level (PDL/PWL/swing_low/equal_lows)   -> LONG  only
+        #   * MID-type  level (PDM/PWM)                        -> dropped
+        #     (mid pivots aren't stop pools; sweeps through them were 0/3
+        #     wins in the audit, -25p)
+        HIGH_LEVELS = {"PDH", "PWH", "swing_high", "equal_highs"}
+        LOW_LEVELS = {"PDL", "PWL", "swing_low", "equal_lows"}
+        MID_LEVELS = {"PDM", "PWM"}
+        for sw in recent_sweeps or []:
+            if sw.direction != direction:
+                continue
+            label = sw.swept_label
+            if label in MID_LEVELS:
+                continue  # mid sweeps are noise, drop them
+            if label in HIGH_LEVELS and direction != Direction.SHORT:
+                continue
+            if label in LOW_LEVELS and direction != Direction.LONG:
+                continue
+            tag = f"sweep_{label}"
+            if tag not in confluences:
+                confluences.append(tag)
+            ict_tfs[tag] = cur.timeframe.value
+            break  # one sweep tag is enough; multiples are redundant noise
+
+        # Session label — always tagged when present; counts as confluence only
+        # for kill-zone sessions (london / overlap / ny). Off-session is dropped
+        # to discourage low-vol entries.
+        if session:
+            if is_kill_zone(session):
+                tag = f"session_{session}"
+                if tag not in confluences:
+                    confluences.append(tag)
+                ict_tfs[tag] = cur.timeframe.value
+
+        # Range phase — distribution adds confluence; manipulation/accumulation
+        # are recorded as advisory tags only (not counted toward min_confluences).
+        # We surface them in confluence_tfs so the narrative still mentions the phase.
+        phase_tag = None
+        if range_phase is not None:
+            phase_tag = f"phase_{range_phase.phase}"
+            ict_tfs[phase_tag] = cur.timeframe.value
+            if range_phase.phase == "distribution":
+                confluences.append(phase_tag)
+            # else: stored later only in confluence_tfs metadata for the narrative.
+
         required = self.cfg.rules.required_factors
         for r in required:
             if r == "zone" and zone is None:
@@ -243,7 +401,49 @@ class RuleEngine:
             if r == "bos" and bos is None:
                 return None
 
-        if len(confluences) < self.cfg.rules.min_confluences:
+        # Per-timeframe minimum confluence override (defaults to global).
+        per_tf_min = self.cfg.rules.min_confluences_per_tf.get(
+            cur.timeframe.value, self.cfg.rules.min_confluences
+        )
+        if len(confluences) < per_tf_min:
+            return None
+
+        # Time-of-day filter (NY local). The session-overlap blocklist already
+        # handles the worst chop window, but per-hour audits will surface
+        # additional weak hours over time.
+        blocked_hours = set(self.cfg.rules.blocked_hours_ny)
+        if blocked_hours:
+            try:
+                from zoneinfo import ZoneInfo
+                ny_hour = cur.time.astimezone(ZoneInfo("America/New_York")).hour
+                if ny_hour in blocked_hours:
+                    return None
+            except Exception:
+                pass
+
+        # Precision gate: derived from the W18 detector audit. Setups whose
+        # only confluence is a noisy base tag (zone, bos, fib_*) bleed pips on
+        # average. Require at least one precision partner (FVG or a tagged
+        # liquidity sweep) before letting them pass — these are the tags that
+        # say price has *committed* to a direction, not just *visited* a level.
+        if self.cfg.rules.require_precision_partner:
+            partner_set = set(self.cfg.rules.precision_partner_tags)
+            has_partner = any(c in partner_set for c in confluences)
+            if not has_partner:
+                return None
+
+        # BOS-only stacks were the second-worst bleeders. Require an FVG or
+        # sweep specifically when BOS is in the stack (any other tag is fine).
+        if self.cfg.rules.require_fvg_or_sweep_with_bos and "bos" in confluences:
+            extras = {"fvg"} | {t for t in self.cfg.rules.precision_partner_tags
+                                 if t.startswith("sweep_")}
+            if not any(c in extras for c in confluences):
+                return None
+
+        # Session blocklist: by default the London-NY overlap window is dropped
+        # because it returned -153 pips on 10 trades during W18.
+        blocked = set(self.cfg.rules.blocked_session_tags)
+        if blocked and any(c in blocked for c in confluences):
             return None
 
         if atr_value <= 0:
@@ -266,6 +466,14 @@ class RuleEngine:
         # exactly which chart to look at for each signal.
         setup_tf = cur.timeframe.value
         confluence_tfs = {c: setup_tf for c in confluences}
+        # Overlay ICT context tags with their proper source TF (D1 for daily levels,
+        # setup TF for sweep/session/phase). overlay overrides duplicate keys.
+        confluence_tfs.update(ict_tfs)
+        # Stash phase_<phase> tag in confluence_tfs even if not counted, so the
+        # narrative can render "phase: manipulation" without us having to count it
+        # toward min_confluences.
+        if phase_tag is not None and phase_tag not in confluence_tfs:
+            confluence_tfs[phase_tag] = cur.timeframe.value
 
         setup = Setup(
             direction=direction,
