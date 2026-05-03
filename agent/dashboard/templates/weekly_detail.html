@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Week {{ week.week_start }} → {{ week.week_end }} — EURUSD AI Agent</title>
+  <style>
+    :root {
+      --bg: #0e1117; --panel: #161b22; --panel-2: #1c2129;
+      --border: #2a3038; --text: #d6dde6; --muted: #8a939e;
+      --green: #2ea043; --red: #cf222e; --blue: #1f6feb; --amber: #d29922;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           background: var(--bg); color: var(--text); }
+    main { padding: 16px 24px; }
+    .grid { display: grid; grid-template-columns: 320px 1fr; gap: 16px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+            padding: 16px; }
+    h1 { margin: 0 0 4px; font-size: 18px; }
+    h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase;
+         letter-spacing: 0.06em; color: var(--muted); }
+    pre.md { background: var(--panel-2); padding: 12px; border-radius: 6px;
+             white-space: pre-wrap; word-wrap: break-word; font-family:
+             "SF Mono", Monaco, Menlo, "Fira Code", monospace; font-size: 12px;
+             line-height: 1.5; max-height: 75vh; overflow-y: auto;
+             color: var(--text); border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 10px; }
+    tr:hover { background: var(--panel-2); cursor: pointer; }
+    .pnl-pos { color: var(--green); }
+    .pnl-neg { color: var(--red); }
+    .stat { font-size: 18px; font-weight: 600; margin: 4px 0; }
+    .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 10px;
+             background: var(--panel-2); color: var(--muted); margin-right: 4px; }
+    .badge.long  { background: rgba(46,160,67,0.2); color: var(--green); }
+    .badge.short { background: rgba(207,34,46,0.2); color: var(--red); }
+    a { color: var(--blue); text-decoration: none; }
+  </style>
+</head>
+<body>
+  {% include "_nav.html" %}
+  <main>
+    <h1>Week {{ week.week_start }} → {{ week.week_end }}</h1>
+    <p style="color: var(--muted); margin: 0 0 16px; font-size: 13px;">
+      Source: <code style="background:var(--panel-2);padding:1px 4px;border-radius:3px;">{{ week.source_path or '—' }}</code>
+      &middot; Ingested {{ week.ingested_at }}
+      &middot; <a href="/lessons">view lessons</a>
+    </p>
+
+    <div class="grid">
+      <div>
+        <div class="card">
+          <h2>Stats</h2>
+          <div class="stat-label">Trades</div>
+          <div class="stat">{{ week.n_trades }}</div>
+          <div class="stat-label">Net pips</div>
+          <div class="stat {% if (week.total_pips or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">
+            {{ "%+.1f"|format(week.total_pips or 0) }}
+          </div>
+          <div class="stat-label">Net USD</div>
+          <div class="stat {% if (week.total_usd or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">
+            {{ "%+.2f"|format(week.total_usd or 0) }}
+          </div>
+        </div>
+
+        <div class="card" style="margin-top: 16px;">
+          <h2>Trades from this week</h2>
+          {% if not lessons %}
+            <p style="color: var(--muted); font-size: 12px;">(no linked lessons)</p>
+          {% else %}
+          <table>
+            <thead>
+              <tr><th>L#</th><th>Date</th><th>Dir</th><th>Entry</th><th>Pips</th></tr>
+            </thead>
+            <tbody>
+              {% for L in lessons %}
+              <tr onclick="location.href='/lesson/{{ L.id }}'">
+                <td style="color: var(--muted);">{{ L.id }}</td>
+                <td>{{ L.trade_date }}</td>
+                <td><span class="badge {{ L.direction }}">{{ L.direction|upper }}</span></td>
+                <td>{{ "%.5f"|format(L.entry_price) }}</td>
+                <td class="{% if (L.pnl_pips or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">
+                  {{ "%+.1f"|format(L.pnl_pips or 0) }}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Standardized weekly markdown (round-trippable)</h2>
+        <pre class="md">{{ week.standardized_md }}</pre>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

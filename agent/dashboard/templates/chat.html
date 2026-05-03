@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Chat — EURUSD AI Agent</title>
+  <style>
+    :root {
+      --bg: #0e1117; --panel: #161b22; --panel-2: #1c2129;
+      --border: #2a3038; --text: #d6dde6; --muted: #8a939e;
+      --green: #2ea043; --red: #cf222e; --blue: #1f6feb; --amber: #d29922;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           background: var(--bg); color: var(--text); height: 100vh; display: flex;
+           flex-direction: column; }
+    .layout { display: grid; grid-template-columns: 220px 1fr; flex: 1; min-height: 0; }
+    .sidebar { background: var(--panel); border-right: 1px solid var(--border); padding: 16px;
+               overflow-y: auto; }
+    .sidebar h3 { margin: 0 0 12px; font-size: 12px; text-transform: uppercase;
+                  letter-spacing: 0.06em; color: var(--muted); }
+    .sidebar a { display: block; padding: 6px 8px; border-radius: 4px; color: var(--text);
+                 text-decoration: none; font-size: 13px; margin-bottom: 4px; }
+    .sidebar a:hover { background: var(--panel-2); }
+    .sidebar a.active { background: var(--blue); color: white; }
+    .sidebar .new { background: var(--green); color: white; padding: 8px;
+                    border-radius: 4px; text-align: center; cursor: pointer;
+                    font-size: 13px; margin-bottom: 16px; border: 0; width: 100%; }
+    .chat-pane { display: flex; flex-direction: column; min-height: 0; }
+    .messages { flex: 1; overflow-y: auto; padding: 16px 24px; }
+    .empty { color: var(--muted); text-align: center; padding: 64px 32px; font-size: 14px; }
+    .msg { margin-bottom: 16px; max-width: 720px; }
+    .msg.user { margin-left: auto; }
+    .msg .who { font-size: 11px; color: var(--muted); margin-bottom: 4px;
+                text-transform: uppercase; letter-spacing: 0.05em; }
+    .msg.user .who { text-align: right; }
+    .msg .body { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+                 padding: 10px 14px; font-size: 14px; line-height: 1.55;
+                 white-space: pre-wrap; }
+    .msg.user .body { background: var(--blue); border-color: var(--blue); color: white; }
+    .composer { border-top: 1px solid var(--border); padding: 12px 24px; background: var(--panel); }
+    .composer form { display: flex; gap: 8px; }
+    .composer textarea { flex: 1; background: var(--panel-2); color: var(--text);
+                          border: 1px solid var(--border); border-radius: 6px;
+                          padding: 10px 12px; font-size: 14px; resize: none;
+                          min-height: 44px; max-height: 200px;
+                          font-family: inherit; }
+    .composer button { background: var(--blue); color: white; border: 0; padding: 0 18px;
+                        border-radius: 6px; font-size: 13px; cursor: pointer; }
+    .composer button:disabled { opacity: 0.5; cursor: wait; }
+    .upload-btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+                  padding: 0 14px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    .upload-btn:hover { background: var(--border); }
+    .upload-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .upload-hint { font-size: 11px; color: var(--muted); padding: 2px 24px 0; }
+    .upload-preview { display: none; padding: 6px 24px 0; }
+    .upload-preview.active { display: block; }
+    .upload-preview img { max-height: 72px; border: 1px solid var(--border); border-radius: 4px; }
+    .upload-preview button { background: transparent; border: 0; color: var(--red);
+                              font-size: 12px; cursor: pointer; margin-left: 8px; }
+    .banner { padding: 8px 24px; background: var(--amber); color: #000; font-size: 13px;
+              text-align: center; }
+    .ctx-toggle { font-size: 11px; color: var(--muted); margin-top: 4px; cursor: pointer; }
+    .ctx { display: none; margin-top: 4px; background: var(--panel-2); border-radius: 4px;
+           padding: 8px 10px; font-family: "SFMono-Regular", Consolas, monospace;
+           font-size: 11px; color: var(--muted); white-space: pre-wrap; }
+    .ctx.open { display: block; }
+  </style>
+</head>
+<body>
+  {% include "_nav.html" %}
+  {% if not chat_available %}
+  <div class="banner">
+    Local LLM not reachable. Run <code>brew install ollama &amp;&amp; brew services start ollama &amp;&amp; ollama pull qwen2.5:7b-instruct</code>
+    to enable chat.
+  </div>
+  {% endif %}
+
+  <div class="layout">
+    <aside class="sidebar">
+      <button class="new" onclick="location.href='/chat'">+ New chat</button>
+      <h3>Recent</h3>
+      {% if not sessions %}
+        <p style="color: var(--muted); font-size: 12px;">no sessions yet</p>
+      {% endif %}
+      {% for s in sessions %}
+        <a href="/chat?session_id={{ s.id }}"
+           class="{% if s.id == current_session_id %}active{% endif %}"
+           title="{{ s.last_active }}">
+          {{ s.title or "untitled" }}
+        </a>
+      {% endfor %}
+      <p style="font-size: 11px; color: var(--muted); margin-top: 24px; line-height: 1.5;">
+        chat: {{ chat_model or "(none)" }}<br>
+        vision: {{ vision_model or "(none)" }}
+        {% if vision_available and 'phi3' in vision_model %}
+          <br><span style="color:var(--amber)" title="llava-phi3 is small (~3GB) and hallucinates prices.
+For accurate chart reading run:&#10;  ollama pull llama3.2-vision:11b">⚠ small model, prices may drift</span>
+        {% endif %}
+        {% if not vision_available %}
+          <br><a href="#" onclick="alert('Recommended: ollama pull llama3.2-vision:11b\nQuick start: ollama pull llava-phi3'); return false;"
+                  style="color:var(--amber)">enable vision</a>
+        {% endif %}
+      </p>
+    </aside>
+
+    <section class="chat-pane">
+      <div class="messages" id="messages">
+        {% if not history %}
+          <div class="empty">
+            Ask anything about EURUSD, your journal, or last week's trades.<br>
+            Examples:<br>
+            • "what's your bias on EURUSD right now?"<br>
+            • "explain trade #42"<br>
+            • "summarise my lessons this week"<br>
+          </div>
+        {% endif %}
+        {% for m in history %}
+          {% if m.role != 'system' %}
+          <div class="msg {{ m.role }}">
+            <div class="who">{{ m.role }}</div>
+            <div class="body">{{ m.content }}</div>
+            {% if m.context_json %}
+            <div class="ctx-toggle" onclick="this.nextElementSibling.classList.toggle('open')">show context</div>
+            <div class="ctx">{{ m.context_json }}</div>
+            {% endif %}
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <div class="upload-preview" id="upload-preview">
+        <img id="upload-thumb" src="" alt="chart preview">
+        <button type="button" onclick="clearUpload()">remove</button>
+      </div>
+      <div class="composer">
+        <form id="composer-form" onsubmit="return sendMessage(event)">
+          <textarea id="composer-input" rows="2" placeholder="message the agent — or attach a chart screenshot..."
+                     onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendMessage(event)}"></textarea>
+          <input type="file" id="upload-input" accept="image/*" style="display:none"
+                 onchange="onFilePicked(event)">
+          <button type="button" class="upload-btn" id="upload-btn"
+                  onclick="document.getElementById('upload-input').click()"
+                  {% if not vision_available %}disabled title="vision model not installed"{% endif %}>📷 Chart</button>
+          <button type="submit" id="send-btn">Send</button>
+        </form>
+        <div class="upload-hint">
+          {% if vision_available %}
+          Drop a chart screenshot, then describe what you want to know.
+          Vision reads the IMAGE only — it can't fetch live prices on its own;
+          ask "what's EURUSD trading at?" in a normal chat for that.
+          Typical response: 8-30s (smaller models faster but less accurate).
+          {% else %}
+          Vision disabled — pull a vision model: <code>ollama pull llava-phi3</code>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    let sessionId = {{ current_session_id|tojson }};
+    const msgs = document.getElementById("messages");
+    const input = document.getElementById("composer-input");
+    const btn   = document.getElementById("send-btn");
+
+    function appendMsg(role, content) {
+      const empty = msgs.querySelector(".empty");
+      if (empty) empty.remove();
+      const wrap = document.createElement("div");
+      wrap.className = "msg " + role;
+      wrap.innerHTML = `<div class="who">${role}</div><div class="body"></div>`;
+      wrap.querySelector(".body").textContent = content;
+      msgs.appendChild(wrap);
+      msgs.scrollTop = msgs.scrollHeight;
+      return wrap;
+    }
+
+    let pendingFile = null;
+    const fileInput = document.getElementById("upload-input");
+    const preview   = document.getElementById("upload-preview");
+    const thumb     = document.getElementById("upload-thumb");
+
+    function onFilePicked(ev) {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      pendingFile = f;
+      const url = URL.createObjectURL(f);
+      thumb.src = url;
+      preview.classList.add("active");
+    }
+
+    function clearUpload() {
+      pendingFile = null;
+      fileInput.value = "";
+      preview.classList.remove("active");
+    }
+
+    async function sendMessage(ev) {
+      ev.preventDefault();
+      const text = input.value.trim();
+      if (!text && !pendingFile) return false;
+      input.value = "";
+      btn.disabled = true;
+
+      // Image upload path -> /api/chart_analyze
+      if (pendingFile) {
+        const userBody = text || `[uploaded chart: ${pendingFile.name}]`;
+        appendMsg("user", userBody);
+        const placeholder = appendMsg("assistant", "…analysing chart…");
+        const fd = new FormData();
+        fd.append("image", pendingFile);
+        fd.append("note", text);
+        if (sessionId) fd.append("session_id", sessionId);
+        try {
+          const r = await fetch("/api/chart_analyze", { method: "POST", body: fd });
+          const data = await r.json();
+          sessionId = data.session_id;
+          placeholder.querySelector(".body").textContent = data.reply || data.error || "(no reply)";
+        } catch (e) {
+          placeholder.querySelector(".body").textContent = "(upload failed: " + e + ")";
+        } finally {
+          clearUpload();
+          btn.disabled = false;
+        }
+        return false;
+      }
+
+      // Text-only path
+      appendMsg("user", text);
+      const placeholder = appendMsg("assistant", "…");
+      try {
+        const r = await fetch("/api/chat", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({message: text, session_id: sessionId}),
+        });
+        const data = await r.json();
+        sessionId = data.session_id;
+        placeholder.querySelector(".body").textContent = data.reply;
+      } catch (e) {
+        placeholder.querySelector(".body").textContent = "(network error: " + e + ")";
+      } finally {
+        btn.disabled = false;
+      }
+      return false;
+    }
+
+    msgs.scrollTop = msgs.scrollHeight;
+  </script>
+</body>
+</html>

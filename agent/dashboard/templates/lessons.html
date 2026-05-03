@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>My lessons — EURUSD AI Agent</title>
+  <style>
+    :root {
+      --bg: #0e1117; --panel: #161b22; --panel-2: #1c2129;
+      --border: #2a3038; --text: #d6dde6; --muted: #8a939e;
+      --green: #2ea043; --red: #cf222e; --blue: #1f6feb; --amber: #d29922;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           background: var(--bg); color: var(--text); }
+    main { padding: 16px 24px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+            padding: 16px; margin-bottom: 16px; }
+    h1 { margin: 0 0 4px; font-size: 18px; }
+    h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase;
+         letter-spacing: 0.06em; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px; }
+    tr:hover { background: var(--panel-2); cursor: pointer; }
+    .pnl-pos { color: var(--green); }
+    .pnl-neg { color: var(--red); }
+    .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 10px;
+             background: var(--panel-2); color: var(--muted); margin-right: 4px; }
+    .badge.long  { background: rgba(46,160,67,0.2); color: var(--green); }
+    .badge.short { background: rgba(207,34,46,0.2); color: var(--red); }
+    .empty { color: var(--muted); text-align: center; padding: 32px; font-size: 14px; }
+    .empty code { background: var(--panel-2); padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  {% include "_nav.html" %}
+  <main>
+    <h1>My discretionary lessons</h1>
+    <p style="color: var(--muted); margin: 0 0 16px; font-size: 13px;">
+      Trades you've taught the agent via <code style="background:var(--panel-2);padding:1px 4px;border-radius:3px;">scripts/teach.py</code>.
+      The agent compares each one against what it would have done. Click a row to see the diff.
+    </p>
+
+    <div class="card">
+      <h2>{{ n_lessons }} lesson{{ '' if n_lessons == 1 else 's' }}</h2>
+      {% if not lessons %}
+        <div class="empty">
+          No lessons yet. Try:<br>
+          <code>python scripts/teach.py</code>
+        </div>
+      {% else %}
+        <table>
+          <thead>
+            <tr>
+              <th>L#</th><th>Date</th><th>Dir</th><th>Entry</th><th>Outcome</th>
+              <th>P&amp;L pips</th><th>Confluences</th><th>Bias</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for L in lessons %}
+            <tr onclick="location.href='/lesson/{{ L.id }}'">
+              <td style="color: var(--muted);">{{ L.id }}</td>
+              <td>{{ L.trade_date }}</td>
+              <td>
+                <span class="badge {{ L.direction }}">{{ L.direction|upper }}</span>
+              </td>
+              <td>{{ "%.5f"|format(L.entry_price) }}</td>
+              <td>{{ L.outcome }}</td>
+              <td class="{% if (L.pnl_pips or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">
+                {{ "%+.1f"|format(L.pnl_pips or 0) }}
+              </td>
+              <td style="font-size: 12px; color: var(--muted);">
+                {% for c in L.confluences_parsed[:4] %}
+                  <span class="badge">{{ c.type }} ({{ c.tf }})</span>
+                {% endfor %}
+                {% if L.confluences_parsed|length > 4 %}
+                  <span style="color: var(--muted);">+{{ L.confluences_parsed|length - 4 }}</span>
+                {% endif %}
+              </td>
+              <td style="font-size: 12px; color: var(--muted);">{{ L.daily_bias or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+  </main>
+</body>
+</html>
