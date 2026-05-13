@@ -20,12 +20,13 @@ from __future__ import annotations
 
 import bisect
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from agent.detectors.bos import detect_bos, latest_bos
+from agent.detectors.fvg import detect_fvgs
 from agent.detectors.zones import detect_zones, fresh_zones
-from agent.types import Bar, Direction, Zone
+from agent.types import Bar, Direction, FVG, Zone
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +45,14 @@ class HTFBias:
     source_tf: str = ""
     last_close: float = 0.0
     ema_slope_pips: float = 0.0  # 20-period slope: positive = up, negative = down
+
+    # Actual HTF zone boundaries near current price for cross-TF overlap checks.
+    # Each dict: {source_tf, direction ("long"/"short"), top, bottom, distance_pips}
+    htf_zones_near_price: list[dict] = field(default_factory=list)
+
+    # HTF FVGs near current price for cross-TF alignment.
+    # Each dict: {source_tf, direction ("long"/"short"), top, bottom, distance_pips}
+    htf_fvgs_near_price: list[dict] = field(default_factory=list)
 
     def agrees_with(self, direction: Direction) -> bool:
         """True if the HTF context supports a setup of the given direction.
@@ -86,7 +95,9 @@ class HTFBiasComputer:
     in O(log n) lookup. Use one of these per HTF feed (D1, H4, etc.)."""
     bars: list[Bar]
     zones: list[Zone]
+    fvgs: list[FVG] = field(default_factory=list)
     min_trend_slope_pips: float = 0.5  # below this, we call the trend "neutral"
+    zone_proximity_pips: float = 30.0  # how close price must be to report a zone
 
     def __post_init__(self):
         if not self.bars:
@@ -97,11 +108,16 @@ class HTFBiasComputer:
     def build(cls, bars: list[Bar],
               zone_min_impulse_pips: float = 30.0,
               zone_max_age_bars: int = 200,
-              min_trend_slope_pips: float = 0.5) -> HTFBiasComputer:
+              min_trend_slope_pips: float = 0.5,
+              fvg_min_size_pips: float = 5.0,
+              zone_proximity_pips: float = 30.0) -> HTFBiasComputer:
         zones = detect_zones(bars,
                              min_impulse_pips=zone_min_impulse_pips,
                              max_age_bars=zone_max_age_bars)
-        return cls(bars=bars, zones=zones, min_trend_slope_pips=min_trend_slope_pips)
+        fvgs = detect_fvgs(bars, min_size_pips=fvg_min_size_pips)
+        return cls(bars=bars, zones=zones, fvgs=fvgs,
+                   min_trend_slope_pips=min_trend_slope_pips,
+                   zone_proximity_pips=zone_proximity_pips)
 
     def bias_at(self, t: datetime, current_price: float | None = None) -> HTFBias:
         """Return the HTF bias as it would have been seen at decision time `t`.
@@ -151,13 +167,51 @@ class HTFBiasComputer:
                 if bos_obj is not None:
                     last_bos = bos_obj.direction
 
+        # Collect HTF zones near price (within proximity tolerance).
+        src_tf = self.bars[0].timeframe.value
+        prox_tol = self.zone_proximity_pips * 0.0001
+        zones_near: list[dict] = []
+        for z in active_long[-5:] + active_short[-5:]:
+            mid = (z.top + z.bottom) / 2.0
+            d_abs = min(abs(price - z.top), abs(price - z.bottom), abs(price - mid))
+            d_pips = d_abs * 10000.0
+            if d_abs <= prox_tol or z.bottom <= price <= z.top:
+                zones_near.append({
+                    "source_tf": src_tf,
+                    "direction": "long" if z.direction == Direction.LONG else "short",
+                    "top": z.top,
+                    "bottom": z.bottom,
+                    "distance_pips": round(d_pips, 2),
+                })
+
+        # Collect HTF FVGs near price.
+        fvgs_near: list[dict] = []
+        active_fvgs = [
+            f for f in self.fvgs
+            if f.created_bar_index <= idx and not f.filled
+        ]
+        for f in active_fvgs[-10:]:
+            mid = (f.top + f.bottom) / 2.0
+            d_abs = min(abs(price - f.top), abs(price - f.bottom), abs(price - mid))
+            d_pips = d_abs * 10000.0
+            if d_abs <= prox_tol or f.bottom <= price <= f.top:
+                fvgs_near.append({
+                    "source_tf": src_tf,
+                    "direction": "long" if f.direction == Direction.LONG else "short",
+                    "top": f.top,
+                    "bottom": f.bottom,
+                    "distance_pips": round(d_pips, 2),
+                })
+
         return HTFBias(
             direction=direction,
             in_demand_zone=in_demand,
             in_supply_zone=in_supply,
             nearest_zone_distance_pips=nearest,
             last_bos_direction=last_bos,
-            source_tf=self.bars[0].timeframe.value,
+            source_tf=src_tf,
             last_close=last_close,
             ema_slope_pips=slope_pips,
+            htf_zones_near_price=zones_near,
+            htf_fvgs_near_price=fvgs_near,
         )

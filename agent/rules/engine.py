@@ -432,6 +432,17 @@ class RuleEngine:
             if not has_partner:
                 return None
 
+        # Structural-anchor gate (added 2026-05-03 from 3-year audit). Even
+        # with a precision partner, setups missing a fib/phase/session anchor
+        # bled pips because they were chasing impulsive moves into chop. The
+        # anchor proves the trigger is occurring at a *meaningful* structural
+        # location, not random noise.
+        if self.cfg.rules.require_structural_anchor:
+            anchor_set = set(self.cfg.rules.structural_anchor_tags)
+            has_anchor = any(c in anchor_set for c in confluences)
+            if not has_anchor:
+                return None
+
         # BOS-only stacks were the second-worst bleeders. Require an FVG or
         # sweep specifically when BOS is in the stack (any other tag is fine).
         if self.cfg.rules.require_fvg_or_sweep_with_bos and "bos" in confluences:
@@ -517,12 +528,13 @@ class RuleEngine:
         if mode != "off" and self.htf_biases and cur.timeframe.value in ("M1", "M5", "M15", "H1"):
             agrees = True
             tags_with_tf: list[tuple[str, str]] = []  # (tag, source_tf)
+            dir_str = "long" if direction == Direction.LONG else "short"
             for hb in self.htf_biases:
                 bias = hb.bias_at(cur.time, current_price=cur.close)
                 src = bias.source_tf or "?"
                 if bias.direction is not None:
                     if bias.direction == direction:
-                        tag = f"htf_bias_{'long' if direction == Direction.LONG else 'short'}"
+                        tag = f"htf_bias_{dir_str}"
                         tags_with_tf.append((tag, src))
                     else:
                         agrees = False
@@ -530,6 +542,35 @@ class RuleEngine:
                     tags_with_tf.append(("htf_zone_long", src))
                 if direction == Direction.SHORT and bias.in_supply_zone:
                     tags_with_tf.append(("htf_zone_short", src))
+
+                # Cross-timeframe zone alignment: if the LTF entry zone overlaps
+                # an HTF zone of the same direction, that's strong confluence.
+                if zone is not None:
+                    for hz in bias.htf_zones_near_price:
+                        overlap = (
+                            zone.bottom <= hz["top"] + tol
+                            and zone.top >= hz["bottom"] - tol
+                        )
+                        if overlap and hz["direction"] == dir_str:
+                            align_tag = f"htf_zone_align_{hz['source_tf']}"
+                            if align_tag not in [t_[0] for t_ in tags_with_tf]:
+                                tags_with_tf.append((align_tag, hz["source_tf"]))
+
+                # Cross-timeframe FVG alignment: if the LTF entry price sits
+                # inside an HTF FVG of the same direction, add confluence.
+                for hf in bias.htf_fvgs_near_price:
+                    if hf["direction"] != dir_str:
+                        continue
+                    price_in_fvg = hf["bottom"] <= cur.close <= hf["top"]
+                    bar_touches_fvg = (
+                        cur.low <= hf["top"] + tol
+                        and cur.high >= hf["bottom"] - tol
+                    )
+                    if price_in_fvg or bar_touches_fvg:
+                        fvg_tag = f"htf_fvg_align_{hf['source_tf']}"
+                        if fvg_tag not in [t_[0] for t_ in tags_with_tf]:
+                            tags_with_tf.append((fvg_tag, hf["source_tf"]))
+
             if mode == "strict" and not agrees:
                 return None
             for t, src in tags_with_tf:

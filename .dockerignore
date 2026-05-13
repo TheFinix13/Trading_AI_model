@@ -1,0 +1,42 @@
+# Keep build context small + reproducible -- avoid copying the local
+# venv, scratch artefacts, or large data files into the image.
+
+.venv
+venv
+env
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+coverage.xml
+htmlcov
+
+# Local scratch / experiment outputs
+tmp
+.cache
+fixtures/sample_week.txt
+
+# Big data / model artefacts (mounted as volumes at runtime)
+data/parquet
+*.db
+*.db-shm
+*.db-wal
+journal.db.bak.*
+models/*.joblib
+
+# Local secrets and editor state
+.env
+.env.*
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# Git metadata isn't useful inside the image
+.git
+.github

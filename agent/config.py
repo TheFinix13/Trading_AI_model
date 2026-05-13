@@ -135,6 +135,25 @@ class RulesConfig(BaseModel):
     # BOS-only entries had 39% WR and bled -144 pips this week.
     require_fvg_or_sweep_with_bos: bool = True
 
+    # Second-stage gate (added 2026-05-03 from 3-year audit). After
+    # `require_precision_partner` whitelists the *trigger* (fvg / sweep), we
+    # additionally require a *structural anchor* — fib retrace, range phase,
+    # or NY session label. The 3-year audit showed every profitable combo had
+    # at least one of these:
+    #     fvg + phase_distribution + zone        (90% WR / +473p)
+    #     fib_382 + sweep_swing_high + zone      (54% WR / +343p)
+    #     fib_382 + fvg + zone                   (100% WR / +321p)
+    #     fvg + sweep_equal_lows + zone          (100% WR / +320p)
+    #     fib_382 + session_ny + zone            (50% WR / +400p)
+    # Setups without a structural anchor (bare zone + fvg, bare bos + sweep)
+    # were the biggest contributors to the -37% bleed in the v6 baseline.
+    require_structural_anchor: bool = True
+    structural_anchor_tags: list[str] = [
+        "fib_382", "fib_500", "fib_618", "fib_786",
+        "phase_distribution",
+        "session_ny",
+    ]
+
     # Per-timeframe minimum confluence override. H1 chops with 2-confluence
     # setups (33% WR / -$378 in the W18 audit), so we require 3 there. M5/M15
     # remain at the global `min_confluences`. Set to {} to disable.
@@ -157,6 +176,20 @@ class MLConfig(BaseModel):
     walkforward_train_months: int = 24
     walkforward_test_months: int = 3
     refit_frequency: str = "weekly"
+
+    # Production scorer paths (per-TF). Walk-forward validation on 2026-05-03
+    # showed H1 wins 3/3 OOS folds at threshold 0.30 (avg PF 1.20, +5%/6mo).
+    # M15 is marginal (2/3 folds, +$126 vs H1's +$1,454) so it's optional.
+    # When `scorer_paths` is set and the file exists for a TF, that TF's
+    # backtester / live-runner will load it automatically.
+    scorer_paths: dict[str, str] = {
+        "H1": "models/scorer_EURUSD_H1_v7.joblib",
+        "M15": "models/scorer_EURUSD_M15_v7.joblib",
+    }
+    score_thresholds: dict[str, float] = {
+        "H1": 0.30,
+        "M15": 0.40,
+    }
 
 
 class BacktestConfig(BaseModel):

@@ -104,6 +104,15 @@ WEEKDAY_NAMES = {
 
 FIGURE_RE = re.compile(r"FIGURE\s+\d+", re.IGNORECASE)
 
+# Inline broker CSV lines: "ticket,date,date,buy/sell,lots,...,EURUSD,entry,exit,...,profit,..."
+CSV_TRADE_RE = re.compile(
+    r"(\d{5,}),\s*(\d{4}-\d{2}-\d{2}T[\d:]+),\s*(\d{4}-\d{2}-\d{2}T[\d:]+),\s*"
+    r"(buy|sell),\s*([\d.]+),\s*[\d.]+,\s*EURUSD,\s*"
+    r"([\d.]+),\s*([\d.]+),\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*[^,]*,\s*"
+    r"([-\d.]+)",
+    re.IGNORECASE,
+)
+
 
 @dataclass
 class _DocBlock:
@@ -120,10 +129,19 @@ def load_paragraphs(input_path: Path) -> tuple[list[_DocBlock], list[dict]]:
     Image records have only enough metadata to copy the file out for the
     dashboard later; we don't OCR the charts (that's a future enhancement).
     """
+    from docx.table import Table as _Table
+
     doc = Document(str(input_path))
     blocks: list[_DocBlock] = []
     for block in iter_block_items(doc):
-        if hasattr(block, "text"):
+        if isinstance(block, _Table):
+            # Flatten each table row into a CSV-like line so trade parsers can
+            # match broker-export data embedded in docx tables.
+            for row in block.rows:
+                cells = [cell.text.strip() for cell in row.cells]
+                line = ",".join(cells)
+                blocks.append(_DocBlock(text=line, style="TableRow"))
+        elif hasattr(block, "text"):
             text = block.text.strip()
             style = block.style.name if block.style else "Normal"
             blocks.append(_DocBlock(text=text, style=style))
@@ -309,6 +327,34 @@ def find_trades_in_text(text: str) -> list[WeeklyTrade]:
                 raw_text=text[max(0, m.start()-250): m.end()+250],
             )
         )
+
+    # Also parse inline broker CSV lines (ticket,open_time,close_time,type,...)
+    seen_entries: set[float] = {t.entry_price for t in trades}
+    for m in CSV_TRADE_RE.finditer(text):
+        try:
+            entry = float(m.group(6))
+            exit_price = float(m.group(7))
+            profit = float(m.group(8))
+        except ValueError:
+            continue
+        if not (0.5 < entry < 2.0 and 0.5 < exit_price < 2.0):
+            continue
+        if entry in seen_entries:
+            continue
+        seen_entries.add(entry)
+        side = "long" if m.group(4).lower() == "buy" else "short"
+        pnl_pips = (exit_price - entry) / 0.0001 if side == "long" else (entry - exit_price) / 0.0001
+        outcome = "win" if profit > 0 else ("loss" if profit < 0 else "breakeven")
+        trades.append(
+            WeeklyTrade(
+                direction=side,  # type: ignore[arg-type]
+                entry_price=entry,
+                tp_price=exit_price,
+                outcome=outcome,  # type: ignore[arg-type]
+                pnl_pips=round(pnl_pips, 1),
+                raw_text=text[max(0, m.start()-100): m.end()+100],
+            )
+        )
     return trades
 
 
@@ -316,7 +362,7 @@ def find_trades_in_text(text: str) -> list[WeeklyTrade]:
 
 
 def _looks_like_day_header(text: str, header: tuple[str, date]) -> bool:
-    """A paragraph is a day header iff it's short AND begins with the weekday name
+    """A paragraph is a day header iff it's short AND contains the weekday name
     AND doesn't contain "TRADING ANALYSIS" / "REVIEW" (those are the document
     title which often contains the first weekday + date)."""
     if header is None:
@@ -331,7 +377,9 @@ def _looks_like_day_header(text: str, header: tuple[str, date]) -> bool:
     if not (upper.startswith(weekday3) or upper[:2].lstrip("*[ ") in ("",) and upper[2:].startswith(weekday3)):
         # Be a bit lenient: also accept "FRIDAY – 1ST May" style starts.
         if not upper.lstrip("*[ –-").startswith(weekday3):
-            return False
+            # Also accept short intro sentences like "Lets look at Wednesday 6th May"
+            if weekday3 not in upper or len(text) > 80:
+                return False
     # Reject mentions in narrative like "On Monday 27th, ..."
     if upper.startswith("ON "):
         return False

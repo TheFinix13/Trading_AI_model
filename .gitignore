@@ -69,3 +69,8 @@ logs/
 
 # Notebooks
 .ipynb_checkpoints/
+
+# Temp / cache
+tmp/
+.cache/
+fixtures/

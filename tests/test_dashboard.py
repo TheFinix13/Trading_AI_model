@@ -14,7 +14,7 @@ def test_home_renders():
     client = TestClient(app)
     r = client.get("/")
     assert r.status_code == 200
-    assert b"EURUSD AI Agent" in r.content
+    assert b"EURUSD" in r.content
 
 
 def test_kill_resume_cycle(tmp_path, monkeypatch):

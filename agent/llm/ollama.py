@@ -133,17 +133,36 @@ class OllamaClient:
         "llama3.2-vision", "qwen2-vl", "qwen2.5-vl", "minicpm-v",
     )
 
+    VISION_PREFERENCE = [
+        "llava-phi3",
+        "llava-llama3",
+        "llava",
+        "moondream",
+        "llama3.2-vision",
+        "qwen2-vl",
+        "qwen2.5-vl",
+        "minicpm-v",
+        "bakllava",
+    ]
+
     def find_vision_model(self) -> str | None:
-        """Return the first locally-installed vision-capable model, or None."""
+        """Return the best locally-installed vision model, preferring lighter ones."""
         try:
             tags = self.list_models()
         except OllamaUnavailable:
             return None
+        vision_tags = []
         for tag in tags:
             base = tag.split(":")[0].lower()
             if any(base.startswith(p) for p in self.KNOWN_VISION_PREFIXES):
-                return tag
-        return None
+                vision_tags.append(tag)
+        if not vision_tags:
+            return None
+        for pref in self.VISION_PREFERENCE:
+            for tag in vision_tags:
+                if tag.split(":")[0].lower().startswith(pref):
+                    return tag
+        return vision_tags[0]
 
     def chat_stream(
         self,

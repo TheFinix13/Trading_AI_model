@@ -1,233 +1,3 @@
-<!-- <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Trade #{{ trade.id }} — {{ symbol }}</title>
-  <style>
-    :root {
-      --bg: #0e1117; --panel: #161b22; --panel-2: #1c2129;
-      --border: #2a3038; --text: #d6dde6; --muted: #8a939e;
-      --green: #2ea043; --red: #cf222e; --blue: #58a6ff; --amber: #d29922;
-      --hl: #e6edf3;
-    }
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-           background: var(--bg); color: var(--text); }
-    a.back { color: var(--blue); text-decoration: none; font-size: 13px;
-             padding: 12px 24px; display: inline-block; }
-    a.back:hover { text-decoration: underline; }
-
-    .report {
-      max-width: 980px; margin: 0 auto 40px; padding: 24px 32px;
-      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-      font-size: 14px; line-height: 1.65; color: var(--text);
-      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-    }
-    .rule { color: var(--border); user-select: none; letter-spacing: -1px;
-            font-size: 13px; line-height: 1.2; }
-    .title { color: var(--hl); font-weight: 700; font-size: 16px;
-             padding: 4px 0; display: flex; justify-content: space-between;
-             flex-wrap: wrap; gap: 12px; align-items: baseline; }
-    .verdict { font-size: 11px; padding: 2px 10px; border-radius: 10px;
-               font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
-    .verdict.win { background: var(--green); color: #fff; }
-    .verdict.loss { background: var(--red); color: #fff; }
-    .verdict.open { background: var(--blue); color: #fff; }
-    .verdict.incomplete { background: var(--amber); color: #000; }
-
-    .meta-line { padding: 4px 0 8px; }
-    .meta-line .k { color: var(--muted); }
-    .meta-line .v { color: var(--hl); }
-    .meta-line .sep { color: var(--border); padding: 0 6px; }
-
-    h2.section { color: var(--blue); font-weight: 700; font-size: 14px;
-                 letter-spacing: 0.06em; margin: 16px 0 4px; padding: 0;
-                 text-transform: uppercase; }
-    h2.section.outcome { color: var(--amber); }
-
-    .bullet { padding: 2px 0 2px 22px; position: relative; }
-    .bullet::before { content: "•"; color: var(--blue); position: absolute; left: 6px; }
-    .bullet.htf::before { color: var(--amber); }
-    .bullet .label { color: var(--muted); }
-    .bullet .tag { color: var(--blue); font-weight: 600; }
-    .bullet.htf .tag { color: var(--amber); }
-    .bullet .desc { color: var(--text); }
-    .tf-pill { display: inline-block; font-size: 11px; padding: 1px 7px;
-                margin-left: 4px; border-radius: 8px; background: rgba(88,166,255,0.15);
-                color: var(--blue); font-weight: 600; letter-spacing: 0.04em; vertical-align: 2px; }
-    .bullet.htf .tf-pill { background: rgba(210,153,34,0.15); color: var(--amber); }
-
-    .conf-section { color: var(--green); font-weight: 700; font-size: 14px;
-                     letter-spacing: 0.06em; margin: 18px 0 4px; padding: 0;
-                     text-transform: uppercase; }
-    .conf-row { padding: 4px 0 4px 22px; color: var(--text); line-height: 1.55; }
-    .conf-row.skipped { color: var(--red); }
-    .conf-row.skipped .k { color: var(--red); }
-
-    .feat-block { padding: 4px 22px 8px 22px;
-                  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-                  column-gap: 22px; row-gap: 2px; }
-    .feat-block .feat .k { color: var(--muted); }
-    .feat-block .feat .v { color: var(--hl); }
-
-    .out-line { padding: 2px 0 2px 22px; color: var(--text); }
-    .out-line .k { color: var(--muted); }
-    .out-line .v { color: var(--hl); }
-    .pos { color: var(--green); font-weight: 700; }
-    .neg { color: var(--red); font-weight: 700; }
-
-    .warning {
-      margin: 8px 22px; padding: 10px 14px;
-      background: rgba(207,34,46,0.10); border-left: 3px solid var(--red);
-      color: var(--red); border-radius: 0 4px 4px 0;
-      font-size: 13px; line-height: 1.5;
-    }
-
-    details { margin: 16px 0 0 22px; }
-    details summary { cursor: pointer; color: var(--muted); font-size: 13px;
-                      padding: 6px 0; user-select: none; }
-    details summary:hover { color: var(--text); }
-    .raw-grid { display: grid; grid-template-columns: 1fr auto;
-                gap: 2px 14px; font-size: 13px; margin-top: 4px; }
-    .raw-grid .name { color: var(--muted); }
-    .raw-grid .val { text-align: right; color: var(--hl); }
-  </style>
-</head>
-<body>
-  <a class="back" href="/">&larr; back to dashboard</a>
-
-  <div class="report">
-    <div class="rule">══════════════════════════════════════════════════════════════════════════════</div>
-    <div class="title">
-      <span>Trade #{{ trade.id }}
-        <span class="rule">|</span>
-        {{ narrative.detected_local }}
-        <span class="rule">|</span>
-        {{ symbol }} {{ trade.sig_tf or "?" }}
-        <span class="rule">|</span>
-        {{ trade.direction|upper }}
-      </span>
-      {% if narrative.is_force_closed %}
-        <span class="verdict incomplete">INCOMPLETE</span>
-      {% elif is_winner is none %}
-        <span class="verdict open">OPEN</span>
-      {% elif is_winner %}
-        <span class="verdict win">WIN</span>
-      {% else %}
-        <span class="verdict loss">LOSS</span>
-      {% endif %}
-    </div>
-    <div class="rule">══════════════════════════════════════════════════════════════════════════════</div>
-
-    <div class="meta-line">
-      &nbsp;&nbsp;<span class="k">Entry:</span>  <span class="v">{{ "%.5f"|format(trade.entry_price) }}</span>
-      <span class="sep">·</span>
-      <span class="k">Stop:</span> <span class="v">{{ "%.5f"|format(trade.stop_price) }}</span>
-      <span class="k">({{ "%.1f"|format(trade.sig_stop_pips or 0) }} pips)</span>
-      <span class="sep">·</span>
-      <span class="k">TP:</span> <span class="v">{{ "%.5f"|format(trade.tp_price) }}</span>
-      <span class="k">(R:R 1:{{ "%.2f"|format(trade.sig_rr or 0) }})</span>
-      <span class="sep">·</span>
-      <span class="k">Lot:</span> <span class="v">{{ trade.lot_size }}</span>
-      {% if trade.ml_score is not none %}
-        <span class="sep">·</span>
-        <span class="k">ML score:</span> <span class="v">{{ "%.3f"|format(trade.ml_score) }}</span>
-      {% endif %}
-    </div>
-
-    <h2 class="section">WHY THIS TRADE WAS TAKEN</h2>
-    {% if not narrative.confluence_blocks %}
-    <div class="bullet"><span class="desc" style="color:var(--muted);font-style:italic;">no confluences recorded</span></div>
-    {% endif %}
-    {% for block in narrative.confluence_blocks %}
-    <div class="bullet {% if 'htf' in block.tag %}htf{% endif %}">
-      <span class="label">confluence:</span>
-      <span class="tag">{{ block.tag }}</span>
-      <span class="tf-pill">{{ block.tf }}</span>
-      &nbsp;<span class="desc">— {{ block.body }}</span>
-      {% if block.facts %}
-      <div style="padding-left:14px;color:var(--muted);font-size:13px;">
-        {{ block.facts|join('  ·  ') }}
-      </div>
-      {% endif %}
-    </div>
-    {% endfor %}
-
-    <div class="bullet" style="margin-top:6px;">
-      <span class="desc">market state at entry:</span>
-    </div>
-    <div class="feat-block">
-      <span class="feat"><span class="k">regime         =</span> <span class="v">{{ narrative.market_state.regime }}</span></span>
-      <span class="feat"><span class="k">range_loc      =</span> <span class="v">{{ narrative.market_state.location }}</span></span>
-      <span class="feat"><span class="k">ma21           =</span> <span class="v">{{ narrative.market_state.ma_state }}</span></span>
-      <span class="feat"><span class="k">session        =</span> <span class="v">{{ narrative.market_state.session }}</span></span>
-    </div>
-
-    <div class="bullet" style="margin-top:6px;">
-      <span class="desc">top numerical features (most influential):</span>
-    </div>
-    <div class="feat-block">
-      {% for name, value in features[:8] %}
-      <span class="feat"><span class="k">{{ "%-18s"|format(name) }}=</span>
-        <span class="v">{% if value is number %}{{ "%+.3f"|format(value) }}{% else %}{{ value }}{% endif %}</span>
-      </span>
-      {% endfor %}
-    </div>
-
-    {% if narrative.confirmation_lines %}
-    <h2 class="conf-section">ENTRY CONFIRMATION</h2>
-    {% for line in narrative.confirmation_lines %}
-    <div class="conf-row">{{ line }}</div>
-    {% endfor %}
-    {% endif %}
-
-    <h2 class="section outcome">OUTCOME</h2>
-    {% if trade.exit_time %}
-    <div class="out-line">
-      <span class="k">Exited at</span>
-      <span class="v">{{ "%.5f"|format(trade.exit_price) }}</span>
-      <span class="k">on</span>
-      <span class="v">{{ narrative.exit_local }}</span>
-      <span class="k">(reason:</span> <span class="v">{{ trade.exit_reason }}</span><span class="k">)</span>
-    </div>
-    <div class="out-line">
-      <span class="k">P&amp;L:</span>
-      <span class="{% if (trade.pnl_pips or 0) >= 0 %}pos{% else %}neg{% endif %}">
-        {{ "%+.1f"|format(trade.pnl_pips or 0) }} pips = ${{ "%+.2f"|format(trade.pnl or 0) }}
-      </span>
-      <span class="k">  |  Commission:</span> <span class="v">${{ "%.2f"|format(trade.commission or 0) }}</span>
-      <span class="k">  |  Result:</span>
-      <span class="{% if is_winner %}pos{% elif is_winner is not none %}neg{% endif %}">
-        {% if narrative.is_force_closed %}INCOMPLETE{% elif is_winner %}WIN{% elif is_winner is not none %}LOSS{% endif %}
-      </span>
-    </div>
-    {% if narrative.outcome_warning %}
-    <div class="warning">⚠ &nbsp; {{ narrative.outcome_warning }}</div>
-    {% endif %}
-    {% else %}
-    <div class="out-line"><span class="desc">trade is still open</span></div>
-    {% endif %}
-
-    <div class="rule" style="margin-top:8px;">══════════════════════════════════════════════════════════════════════════════</div>
-
-    <details>
-      <summary>Raw feature snapshot at entry ({{ features|length }} features) — click to expand</summary>
-      <div class="raw-grid">
-        {% for name, value in features %}
-        <span class="name">{{ name }}</span>
-        <span class="val">{% if value is number %}{{ "%+.4f"|format(value) }}{% else %}{{ value }}{% endif %}</span>
-        {% endfor %}
-      </div>
-    </details>
-  </div>
-
-  <div style="text-align:center;color:var(--muted);font-size:12px;padding-bottom:24px;">
-    All times in {{ display_tz }}
-  </div>
-</body>
-</html> -->
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -235,187 +5,99 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Trade #{{ trade.id }} — {{ symbol }}</title>
   <style>
-    /* Basic color variables for a clean dark theme */
     :root {
-      --bg-color: #0e1117;
-      --card-bg: #161b22;
-      --border-color: #30363d;
-      --text-main: #c9d1d9;
-      --text-muted: #8b949e;
-      --accent-blue: #58a6ff;
-      --accent-green: #2ea043;
-      --accent-red: #f85149;
-      --accent-yellow: #d29922;
+      --bg: #131722;
+      --panel: #1e222d;
+      --border: #2a2e39;
+      --text: #d1d4dc;
+      --muted: #787b86;
+      --blue: #2962ff;
+      --green: #26a69a;
+      --red: #ef5350;
+      --amber: #f7931a;
     }
-
-    /* General page setup */
-    body { 
-      margin: 0; 
-      padding: 20px;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: var(--bg-color); 
-      color: var(--text-main); 
-      line-height: 1.6;
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.6;
     }
-
-    /* Links */
-    a.back { 
-      color: var(--accent-blue); 
-      text-decoration: none; 
-      font-size: 14px;
-      display: inline-block; 
-      margin-bottom: 20px;
+    a.back {
+      color: var(--blue); text-decoration: none; font-size: 13px;
+      display: inline-block; padding: 16px 24px;
     }
+    a.back:hover { text-decoration: underline; }
 
-    a.back:hover { 
-      text-decoration: underline; 
-    }
-
-    /* Main container card */
     .report-card {
-      max-width: 900px; 
-      margin: 0 auto; 
-      padding: 40px;
-      background-color: var(--card-bg); 
-      border: 1px solid var(--border-color); 
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      max-width: 900px; margin: 0 auto 40px; padding: 32px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
     }
-
-    /* Headers and Titles */
     .header-section {
-      display: flex; 
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid var(--border-color);
-      padding-bottom: 20px;
-      margin-bottom: 20px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;
     }
+    .title { font-size: 18px; font-weight: 700; color: #fff; }
+    .title-separator { color: var(--border); margin: 0 8px; }
 
-    .title { 
-      font-size: 20px; 
-      font-weight: 600; 
-      color: #ffffff;
+    .verdict-badge {
+      font-size: 10px; padding: 4px 12px; border-radius: 4px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
     }
+    .verdict-badge.win { background: rgba(38,166,154,0.15); color: var(--green); }
+    .verdict-badge.loss { background: rgba(239,83,80,0.15); color: var(--red); }
+    .verdict-badge.open { background: rgba(41,98,255,0.15); color: var(--blue); }
+    .verdict-badge.incomplete { background: rgba(247,147,26,0.15); color: var(--amber); }
 
-    .title-separator {
-      color: var(--border-color);
-      margin: 0 10px;
+    .meta-info {
+      background: rgba(255,255,255,0.02); padding: 12px 16px; border-radius: 6px;
+      margin-bottom: 24px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
     }
+    .meta-info span.label { color: var(--muted); margin-right: 4px; }
+    .meta-info span.value { color: var(--blue); font-weight: 600; margin-right: 14px; }
 
-    /* Verdict Badges */
-    .verdict-badge { 
-      font-size: 12px; 
-      padding: 6px 12px; 
-      border-radius: 20px;
-      font-weight: bold; 
-      text-transform: uppercase; 
-      letter-spacing: 1px;
+    h2.section-title {
+      color: var(--text); font-weight: 600; font-size: 14px;
+      margin-top: 24px; margin-bottom: 12px;
+      border-bottom: 1px solid var(--border); padding-bottom: 4px;
+      text-transform: uppercase; letter-spacing: 0.05em;
     }
+    .list-item { margin-bottom: 10px; padding-left: 18px; position: relative; }
+    .list-item::before { content: "\2022"; color: var(--blue); position: absolute; left: 0; }
+    .list-item .tag-name { color: var(--blue); font-weight: 600; }
+    .list-item .description { color: var(--text); }
+    .list-item .sub-facts { color: var(--muted); font-size: 12px; margin-top: 2px; display: block; }
 
-    .verdict-badge.win { background-color: var(--accent-green); color: #ffffff; }
-    .verdict-badge.loss { background-color: var(--accent-red); color: #ffffff; }
-    .verdict-badge.open { background-color: var(--accent-blue); color: #ffffff; }
-    .verdict-badge.incomplete { background-color: var(--accent-yellow); color: #000000; }
-
-    /* Meta Info (Entry, Stop, TP) */
-    .meta-info { 
-      background-color: rgba(255, 255, 255, 0.03);
-      padding: 15px 20px;
-      border-radius: 8px;
-      margin-bottom: 30px;
-      font-family: monospace;
-      font-size: 14px;
+    .feature-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+      background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px;
+      border: 1px solid var(--border);
     }
+    .feature-item .label { color: var(--muted); font-family: ui-monospace, monospace; font-size: 12px; }
+    .feature-item .value { color: var(--text); font-weight: 600; font-size: 12px; }
 
-    .meta-info span.label { color: var(--text-muted); margin-right: 5px; }
-    .meta-info span.value { color: var(--accent-blue); font-weight: bold; margin-right: 15px; }
+    .text-positive { color: var(--green); font-weight: 700; }
+    .text-negative { color: var(--red); font-weight: 700; }
 
-    /* Section Headings */
-    h2.section-title { 
-      color: var(--text-main); 
-      font-weight: 600; 
-      font-size: 16px;
-      margin-top: 30px; 
-      margin-bottom: 15px; 
-      border-bottom: 1px dashed var(--border-color);
-      padding-bottom: 5px;
-    }
-
-    /* List Items */
-    .list-item { 
-      margin-bottom: 12px; 
-      padding-left: 20px;
-      position: relative;
-    }
-
-    .list-item::before { 
-      content: "•"; 
-      color: var(--accent-blue); 
-      position: absolute; 
-      left: 0; 
-    }
-
-    .list-item .tag-name { color: var(--accent-blue); font-weight: bold; }
-    .list-item .description { color: var(--text-main); }
-    .list-item .sub-facts { color: var(--text-muted); font-size: 13px; margin-top: 4px; display: block; }
-
-    /* Grid for Features */
-    .feature-grid { 
-      display: grid; 
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      background-color: rgba(255, 255, 255, 0.02);
-      padding: 15px;
-      border-radius: 8px;
-      border: 1px solid var(--border-color);
-    }
-
-    .feature-item .label { color: var(--text-muted); font-family: monospace;}
-    .feature-item .value { color: var(--text-main); font-weight: bold; }
-
-    /* Outcome text colors */
-    .text-positive { color: var(--accent-green); font-weight: bold; }
-    .text-negative { color: var(--accent-red); font-weight: bold; }
-
-    /* Warning Box */
     .warning-box {
-      margin-top: 20px; 
-      padding: 15px;
-      background-color: rgba(248, 81, 73, 0.1); 
-      border-left: 4px solid var(--accent-red);
-      color: var(--accent-red); 
-      border-radius: 4px;
-      font-size: 14px;
+      margin-top: 16px; padding: 12px;
+      background: rgba(239,83,80,0.08); border-left: 3px solid var(--red);
+      color: var(--red); border-radius: 0 4px 4px 0; font-size: 13px;
     }
-
-    /* Dropdown for Raw Data */
-    details { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border-color); }
-    summary { cursor: pointer; color: var(--text-muted); font-size: 14px; user-select: none; }
-    summary:hover { color: var(--text-main); }
-    
-    .raw-data-grid { 
-      display: grid; 
-      grid-template-columns: 1fr 1fr 1fr; 
-      gap: 8px; 
-      font-size: 12px; 
-      margin-top: 15px; 
-      font-family: monospace;
+    details { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--border); }
+    summary { cursor: pointer; color: var(--muted); font-size: 13px; user-select: none; }
+    summary:hover { color: var(--text); }
+    .raw-data-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;
+      font-size: 11px; margin-top: 12px; font-family: ui-monospace, monospace;
     }
-    .raw-data-grid .name { color: var(--text-muted); }
-    .raw-data-grid .val { color: var(--accent-blue); }
-
-    /* Footer */
-    .footer {
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 12px;
-      margin-top: 30px;
-    }
+    .raw-data-grid .name { color: var(--muted); }
+    .raw-data-grid .val { color: var(--blue); }
+    .footer { text-align: center; color: var(--muted); font-size: 11px; margin-top: 24px; padding-bottom: 24px; }
   </style>
 </head>
 <body>
-  <a class="back" href="/">&larr; Back to Dashboard</a>
+  {% set active_page = 'trades' %}
+  {% include "_nav.html" %}
+  <a class="back" href="javascript:history.back()">&larr; Back</a>
 
   <div class="report-card">
     

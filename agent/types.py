@@ -174,6 +174,12 @@ class Setup:
     features: dict[str, float] = field(default_factory=dict)
     ml_score: float | None = None
 
+    # Optional tag identifying which strategy in the regime-aware
+    # router (see `agent.strategy`) produced this setup. None for
+    # legacy setups that pre-date the router. Kept Optional so the
+    # existing rule engine and journal code don't have to set it.
+    strategy_name: str | None = None
+
     @property
     def stop_pips(self) -> float:
         return abs(self.entry - self.stop) * 10000

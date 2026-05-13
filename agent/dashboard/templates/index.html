@@ -3,152 +3,404 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>EURUSD AI Agent</title>
+  <title>EURUSD Trading Dashboard</title>
   <style>
     :root {
-      --bg: #0e1117;
-      --panel: #161b22;
-      --panel-2: #1c2129;
-      --border: #2a3038;
-      --text: #d6dde6;
-      --muted: #8a939e;
-      --green: #2ea043;
-      --red: #cf222e;
-      --blue: #1f6feb;
-      --amber: #d29922;
+      --bg: #131722;
+      --panel: #1e222d;
+      --panel-2: #262b3d;
+      --border: #2a2e39;
+      --text: #d1d4dc;
+      --muted: #787b86;
+      --green: #26a69a;
+      --green-dim: rgba(38,166,154,0.12);
+      --red: #ef5350;
+      --red-dim: rgba(239,83,80,0.12);
+      --blue: #2962ff;
+      --blue-dim: rgba(41,98,255,0.12);
+      --amber: #f7931a;
+      --amber-dim: rgba(247,147,26,0.12);
     }
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-           background: var(--bg); color: var(--text); }
-    header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex;
-             align-items: center; justify-content: space-between; background: var(--panel); }
-    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
-    .pill { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px;
-            text-transform: uppercase; letter-spacing: 0.05em; }
-    .pill.live { background: var(--red); }
-    .pill.paper { background: var(--blue); }
-    .pill.backtest { background: var(--amber); color: #000; }
-    main { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 16px 24px; }
-    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
-    .card h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase;
-               letter-spacing: 0.06em; color: var(--muted); }
-    .stat { font-size: 28px; font-weight: 600; }
-    .stat.green { color: var(--green); }
-    .stat.red { color: var(--red); }
-    .progress { height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; margin-top: 12px; }
-    .progress > div { height: 100%; background: var(--green); transition: width 0.3s; }
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
-    th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px;
-         letter-spacing: 0.05em; }
-    .pnl-pos { color: var(--green); }
-    .pnl-neg { color: var(--red); }
-    .full { grid-column: 1 / -1; }
-    button { background: var(--red); color: white; border: 0; padding: 8px 16px; border-radius: 4px;
-             font-size: 13px; cursor: pointer; }
-    button.resume { background: var(--green); }
-    .kill-banner { background: var(--red); color: white; padding: 12px 24px; text-align: center;
-                   font-weight: 600; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text);
+    }
+
+    .dashboard { max-width: 1280px; margin: 0 auto; padding: 20px 24px 40px; }
+
+    /* Hero Header */
+    .hero {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px; margin-bottom: 16px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    }
+    .hero-left h1 {
+      font-size: 20px; font-weight: 700; color: #fff;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .hero-left .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; }
+    .hero-price {
+      text-align: right;
+    }
+    .hero-price .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .hero-price .value { font-size: 28px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+
+    /* Goal Progress */
+    .goal-bar {
+      padding: 16px 24px; margin-bottom: 16px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    }
+    .goal-header {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
+    }
+    .goal-header .title { font-size: 13px; font-weight: 600; color: var(--text); }
+    .goal-header .pct { font-size: 13px; font-weight: 700; color: var(--green); }
+    .goal-track {
+      height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden;
+      position: relative;
+    }
+    .goal-fill {
+      height: 100%; border-radius: 4px; transition: width 0.6s ease;
+      background: linear-gradient(90deg, var(--blue), var(--green));
+    }
+    .goal-labels {
+      display: flex; justify-content: space-between; margin-top: 6px;
+      font-size: 11px; color: var(--muted);
+    }
+
+    /* KPI Row */
+    .kpi-row {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;
+    }
+    .kpi {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 16px 18px;
+    }
+    .kpi .label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    .kpi .value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .kpi .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .kpi .value.green { color: var(--green); }
+    .kpi .value.red { color: var(--red); }
+    .kpi .value.blue { color: var(--blue); }
+    .kpi .value.white { color: #fff; }
+
+    /* Two-column layout */
+    .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    @media (max-width: 900px) { .columns { grid-template-columns: 1fr; } .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+
+    /* Section Card */
+    .section-card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      overflow: hidden;
+    }
+    .section-card .header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+    }
+    .section-card .header h2 {
+      font-size: 13px; font-weight: 600; color: var(--text);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-card .header .badge-count {
+      padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+      background: var(--blue-dim); color: var(--blue);
+    }
+    .section-card .body { padding: 14px 18px; }
+
+    /* Stats Mini Grid */
+    .stats-mini {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px;
+    }
+    .stat-mini { text-align: center; }
+    .stat-mini .val { font-size: 18px; font-weight: 700; }
+    .stat-mini .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* Trade List */
+    .trade-list { list-style: none; }
+    .trade-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid rgba(42,46,57,0.5);
+      font-size: 12px; transition: background 0.1s;
+    }
+    .trade-item:last-child { border-bottom: none; }
+    .trade-item:hover { background: rgba(42,46,57,0.3); margin: 0 -18px; padding: 8px 18px; }
+    .trade-item .left { display: flex; align-items: center; gap: 8px; }
+    .trade-item .dir-badge {
+      padding: 2px 8px; border-radius: 4px; font-size: 10px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .dir-badge.long { background: var(--green-dim); color: var(--green); }
+    .dir-badge.short { background: var(--red-dim); color: var(--red); }
+    .trade-item .date { color: var(--muted); }
+    .trade-item .entry { color: var(--text); font-variant-numeric: tabular-nums; }
+    .trade-item .pnl { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .trade-item .pnl.pos { color: var(--green); }
+    .trade-item .pnl.neg { color: var(--red); }
+
+    /* Highlight Cards (Best/Worst) */
+    .highlights {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px;
+    }
+    .highlight {
+      padding: 10px 12px; border-radius: 6px; font-size: 12px;
+    }
+    .highlight.best { background: var(--green-dim); border: 1px solid rgba(38,166,154,0.2); }
+    .highlight.worst { background: var(--red-dim); border: 1px solid rgba(239,83,80,0.2); }
+    .highlight .hl-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .highlight.best .hl-label { color: var(--green); }
+    .highlight.worst .hl-label { color: var(--red); }
+    .highlight .hl-value { font-size: 16px; font-weight: 700; }
+    .highlight.best .hl-value { color: var(--green); }
+    .highlight.worst .hl-value { color: var(--red); }
+    .highlight .hl-detail { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* Roadmap */
+    .roadmap {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 20px 24px;
+    }
+    .roadmap h2 {
+      font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .roadmap-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    .roadmap-item {
+      padding: 14px 16px; border-radius: 6px;
+      background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+    }
+    .roadmap-item .ri-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    .roadmap-item .ri-value { font-size: 18px; font-weight: 700; color: #fff; }
+    .roadmap-item .ri-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    /* Kill Banner */
+    .kill-banner {
+      background: var(--red); color: #fff; padding: 10px 24px;
+      text-align: center; font-weight: 600; font-size: 13px;
+    }
+
+    /* Kill Switch Button */
+    .kill-btn {
+      padding: 6px 14px; border-radius: 4px; border: none;
+      font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+    }
+    .kill-btn.halt { background: rgba(239,83,80,0.15); color: var(--red); border: 1px solid rgba(239,83,80,0.3); }
+    .kill-btn.halt:hover { background: rgba(239,83,80,0.25); }
+    .kill-btn.resume { background: rgba(38,166,154,0.15); color: var(--green); border: 1px solid rgba(38,166,154,0.3); }
+    .kill-btn.resume:hover { background: rgba(38,166,154,0.25); }
   </style>
 </head>
 <body>
   {% if kill_active %}
   <div class="kill-banner">KILL SWITCH ACTIVE — agent halted</div>
   {% endif %}
-  <header>
-    <h1>EURUSD AI Agent <span class="pill {{ mode }}">{{ mode }}</span></h1>
-    <div>
-      {% if kill_active %}
-      <button class="resume" onclick="fetch('/api/resume',{method:'POST'}).then(()=>location.reload())">Resume</button>
-      {% else %}
-      <button onclick="fetch('/api/kill',{method:'POST'}).then(()=>location.reload())">Kill switch</button>
-      {% endif %}
-    </div>
-  </header>
 
-  <main>
-    <div class="card">
-      <h2>Balance</h2>
-      <div class="stat">${{ "%.2f"|format(last_balance) }}</div>
-      <div style="color: var(--muted); font-size: 12px; margin-top: 4px;">
-        Demo gate: ${{ "%.0f"|format(demo_start) }} &rarr; ${{ "%.0f"|format(demo_target) }}
+  {% set active_page = 'overview' %}
+  {% include "_nav.html" %}
+
+  <div class="dashboard">
+    <!-- Hero Header -->
+    <div class="hero">
+      <div class="hero-left">
+        <h1>
+          EURUSD Trading Dashboard
+          {% if kill_active %}
+          <button class="kill-btn resume" onclick="fetch('/api/resume',{method:'POST'}).then(()=>location.reload())">Resume Agent</button>
+          {% else %}
+          <button class="kill-btn halt" onclick="fetch('/api/kill',{method:'POST'}).then(()=>location.reload())">Kill Switch</button>
+          {% endif %}
+        </h1>
+        <div class="subtitle">{{ display_tz }} &middot; {{ symbol }} &middot; Primary: H1</div>
       </div>
-      <div class="progress"><div style="width: {{ progress_pct }}%"></div></div>
-    </div>
-    <div class="card">
-      <h2>Total P&amp;L (real trades only)</h2>
-      <div class="stat {% if total_pnl >= 0 %}green{% else %}red{% endif %}">
-        ${{ "%.2f"|format(total_pnl) }}
-      </div>
-      <div style="color: var(--muted); font-size: 12px; margin-top: 4px;">
-        {{ n_trades }} trades &middot; WR {{ "%.1f"|format(win_rate*100) }}% &middot;
-        PF {{ "%.2f"|format(profit_factor) }}
-        {% if n_force_closed %}<br>
-        <span style="color:var(--amber);">{{ n_force_closed }} force-closed (excluded)</span>
-        {% endif %}
-      </div>
-    </div>
-    <div class="card">
-      <h2>Active Model</h2>
-      <div class="stat">{% if active_model %}{{ active_model.version }}{% else %}rules-only{% endif %}</div>
-      <div style="color: var(--muted); font-size: 12px; margin-top: 4px;">
-        {% if active_model %}{{ active_model.trained_at[:10] }}{% else %}no ML scorer active{% endif %}
+      <div class="hero-price">
+        <div class="label">Current Price</div>
+        <div class="value">{{ "%.5f"|format(current_price) }}</div>
       </div>
     </div>
 
-    <div class="card full">
-      <h2>Open positions <span style="font-weight:400;color:var(--muted);font-size:11px;">— times in {{ display_tz }}</span></h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Direction</th><th>Lot</th><th>Entry</th><th>Stop</th><th>TP</th><th>Open since</th></tr></thead>
-          <tbody>
-            {% if not open_trades %}
-            <tr><td colspan="6" style="color: var(--muted); text-align:center;">no open positions</td></tr>
+    <!-- Goal Progress Bar -->
+    <div class="goal-bar">
+      <div class="goal-header">
+        <span class="title">$100 &rarr; $1,000 Challenge</span>
+        <span class="pct">{{ "%.1f"|format(goal_pct) }}%</span>
+      </div>
+      <div class="goal-track">
+        <div class="goal-fill" style="width: {{ goal_pct }}%"></div>
+      </div>
+      <div class="goal-labels">
+        <span>Start: $100.00</span>
+        <span>Current: ${{ "%.2f"|format(current_balance) }}</span>
+        <span>Goal: $1,000.00</span>
+      </div>
+    </div>
+
+    <!-- KPI Row -->
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="label">Account Balance</div>
+        <div class="value white">${{ "%.2f"|format(current_balance) }}</div>
+        <div class="sub">${{ "%+.2f"|format(current_balance - 100) }} from start</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Total Trades (Combined)</div>
+        <div class="value blue">{{ human_stats.total + agent_stats.total }}</div>
+        <div class="sub">{{ human_stats.total }} mine &middot; {{ agent_stats.total }} agent</div>
+      </div>
+      <div class="kpi">
+        <div class="label">My Win Rate</div>
+        <div class="value {% if human_stats.win_rate >= 50 %}green{% else %}red{% endif %}">{{ "%.1f"|format(human_stats.win_rate) }}%</div>
+        <div class="sub">{{ human_stats.wins }}W / {{ human_stats.losses }}L</div>
+      </div>
+      <div class="kpi">
+        <div class="label">Agent Win Rate</div>
+        <div class="value {% if agent_stats.win_rate >= 50 %}green{% else %}red{% endif %}">{{ "%.1f"|format(agent_stats.win_rate) }}%</div>
+        <div class="sub">{{ agent_stats.wins }}W / {{ agent_stats.losses }}L &middot; PF {{ "%.2f"|format(agent_stats.profit_factor) }}</div>
+      </div>
+    </div>
+
+    <!-- Two-Column Layout: My Trades vs Agent Trades -->
+    <div class="columns">
+      <!-- Left: My Trades -->
+      <div class="section-card">
+        <div class="header">
+          <h2>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            My Trades
+            <span class="badge-count">{{ human_stats.total }}</span>
+          </h2>
+        </div>
+        <div class="body">
+          <div class="stats-mini">
+            <div class="stat-mini">
+              <div class="val" style="color: var(--green);">+{{ "%.1f"|format(human_stats.total_pips_won) }}</div>
+              <div class="lbl">Pips Won</div>
+            </div>
+            <div class="stat-mini">
+              <div class="val" style="color: var(--red);">{{ "%.1f"|format(human_stats.total_pips_lost) }}</div>
+              <div class="lbl">Pips Lost</div>
+            </div>
+            <div class="stat-mini">
+              <div class="val {% if human_stats.net_pips >= 0 %}green{% else %}red{% endif %}">{{ "%+.1f"|format(human_stats.net_pips) }}</div>
+              <div class="lbl">Net Pips</div>
+            </div>
+          </div>
+
+          <ul class="trade-list">
+            {% for t in human_trades_recent %}
+            <li class="trade-item">
+              <div class="left">
+                <span class="dir-badge {{ t.direction }}">{{ t.direction|upper }}</span>
+                <span class="date">{{ t.trade_date }}</span>
+                <span class="entry">{{ "%.5f"|format(t.entry_price) }}</span>
+              </div>
+              <span class="pnl {% if (t.pnl_pips or 0) >= 0 %}pos{% else %}neg{% endif %}">{{ "%+.1f"|format(t.pnl_pips or 0) }}p</span>
+            </li>
+            {% endfor %}
+            {% if not human_trades_recent %}
+            <li class="trade-item" style="justify-content: center; color: var(--muted);">No trades yet</li>
             {% endif %}
-            {% for t in open_trades %}
-            <tr>
-              <td>{{ t.direction }}</td>
-              <td>{{ t.lot_size }}</td>
-              <td>{{ "%.5f"|format(t.entry_price) }}</td>
-              <td>{{ "%.5f"|format(t.stop_price) }}</td>
-              <td>{{ "%.5f"|format(t.tp_price) }}</td>
-              <td>{{ t.entry_time | localtime }}</td>
-            </tr>
+          </ul>
+
+          <div class="highlights">
+            <div class="highlight best">
+              <div class="hl-label">Best Trade</div>
+              <div class="hl-value">{{ "%+.1f"|format(human_stats.best_pips) }} pips</div>
+              <div class="hl-detail">{{ human_stats.best_date }}</div>
+            </div>
+            <div class="highlight worst">
+              <div class="hl-label">Worst Trade</div>
+              <div class="hl-value">{{ "%+.1f"|format(human_stats.worst_pips) }} pips</div>
+              <div class="hl-detail">{{ human_stats.worst_date }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Agent Trades -->
+      <div class="section-card">
+        <div class="header">
+          <h2>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f7931a" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Agent Trades
+            <span class="badge-count" style="background: var(--amber-dim); color: var(--amber);">{{ agent_stats.total }}</span>
+          </h2>
+          <span style="font-size: 10px; color: var(--muted);">0.01 lot &middot; $100 start</span>
+        </div>
+        <div class="body">
+          <div class="stats-mini">
+            <div class="stat-mini">
+              <div class="val" style="color: var(--green);">${{ "%.2f"|format(agent_stats.total_pnl_won) }}</div>
+              <div class="lbl">P&L Won</div>
+            </div>
+            <div class="stat-mini">
+              <div class="val" style="color: var(--red);">${{ "%.2f"|format(agent_stats.total_pnl_lost) }}</div>
+              <div class="lbl">P&L Lost</div>
+            </div>
+            <div class="stat-mini">
+              <div class="val {% if agent_stats.net_pnl >= 0 %}green{% else %}red{% endif %}">${{ "%+.2f"|format(agent_stats.net_pnl) }}</div>
+              <div class="lbl">Net P&L</div>
+            </div>
+          </div>
+
+          <ul class="trade-list">
+            {% for t in agent_trades_recent %}
+            <li class="trade-item" {% if t.id %}style="cursor:pointer" onclick="location.href='/trade/{{ t.id }}'"{% endif %}>
+              <div class="left">
+                <span class="dir-badge {{ t.direction }}">{{ t.direction|upper }}</span>
+                <span class="date">{{ t.entry_time | localtime_short }}</span>
+                <span class="entry">{{ "%.5f"|format(t.entry_price) }}</span>
+              </div>
+              <span class="pnl {% if (t.pnl or 0) >= 0 %}pos{% else %}neg{% endif %}">${{ "%+.2f"|format(t.pnl or 0) }}</span>
+            </li>
             {% endfor %}
-          </tbody>
-        </table>
+            {% if not agent_trades_recent %}
+            <li class="trade-item" style="justify-content: center; color: var(--muted);">No backtest trades yet</li>
+            {% endif %}
+          </ul>
+
+          <div class="highlights">
+            <div class="highlight best">
+              <div class="hl-label">Best Trade</div>
+              <div class="hl-value">${{ "%+.2f"|format(agent_stats.best_pnl) }}</div>
+              <div class="hl-detail">{{ "%+.1f"|format(agent_stats.best_pips) }} pips</div>
+            </div>
+            <div class="highlight worst">
+              <div class="hl-label">Worst Trade</div>
+              <div class="hl-value">${{ "%+.2f"|format(agent_stats.worst_pnl) }}</div>
+              <div class="hl-detail">{{ "%+.1f"|format(agent_stats.worst_pips) }} pips</div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="card full">
-      <h2>Recent closed trades (50)
-        <span style="font-weight:400;color:var(--muted);font-size:11px;">
-          — times in <strong>{{ display_tz }}</strong> &middot; click any row for full reasoning
-        </span>
+    <!-- Roadmap -->
+    <div class="roadmap">
+      <h2>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        $100 to $1,000 Roadmap
       </h2>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>#</th><th>Exit time ({{ display_tz }})</th><th>TF</th><th>Dir</th><th>Lot</th><th>Entry</th><th>Exit</th><th>Reason</th><th>P&amp;L pips</th><th>P&amp;L $</th></tr></thead>
-          <tbody>
-            {% for t in closed_trades %}
-            <tr style="cursor:pointer; {% if t.exit_reason == 'end_of_data' %}opacity:0.55;{% endif %}" onclick="location.href='/trade/{{ t.id }}'">
-              <td style="color:var(--muted)">{{ t.id }}</td>
-              <td>{{ t.exit_time | localtime }}</td>
-              <td style="color:var(--muted)">{{ (t.mode or '')|replace('backtest_','') }}</td>
-              <td>{{ t.direction }}</td>
-              <td>{{ t.lot_size }}</td>
-              <td>{{ "%.5f"|format(t.entry_price) }}</td>
-              <td>{{ "%.5f"|format(t.exit_price) if t.exit_price else "-" }}</td>
-              <td>{% if t.exit_reason == 'end_of_data' %}<span style="color:var(--amber);">end_of_data ⚠</span>{% else %}{{ t.exit_reason }}{% endif %}</td>
-              <td class="{% if (t.pnl_pips or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">{{ "%.1f"|format(t.pnl_pips or 0) }}</td>
-              <td class="{% if (t.pnl or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">{{ "%.2f"|format(t.pnl or 0) }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div class="roadmap-grid">
+        <div class="roadmap-item">
+          <div class="ri-label">Avg Pips / Trade (Mine)</div>
+          <div class="ri-value">{{ "%.1f"|format(human_stats.avg_pips) }}</div>
+          <div class="ri-sub">across {{ human_stats.total }} trades</div>
+        </div>
+        <div class="roadmap-item">
+          <div class="ri-label">At 0.01 Lot / {{ "%.1f"|format(human_stats.avg_pips) }}p Avg</div>
+          <div class="ri-value">{{ trades_to_goal }} trades</div>
+          <div class="ri-sub">~{{ weeks_to_goal }} weeks at current pace</div>
+        </div>
+        <div class="roadmap-item">
+          <div class="ri-label">This Week's Focus</div>
+          <div class="ri-value" style="font-size: 14px; line-height: 1.5;">H1 Setups</div>
+          <div class="ri-sub">Wait for zone + FVG + sweep confluence</div>
+        </div>
       </div>
     </div>
-  </main>
+  </div>
 </body>
 </html>
