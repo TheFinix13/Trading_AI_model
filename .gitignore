@@ -30,6 +30,7 @@ ENV/
 # Editor / OS
 .vscode/
 .idea/
+.cursor/
 *.swp
 .DS_Store
 Thumbs.db
