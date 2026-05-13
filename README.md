@@ -38,14 +38,16 @@ confluence (break of structure, FVG, fib level, trendline, or liquidity wick). T
 system is designed to wait for the kind of multi-signal area that a human top-down
 trader would identify, and only then commit risk.
 
-| Confluence | What it means | Where it's detected |
-|---|---|---|
-| **Zone (S/D)** | Fresh demand/supply zone formed by a strong impulse leg, retested by price | `agent/detectors/zones.py` |
-| **BOS** | Break of recent swing high/low confirming directional bias | `agent/detectors/bos.py` |
-| **FVG** | Fair Value Gap — three-bar imbalance unfilled by price | `agent/detectors/fvg.py` |
-| **Fib** | Price tagging the 38.2 / 50 / 61.8 / 78.6% retracement of the most recent swing | `agent/detectors/fib.py` |
-| **Trendline** | Diagonal line connecting recent swings, currently being tested | `agent/detectors/trendlines.py` |
-| **Liquidity wick** | Long-wick candle that grabbed liquidity beyond a recent swing | `agent/detectors/liquidity.py` |
+
+| Confluence         | What it means                                                                   | Where it's detected             |
+| ------------------ | ------------------------------------------------------------------------------- | ------------------------------- |
+| **Zone (S/D)**     | Fresh demand/supply zone formed by a strong impulse leg, retested by price      | `agent/detectors/zones.py`      |
+| **BOS**            | Break of recent swing high/low confirming directional bias                      | `agent/detectors/bos.py`        |
+| **FVG**            | Fair Value Gap — three-bar imbalance unfilled by price                          | `agent/detectors/fvg.py`        |
+| **Fib**            | Price tagging the 38.2 / 50 / 61.8 / 78.6% retracement of the most recent swing | `agent/detectors/fib.py`        |
+| **Trendline**      | Diagonal line connecting recent swings, currently being tested                  | `agent/detectors/trendlines.py` |
+| **Liquidity wick** | Long-wick candle that grabbed liquidity beyond a recent swing                   | `agent/detectors/liquidity.py`  |
+
 
 On top of this, the system supports **higher-timeframe (HTF) bias filtering** — when
 trading M15/H1 setups, it can require alignment with D1 EMA20 trend direction, exactly
@@ -100,12 +102,13 @@ how top-down analysis works in practice.
 ```
 
 **Two ML paths:**
+
 - **Setup scorer** (`agent/model/scorer.py`) — ranks rule-engine setups by win
-  probability. Trained on labeled (features, win/loss) pairs from a no-scorer
-  backtest. The reliable layer.
+probability. Trained on labeled (features, win/loss) pairs from a no-scorer
+backtest. The reliable layer.
 - **Pattern discoverer** (`agent/model/discoverer.py`) — learns its own patterns
-  from raw bar features (returns, ATR, RSI, EMAs, candle morphology, time-of-day).
-  Independent signal generator. The exploratory layer.
+from raw bar features (returns, ATR, RSI, EMAs, candle morphology, time-of-day).
+Independent signal generator. The exploratory layer.
 
 Both wrap gradient-boosted classifiers with **isotonic probability calibration**
 so predicted probabilities actually match observed win rates.
@@ -169,12 +172,14 @@ uvicorn agent.dashboard.app:app --reload
 
 ## Data sources
 
-| Source | Pros | Cons | When to use |
-|---|---|---|---|
-| **Dukascopy** | Broker-grade, free, deep history (10+ years), all TFs | Slower download | Primary source for backtesting |
-| **MetaTrader5** | Matches what the live agent will see | Windows-only, requires terminal running | Match live execution conditions |
-| **yfinance** | Easy, no setup | 730-day cap on intraday TFs, FX feed is rough | Quick experiments only |
-| **CSV import** | Use any broker's exported history | Manual export step | When MT5 history isn't accessible |
+
+| Source          | Pros                                                  | Cons                                          | When to use                       |
+| --------------- | ----------------------------------------------------- | --------------------------------------------- | --------------------------------- |
+| **Dukascopy**   | Broker-grade, free, deep history (10+ years), all TFs | Slower download                               | Primary source for backtesting    |
+| **MetaTrader5** | Matches what the live agent will see                  | Windows-only, requires terminal running       | Match live execution conditions   |
+| **yfinance**    | Easy, no setup                                        | 730-day cap on intraday TFs, FX feed is rough | Quick experiments only            |
+| **CSV import**  | Use any broker's exported history                     | Manual export step                            | When MT5 history isn't accessible |
+
 
 ```bash
 # Dukascopy (recommended)
@@ -210,9 +215,10 @@ python scripts/run_multitf.py --use-cache-only --tfs M15 H1 H4 D1 --analyze-loss
 ```
 
 Useful flags:
+
 - `--journal` writes every signal/trade/skip to SQLite for inspection
 - `--start-date YYYY-MM-DD` runs only on bars from that date onward — **critical for
-  out-of-sample validation** when a scorer was trained on earlier data
+out-of-sample validation** when a scorer was trained on earlier data
 - `--htf-bias strict` rejects LTF setups against D1 trend
 - `--block-days Wed Fri` blocks specific weekdays the journal flagged as bad
 - `--scorer-path PATH --score-threshold 0.55` plugs in a trained ML scorer
@@ -244,6 +250,7 @@ python scripts/analyze_losses.py --timeframe D1 --use-cache-only
 ```
 
 Categorises every loser into one of:
+
 - `spike_out` — went strongly favorable, then reversed same-bar to hit stop
 - `reversal` — went mildly favorable, then reversed
 - `stopped_on_retrace` — barely moved up, stopped on the way down
@@ -313,6 +320,7 @@ python scripts/iterate.py --tfs H1 --use-cache-only --max-iters 15
 ```
 
 Walk-forward training loop:
+
 1. Train on a sliding window
 2. Evaluate on out-of-sample validation
 3. **Reject champion if calibration check flags overconfidence**
@@ -328,15 +336,17 @@ bots" never check calibration and ship overfit models confidently.
 
 The system has multiple layers preventing it from "trusting itself" wrongly:
 
-| Defense | Where | What it does |
-|---|---|---|
-| Walk-forward validation | `agent/model/walkforward.py`, `iterate.py` | Trained on past, tested on never-seen future |
-| Out-of-sample year holdout | `scripts/check_gate.py` | A whole year set aside, never trained on |
-| Limited model capacity | `discoverer.py`, `scorer.py` | Max depth 4, 300 trees max — can't memorise |
-| Isotonic probability calibration | Both ML modules | Predicted prob → observed win rate alignment |
-| Brier score / ECE check | `agent/analysis/calibration.py` | Refuses to crown overconfident champions |
-| Hard risk caps | `agent/risk/manager.py` | Daily DD halt, max positions, lot caps |
-| Kill switch | dashboard + `agent/risk/manager.py` | Instant stop file at any time |
+
+| Defense                          | Where                                      | What it does                                 |
+| -------------------------------- | ------------------------------------------ | -------------------------------------------- |
+| Walk-forward validation          | `agent/model/walkforward.py`, `iterate.py` | Trained on past, tested on never-seen future |
+| Out-of-sample year holdout       | `scripts/check_gate.py`                    | A whole year set aside, never trained on     |
+| Limited model capacity           | `discoverer.py`, `scorer.py`               | Max depth 4, 300 trees max — can't memorise  |
+| Isotonic probability calibration | Both ML modules                            | Predicted prob → observed win rate alignment |
+| Brier score / ECE check          | `agent/analysis/calibration.py`            | Refuses to crown overconfident champions     |
+| Hard risk caps                   | `agent/risk/manager.py`                    | Daily DD halt, max positions, lot caps       |
+| Kill switch                      | dashboard + `agent/risk/manager.py`        | Instant stop file at any time                |
+
 
 Run `scripts/iterate.py` and watch the `calibration LONG/SHORT` lines — if the
 "hallucinating" flag is true, the model is rejected automatically.
@@ -350,6 +360,7 @@ uvicorn agent.dashboard.app:app --reload
 ```
 
 Routes:
+
 - `/` — overview, balance, recent trades (clickable rows), kill switch
 - `/trade/{id}` — full reasoning narrative
 - `/api/equity`, `/api/trades`, `/api/health` — JSON API
@@ -379,16 +390,16 @@ on Windows. Recommended setup:
 2. Install Exness MT5 + open a demo account.
 3. Clone the project on the VPS and `pip install -e ".[mt5]"`.
 4. Set `.env`:
-   ```
+  ```
    MT5_ACCOUNT=...your demo number...
    MT5_PASSWORD=...
    MT5_SERVER=...your server name from MT5...
    AGENT_MODE=paper
-   ```
+  ```
 5. Run:
-   ```bash
+  ```bash
    python scripts/run_live.py
-   ```
+  ```
 
 The agent will connect, watch the configured TFs, take rule-engine setups (filtered
 by the scorer if loaded), and write everything to the journal for nightly review.
@@ -473,13 +484,13 @@ eurusd-ai-agent/
 ## Risk management
 
 - **Per-trade risk**: 1% of equity by default. Floors to 3% on accounts < $300 so the
-  minimum 0.01 lot is still tradable.
+minimum 0.01 lot is still tradable.
 - **Daily DD halt**: stops trading when balance drops 3% below day's open.
 - **Max positions**: 1 (no martingale, no scaling in).
 - **Lot scaling**: $100 → 0.01 lot. $300 → 0.10 lot cap. $1000+ → 1.0 lot cap.
 - **Max stop**: ATR-aware bound, optional `enforce_live_stop_cap` for tiny accounts.
 - **Kill switch**: any user can write to `kill.txt` (or click in the dashboard) to
-  immediately halt new trades.
+immediately halt new trades.
 
 All of these are configurable in `config/default.yaml`.
 

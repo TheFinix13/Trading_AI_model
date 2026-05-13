@@ -44,6 +44,11 @@ def main():
                         help="probability threshold for taking a setup at backtest time")
     parser.add_argument("--no-calibrate", action="store_true",
                         help="disable isotonic probability calibration (NOT recommended)")
+    parser.add_argument("--start-date", type=str, default=None,
+                        help="restrict bars to this start date (YYYY-MM-DD). "
+                             "Useful for training on recent regimes only.")
+    parser.add_argument("--end-date", type=str, default=None,
+                        help="restrict bars to this end date (YYYY-MM-DD).")
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
@@ -58,6 +63,17 @@ def main():
         sys.exit(1)
     bars = df_to_bars(df, tf)
     log.info("Loaded %d bars %s %s", len(bars), symbol, tf.value)
+
+    if args.start_date or args.end_date:
+        from datetime import datetime, timezone
+        if args.start_date:
+            sd = datetime.fromisoformat(args.start_date).replace(tzinfo=timezone.utc)
+            bars = [b for b in bars if b.time >= sd]
+        if args.end_date:
+            ed = datetime.fromisoformat(args.end_date).replace(tzinfo=timezone.utc)
+            bars = [b for b in bars if b.time < ed]
+        log.info("After date filter: %d bars [%s .. %s]",
+                 len(bars), bars[0].time, bars[-1].time)
 
     cut = int(len(bars) * args.train_frac)
     train_bars = bars[:cut]

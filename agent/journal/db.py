@@ -176,6 +176,35 @@ CREATE TABLE IF NOT EXISTS weekly_logs (
     ingested_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- User-rejected agent annotations (zones, levels, BOS, FVGs). Each row is a
+-- negative training signal: the agent drew something the human deemed wrong.
+CREATE TABLE IF NOT EXISTS agent_corrections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    annotation_type TEXT NOT NULL,
+    annotation_id TEXT,
+    timeframe TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT 'user_rejected',
+    annotation_data_json TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Chart analyses: vision model readings of user-uploaded chart screenshots,
+-- forming a persistent daily trading journal of identified zones/levels.
+CREATE TABLE IF NOT EXISTS chart_analyses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    timeframe TEXT NOT NULL,
+    session TEXT DEFAULT '',
+    screenshot_path TEXT,
+    analysis_json TEXT NOT NULL,
+    extracted_levels TEXT,
+    extracted_zones TEXT,
+    narrative TEXT,
+    trade_idea TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_corrections_type ON agent_corrections(annotation_type);
 CREATE INDEX IF NOT EXISTS idx_signals_time ON signals(detected_at);
 CREATE INDEX IF NOT EXISTS idx_trades_entry ON trades(entry_time);
 CREATE INDEX IF NOT EXISTS idx_equity_time ON equity(timestamp);
@@ -183,6 +212,8 @@ CREATE INDEX IF NOT EXISTS idx_lessons_date ON human_lessons(trade_date);
 CREATE INDEX IF NOT EXISTS idx_disagreements_lesson ON agent_disagreements(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_chat_msg_session ON chat_messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_weekly_logs_start ON weekly_logs(week_start);
+CREATE INDEX IF NOT EXISTS idx_chart_analyses_date ON chart_analyses(date);
+CREATE INDEX IF NOT EXISTS idx_chart_analyses_created ON chart_analyses(created_at);
 """
 
 
@@ -496,6 +527,38 @@ class Journal:
         self._conn.execute("DELETE FROM human_lessons WHERE id=?", (lesson_id,))
         self._maybe_commit()
 
+    # ---------------------------------------------------------- agent corrections
+
+    def log_agent_rejection(
+        self,
+        annotation_type: str,
+        timeframe: str,
+        annotation_id: str | None = None,
+        reason: str = "user_rejected",
+        annotation_data: dict | None = None,
+    ) -> int:
+        """Record a user-rejected agent annotation as a negative training signal."""
+        cur = self._conn.execute(
+            """INSERT INTO agent_corrections
+               (annotation_type, annotation_id, timeframe, reason, annotation_data_json)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                annotation_type,
+                annotation_id,
+                timeframe,
+                reason,
+                json.dumps(annotation_data) if annotation_data else None,
+            ),
+        )
+        self._maybe_commit()
+        return cur.lastrowid
+
+    def all_agent_corrections(self) -> list[dict]:
+        rows = self._conn.execute(
+            "SELECT * FROM agent_corrections ORDER BY created_at DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     # ---------------------------------------------------------- disagreements
 
     def log_disagreement(
@@ -612,5 +675,70 @@ class Journal:
     def list_chat_sessions(self, limit: int = 50) -> list[dict]:
         rows = self._conn.execute(
             "SELECT * FROM chat_sessions ORDER BY last_active DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ---------------------------------------------------------- chart analyses
+
+    def save_chart_analysis(
+        self,
+        date: str,
+        timeframe: str,
+        session: str = "",
+        screenshot_path: str | None = None,
+        analysis_json: str = "{}",
+        extracted_levels: str | None = None,
+        extracted_zones: str | None = None,
+        narrative: str | None = None,
+        trade_idea: str | None = None,
+    ) -> int:
+        """Persist a chart vision analysis. Returns the new row id."""
+        cur = self._conn.execute(
+            """INSERT INTO chart_analyses
+               (date, timeframe, session, screenshot_path, analysis_json,
+                extracted_levels, extracted_zones, narrative, trade_idea)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                date, timeframe, session or "", screenshot_path,
+                analysis_json, extracted_levels, extracted_zones,
+                narrative, trade_idea,
+            ),
+        )
+        self._maybe_commit()
+        return cur.lastrowid
+
+    def get_chart_analyses(
+        self,
+        date: str | None = None,
+        timeframe: str | None = None,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Return chart analyses, optionally filtered by date and/or timeframe."""
+        sql = "SELECT * FROM chart_analyses"
+        clauses, args = [], []
+        if date:
+            clauses.append("date = ?")
+            args.append(date)
+        if timeframe:
+            clauses.append("timeframe = ?")
+            args.append(timeframe)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        args.append(limit)
+        return [dict(r) for r in self._conn.execute(sql, args).fetchall()]
+
+    def get_latest_analyses(self, n: int = 5) -> list[dict]:
+        """Return the most recent N chart analyses."""
+        rows = self._conn.execute(
+            "SELECT * FROM chart_analyses ORDER BY created_at DESC LIMIT ?", (n,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_analyses_for_date(self, date: str) -> list[dict]:
+        """Return all chart analyses for a specific date."""
+        rows = self._conn.execute(
+            "SELECT * FROM chart_analyses WHERE date = ? ORDER BY created_at ASC",
+            (date,),
         ).fetchall()
         return [dict(r) for r in rows]

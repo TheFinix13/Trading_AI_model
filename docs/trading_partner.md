@@ -147,7 +147,7 @@ All idempotent — running `Journal(path)` on an old DB migrates in place.
 * Every model + every byte of journal data lives on your laptop.
 * qwen2.5:14b runs at ~25–30 tok/s on M4 Mac (acceptable for batch teach).
 * qwen2.5:7b runs at ~50–60 tok/s on M4 Mac (interactive feel for chat).
-* Ollama is happy to share GPU with Cursor — peak RSS is ~10 GB combined.
+* Ollama is happy to share GPU with other apps — peak RSS is ~10 GB combined.
 
 ---
 

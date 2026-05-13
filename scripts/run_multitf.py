@@ -54,9 +54,17 @@ def main():
                              "Useful after journal analysis identifies bad days.")
     parser.add_argument("--scorer-path", type=str, default=None,
                         help="path to a trained SetupScorer (joblib). When supplied, only "
-                             "setups with predicted probability >= --score-threshold are taken.")
+                             "setups with predicted probability >= --score-threshold are taken. "
+                             "Same scorer is used for every TF unless --scorer-paths is given.")
+    parser.add_argument("--scorer-paths", nargs="+", default=None,
+                        help="per-TF scorer paths in the form TF=path, e.g. "
+                             "--scorer-paths M15=models/m15.joblib H1=models/h1.joblib. "
+                             "Overrides --scorer-path when present.")
     parser.add_argument("--score-threshold", type=float, default=0.55,
-                        help="min predicted probability to take a setup (used with --scorer-path)")
+                        help="min predicted probability to take a setup (used with --scorer-path). "
+                             "Per-TF thresholds via --score-thresholds TF=value pairs.")
+    parser.add_argument("--score-thresholds", nargs="+", default=None,
+                        help="per-TF score thresholds, e.g. --score-thresholds M15=0.40 H1=0.30")
     parser.add_argument("--start-date", type=str, default=None,
                         help="ISO date (YYYY-MM-DD). Backtest only bars on/after this date. "
                              "Critical for out-of-sample validation: pass the day after your "
@@ -141,10 +149,52 @@ def main():
         journal = Journal(journal_path)
         log.info("Journaling enabled: %s", journal_path)
 
+    # Single global scorer (legacy path)
     scorer = None
     if args.scorer_path:
         scorer = SetupScorer.load(args.scorer_path)
         log.info("Loaded scorer from %s (threshold=%.2f)", args.scorer_path, args.score_threshold)
+
+    # Per-TF scorers (new path). When supplied this overrides --scorer-path.
+    # When neither --scorer-path nor --scorer-paths is supplied, fall back to
+    # the production defaults baked into agent.config.MLConfig (validated by
+    # walk-forward on 2026-05-03).
+    scorers_by_tf: dict[str, SetupScorer] = {}
+    thresholds_by_tf: dict[str, float] = {}
+
+    if args.scorer_paths:
+        for spec in args.scorer_paths:
+            if "=" not in spec:
+                log.warning("--scorer-paths spec %r missing '='; skipping", spec)
+                continue
+            tf_str, path = spec.split("=", 1)
+            scorers_by_tf[tf_str.strip()] = SetupScorer.load(path.strip())
+            log.info("Per-TF scorer for %s loaded from %s", tf_str, path)
+    elif not args.scorer_path:
+        from pathlib import Path as _P
+        for tf_str, path in (cfg.ml.scorer_paths or {}).items():
+            p = _P(path)
+            if not p.is_absolute():
+                p = _P(str(cfg.model_dir).rsplit("/models", 1)[0]) / path \
+                    if "models/" in path else cfg.model_dir / p.name
+            if p.exists():
+                scorers_by_tf[tf_str] = SetupScorer.load(str(p))
+                log.info("Default per-TF scorer for %s loaded from %s", tf_str, p)
+            else:
+                log.warning("Configured scorer for %s not found at %s; %s will run unscored",
+                            tf_str, p, tf_str)
+
+    if args.score_thresholds:
+        for spec in args.score_thresholds:
+            if "=" not in spec:
+                continue
+            tf_str, val = spec.split("=", 1)
+            thresholds_by_tf[tf_str.strip()] = float(val)
+            log.info("Per-TF score threshold for %s: %.2f", tf_str, float(val))
+    elif scorers_by_tf and not args.scorer_path:
+        thresholds_by_tf = dict(cfg.ml.score_thresholds or {})
+        for tf_str, val in thresholds_by_tf.items():
+            log.info("Default per-TF score threshold for %s: %.2f", tf_str, val)
 
     bias_only = set()
     for tf_str in (args.bias_only_tfs or []):
@@ -157,7 +207,9 @@ def main():
 
     result = run_multi_tf(cfg, bars_by_tf, journal=journal,
                            scorer=scorer, score_threshold=args.score_threshold,
-                           bias_only_tfs=bias_only)
+                           bias_only_tfs=bias_only,
+                           scorers_by_tf=scorers_by_tf or None,
+                           thresholds_by_tf=thresholds_by_tf or None)
 
     print()
     print("MULTI-TIMEFRAME BACKTEST")

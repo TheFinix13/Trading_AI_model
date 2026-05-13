@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trade Log — EURUSD AI Agent</title>
+  <style>
+    :root {
+      --bg: #131722;
+      --panel: #1e222d;
+      --panel-2: #262b3d;
+      --border: #2a2e39;
+      --text: #d1d4dc;
+      --muted: #787b86;
+      --green: #26a69a;
+      --green-dim: rgba(38,166,154,0.12);
+      --red: #ef5350;
+      --red-dim: rgba(239,83,80,0.12);
+      --blue: #2962ff;
+      --blue-dim: rgba(41,98,255,0.12);
+      --amber: #f7931a;
+      --amber-dim: rgba(247,147,26,0.12);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text);
+    }
+
+    .page { max-width: 1280px; margin: 0 auto; padding: 20px 24px 40px; }
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .page-header h1 { font-size: 18px; font-weight: 700; color: #fff; }
+    .page-header .sub { font-size: 12px; color: var(--muted); }
+
+    /* Tabs */
+    .tabs {
+      display: flex; gap: 2px; margin-bottom: 16px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 4px; width: fit-content;
+    }
+    .tab-btn {
+      padding: 8px 20px; border-radius: 6px; border: none;
+      background: transparent; color: var(--muted); font-size: 13px;
+      font-weight: 500; cursor: pointer; transition: all 0.15s;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { background: var(--blue); color: #fff; font-weight: 600; }
+    .tab-btn .count {
+      padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600;
+    }
+    .tab-btn.active .count { background: rgba(255,255,255,0.2); }
+    .tab-btn:not(.active) .count { background: rgba(255,255,255,0.06); }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Trade Table */
+    .trade-table-wrap {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      overflow: hidden;
+    }
+    table {
+      width: 100%; border-collapse: collapse; font-size: 12px;
+    }
+    thead { background: rgba(255,255,255,0.02); }
+    th {
+      padding: 10px 14px; text-align: left;
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 10px 14px; border-bottom: 1px solid rgba(42,46,57,0.5);
+      font-variant-numeric: tabular-nums;
+    }
+    tbody tr { transition: background 0.1s; }
+    tbody tr:hover { background: rgba(42,46,57,0.4); }
+    tbody tr:last-child td { border-bottom: none; }
+
+    .dir-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .dir-badge.long { background: var(--green-dim); color: var(--green); }
+    .dir-badge.short { background: var(--red-dim); color: var(--red); }
+
+    .outcome-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+    }
+    .outcome-badge.win { background: var(--green-dim); color: var(--green); }
+    .outcome-badge.loss { background: var(--red-dim); color: var(--red); }
+    .outcome-badge.open { background: var(--blue-dim); color: var(--blue); }
+
+    .tf-badge {
+      display: inline-block; padding: 1px 6px; border-radius: 4px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.03em;
+      background: rgba(255,255,255,0.05); color: var(--muted);
+    }
+
+    .pnl-pos { color: var(--green); font-weight: 600; }
+    .pnl-neg { color: var(--red); font-weight: 600; }
+
+    .clickable { cursor: pointer; }
+
+    /* Expandable row */
+    .expand-row td {
+      padding: 0; border-bottom: 1px solid rgba(42,46,57,0.5);
+    }
+    .expand-content {
+      padding: 12px 20px; background: rgba(0,0,0,0.15);
+      font-size: 12px; line-height: 1.6; color: var(--muted);
+    }
+    .expand-content .field { margin-bottom: 4px; }
+    .expand-content .field .k { color: var(--muted); }
+    .expand-content .field .v { color: var(--text); }
+
+    .empty-state {
+      text-align: center; padding: 48px 24px; color: var(--muted); font-size: 14px;
+    }
+
+    /* Summary strip */
+    .summary-strip {
+      display: flex; gap: 24px; padding: 12px 18px; margin-bottom: 16px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      font-size: 12px;
+    }
+    .summary-strip .s-item { display: flex; align-items: center; gap: 6px; }
+    .summary-strip .s-label { color: var(--muted); }
+    .summary-strip .s-value { font-weight: 600; }
+  </style>
+</head>
+<body>
+  {% set active_page = 'trades' %}
+  {% include "_nav.html" %}
+
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1>Trade Log</h1>
+        <div class="sub">All times in {{ display_tz }}</div>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('my')">
+        My Trades <span class="count">{{ human_trades|length }}</span>
+      </button>
+      <button class="tab-btn" onclick="switchTab('agent')">
+        Agent Trades <span class="count">{{ agent_trades|length }}</span>
+      </button>
+    </div>
+
+    <!-- My Trades Tab -->
+    <div id="tab-my" class="tab-content active">
+      <div class="summary-strip">
+        <div class="s-item">
+          <span class="s-label">Total:</span>
+          <span class="s-value">{{ human_trades|length }}</span>
+        </div>
+        <div class="s-item">
+          <span class="s-label">Wins:</span>
+          <span class="s-value" style="color: var(--green);">{{ human_stats.wins }}</span>
+        </div>
+        <div class="s-item">
+          <span class="s-label">Losses:</span>
+          <span class="s-value" style="color: var(--red);">{{ human_stats.losses }}</span>
+        </div>
+        <div class="s-item">
+          <span class="s-label">Win Rate:</span>
+          <span class="s-value">{{ "%.1f"|format(human_stats.win_rate) }}%</span>
+        </div>
+        <div class="s-item">
+          <span class="s-label">Net Pips:</span>
+          <span class="s-value {% if human_stats.net_pips >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">{{ "%+.1f"|format(human_stats.net_pips) }}</span>
+        </div>
+      </div>
+
+      <div class="trade-table-wrap">
+        {% if not human_trades %}
+        <div class="empty-state">No trades recorded yet. Import your broker CSV or trade journal.</div>
+        {% else %}
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Direction</th>
+              <th>Entry</th>
+              <th>TP</th>
+              <th>P&L (pips)</th>
+              <th>Outcome</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in human_trades %}
+            <tr class="clickable" onclick="toggleExpand(this)">
+              <td>{{ t.trade_date }}</td>
+              <td><span class="dir-badge {{ t.direction }}">{{ t.direction|upper }}</span></td>
+              <td>{{ "%.5f"|format(t.entry_price) }}</td>
+              <td>{% if t.tp_price %}{{ "%.5f"|format(t.tp_price) }}{% else %}—{% endif %}</td>
+              <td class="{% if (t.pnl_pips or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">{{ "%+.1f"|format(t.pnl_pips or 0) }}</td>
+              <td><span class="outcome-badge {{ t.outcome }}">{{ t.outcome|upper }}</span></td>
+              <td style="color: var(--muted);">{{ t.source|replace('ingest_', '') }}</td>
+            </tr>
+            <tr class="expand-row" style="display:none">
+              <td colspan="7">
+                <div class="expand-content">
+                  {% if t.notes %}<div class="field"><span class="k">Notes:</span> <span class="v">{{ t.notes }}</span></div>{% endif %}
+                  {% if t.daily_bias %}<div class="field"><span class="k">Daily Bias:</span> <span class="v">{{ t.daily_bias }}</span></div>{% endif %}
+                  {% if t.emotion %}<div class="field"><span class="k">Emotion:</span> <span class="v">{{ t.emotion }}</span></div>{% endif %}
+                  {% if t.raw_text %}<div class="field"><span class="k">Journal:</span> <span class="v">{{ t.raw_text[:200] }}{% if t.raw_text|length > 200 %}...{% endif %}</span></div>{% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Agent Trades Tab -->
+    <div id="tab-agent" class="tab-content">
+      <div class="summary-strip">
+        <div class="s-item">
+          <span class="s-label">Total:</span>
+          <span class="s-value">{{ agent_trades|length }}</span>
+        </div>
+        <div class="s-item">
+          <span class="s-label">Wins:</span>
+          <span class="s-value" style="color: var(--green);">{{ agent_stats.wins }}</span>
+        </div>
+        <div class="s-item">
+          <span class="s-label">Losses:</span>
+          <span class="s-value" style="color: var(--red);">{{ agent_stats.losses }}</span>
+        </div>
+        <div class="s-item">
+          <span class="s-label">Win Rate:</span>
+          <span class="s-value">{{ "%.1f"|format(agent_stats.win_rate) }}%</span>
+        </div>
+        <div class="s-item">
+          <span class="s-label">Net P&L:</span>
+          <span class="s-value {% if agent_stats.net_pnl >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">${{ "%+.2f"|format(agent_stats.net_pnl) }}</span>
+        </div>
+        <div class="s-item">
+          <span class="s-label">Lot Size:</span>
+          <span class="s-value">0.01</span>
+        </div>
+      </div>
+
+      <div class="trade-table-wrap">
+        {% if not agent_trades %}
+        <div class="empty-state">No agent backtest trades yet.</div>
+        {% else %}
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Date/Time ({{ display_tz }})</th>
+              <th>Direction</th>
+              <th>TF</th>
+              <th>Entry</th>
+              <th>SL</th>
+              <th>TP</th>
+              <th>P&L (pips)</th>
+              <th>P&L ($)</th>
+              <th>Outcome</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in agent_trades %}
+            <tr class="clickable" onclick="location.href='/trade/{{ t.id }}'">
+              <td style="color: var(--muted);">{{ t.id }}</td>
+              <td>{{ t.entry_time | localtime }}</td>
+              <td><span class="dir-badge {{ t.direction }}">{{ t.direction|upper }}</span></td>
+              <td><span class="tf-badge">{{ (t.mode or '')|replace('backtest_','') }}</span></td>
+              <td>{{ "%.5f"|format(t.entry_price) }}</td>
+              <td>{{ "%.5f"|format(t.stop_price) }}</td>
+              <td>{{ "%.5f"|format(t.tp_price) }}</td>
+              <td class="{% if (t.pnl_pips or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">{{ "%+.1f"|format(t.pnl_pips or 0) }}</td>
+              <td class="{% if (t.pnl or 0) >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">${{ "%+.2f"|format(t.pnl or 0) }}</td>
+              <td>
+                {% if t.exit_time %}
+                  <span class="outcome-badge {% if (t.pnl or 0) > 0 %}win{% else %}loss{% endif %}">
+                    {% if (t.pnl or 0) > 0 %}WIN{% else %}LOSS{% endif %}
+                  </span>
+                {% else %}
+                  <span class="outcome-badge open">OPEN</span>
+                {% endif %}
+              </td>
+              <td style="color: var(--muted);">{{ t.exit_reason or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      if (tab === 'my') {
+        document.querySelectorAll('.tab-btn')[0].classList.add('active');
+        document.getElementById('tab-my').classList.add('active');
+      } else {
+        document.querySelectorAll('.tab-btn')[1].classList.add('active');
+        document.getElementById('tab-agent').classList.add('active');
+      }
+    }
+
+    function toggleExpand(row) {
+      const expandRow = row.nextElementSibling;
+      if (expandRow && expandRow.classList.contains('expand-row')) {
+        expandRow.style.display = expandRow.style.display === 'none' ? 'table-row' : 'none';
+      }
+    }
+  </script>
+</body>
+</html>

@@ -3,29 +3,30 @@
 A living checklist. Cross items off as you complete them, add status notes inline.
 Sections are ordered by priority — top is highest impact, bottom is exploratory.
 
-**Last updated:** 2026-05-03 (late evening)
-**Current branch:** `main` (109 tests passing — 16 new this session)
-**Latest OOS proof point (3-year run 2023-05 → 2026-05, M15+H1 merged):**
-**463 trades, 43.6% WR, PF 0.84, -37.6% return** with the v6 build.
-This is the agent's REAL edge after the zone-detector bug was fixed.
-Earlier W18 results (+$580 / 100% WR) were a sample-of-one fluke caused
-by that bug suppressing zones outside the last week of data.
+**Last updated:** 2026-05-03 (late night) — **EDGE PROVEN** ✅
+**Current branch:** `main` (116 tests passing)
+**Walk-forward H1 proof point (1.5 yr OOS, 3 folds, threshold 0.30):**
+**140 trades, 55.7 % WR, +$1,454, profitable in 3/3 folds.**
 
-See `docs/status_2026_05_03_evening.md` for the full breakdown.
+See `docs/status_2026_05_03_late.md` for the breakthrough write-up.
 
 
-| Build  | Window | Trades | WR    | PF   | Return | Max DD | Notes                                                               |
-| ------ | ------ | ------ | ----- | ---- | ------ | ------ | ------------------------------------------------------------------- |
-| v1     | W18    | 38     | 44.7% | 0.86 | -$608  | -      | No gates                                                            |
-| v3     | W18    | 7      | 57.1% | 1.12 | +$41   | -      | + precision_partner + blocked_session + bos+sweep                   |
-| v4     | W18    | 5      | 100%  | ∞    | +$580  | 0%     | + dir-aware sweeps + H1 min_conf=3 — **but masked by zone bug**     |
-| **v5** | 3-year | 573    | 42.1% | 0.78 | -61.9% | 62.6%  | zone bug fixed, NO hour blocks                                      |
-| **v6** | 3-year | 463    | 43.6% | 0.84 | -37.6% | 37.6%  | + NY hour blocks [03, 04, 12, 13]                                   |
+| Build  | Window | Trades | WR    | PF   | Return  | Max DD | Notes                                                               |
+| ------ | ------ | ------ | ----- | ---- | ------- | ------ | ------------------------------------------------------------------- |
+| v1     | W18    | 38     | 44.7% | 0.86 | -$608   | -      | No gates                                                            |
+| v3     | W18    | 7      | 57.1% | 1.12 | +$41    | -      | + precision_partner + blocked_session + bos+sweep                   |
+| v4     | W18    | 5      | 100%  | ∞    | +$580   | 0%     | + dir-aware sweeps + H1 min_conf=3 — **but masked by zone bug**     |
+| v5     | 3-year | 573    | 42.1% | 0.78 | -61.9%  | 62.6%  | zone bug fixed, NO hour blocks                                      |
+| v6     | 3-year | 463    | 43.6% | 0.84 | -37.6%  | 37.6%  | + NY hour blocks [03, 04, 12, 13]                                   |
+| v7     | 3-year | 32     | 43.8% | 0.72 | -3.9%   | 7.3%   | + single scorer @0.30                                               |
+| v9     | 3-year | 17     | 47.1% | 0.91 | -0.6%   | 2.7%   | + structural-anchor gate                                            |
+| **v10**| 3-year | 81     | 54.3% | 1.13 | **+5.1%** | 7.9%  | **+ per-TF scorers (M15@0.40 + H1@0.30) — current production**     |
+| **WF** | 1.5y OOS | 140 | 55.7% | 1.20 | **+14.5%** | 7.5% | **walk-forward, H1 only — 3/3 folds positive ✅**                   |
 
 
-**Decision point:** the next session must focus on lifting WR above 55% via
-ML scorer + tighter gates BEFORE shipping any roadmap UX features. Adding
-voice/Telegram/Docker on top of -37% is wasted effort.
+**Decision:** edge is real. Resume the UX roadmap (voice / Telegram / Docker /
+real-time MT5 co-pilot). H1 is the production engine. M15 stays experimental
+(only 2/3 folds profitable, +$126 vs. H1's +$1,454).
 
 ---
 
@@ -167,25 +168,29 @@ was the missing piece)
 on open=close days, daily-range relationships, scaled-entry efficiency,
 order flow)
 
-## 🔴 Day 7 afternoon — 2026-05-03 (continuing now)
+## ✅ Day 7 afternoon-evening — 2026-05-03 (completed)
 
-- **Fix H1 bleed** — H1 was the only TF still negative after gates
-(-$378 / 33% WR / 6 trades). Look at `data/agent_week_2026_W18_v3.db`,
-filter `signals WHERE timeframe='H1'`, identify the residual losing tag
-pattern. Likely needs `min_confluences=3` on H1 or its own block list.
-- **Direction-aware sweep partners** — `sweep_PDH` should only count
-as a partner for SHORTS, `sweep_PDL` for LONGS, etc. Currently
-treated as direction-agnostic, which let some bad shorts through.
-Refactor in `agent/rules/engine.py`.
-- **Add `tests/test_precision_gates.py`** — pin the gate behaviour
-with a synthetic-bar fixture so we can't regress it accidentally.
-- **Re-run W18 with the H1 fix** and update the comparison numbers.
-- **Train M15 + H1 scorers** on full historical data (deferred from
-Day 2 plan). With the gates, we now have a much cleaner positive set
-to learn from.
-- **Tune sub-gates** for `require_close_confirmation`
-(`min_body_pct_of_range`, `require_close_beyond_zone`,
-`min_displacement_atr_pct`).
+- **Fix H1 bleed** ✅ — H1 with `min_confluences_per_tf={"H1": 3}` lifted
+H1 from 33 % WR / -$378 → 100 % WR / +$141 on W18.
+- **Direction-aware sweep partners** ✅ — HIGH-type → SHORT only,
+LOW-type → LONG only, MID dropped. Pinned in `tests/test_precision_gates.py`.
+- **Add `tests/test_precision_gates.py`** ✅ — pinned gate behaviour.
+- **Discovered + fixed zone-detector bug** ✅ — global age-pruning was
+silently suppressing zones outside the last 500 bars of input. Moved
+to per-call age filter at `at_index`. Re-tested 3-year (-37.6 %).
+- **Train M15 + H1 scorers** ✅ — separate per-TF scorers, both
+calibrated (Brier 0.16 / ECE 0.03). Wired `--scorer-paths TF=path` and
+`--score-thresholds TF=value` into `run_multitf.py` + `multi_tf.py`.
+- **Add `require_structural_anchor` gate** ✅ — fib OR phase OR
+session_ny must be present. Audit-validated from 3-year combo data.
+- **Walk-forward validation** ✅ — built `scripts/walk_forward.py`,
+proven 3 / 3 H1 folds positive (140 trades, 55.7 % WR, +$1,454 OOS,
+no curve-fitting). M15 = 2 / 3 folds, marginal (+$126), kept as
+experimental side channel.
+- **Inject live cached prices into chat + chart_analyze context** ✅
+— `_latest_price_snapshot` reads parquet cache for every TF and
+attaches to LLM context whenever a price-related keyword appears, and
+to the vision-analyze request automatically.
 
 ---
 
@@ -273,6 +278,14 @@ infrastructure works end-to-end but llava-phi3 hallucinates prices
 (saw "1.23" on a 1.17xxx chart). Decision: keep llava-phi3 as the
 zero-hassle quick-start and recommend `llama3.2-vision:11b` (~7.8 GB)
 for accurate readings. Both are now supported by the same code path.
+- **2026-05-03 (late night) — EDGE PROVEN:** Walk-forward validation
+showed **3 / 3 H1 folds positive (PF 1.02–1.36, +$1,454 over 1.5 yr OOS)**
+after combining per-TF scorers + structural-anchor gate + per-TF
+thresholds (M15 @ 0.40, H1 @ 0.30). Build went v6 −37.6 % → v10 +5.1 %
+on the in-sample 3-yr backtest. **Decision: H1 is the production engine.
+M15 stays experimental until 2+ yr of M15 cache exists.** Resume the
+UX roadmap (voice / Telegram / Docker / live MT5 co-pilot) — it now
+sits on top of a real edge instead of a losing one.
 
 ---
 

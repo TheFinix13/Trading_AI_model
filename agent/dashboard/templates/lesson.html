@@ -5,29 +5,29 @@
   <title>Lesson #{{ lesson.id }} — EURUSD AI Agent</title>
   <style>
     :root {
-      --bg: #0e1117; --panel: #161b22; --panel-2: #1c2129;
-      --border: #2a3038; --text: #d6dde6; --muted: #8a939e;
-      --green: #2ea043; --red: #cf222e; --blue: #1f6feb; --amber: #d29922;
+      --bg: #131722; --panel: #1e222d; --panel-2: #262b3d;
+      --border: #2a2e39; --text: #d1d4dc; --muted: #787b86;
+      --green: #26a69a; --red: #ef5350; --blue: #2962ff; --amber: #f7931a;
     }
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
            background: var(--bg); color: var(--text); }
-    main { padding: 16px 24px; max-width: 920px; margin: 0 auto; }
-    pre.report { background: #000; color: #d6dde6; padding: 16px; border-radius: 8px;
-                 font-family: "SFMono-Regular", Consolas, monospace; font-size: 12.5px;
+    main { padding: 20px 24px; max-width: 920px; margin: 0 auto; }
+    pre.report { background: rgba(0,0,0,0.3); color: var(--text); padding: 16px; border-radius: 6px;
+                 font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
                  line-height: 1.55; white-space: pre-wrap; border: 1px solid var(--border); }
     h1 { margin: 0 0 4px; font-size: 18px; }
     .row { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
-    .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px;
-            background: var(--panel-2); color: var(--muted); }
-    .pill.long { background: rgba(46,160,67,0.2); color: var(--green); }
-    .pill.short { background: rgba(207,34,46,0.2); color: var(--red); }
-    .pill.win { background: rgba(46,160,67,0.2); color: var(--green); }
-    .pill.loss { background: rgba(207,34,46,0.2); color: var(--red); }
-    .pill.partial { background: rgba(210,153,34,0.2); color: var(--amber); }
-    .pill.agree { background: rgba(46,160,67,0.2); color: var(--green); }
-    .pill.disagree { background: rgba(207,34,46,0.2); color: var(--red); }
-    .pill.no_signal { background: var(--panel-2); color: var(--muted); }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px;
+            font-weight: 600; text-transform: uppercase; background: rgba(255,255,255,0.05); color: var(--muted); }
+    .pill.long { background: rgba(38,166,154,0.12); color: var(--green); }
+    .pill.short { background: rgba(239,83,80,0.12); color: var(--red); }
+    .pill.win { background: rgba(38,166,154,0.12); color: var(--green); }
+    .pill.loss { background: rgba(239,83,80,0.12); color: var(--red); }
+    .pill.partial { background: rgba(247,147,26,0.12); color: var(--amber); }
+    .pill.agree { background: rgba(38,166,154,0.12); color: var(--green); }
+    .pill.disagree { background: rgba(239,83,80,0.12); color: var(--red); }
+    .pill.no_signal { background: rgba(255,255,255,0.05); color: var(--muted); }
     .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
             padding: 16px; margin-bottom: 16px; }
     h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase;
@@ -36,6 +36,7 @@
   </style>
 </head>
 <body>
+  {% set active_page = 'trades' %}
   {% include "_nav.html" %}
   <main>
     <a href="/lessons">← all lessons</a>
