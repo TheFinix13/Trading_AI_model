@@ -38,9 +38,14 @@ class NoTradeWindow(BaseModel):
 class SessionConfig(BaseModel):
     timezone: str = "Europe/London"
     no_trade_windows: list[NoTradeWindow] = []
-    # Whole days to block from trading. Names are case-insensitive (e.g. "Wed",
-    # "wednesday"). The journal showed Wednesday is consistently unprofitable on
-    # EURUSD so it's a sensible default to add when going live with limited capital.
+    # Days with statistically poor autonomous performance. NOT blocked — the
+    # human partner may still see and take trades on these days. The system
+    # uses these as "caution days": autonomous signals require EXTRA confirmation
+    # (score_threshold += 0.15) rather than being outright rejected.
+    #   * Thursday: 30% WR / -74.4 pips / -$8.14 (2024-2026 OOS)
+    #   * Friday:   22% WR / -82.8 pips / -$8.91 (2025-2026 OOS)
+    caution_days: list[str] = ["Thu", "Fri"]
+    # Hard-blocked days (holidays, etc). Empty by default — human can always trade.
     no_trade_days: list[str] = []
 
 
@@ -56,6 +61,12 @@ class DetectorsConfig(BaseModel):
 
 class RulesConfig(BaseModel):
     min_confluences: int = 1
+    # Cap: setups with MORE than this many confluences are rejected. The v8 OOS
+    # backtest showed 5+ confluences were losers on the 2024-2026 window
+    # (31.6% WR / -97 pips), but 6-confl trades were winners in 2025-2026
+    # (66.7% WR / +44 pips). Evidence is mixed; set to 0 to disable.
+    # When combined with day blocking, the cap over-filters.
+    max_confluences: int = 0
     required_factors: list[str] = ["zone"]
     optional_factors: list[str] = ["bos", "fib", "trendline", "liquidity_wick", "htf_alignment"]
     rr_min: float = 1.5
@@ -177,19 +188,107 @@ class MLConfig(BaseModel):
     walkforward_test_months: int = 3
     refit_frequency: str = "weekly"
 
-    # Production scorer paths (per-TF). Walk-forward validation on 2026-05-03
-    # showed H1 wins 3/3 OOS folds at threshold 0.30 (avg PF 1.20, +5%/6mo).
-    # M15 is marginal (2/3 folds, +$126 vs H1's +$1,454) so it's optional.
-    # When `scorer_paths` is set and the file exists for a TF, that TF's
-    # backtester / live-runner will load it automatically.
+    # Production scorer paths (per-TF).
     scorer_paths: dict[str, str] = {
-        "H1": "models/scorer_EURUSD_H1_v7.joblib",
-        "M15": "models/scorer_EURUSD_M15_v7.joblib",
+        "H1": "models/scorer_EURUSD_H1_v8.joblib",
+        "M15": "models/scorer_EURUSD_M15_v8.joblib",
     }
     score_thresholds: dict[str, float] = {
-        "H1": 0.30,
-        "M15": 0.40,
+        "H1": 0.35,
+        "M15": 0.55,  # Raised: M15 is dormant (28.6% WR OOS) — only fires on very high conviction
     }
+
+    # Timeframe activation tiers. Controls how aggressively each TF trades.
+    #   "active"  — normal operation, standard thresholds apply
+    #   "dormant" — still detects signals but requires elevated score + extra confluence
+    #              (score_threshold += caution_score_boost, min_confluences += 1)
+    #   "bias_only" — never executes, only provides directional context to lower TFs
+    #   "disabled" — completely off
+    # The human partner can always override dormant → active for a specific trade.
+    timeframe_tiers: dict[str, str] = {
+        "H1": "active",       # Proven edge: 62.5% WR, +$6.03 OOS
+        "M15": "dormant",     # Poor OOS (28.6% WR) but may recover — keep learning
+        "H4": "bias_only",    # Used for HTF zone/trend context, not entries
+        "D1": "bias_only",    # Daily bias and zone mapping
+        "M5": "disabled",     # No model trained, too noisy for current gates
+    }
+
+    # Extra score boost required on caution days (Thu/Fri) and dormant TFs.
+    # Effectively raises the bar: "you can trade, but only if it's exceptional."
+    caution_score_boost: float = 0.15
+
+
+class RankingConfig(BaseModel):
+    """Thresholds for the Strategy Quality Score (SQS) and ranking subsystems.
+
+    All scoring bands are tunable here so backtests can sweep parameters
+    without touching scoring logic. Defaults are calibrated to EURUSD
+    intraday setups (M5-H4).
+    """
+
+    # SQS component weights (max points per component)
+    rr_max_pts: float = 30.0
+    rr_cap_multiple: float = 3.0
+    exec_max_pts: float = 25.0
+    zone_max_pts: float = 20.0
+    timing_max_pts: float = 15.0
+    regime_max_pts: float = 10.0
+
+    # Execution efficiency: hold_time ratio thresholds
+    exec_fast_pct: float = 0.25
+    exec_normal_pct: float = 0.50
+    exec_slow_pct: float = 1.0
+    exec_very_slow_pct: float = 2.0
+
+    # Zone respect: MAE / stop thresholds
+    zone_excellent_pct: float = 0.20
+    zone_good_pct: float = 0.40
+    zone_ok_pct: float = 0.60
+    zone_poor_pct: float = 0.80
+
+    # Kill-zone session windows (hour ranges, UTC)
+    london_open: tuple[int, int] = (7, 10)
+    ny_open: tuple[int, int] = (13, 16)
+    london_body: tuple[int, int] = (10, 12)
+    ny_body: tuple[int, int] = (16, 19)
+    asia: tuple[int, int] = (0, 7)
+
+    # Regime-strategy affinity map: strategy_name -> set of preferred regimes
+    regime_affinity: dict[str, list[str]] = {
+        "LiquidityGrabReversal": ["chop", "low_vol"],
+        "FVGRetest": ["trending_up", "trending_down"],
+        "BOSContinuation": ["trending_up", "trending_down"],
+        "FibRetracement": ["trending_up", "trending_down", "chop"],
+        "SDZoneRetest": ["chop", "low_vol"],
+    }
+
+    # Timeframe ranking thresholds
+    tf_min_trades_excellent: int = 30
+    tf_min_trades_good: int = 20
+    tf_min_trades_ok: int = 10
+
+    # Session ranking frequency thresholds (same as TF)
+    session_min_trades_excellent: int = 30
+    session_min_trades_good: int = 20
+    session_min_trades_ok: int = 10
+
+
+class LiveTradingConfig(BaseModel):
+    """Configuration for the live/paper trading loop (agent/live/)."""
+    broker_type: str = "paper"  # "mt5", "exness", "paper"
+    check_interval_seconds: int = 60
+    risk_per_trade_pct: float = 1.0
+    max_daily_dd_pct: float = 3.0
+    max_open_positions: int = 1
+    lot_size_override: float | None = None
+    telegram_enabled: bool = True
+    score_threshold: float = 0.55
+    move_be_at_r: float = 1.0
+    trailing_stop_enabled: bool = False
+    trailing_stop_distance_pips: float = 20.0
+    paper_initial_balance: float = 10000.0
+    max_reconnect_attempts: int = 5
+    reconnect_delay_seconds: int = 10
 
 
 class BacktestConfig(BaseModel):
@@ -239,9 +338,11 @@ class Config(BaseModel):
     detectors: DetectorsConfig = DetectorsConfig()
     rules: RulesConfig = RulesConfig()
     ml: MLConfig = MLConfig()
+    live: LiveTradingConfig = LiveTradingConfig()
     backtest: BacktestConfig = BacktestConfig()
     demo: DemoConfig = DemoConfig()
     backtest_gate: BacktestGateConfig = BacktestGateConfig()
+    ranking: RankingConfig = RankingConfig()
 
     mode: str = "backtest"
     # IANA timezone name for dashboard display. Bars/journal stay in UTC; this is

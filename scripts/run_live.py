@@ -1,147 +1,167 @@
-"""Live/paper agent loop. Connects to MT5, polls bars, evaluates rules+ML, places orders.
+"""Start the live trading agent.
 
-Modes (set in .env):
-  paper - connects to a demo account
-  live  - connects to a real account
-Both use the same code path; only the MT5 account differs.
+Usage:
+    # Paper trading (default, no broker needed, works on macOS):
+    python scripts/run_live.py --broker paper --timeframe H1
 
-Run with:
-  AGENT_MODE=paper python scripts/run_live.py
+    # MT5 demo (requires Windows or Docker bridge):
+    python scripts/run_live.py --broker mt5 --timeframe H1 --lot 0.01
+
+    # Exness demo via MT5:
+    python scripts/run_live.py --broker exness --timeframe H1
+
+    # Multiple timeframes:
+    python scripts/run_live.py --broker paper --timeframe H1 --timeframe M15
+
+Environment variables (from .env):
+    MT5_LOGIN, MT5_PASSWORD, MT5_SERVER, MT5_PATH
+    TG_BOT_TOKEN, TG_CHAT_ID
+    AGENT_MODE (paper|live)
 """
 from __future__ import annotations
 
+import argparse
+import asyncio
 import logging
-import time
-from datetime import datetime, timedelta, timezone
+import signal
+import sys
 from pathlib import Path
 
-from agent.config import load_config
-from agent.data.loader import BarLoader, df_to_bars
-from agent.execution.executor import make_executor
-from agent.features.extractor import extract_features
-from agent.journal.db import Journal
-from agent.model.scorer import SetupScorer
-from agent.risk.manager import RiskDecision, RiskManager
-from agent.rules.engine import RuleEngine
-from agent.types import Timeframe
-from agent.utils import kill_switch_active
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+from agent.live.signal_loop import run_signal_loop
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 log = logging.getLogger("run_live")
 
 
-def load_active_scorer(cfg, journal: Journal) -> SetupScorer | None:
-    active = journal.active_model()
-    if not active:
-        log.info("No active model registered; running rules-only")
-        return None
-    path = Path(active["file_path"])
-    if not path.exists():
-        log.warning("Active model file missing: %s", path)
-        return None
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="EURUSD AI Agent — Live Trading Loop",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=__doc__,
+    )
+    parser.add_argument(
+        "--broker", "-b",
+        choices=["paper", "mt5", "exness"],
+        default="paper",
+        help="Broker connection type (default: paper)",
+    )
+    parser.add_argument(
+        "--timeframe", "-t",
+        action="append",
+        default=None,
+        help="Timeframe(s) to monitor (e.g. H1, M15). Can specify multiple.",
+    )
+    parser.add_argument(
+        "--interval", "-i",
+        type=int,
+        default=None,
+        help="Check interval in seconds (default: auto based on timeframe)",
+    )
+    parser.add_argument(
+        "--lot",
+        type=float,
+        default=None,
+        help="Fixed lot size override (bypasses risk calculator)",
+    )
+    parser.add_argument(
+        "--balance",
+        type=float,
+        default=None,
+        help="Paper broker starting balance (default: 10000)",
+    )
+    parser.add_argument(
+        "--score-threshold",
+        type=float,
+        default=None,
+        help="ML score threshold for trade entry (default: from config)",
+    )
+    parser.add_argument(
+        "--no-telegram",
+        action="store_true",
+        help="Disable Telegram notifications",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Path to config YAML file",
+    )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable debug logging",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    log.info("=" * 60)
+    log.info("EURUSD AI Agent — Live Trading")
+    log.info("=" * 60)
+    log.info("Broker: %s", args.broker)
+    log.info("Timeframes: %s", args.timeframe or ["H1 (default)"])
+
+    if args.broker in ("mt5", "exness"):
+        import os
+        if not os.getenv("MT5_LOGIN"):
+            log.error(
+                "MT5_LOGIN not set. For %s broker, you need:\n"
+                "  MT5_LOGIN, MT5_PASSWORD, MT5_SERVER in your .env file.\n"
+                "  See docs/exness_setup.md for details.\n"
+                "  Use --broker paper to test without a real account.",
+                args.broker,
+            )
+            sys.exit(1)
+
+    # Build overrides dict
+    overrides: dict = {}
+    if args.interval is not None:
+        overrides["check_interval_seconds"] = args.interval
+    if args.lot is not None:
+        overrides["lot_size_override"] = args.lot
+    if args.balance is not None:
+        overrides["paper_initial_balance"] = args.balance
+    if args.score_threshold is not None:
+        overrides["score_threshold"] = args.score_threshold
+    if args.no_telegram:
+        overrides["telegram_enabled"] = False
+
+    # Set up graceful shutdown
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    def _shutdown(sig: signal.Signals) -> None:
+        log.info("Received %s, shutting down...", sig.name)
+        for task in asyncio.all_tasks(loop):
+            task.cancel()
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _shutdown, sig)
+
     try:
-        scorer = SetupScorer.load(path)
-        log.info("Loaded active scorer version=%s", active["version"])
-        return scorer
-    except Exception as e:
-        log.warning("Failed to load scorer: %s", e)
-        return None
-
-
-def main():
-    cfg = load_config()
-    if cfg.mode not in ("paper", "live"):
-        log.error("AGENT_MODE must be 'paper' or 'live' for this script (got %s)", cfg.mode)
-        return
-
-    if cfg.mode == "live":
-        log.warning("=" * 60)
-        log.warning("LIVE MODE - REAL MONEY. Verify guardrails before continuing.")
-        log.warning("Daily DD halt: %.1f%%", cfg.risk.daily_dd_halt_pct * 100)
-        log.warning("Lot hard cap (under $300): %.2f", cfg.risk.lot_hard_cap_under_300)
-        log.warning("=" * 60)
-
-    journal = Journal(cfg.journal_db)
-    loader = BarLoader(cache_root=cfg.data_dir)
-    engine = RuleEngine(cfg)
-    risk = RiskManager(cfg)
-    executor = make_executor(cfg.mode)
-    scorer = load_active_scorer(cfg, journal)
-
-    tf = Timeframe(cfg.primary_timeframe)
-    poll_seconds = max(60, tf.minutes * 60 // 4)  # poll 4x per bar
-    last_processed_bar_time: datetime | None = None
-
-    log.info("Starting %s loop on %s %s, polling every %ds", cfg.mode, cfg.symbol, tf.value, poll_seconds)
-
-    while True:
-        try:
-            if kill_switch_active(cfg.kill_switch_file):
-                log.warning("Kill switch active - sleeping")
-                time.sleep(30)
-                continue
-
-            end = datetime.now(tz=timezone.utc)
-            start = end - timedelta(days=120)
-            df = loader.get(cfg.symbol, tf, start, end, refresh=True)
-            bars = df_to_bars(df, tf)
-            if len(bars) < 100:
-                log.warning("Insufficient bars (%d), waiting", len(bars))
-                time.sleep(poll_seconds)
-                continue
-
-            cur = bars[-2] if len(bars) >= 2 else bars[-1]  # most recently CLOSED bar
-            if last_processed_bar_time == cur.time:
-                time.sleep(poll_seconds)
-                continue
-
-            balance = executor.account_balance() or cfg.demo.start_balance
-            open_pos = executor.open_positions(cfg.symbol)
-            n_open = len(open_pos)
-
-            journal.log_equity(end, balance, balance, n_open, mode=cfg.mode)
-
-            setup = engine.evaluate(bars[:-1], len(bars) - 2)
-            if setup is not None:
-                setup.features = extract_features(setup, bars[:-1], len(bars) - 2)
-                ml_score = None
-                if scorer is not None:
-                    ml_score = scorer(setup.features)
-                    setup.ml_score = ml_score
-                    if ml_score < cfg.ml.prob_threshold:
-                        journal.log_signal(setup, cfg.symbol, "skip_ml", f"score {ml_score:.3f} < {cfg.ml.prob_threshold}", ml_score=ml_score)
-                        last_processed_bar_time = cur.time
-                        time.sleep(poll_seconds)
-                        continue
-
-                decision = risk.evaluate(setup=setup, account_balance=balance, open_positions=n_open, now=end)
-
-                if decision.decision != RiskDecision.APPROVED:
-                    journal.log_signal(setup, cfg.symbol, decision.decision, decision.reason,
-                                       lot_size=decision.lot_size, actual_risk_pct=decision.actual_risk_pct,
-                                       ml_score=ml_score)
-                    log.info("Setup rejected: %s (%s)", decision.decision, decision.reason)
-                else:
-                    sig_id = journal.log_signal(setup, cfg.symbol, decision.decision, "",
-                                                lot_size=decision.lot_size, actual_risk_pct=decision.actual_risk_pct,
-                                                ml_score=ml_score)
-                    log.info("Placing order: dir=%s lot=%s entry=%.5f sl=%.5f tp=%.5f",
-                             setup.direction.value, decision.lot_size, setup.entry, setup.stop, setup.take_profit)
-                    res = executor.place_market_order(setup, decision.lot_size, cfg.symbol)
-                    if not res.accepted:
-                        log.error("Order rejected: %s", res.message)
-                    else:
-                        log.info("Order accepted: ticket=%s fill=%.5f", res.ticket, res.fill_price)
-
-            last_processed_bar_time = cur.time
-            time.sleep(poll_seconds)
-
-        except KeyboardInterrupt:
-            log.info("Interrupted, shutting down")
-            break
-        except Exception as e:
-            log.exception("Loop error: %s", e)
-            time.sleep(60)
+        loop.run_until_complete(
+            run_signal_loop(
+                broker_type=args.broker,
+                timeframes=args.timeframe,
+                config_path=args.config,
+                **overrides,
+            )
+        )
+    except KeyboardInterrupt:
+        log.info("Interrupted")
+    finally:
+        loop.close()
 
 
 if __name__ == "__main__":

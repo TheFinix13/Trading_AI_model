@@ -408,6 +408,10 @@ class RuleEngine:
         if len(confluences) < per_tf_min:
             return None
 
+        max_conf = self.cfg.rules.max_confluences
+        if max_conf > 0 and len(confluences) > max_conf:
+            return None
+
         # Time-of-day filter (NY local). The session-overlap blocklist already
         # handles the worst chop window, but per-hour audits will surface
         # additional weak hours over time.
