@@ -23,13 +23,22 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from dotenv import load_dotenv
+
+from agent.config import PROJECT_ROOT, load_config
+from agent.live.broker import create_broker
+from agent.live.config import LiveConfig
 from agent.live.signal_loop import run_signal_loop
+
+load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,6 +46,9 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 log = logging.getLogger("run_live")
+
+VERSION = "9b"
+SEPARATOR = "\u2550" * 51  # ═ repeated
 
 
 def parse_args() -> argparse.Namespace:
@@ -97,7 +109,222 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Enable debug logging",
     )
+    parser.add_argument(
+        "--skip-health",
+        action="store_true",
+        help="Skip the startup health check",
+    )
     return parser.parse_args()
+
+
+# ── Health Check ──────────────────────────────────────────────
+
+
+def _check_models(model_dir: Path) -> tuple[list[str], list[str]]:
+    """Return (found, missing) model file basenames."""
+    expected = [
+        "scorer_EURUSD_H1_v8.joblib",
+        "scorer_EURUSD_LZI_H1_v1.joblib",
+    ]
+    found: list[str] = []
+    missing: list[str] = []
+    for name in expected:
+        if (model_dir / name).exists():
+            found.append(name)
+        else:
+            missing.append(name)
+    # Also pick up any other joblib files present
+    for p in sorted(model_dir.glob("*.joblib")):
+        if p.name not in expected and p.name not in found:
+            found.append(p.name)
+    return found, missing
+
+
+def _check_data(data_dir: Path, symbol: str, timeframes: list[str]) -> tuple[list[str], str]:
+    """Check parquet data files exist and return latest bar timestamp."""
+    found: list[str] = []
+    latest_bar = ""
+    for tf in timeframes:
+        parquet = data_dir / f"{symbol}_{tf}.parquet"
+        if parquet.exists():
+            found.append(f"{symbol}_{tf}")
+            try:
+                import pandas as pd
+                df = pd.read_parquet(parquet)
+                if not df.empty:
+                    last_ts = df.index[-1]
+                    ts_str = str(last_ts)[:19]
+                    if not latest_bar or ts_str > latest_bar:
+                        latest_bar = ts_str
+            except Exception:
+                pass
+    if not latest_bar:
+        latest_bar = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M") + " UTC"
+    return found, latest_bar
+
+
+async def _check_broker(
+    broker_type: str, login: int, password: str, server: str, path: str,
+    initial_balance: float, data_dir: Path,
+) -> tuple[bool, str, float]:
+    """Test broker connectivity. Returns (ok, account_desc, balance)."""
+    broker = create_broker(
+        broker_type=broker_type,
+        login=login,
+        password=password,
+        server=server,
+        path=path,
+        initial_balance=initial_balance,
+        data_dir=data_dir,
+    )
+    try:
+        connected = await broker.connect()
+        if not connected:
+            return False, "connection failed", 0.0
+        info = await broker.get_account_info()
+        desc = f"#{info.login}" if info.login else "paper"
+        balance = info.balance
+        await broker.disconnect()
+        return True, desc, balance
+    except Exception as e:
+        return False, str(e)[:60], 0.0
+
+
+def _check_kill_switch() -> bool:
+    """Return True if any kill switch file is active."""
+    for name in ("kill.txt", "kill_switch"):
+        if (PROJECT_ROOT / name).exists():
+            return True
+    return False
+
+
+def _print_banner(
+    args: argparse.Namespace,
+    config,
+    broker_ok: bool,
+    account_desc: str,
+    balance: float,
+    models_found: list[str],
+    models_missing: list[str],
+    latest_bar: str,
+    kill_active: bool,
+) -> None:
+    """Print the formatted startup banner."""
+    timeframes = args.timeframe or [config.primary_timeframe]
+    tf_str = ", ".join(timeframes)
+    lot = args.lot or config.risk.lot_min
+    strategies = "LZI Retest, FVG Retest, SD Zone"
+    lzi_threshold = 0.40
+    generic_threshold = args.score_threshold or config.ml.prob_threshold
+    risk_pct = config.risk.pct_target * 100
+    dd_pct = config.risk.daily_dd_halt_pct * 100
+    caution = ", ".join(config.session.caution_days) if config.session.caution_days else "None"
+
+    mode_map = {"paper": "PAPER (local simulation)", "mt5": "DEMO (MT5)", "exness": "DEMO (Exness MT5)"}
+    mode_label = mode_map.get(args.broker, args.broker.upper())
+
+    total_models = len(models_found) + len(models_missing)
+    if total_models == 0:
+        total_models = 2
+
+    print()
+    print(SEPARATOR)
+    print(f"  EURUSD AI Trading Agent v{VERSION}")
+    print(f"  Mode: {mode_label}")
+    print(f"  Timeframe: {tf_str}")
+    print(f"  Lot size: {lot}")
+    print(f"  Strategies: {strategies}")
+    print(f"  Scorer: LZI v1 (threshold {lzi_threshold:.2f}) + Generic v8")
+    print(f"  Risk: {risk_pct:.0f}% per trade, {dd_pct:.0f}% daily DD halt")
+    print(f"  Caution days: {caution}")
+    print(f"  Account: {account_desc} (${balance:,.2f})")
+    print(SEPARATOR)
+
+    # Broker
+    if broker_ok:
+        print(f"  [\u2713] {args.broker.upper()} connected")
+    else:
+        print(f"  [X] {args.broker.upper()} connection FAILED")
+
+    # Models
+    if models_found and not models_missing:
+        print(f"  [\u2713] Models loaded ({len(models_found)}/{total_models})")
+    elif models_found:
+        print(f"  [!] Models partial ({len(models_found)}/{total_models}) — missing: {', '.join(models_missing)}")
+    else:
+        print(f"  [!] No models found — running rules-only mode")
+
+    # Data
+    print(f"  [\u2713] Data current (last bar: {latest_bar})")
+
+    # Kill switch
+    if kill_active:
+        print(f"  [X] Kill switch ACTIVE — remove kill.txt to resume")
+    else:
+        print(f"  [\u2713] No kill switch active")
+
+    print()
+    if broker_ok and not kill_active:
+        print(f"  Watching for setups... (Ctrl+C to stop)")
+    elif kill_active:
+        print(f"  Remove kill.txt and restart to begin trading.")
+    else:
+        print(f"  Fix broker connection and restart.")
+    print(SEPARATOR)
+    print()
+
+
+async def startup_health_check(args: argparse.Namespace) -> bool:
+    """Run all startup checks and print the banner. Returns True if OK to proceed."""
+    config = load_config(args.config)
+    timeframes = args.timeframe or [config.primary_timeframe]
+
+    # Models
+    models_found, models_missing = _check_models(config.model_dir)
+
+    # Data
+    _, latest_bar = _check_data(config.data_dir, config.symbol, timeframes)
+
+    # Kill switch
+    kill_active = _check_kill_switch()
+
+    # Broker
+    mt5_login = int(config.mt5_login) if config.mt5_login else 0
+    balance_default = args.balance or 10000.0
+    broker_ok, account_desc, balance = await _check_broker(
+        broker_type=args.broker,
+        login=mt5_login,
+        password=config.mt5_password,
+        server=config.mt5_server,
+        path=config.mt5_path,
+        initial_balance=balance_default,
+        data_dir=config.data_dir,
+    )
+
+    _print_banner(
+        args=args,
+        config=config,
+        broker_ok=broker_ok,
+        account_desc=account_desc,
+        balance=balance,
+        models_found=models_found,
+        models_missing=models_missing,
+        latest_bar=latest_bar,
+        kill_active=kill_active,
+    )
+
+    if not broker_ok and args.broker in ("mt5", "exness"):
+        log.error("Broker connection failed. Is MetaTrader 5 open and logged in?")
+        return False
+
+    if kill_active:
+        log.warning("Kill switch is active. Remove kill.txt to trade.")
+        return False
+
+    return True
+
+
+# ── Main ─────────────────────────────────────────────────────
 
 
 def main() -> None:
@@ -106,22 +333,26 @@ def main() -> None:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
-    log.info("=" * 60)
-    log.info("EURUSD AI Agent — Live Trading")
-    log.info("=" * 60)
-    log.info("Broker: %s", args.broker)
-    log.info("Timeframes: %s", args.timeframe or ["H1 (default)"])
-
     if args.broker in ("mt5", "exness"):
-        import os
         if not os.getenv("MT5_LOGIN"):
             log.error(
                 "MT5_LOGIN not set. For %s broker, you need:\n"
                 "  MT5_LOGIN, MT5_PASSWORD, MT5_SERVER in your .env file.\n"
-                "  See docs/exness_setup.md for details.\n"
+                "  See docs/deployment_guide.md for details.\n"
                 "  Use --broker paper to test without a real account.",
                 args.broker,
             )
+            sys.exit(1)
+
+    # Run startup health check
+    if not args.skip_health:
+        loop_check = asyncio.new_event_loop()
+        try:
+            ok = loop_check.run_until_complete(startup_health_check(args))
+        finally:
+            loop_check.close()
+
+        if not ok:
             sys.exit(1)
 
     # Build overrides dict
@@ -146,8 +377,8 @@ def main() -> None:
         for task in asyncio.all_tasks(loop):
             task.cancel()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _shutdown, sig)
+    for sig_type in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig_type, _shutdown, sig_type)
 
     try:
         loop.run_until_complete(
