@@ -22,7 +22,7 @@ from agent.backtest.multi_tf import run_multi_tf
 from agent.config import load_config
 from agent.data.loader import BarLoader, df_to_bars, filter_bars_by_date
 from agent.journal.db import Journal
-from agent.model.scorer import SetupScorer
+from agent.model.scorer import SetupScorer, load_lzi_scorer
 from agent.types import Bar, Timeframe
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -205,11 +205,24 @@ def main():
     if bias_only:
         log.info("Bias-only TFs (no entries): %s", sorted(t.value for t in bias_only))
 
+    # Load LZI-specific scorer (uses different features than generic scorer)
+    from pathlib import Path as _LziPath
+    lzi_scorer = None
+    lzi_path = _LziPath(cfg.ml.lzi_scorer_path)
+    if not lzi_path.is_absolute():
+        lzi_path = _LziPath(str(cfg.model_dir).rsplit("/models", 1)[0]) / cfg.ml.lzi_scorer_path \
+            if "models/" in cfg.ml.lzi_scorer_path else cfg.model_dir / lzi_path.name
+    lzi_scorer_obj = load_lzi_scorer(lzi_path)
+    if lzi_scorer_obj is not None:
+        lzi_scorer = lzi_scorer_obj
+        log.info("LZI scorer loaded from %s (threshold=%.2f)", lzi_path, cfg.ml.lzi_score_threshold)
+
     result = run_multi_tf(cfg, bars_by_tf, journal=journal,
                            scorer=scorer, score_threshold=args.score_threshold,
                            bias_only_tfs=bias_only,
                            scorers_by_tf=scorers_by_tf or None,
-                           thresholds_by_tf=thresholds_by_tf or None)
+                           thresholds_by_tf=thresholds_by_tf or None,
+                           lzi_scorer=lzi_scorer)
 
     print()
     print("MULTI-TIMEFRAME BACKTEST")

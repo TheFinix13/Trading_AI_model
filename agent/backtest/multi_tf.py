@@ -70,6 +70,7 @@ def run_multi_tf(
     bias_only_tfs: set[Timeframe] | None = None,
     scorers_by_tf: dict[str, "SetupScorer"] | None = None,
     thresholds_by_tf: dict[str, float] | None = None,
+    lzi_scorer=None,
 ) -> MultiTFResult:
     """Run an independent backtest per provided timeframe, then merge.
 
@@ -131,7 +132,8 @@ def run_multi_tf(
             bt = Backtester(cfg, journal=journal,
                             journal_mode=f"backtest_{tf.value}",
                             htf_biases=biases_for_this,
-                            scorer=tf_scorer, prob_threshold=tf_threshold)
+                            scorer=tf_scorer, prob_threshold=tf_threshold,
+                            lzi_scorer=lzi_scorer)
             result = bt.run(bars)
             per_tf_trades[tf] = result.trades
             log.info("  -> %s yielded %d trades", tf.value, len(result.trades))

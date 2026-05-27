@@ -13,6 +13,96 @@ from pydantic import BaseModel, Field
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
+class GateProfile(BaseModel):
+    """Per-strategy gate override. Each flag controls whether a specific gate
+    applies to this strategy. True = gate is active, False = gate is bypassed.
+
+    Strategies with self-contained quality control (like LZI retest) can
+    disable redundant gates while keeping essential safety gates.
+    """
+    name: str = "default"
+
+    # Essential safety gates (should almost always be True)
+    check_rr_minimum: bool = True
+    check_daily_dd_halt: bool = True
+    check_max_positions: bool = True
+    check_stop_bounds: bool = True
+
+    # Quality gates (can be relaxed for self-validating strategies)
+    require_precision_partner: bool = True
+    require_structural_anchor: bool = True
+    require_close_confirmation: bool = True
+    reject_false_breakouts: bool = True
+    require_fvg_or_sweep_with_bos: bool = True
+    check_blocked_sessions: bool = True
+    check_blocked_hours: bool = True
+    check_min_confluences: bool = True
+    apply_caution_days_boost: bool = True
+    apply_ml_scorer: bool = True
+
+    # ML override threshold (if apply_ml_scorer is True but at a different threshold)
+    ml_score_override: float | None = None
+
+    # If set, overrides global blocked_hours_ny for this strategy
+    blocked_hours_override: list[int] | None = None
+
+
+GATE_PROFILE_DEFAULT = GateProfile(name="default")
+
+GATE_PROFILE_LZI = GateProfile(
+    name="lzi_retest",
+    require_precision_partner=False,
+    require_structural_anchor=False,
+    require_close_confirmation=False,
+    reject_false_breakouts=False,
+    require_fvg_or_sweep_with_bos=False,
+    check_blocked_hours=True,
+    blocked_hours_override=[13],
+    check_min_confluences=False,
+    apply_caution_days_boost=False,
+    apply_ml_scorer=True,
+    ml_score_override=0.40,
+)
+
+GATE_PROFILE_FVG = GateProfile(
+    name="fvg_retest",
+    require_precision_partner=False,   # FVG IS the precision partner
+    require_structural_anchor=False,   # Quality scoring + reaction confirmation replaces this
+    require_close_confirmation=False,  # Reaction candle IS the confirmation
+    reject_false_breakouts=True,       # FVGs near false breakouts are bad
+    require_fvg_or_sweep_with_bos=False,  # Not BOS-based
+    check_blocked_hours=True,
+    check_min_confluences=False,       # Quality score replaces confluence counting
+    apply_caution_days_boost=True,     # Keep caution on Thu/Fri for FVG
+    apply_ml_scorer=True,              # Use generic scorer until FVG-specific one exists
+    ml_score_override=0.30,            # Slightly relaxed from 0.35
+)
+
+GATE_PROFILE_SD_ZONE = GateProfile(
+    name="sd_zone_retest",
+    require_precision_partner=False,    # The zone IS the core level
+    require_structural_anchor=False,    # Quality scoring + reaction confirmation replaces this
+    require_close_confirmation=False,   # Reaction IS confirmation
+    reject_false_breakouts=True,        # Keep
+    require_fvg_or_sweep_with_bos=False,
+    check_blocked_hours=True,
+    check_min_confluences=False,        # Quality score replaces
+    apply_caution_days_boost=True,
+    apply_ml_scorer=True,
+    ml_score_override=0.30,
+)
+
+GATE_PROFILES: dict[str, GateProfile] = {
+    "default": GATE_PROFILE_DEFAULT,
+    "lzi_retest": GATE_PROFILE_LZI,
+    "LiquidityGrabReversal": GATE_PROFILE_LZI,
+    "fvg_retest": GATE_PROFILE_FVG,
+    "FVGRetest": GATE_PROFILE_FVG,
+    "sd_zone_retest": GATE_PROFILE_SD_ZONE,
+    "SDZoneRetest": GATE_PROFILE_SD_ZONE,
+}
+
+
 class RiskConfig(BaseModel):
     pct_target: float = 0.01
     pct_floor: float = 0.03
@@ -45,8 +135,20 @@ class SessionConfig(BaseModel):
     #   * Thursday: 30% WR / -74.4 pips / -$8.14 (2024-2026 OOS)
     #   * Friday:   22% WR / -82.8 pips / -$8.91 (2025-2026 OOS)
     caution_days: list[str] = ["Thu", "Fri"]
-    # Hard-blocked days (holidays, etc). Empty by default — human can always trade.
-    no_trade_days: list[str] = []
+    # Hard-blocked days for autonomous trading. Thursday: 11.1% WR catastrophic.
+    # The human partner can still override manually.
+    no_trade_days: list[str] = ["Thu"]
+
+
+class FibConfig(BaseModel):
+    """Quality-graded Fibonacci retracement configuration."""
+    active_levels: list[float] = [0.382, 0.500, 0.618, 0.705]
+    ote_zone_start: float = 0.618
+    ote_zone_end: float = 0.710
+    min_impulse_quality: float = 35.0
+    min_impulse_pips: float = 20.0
+    include_786_as_invalidation: bool = True
+    extension_levels: list[float] = [1.272, 1.618, 2.0]
 
 
 class DetectorsConfig(BaseModel):
@@ -57,6 +159,7 @@ class DetectorsConfig(BaseModel):
     fib_levels: list[float] = [0.382, 0.5, 0.618, 0.786]
     trendline_min_swings: int = 2
     liquidity_wick_min_ratio: float = 2.0
+    fib: FibConfig = FibConfig()
 
 
 class RulesConfig(BaseModel):
@@ -161,6 +264,7 @@ class RulesConfig(BaseModel):
     require_structural_anchor: bool = True
     structural_anchor_tags: list[str] = [
         "fib_382", "fib_500", "fib_618", "fib_786",
+        "fib_ote", "fib_50", "fib_high_quality",
         "phase_distribution",
         "session_ny",
     ]
@@ -178,7 +282,7 @@ class RulesConfig(BaseModel):
     #   * NY 13:00 (NY pre-close chop):   32.9% WR / -857 pips / 70 trades
     # All four are statistically significant losing windows. Set to [] to
     # disable time-of-day blocking. Re-tune via `scripts/audit_detectors.py`.
-    blocked_hours_ny: list[int] = [3, 4, 12, 13]
+    blocked_hours_ny: list[int] = [3, 4, 12, 13, 16, 17, 18]
 
 
 class MLConfig(BaseModel):
@@ -197,6 +301,10 @@ class MLConfig(BaseModel):
         "H1": 0.35,
         "M15": 0.55,  # Raised: M15 is dormant (28.6% WR OOS) — only fires on very high conviction
     }
+
+    # LZI-specific scorer (uses different features than generic scorer)
+    lzi_scorer_path: str = "models/scorer_EURUSD_LZI_H1_v1.joblib"
+    lzi_score_threshold: float = 0.40
 
     # Timeframe activation tiers. Controls how aggressively each TF trades.
     #   "active"  — normal operation, standard thresholds apply
@@ -273,6 +381,22 @@ class RankingConfig(BaseModel):
     session_min_trades_ok: int = 10
 
 
+class LiquidityConfig(BaseModel):
+    """Two-phase liquidity zone (LZI) retest parameters."""
+    min_wick_size_pips_h1: float = 10.0
+    min_wick_size_pips_h4: float = 15.0
+    retest_max_bars: int = 50
+    retest_proximity_pips: float = 5.0
+    consumption_min_bars: int = 3
+    displacement_min_body_pct: float = 0.60
+    displacement_min_pips_h1: float = 10.0
+    displacement_min_pips_h4: float = 12.0
+    zone_expiry_bars: int = 100
+    stop_buffer_pips: float = 3.0
+    use_pd_array_targeting: bool = True
+    fallback_rr: float = 2.0
+
+
 class LiveTradingConfig(BaseModel):
     """Configuration for the live/paper trading loop (agent/live/)."""
     broker_type: str = "paper"  # "mt5", "exness", "paper"
@@ -338,6 +462,7 @@ class Config(BaseModel):
     detectors: DetectorsConfig = DetectorsConfig()
     rules: RulesConfig = RulesConfig()
     ml: MLConfig = MLConfig()
+    liquidity: LiquidityConfig = LiquidityConfig()
     live: LiveTradingConfig = LiveTradingConfig()
     backtest: BacktestConfig = BacktestConfig()
     demo: DemoConfig = DemoConfig()

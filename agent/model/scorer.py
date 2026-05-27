@@ -166,3 +166,20 @@ def train_scorer(data: ScorerTrainingData,
     model.fit(data.X, data.y)
     log.info("Scorer trained: backend=%s, calibrated=%s, n=%d", backend, calibrate, len(data))
     return SetupScorer(model=model, feature_cols=list(data.X.columns), backend=backend)
+
+
+def load_lzi_scorer(path: Path | str) -> SetupScorer | None:
+    """Load the LZI-specific scorer from a joblib file.
+
+    Returns None if the file doesn't exist (scorer is optional).
+    """
+    path = Path(path)
+    if not path.exists():
+        log.warning("LZI scorer not found at %s", path)
+        return None
+    d = joblib.load(path)
+    return SetupScorer(
+        model=d["model"],
+        feature_cols=d["feature_cols"],
+        backend=d.get("backend", "xgboost_calibrated"),
+    )

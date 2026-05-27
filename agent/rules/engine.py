@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from agent.config import Config
+from agent.config import Config, GATE_PROFILES, GATE_PROFILE_DEFAULT, GateProfile
 from agent.detectors.atr import atr
 from agent.detectors.bos import detect_bos, latest_bos
 from agent.detectors.daily_levels import DailyLevels, compute_daily_levels, nearest_level
@@ -18,11 +18,12 @@ from agent.detectors.fib import auto_fib
 from agent.detectors.fvg import detect_fvgs
 from agent.detectors.liquidity import detect_liquidity_wicks
 from agent.detectors.liquidity_sweep import LiquiditySweep, detect_liquidity_sweeps
+from agent.detectors.liquidity_zones import LiquidityZone, detect_liquidity_zones
 from agent.detectors.range_phase import RangePhase, label_range_phases
 from agent.detectors.sessions import is_kill_zone, label_bars
 from agent.detectors.swings import detect_swings, last_swing
 from agent.detectors.trendlines import fit_trendlines
-from agent.detectors.zones import detect_zones, fresh_zones
+from agent.detectors.zones import detect_zones, detect_qualified_zones, fresh_zones
 from agent.rules.filters import in_no_trade_window, is_no_trade_day
 from agent.rules.htf_bias import HTFBias, HTFBiasComputer
 from agent.types import Bar, BreakOfStructure, Direction, FVG, FibLevel, LiquidityWick, Setup, Trendline, Zone
@@ -47,6 +48,9 @@ class PrecomputedContext:
     liquidity_sweeps: list[LiquiditySweep] = field(default_factory=list)
     range_phases: list[RangePhase] = field(default_factory=list)
     session_labels: list[str] = field(default_factory=list)
+    liquidity_zones: list[LiquidityZone] = field(default_factory=list)
+    swings: list = field(default_factory=list)
+    qualified_zones: list = field(default_factory=list)
 
 
 def _tf_scale(bars: list[Bar]) -> float:
@@ -68,6 +72,10 @@ def precompute(bars: list[Bar], cfg: Config, fib_recompute_every: int = 25) -> P
         bars,
         min_impulse_pips=cfg.detectors.zone_min_impulse_pips * scale,
         max_age_bars=cfg.detectors.zone_max_age_bars,
+    )
+    ctx.qualified_zones = detect_qualified_zones(
+        bars,
+        min_impulse_pips=cfg.detectors.zone_min_impulse_pips * scale,
     )
     ctx.fvgs = detect_fvgs(bars, min_size_pips=cfg.detectors.fvg_min_size_pips * scale)
     ctx.bos_list = detect_bos(bars, swing_lookback=cfg.detectors.swing_lookback)
@@ -112,6 +120,30 @@ def precompute(bars: list[Bar], cfg: Config, fib_recompute_every: int = 25) -> P
         except Exception as e:  # detector noise on synthetic / very short series
             log.debug("liquidity_sweep precompute skipped: %s", e)
             ctx.liquidity_sweeps = []
+
+    # Two-phase Liquidity Zones of Interest (LZI). Runs on M1-H4 timeframes.
+    # The zones are created once; the strategy's evaluate() advances their state
+    # machine (waiting → retesting → consumed → triggered) bar by bar.
+    ctx.swings = detect_swings(bars, lookback=cfg.detectors.swing_lookback)
+    if bars and bars[0].timeframe.value in ("M1", "M5", "M15", "H1", "H4"):
+        try:
+            tf_val = bars[0].timeframe.value
+            liq_cfg = cfg.liquidity
+            min_wick = (liq_cfg.min_wick_size_pips_h4
+                        if tf_val in ("H4", "D1")
+                        else liq_cfg.min_wick_size_pips_h1)
+            ctx.liquidity_zones = detect_liquidity_zones(
+                bars,
+                swing_lookback=cfg.detectors.swing_lookback,
+                min_wick_size_pips=min_wick,
+                pierce_buffer_pips=1.0,
+            )
+        except Exception as e:
+            log.debug("liquidity_zones precompute skipped: %s", e)
+            ctx.liquidity_zones = []
+
+    # Attach liquidity config so strategies can read TF-aware parameters
+    ctx.liquidity_config = cfg.liquidity  # type: ignore[attr-defined]
 
     return ctx
 
@@ -224,6 +256,100 @@ class RuleEngine:
             daily_levels=daily_levels, range_phase=range_phase, session=session,
             recent_sweeps=recent_sweeps,
         )
+
+    def validate_setup_gates(
+        self,
+        setup: Setup,
+        bars: list[Bar],
+        at_index: int,
+        profile: GateProfile | None = None,
+    ) -> tuple[bool, str]:
+        """Validate a pre-built setup (typically from a strategy) against
+        the gate stack, gated by the supplied profile.
+
+        Returns (passed, reason) where reason describes the first failed gate
+        (empty string when passed is True).
+        """
+        if profile is None:
+            profile = GATE_PROFILES.get(setup.strategy_name or "", GATE_PROFILE_DEFAULT)
+
+        cur = bars[at_index]
+
+        # --- Safety gates (always checked regardless of profile) ---
+        if in_no_trade_window(cur.time, self.cfg.session.no_trade_windows, self.cfg.session.timezone):
+            return False, "no_trade_window"
+        if is_no_trade_day(cur.time, self.cfg.session.no_trade_days, self.cfg.session.timezone):
+            return False, "no_trade_day"
+
+        # --- Blocked hours ---
+        if profile.check_blocked_hours:
+            blocked_hours = set(
+                profile.blocked_hours_override
+                if profile.blocked_hours_override is not None
+                else self.cfg.rules.blocked_hours_ny
+            )
+            if blocked_hours:
+                try:
+                    from zoneinfo import ZoneInfo
+                    ny_hour = cur.time.astimezone(ZoneInfo("America/New_York")).hour
+                    if ny_hour in blocked_hours:
+                        return False, "blocked_hour"
+                except Exception:
+                    pass
+
+        # --- Blocked sessions ---
+        if profile.check_blocked_sessions:
+            blocked = set(self.cfg.rules.blocked_session_tags)
+            if blocked and any(c in blocked for c in setup.confluences):
+                return False, "blocked_session"
+
+        # --- Min confluences ---
+        if profile.check_min_confluences:
+            per_tf_min = self.cfg.rules.min_confluences_per_tf.get(
+                cur.timeframe.value, self.cfg.rules.min_confluences
+            )
+            if len(setup.confluences) < per_tf_min:
+                return False, "min_confluences"
+
+        # --- Precision partner ---
+        if profile.require_precision_partner:
+            partner_set = set(self.cfg.rules.precision_partner_tags)
+            if not any(c in partner_set for c in setup.confluences):
+                return False, "precision_partner"
+
+        # --- Structural anchor ---
+        if profile.require_structural_anchor:
+            anchor_set = set(self.cfg.rules.structural_anchor_tags)
+            if not any(c in anchor_set for c in setup.confluences):
+                return False, "structural_anchor"
+
+        # --- BOS requires FVG or sweep ---
+        if profile.require_fvg_or_sweep_with_bos and "bos" in setup.confluences:
+            extras = {"fvg"} | {t for t in self.cfg.rules.precision_partner_tags
+                                 if t.startswith("sweep_")}
+            if not any(c in extras for c in setup.confluences):
+                return False, "fvg_or_sweep_with_bos"
+
+        # --- Stop bounds ---
+        if profile.check_stop_bounds:
+            atr_val = 0.0
+            if hasattr(setup, "features") and setup.features:
+                atr_val = setup.features.get("atr_pips", 0.0) / 10000.0
+            if atr_val <= 0:
+                atr_by_index = getattr(self, "_last_ctx_atr", {})
+                atr_val = atr_by_index.get(at_index, 0.0)
+            atr_pips = max(0.0, atr_val * 10000.0) if atr_val > 0 else 30.0
+            min_stop = max(5.0, 0.05 * atr_pips)
+            max_stop = max(200.0, 5.0 * atr_pips)
+            if setup.stop_pips < min_stop or setup.stop_pips > max_stop:
+                return False, "stop_bounds"
+
+        # --- RR minimum ---
+        if profile.check_rr_minimum:
+            if setup.rr < self.cfg.rules.rr_min:
+                return False, "rr_minimum"
+
+        return True, ""
 
     def _build_best(self, bars, at_index, zones, fvgs, bos_list, fib, trendlines, wicks, a, *,
                     daily_levels=None, range_phase=None, session=None, recent_sweeps=None):

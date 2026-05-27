@@ -3,194 +3,291 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>EURUSD Trading Dashboard</title>
+  <title>EURUSD Trading Partner</title>
   <style>
     :root {
       --bg: #131722;
       --panel: #1e222d;
-      --panel-2: #262b3d;
+      --panel-2: #2a2e39;
       --border: #2a2e39;
+      --border-light: #363a45;
       --text: #d1d4dc;
-      --muted: #787b86;
+      --text-dim: #787b86;
+      --white: #fff;
       --green: #26a69a;
       --green-dim: rgba(38,166,154,0.12);
+      --green-border: rgba(38,166,154,0.25);
       --red: #ef5350;
       --red-dim: rgba(239,83,80,0.12);
+      --red-border: rgba(239,83,80,0.25);
+      --gold: #ffb74d;
+      --gold-dim: rgba(255,183,77,0.12);
+      --gold-border: rgba(255,183,77,0.25);
       --blue: #2962ff;
       --blue-dim: rgba(41,98,255,0.12);
-      --amber: #f7931a;
-      --amber-dim: rgba(247,147,26,0.12);
+      --purple: #ab47bc;
+      --purple-dim: rgba(171,71,188,0.12);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
       background: var(--bg); color: var(--text);
+      -webkit-font-smoothing: antialiased;
     }
 
-    .dashboard { max-width: 1280px; margin: 0 auto; padding: 20px 24px 40px; }
+    .dashboard { max-width: 1320px; margin: 0 auto; padding: 16px 24px 48px; }
 
-    /* Hero Header */
-    .hero {
+    /* ── Top Bar ─────────────────────────────────────────── */
+    .top-bar {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 20px 24px; margin-bottom: 16px;
-      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px 20px; margin-bottom: 16px;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
     }
-    .hero-left h1 {
-      font-size: 20px; font-weight: 700; color: #fff;
-      display: flex; align-items: center; gap: 10px;
+    .top-bar-left { display: flex; align-items: center; gap: 14px; }
+    .top-bar-left h1 { font-size: 16px; font-weight: 700; color: var(--white); }
+    .status-badge {
+      padding: 3px 10px; border-radius: 10px; font-size: 10px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
     }
-    .hero-left .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; }
-    .hero-price {
-      text-align: right;
-    }
-    .hero-price .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
-    .hero-price .value { font-size: 28px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+    .status-badge.active { background: var(--green-dim); color: var(--green); }
+    .status-badge.paper { background: var(--blue-dim); color: var(--blue); }
+    .status-badge.backtest { background: var(--gold-dim); color: var(--gold); }
+    .top-bar-right { display: flex; align-items: center; gap: 24px; }
+    .top-metric { text-align: right; }
+    .top-metric .label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+    .top-metric .value { font-size: 20px; font-weight: 700; color: var(--white); font-variant-numeric: tabular-nums; }
+    .top-metric .value.green { color: var(--green); }
+    .top-metric .value.red { color: var(--red); }
+    .top-metric .value.sm { font-size: 15px; }
 
-    /* Goal Progress */
-    .goal-bar {
-      padding: 16px 24px; margin-bottom: 16px;
-      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-    }
-    .goal-header {
-      display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
-    }
-    .goal-header .title { font-size: 13px; font-weight: 600; color: var(--text); }
-    .goal-header .pct { font-size: 13px; font-weight: 700; color: var(--green); }
-    .goal-track {
-      height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden;
-      position: relative;
-    }
-    .goal-fill {
-      height: 100%; border-radius: 4px; transition: width 0.6s ease;
-      background: linear-gradient(90deg, var(--blue), var(--green));
-    }
-    .goal-labels {
-      display: flex; justify-content: space-between; margin-top: 6px;
-      font-size: 11px; color: var(--muted);
-    }
-
-    /* KPI Row */
-    .kpi-row {
+    /* ── Cards Row ───────────────────────────────────────── */
+    .cards-row {
       display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;
     }
-    .kpi {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    .perf-card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
       padding: 16px 18px;
     }
-    .kpi .label {
+    .perf-card .card-title {
       font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
-      color: var(--muted); margin-bottom: 6px;
+      color: var(--text-dim); margin-bottom: 10px; font-weight: 600;
     }
-    .kpi .value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
-    .kpi .sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
-    .kpi .value.green { color: var(--green); }
-    .kpi .value.red { color: var(--red); }
-    .kpi .value.blue { color: var(--blue); }
-    .kpi .value.white { color: #fff; }
-
-    /* Two-column layout */
-    .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-    @media (max-width: 900px) { .columns { grid-template-columns: 1fr; } .kpi-row { grid-template-columns: repeat(2, 1fr); } }
-
-    /* Section Card */
-    .section-card {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-      overflow: hidden;
+    .perf-card .card-main {
+      font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums;
+      margin-bottom: 4px;
     }
-    .section-card .header {
+    .perf-card .card-sub { font-size: 11px; color: var(--text-dim); }
+    .perf-card .card-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(42,46,57,0.5);
+    }
+    .perf-card .card-row .stat { text-align: center; }
+    .perf-card .card-row .stat .sv { font-size: 14px; font-weight: 700; }
+    .perf-card .card-row .stat .sl { font-size: 9px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+    .green { color: var(--green); }
+    .red { color: var(--red); }
+    .gold { color: var(--gold); }
+    .white { color: var(--white); }
+
+    /* ── Strategy Leaderboard ────────────────────────────── */
+    .section {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      margin-bottom: 16px; overflow: hidden;
+    }
+    .section-header {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      padding: 14px 20px; border-bottom: 1px solid var(--border);
     }
-    .section-card .header h2 {
-      font-size: 13px; font-weight: 600; color: var(--text);
+    .section-header h2 {
+      font-size: 13px; font-weight: 700; color: var(--text);
       display: flex; align-items: center; gap: 8px;
     }
-    .section-card .header .badge-count {
-      padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
-      background: var(--blue-dim); color: var(--blue);
+    .section-body { padding: 0; }
+    .tab-bar { display: flex; gap: 0; }
+    .tab-btn {
+      padding: 8px 16px; font-size: 11px; font-weight: 600;
+      color: var(--text-dim); background: none; border: none;
+      cursor: pointer; border-bottom: 2px solid transparent;
+      transition: all 0.15s; text-transform: uppercase; letter-spacing: 0.04em;
     }
-    .section-card .body { padding: 14px 18px; }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--white); border-bottom-color: var(--blue); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
 
-    /* Stats Mini Grid */
-    .stats-mini {
-      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 14px;
+    .ranking-table { width: 100%; border-collapse: collapse; }
+    .ranking-table th {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-dim); font-weight: 600; padding: 10px 16px;
+      text-align: left; border-bottom: 1px solid var(--border);
     }
-    .stat-mini { text-align: center; }
-    .stat-mini .val { font-size: 18px; font-weight: 700; }
-    .stat-mini .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-
-    /* Trade List */
-    .trade-list { list-style: none; }
-    .trade-item {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 0; border-bottom: 1px solid rgba(42,46,57,0.5);
-      font-size: 12px; transition: background 0.1s;
+    .ranking-table td {
+      font-size: 12px; padding: 10px 16px; border-bottom: 1px solid rgba(42,46,57,0.4);
+      font-variant-numeric: tabular-nums;
     }
-    .trade-item:last-child { border-bottom: none; }
-    .trade-item:hover { background: rgba(42,46,57,0.3); margin: 0 -18px; padding: 8px 18px; }
-    .trade-item .left { display: flex; align-items: center; gap: 8px; }
-    .trade-item .dir-badge {
-      padding: 2px 8px; border-radius: 4px; font-size: 10px;
+    .ranking-table tr:last-child td { border-bottom: none; }
+    .ranking-table tr:hover td { background: rgba(42,46,57,0.3); }
+    .status-pill {
+      padding: 2px 8px; border-radius: 8px; font-size: 9px;
       font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
     }
-    .dir-badge.long { background: var(--green-dim); color: var(--green); }
-    .dir-badge.short { background: var(--red-dim); color: var(--red); }
-    .trade-item .date { color: var(--muted); }
-    .trade-item .entry { color: var(--text); font-variant-numeric: tabular-nums; }
-    .trade-item .pnl { font-weight: 600; font-variant-numeric: tabular-nums; }
-    .trade-item .pnl.pos { color: var(--green); }
-    .trade-item .pnl.neg { color: var(--red); }
+    .status-pill.hot { background: var(--green-dim); color: var(--green); }
+    .status-pill.cold { background: var(--red-dim); color: var(--red); }
+    .status-pill.dormant { background: rgba(120,123,134,0.15); color: var(--text-dim); }
+    .status-pill.neutral { background: var(--gold-dim); color: var(--gold); }
 
-    /* Highlight Cards (Best/Worst) */
-    .highlights {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px;
+    /* ── Recent Trades (Hero Section) ────────────────────── */
+    .trade-card {
+      border-bottom: 1px solid var(--border); transition: background 0.1s;
     }
-    .highlight {
-      padding: 10px 12px; border-radius: 6px; font-size: 12px;
+    .trade-card:last-child { border-bottom: none; }
+    .trade-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; cursor: pointer; user-select: none;
     }
-    .highlight.best { background: var(--green-dim); border: 1px solid rgba(38,166,154,0.2); }
-    .highlight.worst { background: var(--red-dim); border: 1px solid rgba(239,83,80,0.2); }
-    .highlight .hl-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-    .highlight.best .hl-label { color: var(--green); }
-    .highlight.worst .hl-label { color: var(--red); }
-    .highlight .hl-value { font-size: 16px; font-weight: 700; }
-    .highlight.best .hl-value { color: var(--green); }
-    .highlight.worst .hl-value { color: var(--red); }
-    .highlight .hl-detail { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .trade-card-header:hover { background: rgba(42,46,57,0.25); }
+    .trade-card-left { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .dir-badge {
+      padding: 3px 10px; border-radius: 4px; font-size: 10px;
+      font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+      min-width: 52px; text-align: center;
+    }
+    .dir-badge.long { background: var(--green-dim); color: var(--green); border: 1px solid var(--green-border); }
+    .dir-badge.short { background: var(--red-dim); color: var(--red); border: 1px solid var(--red-border); }
+    .trade-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+    .trade-meta .date { color: var(--text-dim); }
+    .trade-meta .tf { color: var(--text); font-weight: 600; }
+    .trade-meta .sep { color: var(--border-light); }
+    .result-badge {
+      padding: 3px 10px; border-radius: 4px; font-size: 10px;
+      font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .result-badge.win { background: var(--green-dim); color: var(--green); }
+    .result-badge.loss { background: var(--red-dim); color: var(--red); }
+    .trade-card-right { display: flex; align-items: center; gap: 16px; }
+    .trade-pnl { text-align: right; min-width: 80px; }
+    .trade-pnl .pnl-val { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .trade-pnl .pnl-pips { font-size: 10px; color: var(--text-dim); }
+    .expand-icon {
+      width: 20px; height: 20px; color: var(--text-dim);
+      transition: transform 0.2s;
+    }
+    .trade-card.open .expand-icon { transform: rotate(180deg); }
 
-    /* Roadmap */
-    .roadmap {
-      background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-      padding: 20px 24px;
+    .trade-card-body {
+      max-height: 0; overflow: hidden; transition: max-height 0.3s ease;
     }
-    .roadmap h2 {
-      font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 16px;
-      display: flex; align-items: center; gap: 8px;
+    .trade-card.open .trade-card-body { max-height: 600px; }
+    .trade-detail { padding: 0 20px 18px; }
+    .trade-narrative {
+      font-size: 13px; line-height: 1.7; color: var(--text);
+      padding: 14px 16px; background: rgba(42,46,57,0.25);
+      border-radius: 8px; border-left: 3px solid var(--blue);
+      margin-bottom: 14px;
     }
-    .roadmap-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
-    .roadmap-item {
-      padding: 14px 16px; border-radius: 6px;
-      background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+    .trade-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .conf-badge {
+      padding: 3px 10px; border-radius: 12px; font-size: 10px;
+      font-weight: 600; letter-spacing: 0.02em;
     }
-    .roadmap-item .ri-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
-    .roadmap-item .ri-value { font-size: 18px; font-weight: 700; color: #fff; }
-    .roadmap-item .ri-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .conf-badge.zone { background: var(--blue-dim); color: var(--blue); }
+    .conf-badge.fvg { background: var(--purple-dim); color: var(--purple); }
+    .conf-badge.sweep { background: var(--red-dim); color: var(--red); }
+    .conf-badge.fib { background: var(--gold-dim); color: var(--gold); }
+    .conf-badge.session { background: var(--green-dim); color: var(--green); }
+    .conf-badge.bos { background: rgba(255,255,255,0.08); color: var(--text); }
+    .conf-badge.near { background: rgba(120,123,134,0.12); color: var(--text-dim); }
+    .conf-badge.liquidity_wick { background: var(--red-dim); color: var(--red); }
+    .trade-timing {
+      display: flex; gap: 24px; font-size: 11px; color: var(--text-dim);
+    }
+    .trade-timing span strong { color: var(--text); font-weight: 600; }
+    .sqs-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: 700;
+      background: rgba(255,255,255,0.06); color: var(--text);
+    }
 
-    /* Kill Banner */
+    /* ── Risk Monitor ────────────────────────────────────── */
+    .risk-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; padding: 16px 20px; }
+    .risk-item .risk-label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-dim); margin-bottom: 6px; font-weight: 600;
+    }
+    .risk-item .risk-value { font-size: 18px; font-weight: 700; }
+    .dd-bar-track {
+      height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px;
+      overflow: hidden; margin-top: 8px;
+    }
+    .dd-bar-fill {
+      height: 100%; border-radius: 4px; transition: width 0.5s ease;
+    }
+    .dd-bar-fill.ok { background: var(--green); }
+    .dd-bar-fill.warning { background: var(--gold); }
+    .dd-bar-fill.critical { background: var(--red); }
+
+    /* ── Watchlist ────────────────────────────────────────── */
+    .watchlist-grid { padding: 8px 20px 16px; }
+    .watch-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 0; border-bottom: 1px solid rgba(42,46,57,0.4);
+      font-size: 12px;
+    }
+    .watch-item:last-child { border-bottom: none; }
+    .watch-item-left { display: flex; align-items: center; gap: 10px; }
+    .watch-icon {
+      width: 28px; height: 28px; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+    }
+    .watch-icon.session { background: var(--blue-dim); color: var(--blue); }
+    .watch-icon.zone { background: var(--gold-dim); color: var(--gold); }
+    .watch-icon.setup { background: var(--green-dim); color: var(--green); }
+    .watch-title { font-weight: 600; color: var(--text); }
+    .watch-sub { font-size: 11px; color: var(--text-dim); }
+    .watch-status {
+      padding: 2px 8px; border-radius: 8px; font-size: 9px;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .watch-status.upcoming { background: var(--blue-dim); color: var(--blue); }
+    .watch-status.approaching { background: var(--gold-dim); color: var(--gold); }
+    .watch-status.nearby { background: rgba(120,123,134,0.15); color: var(--text-dim); }
+    .watch-status.forming { background: var(--green-dim); color: var(--green); }
+
+    /* ── Bottom Grid ─────────────────────────────────────── */
+    .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    /* ── Kill Banner & Buttons ───────────────────────────── */
     .kill-banner {
       background: var(--red); color: #fff; padding: 10px 24px;
       text-align: center; font-weight: 600; font-size: 13px;
     }
-
-    /* Kill Switch Button */
     .kill-btn {
-      padding: 6px 14px; border-radius: 4px; border: none;
-      font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s;
+      padding: 5px 12px; border-radius: 6px; border: none;
+      font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.15s;
     }
-    .kill-btn.halt { background: rgba(239,83,80,0.15); color: var(--red); border: 1px solid rgba(239,83,80,0.3); }
+    .kill-btn.halt { background: rgba(239,83,80,0.15); color: var(--red); border: 1px solid var(--red-border); }
     .kill-btn.halt:hover { background: rgba(239,83,80,0.25); }
-    .kill-btn.resume { background: rgba(38,166,154,0.15); color: var(--green); border: 1px solid rgba(38,166,154,0.3); }
+    .kill-btn.resume { background: rgba(38,166,154,0.15); color: var(--green); border: 1px solid var(--green-border); }
     .kill-btn.resume:hover { background: rgba(38,166,154,0.25); }
+
+    .empty-state {
+      padding: 32px 20px; text-align: center;
+      color: var(--text-dim); font-size: 13px;
+    }
+
+    @media (max-width: 1100px) {
+      .cards-row { grid-template-columns: repeat(2, 1fr); }
+      .risk-grid { grid-template-columns: repeat(2, 1fr); }
+      .bottom-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 700px) {
+      .cards-row { grid-template-columns: 1fr; }
+      .top-bar { flex-direction: column; gap: 12px; }
+      .top-bar-right { flex-wrap: wrap; justify-content: center; }
+      .trade-card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .risk-grid { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -202,205 +299,306 @@
   {% include "_nav.html" %}
 
   <div class="dashboard">
-    <!-- Hero Header -->
-    <div class="hero">
-      <div class="hero-left">
-        <h1>
-          EURUSD Trading Dashboard
-          {% if kill_active %}
-          <button class="kill-btn resume" onclick="fetch('/api/resume',{method:'POST'}).then(()=>location.reload())">Resume Agent</button>
-          {% else %}
-          <button class="kill-btn halt" onclick="fetch('/api/kill',{method:'POST'}).then(()=>location.reload())">Kill Switch</button>
-          {% endif %}
-        </h1>
-        <div class="subtitle">{{ display_tz }} &middot; {{ symbol }} &middot; Primary: H1</div>
+
+    <!-- ═══════ TOP BAR ═══════ -->
+    <div class="top-bar">
+      <div class="top-bar-left">
+        <h1>EURUSD Trading Partner</h1>
+        <span class="status-badge {% if mode == 'paper' %}paper{% elif mode == 'live' %}active{% else %}backtest{% endif %}">{{ mode_label }}</span>
+        {% if kill_active %}
+        <button class="kill-btn resume" onclick="fetch('/api/resume',{method:'POST'}).then(()=>location.reload())">Resume</button>
+        {% else %}
+        <button class="kill-btn halt" onclick="if(confirm('Halt the agent?'))fetch('/api/kill',{method:'POST'}).then(()=>location.reload())">Kill Switch</button>
+        {% endif %}
       </div>
-      <div class="hero-price">
-        <div class="label">Current Price</div>
-        <div class="value">{{ "%.5f"|format(current_price) }}</div>
+      <div class="top-bar-right">
+        <div class="top-metric">
+          <div class="label">{{ symbol }}</div>
+          <div class="value">{{ "%.5f"|format(current_price) }}</div>
+        </div>
+        <div class="top-metric">
+          <div class="label">Daily P&L</div>
+          <div class="value sm {% if daily_pnl >= 0 %}green{% else %}red{% endif %}">
+            {{ "%+.2f"|format(daily_pnl) }} <span style="font-size:11px;color:var(--text-dim)">{{ "%+.1f"|format(daily_pnl_pips) }}p</span>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Goal Progress Bar -->
-    <div class="goal-bar">
-      <div class="goal-header">
-        <span class="title">$100 &rarr; $1,000 Challenge</span>
-        <span class="pct">{{ "%.1f"|format(goal_pct) }}%</span>
+    <!-- ═══════ SECTION 1: PERFORMANCE CARDS ═══════ -->
+    <div class="cards-row">
+      <!-- This Week -->
+      <div class="perf-card">
+        <div class="card-title">This Week</div>
+        <div class="card-main {% if week_stats.net_pnl >= 0 %}green{% else %}red{% endif %}">
+          ${{ "%+.2f"|format(week_stats.net_pnl) }}
+        </div>
+        <div class="card-sub">{{ "%+.1f"|format(week_stats.net_pips) }} pips</div>
+        <div class="card-row">
+          <div class="stat"><div class="sv">{{ week_stats.total }}</div><div class="sl">Trades</div></div>
+          <div class="stat"><div class="sv {% if week_stats.win_rate >= 50 %}green{% else %}red{% endif %}">{{ "%.0f"|format(week_stats.win_rate) }}%</div><div class="sl">Win Rate</div></div>
+          <div class="stat"><div class="sv">{{ week_stats.wins }}W {{ week_stats.losses }}L</div><div class="sl">Record</div></div>
+        </div>
       </div>
-      <div class="goal-track">
-        <div class="goal-fill" style="width: {{ goal_pct }}%"></div>
+
+      <!-- This Month -->
+      <div class="perf-card">
+        <div class="card-title">This Month</div>
+        <div class="card-main {% if month_stats.net_pnl >= 0 %}green{% else %}red{% endif %}">
+          ${{ "%+.2f"|format(month_stats.net_pnl) }}
+        </div>
+        <div class="card-sub">{{ "%+.1f"|format(month_stats.net_pips) }} pips</div>
+        <div class="card-row">
+          <div class="stat"><div class="sv">{{ month_stats.total }}</div><div class="sl">Trades</div></div>
+          <div class="stat"><div class="sv {% if month_stats.win_rate >= 50 %}green{% else %}red{% endif %}">{{ "%.0f"|format(month_stats.win_rate) }}%</div><div class="sl">Win Rate</div></div>
+          <div class="stat"><div class="sv">{{ month_stats.wins }}W {{ month_stats.losses }}L</div><div class="sl">Record</div></div>
+        </div>
       </div>
-      <div class="goal-labels">
-        <span>Start: $100.00</span>
-        <span>Current: ${{ "%.2f"|format(current_balance) }}</span>
-        <span>Goal: $1,000.00</span>
+
+      <!-- All Time -->
+      <div class="perf-card">
+        <div class="card-title">All Time</div>
+        <div class="card-main {% if total_return_pct >= 0 %}green{% else %}red{% endif %}">
+          {{ "%+.1f"|format(total_return_pct) }}%
+        </div>
+        <div class="card-sub">${{ "%+.2f"|format(all_stats.net_pnl) }} &middot; {{ all_stats.total }} trades</div>
+        <div class="card-row">
+          <div class="stat"><div class="sv green">{{ best_month[0] }}</div><div class="sl">Best Mo (${{ "%+.1f"|format(best_month[1]) }})</div></div>
+          <div class="stat"><div class="sv red">{{ worst_month[0] }}</div><div class="sl">Worst Mo (${{ "%+.1f"|format(worst_month[1]) }})</div></div>
+        </div>
+      </div>
+
+      <!-- Streak -->
+      <div class="perf-card">
+        <div class="card-title">Current Streak</div>
+        <div class="card-main {% if streak.type == 'win' %}green{% elif streak.type == 'loss' %}red{% else %}white{% endif %}">
+          {{ streak.count }}{% if streak.type == 'win' %}W{% elif streak.type == 'loss' %}L{% endif %}
+        </div>
+        <div class="card-sub">
+          {% if streak.type == 'win' %}consecutive wins{% elif streak.type == 'loss' %}consecutive losses{% else %}no recent trades{% endif %}
+        </div>
+        <div class="card-row">
+          <div class="stat"><div class="sv green">{{ all_stats.wins }}</div><div class="sl">Total Wins</div></div>
+          <div class="stat"><div class="sv red">{{ all_stats.losses }}</div><div class="sl">Total Losses</div></div>
+          <div class="stat"><div class="sv {% if all_stats.win_rate >= 50 %}green{% else %}red{% endif %}">{{ "%.1f"|format(all_stats.win_rate) }}%</div><div class="sl">Overall WR</div></div>
+        </div>
       </div>
     </div>
 
-    <!-- KPI Row -->
-    <div class="kpi-row">
-      <div class="kpi">
-        <div class="label">Account Balance</div>
-        <div class="value white">${{ "%.2f"|format(current_balance) }}</div>
-        <div class="sub">${{ "%+.2f"|format(current_balance - 100) }} from start</div>
+    <!-- ═══════ SECTION 2: STRATEGY LEADERBOARD ═══════ -->
+    <div class="section">
+      <div class="section-header">
+        <h2>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><path d="M12 2L15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26z"/></svg>
+          Strategy Leaderboard
+        </h2>
+        <div class="tab-bar">
+          <button class="tab-btn active" onclick="switchTab(this, 'strategies')">Strategies</button>
+          <button class="tab-btn" onclick="switchTab(this, 'timeframes')">Timeframes</button>
+        </div>
       </div>
-      <div class="kpi">
-        <div class="label">Total Trades (Combined)</div>
-        <div class="value blue">{{ human_stats.total + agent_stats.total }}</div>
-        <div class="sub">{{ human_stats.total }} mine &middot; {{ agent_stats.total }} agent</div>
-      </div>
-      <div class="kpi">
-        <div class="label">My Win Rate</div>
-        <div class="value {% if human_stats.win_rate >= 50 %}green{% else %}red{% endif %}">{{ "%.1f"|format(human_stats.win_rate) }}%</div>
-        <div class="sub">{{ human_stats.wins }}W / {{ human_stats.losses }}L</div>
-      </div>
-      <div class="kpi">
-        <div class="label">Agent Win Rate</div>
-        <div class="value {% if agent_stats.win_rate >= 50 %}green{% else %}red{% endif %}">{{ "%.1f"|format(agent_stats.win_rate) }}%</div>
-        <div class="sub">{{ agent_stats.wins }}W / {{ agent_stats.losses }}L &middot; PF {{ "%.2f"|format(agent_stats.profit_factor) }}</div>
+      <div class="section-body">
+        <div id="tab-strategies" class="tab-content active">
+          <table class="ranking-table">
+            <thead><tr>
+              <th>Strategy</th><th>SQS</th><th>Win Rate</th><th>Avg R</th><th>Trades</th><th>Net P&L</th><th>Status</th>
+            </tr></thead>
+            <tbody>
+              {% for s in strategy_rankings %}
+              <tr>
+                <td style="font-weight:600;color:var(--white)">{{ s.name }}</td>
+                <td>{{ s.sqs }}</td>
+                <td class="{% if s.win_rate >= 55 %}green{% elif s.win_rate < 45 %}red{% endif %}">{{ s.win_rate }}%</td>
+                <td>{{ s.avg_r }}R</td>
+                <td>{{ s.trades }}</td>
+                <td class="{% if s.net_pnl >= 0 %}green{% else %}red{% endif %}">${{ "%+.2f"|format(s.net_pnl) }}</td>
+                <td><span class="status-pill {{ s.status }}">{{ s.status }}</span></td>
+              </tr>
+              {% endfor %}
+              {% if not strategy_rankings %}
+              <tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:24px">No strategy data yet</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+        <div id="tab-timeframes" class="tab-content">
+          <table class="ranking-table">
+            <thead><tr>
+              <th>Timeframe</th><th>SQS</th><th>Win Rate</th><th>Avg R</th><th>Trades</th><th>Net P&L</th><th>Status</th>
+            </tr></thead>
+            <tbody>
+              {% for s in tf_rankings %}
+              <tr>
+                <td style="font-weight:600;color:var(--white)">{{ s.name }}</td>
+                <td>{{ s.sqs }}</td>
+                <td class="{% if s.win_rate >= 55 %}green{% elif s.win_rate < 45 %}red{% endif %}">{{ s.win_rate }}%</td>
+                <td>{{ s.avg_r }}R</td>
+                <td>{{ s.trades }}</td>
+                <td class="{% if s.net_pnl >= 0 %}green{% else %}red{% endif %}">${{ "%+.2f"|format(s.net_pnl) }}</td>
+                <td><span class="status-pill {{ s.status }}">{{ s.status }}</span></td>
+              </tr>
+              {% endfor %}
+              {% if not tf_rankings %}
+              <tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:24px">No timeframe data yet</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
-    <!-- Two-Column Layout: My Trades vs Agent Trades -->
-    <div class="columns">
-      <!-- Left: My Trades -->
-      <div class="section-card">
-        <div class="header">
+    <!-- ═══════ SECTION 3: RECENT TRADES (HERO) ═══════ -->
+    <div class="section">
+      <div class="section-header">
+        <h2>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Recent Trades
+          <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;background:var(--blue-dim);color:var(--blue)">{{ recent_trades|length }}</span>
+        </h2>
+        <a href="/trades" style="font-size:11px;color:var(--blue);text-decoration:none;font-weight:600">View All &rarr;</a>
+      </div>
+      <div class="section-body">
+        {% for t in recent_trades %}
+        <div class="trade-card" id="trade-{{ t.id }}">
+          <div class="trade-card-header" onclick="toggleTrade({{ t.id }})">
+            <div class="trade-card-left">
+              <span class="dir-badge {{ t.direction }}">{{ t.direction|upper }}</span>
+              <div class="trade-meta">
+                <span class="tf">{{ t.tf }}</span>
+                <span class="sep">&middot;</span>
+                <span class="date">{{ t.entry_time | localtime }}</span>
+                <span class="sep">&middot;</span>
+                <span class="result-badge {% if t.is_win %}win{% else %}loss{% endif %}">{% if t.is_win %}WIN{% else %}LOSS{% endif %}</span>
+              </div>
+            </div>
+            <div class="trade-card-right">
+              <div class="trade-pnl">
+                <div class="pnl-val {% if t.is_win %}green{% else %}red{% endif %}">${{ "%+.2f"|format(t.pnl or 0) }}</div>
+                <div class="pnl-pips">{{ "%+.1f"|format(t.pnl_pips or 0) }} pips</div>
+              </div>
+              <svg class="expand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+          <div class="trade-card-body">
+            <div class="trade-detail">
+              <div class="trade-narrative">{{ t.narrative }}</div>
+              <div class="trade-badges">
+                {% for b in t.badges %}
+                {% set btype = 'sweep' if b.startswith('sweep_') else 'session' if b.startswith('session_') else 'fib' if b.startswith('fib_') else 'near' if b.startswith('near_') else b %}
+                <span class="conf-badge {{ btype }}">{{ b }}</span>
+                {% endfor %}
+              </div>
+              <div class="trade-timing">
+                <span>Entry: <strong>{{ t.entry_time | localtime }}</strong></span>
+                <span>Exit: <strong>{{ t.exit_time | localtime }}</strong></span>
+                <span>Duration: <strong>{{ t.hold_duration }}</strong></span>
+                <span>Exit: <strong>{{ t.exit_reason|upper }}</strong></span>
+                {% if t.sqs %}
+                <span class="sqs-badge">SQS {{ t.sqs }}</span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+        {% if not recent_trades %}
+        <div class="empty-state">No trades recorded yet. The agent will populate this once it starts trading.</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- ═══════ BOTTOM: RISK + WATCHLIST ═══════ -->
+    <div class="bottom-grid">
+
+      <!-- SECTION 4: RISK MONITOR -->
+      <div class="section">
+        <div class="section-header">
           <h2>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2962ff" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            My Trades
-            <span class="badge-count">{{ human_stats.total }}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Risk Monitor
           </h2>
         </div>
-        <div class="body">
-          <div class="stats-mini">
-            <div class="stat-mini">
-              <div class="val" style="color: var(--green);">+{{ "%.1f"|format(human_stats.total_pips_won) }}</div>
-              <div class="lbl">Pips Won</div>
+        <div class="risk-grid">
+          <div class="risk-item" style="grid-column: span 2;">
+            <div class="risk-label">Daily Drawdown ({{ "%.1f"|format(dd_limit_pct) }}% limit)</div>
+            <div class="risk-value {% if daily_dd_pct >= dd_limit_pct * 0.8 %}red{% elif daily_dd_pct >= dd_limit_pct * 0.5 %}gold{% else %}green{% endif %}">
+              {{ "%.2f"|format(daily_dd_pct) }}%
             </div>
-            <div class="stat-mini">
-              <div class="val" style="color: var(--red);">{{ "%.1f"|format(human_stats.total_pips_lost) }}</div>
-              <div class="lbl">Pips Lost</div>
-            </div>
-            <div class="stat-mini">
-              <div class="val {% if human_stats.net_pips >= 0 %}green{% else %}red{% endif %}">{{ "%+.1f"|format(human_stats.net_pips) }}</div>
-              <div class="lbl">Net Pips</div>
+            <div class="dd-bar-track">
+              {% set dd_fill = [daily_dd_pct / dd_limit_pct * 100, 100] | min %}
+              {% set dd_class = 'critical' if daily_dd_pct >= dd_limit_pct * 0.8 else 'warning' if daily_dd_pct >= dd_limit_pct * 0.5 else 'ok' %}
+              <div class="dd-bar-fill {{ dd_class }}" style="width: {{ dd_fill }}%"></div>
             </div>
           </div>
-
-          <ul class="trade-list">
-            {% for t in human_trades_recent %}
-            <li class="trade-item">
-              <div class="left">
-                <span class="dir-badge {{ t.direction }}">{{ t.direction|upper }}</span>
-                <span class="date">{{ t.trade_date }}</span>
-                <span class="entry">{{ "%.5f"|format(t.entry_price) }}</span>
-              </div>
-              <span class="pnl {% if (t.pnl_pips or 0) >= 0 %}pos{% else %}neg{% endif %}">{{ "%+.1f"|format(t.pnl_pips or 0) }}p</span>
-            </li>
-            {% endfor %}
-            {% if not human_trades_recent %}
-            <li class="trade-item" style="justify-content: center; color: var(--muted);">No trades yet</li>
-            {% endif %}
-          </ul>
-
-          <div class="highlights">
-            <div class="highlight best">
-              <div class="hl-label">Best Trade</div>
-              <div class="hl-value">{{ "%+.1f"|format(human_stats.best_pips) }} pips</div>
-              <div class="hl-detail">{{ human_stats.best_date }}</div>
+          <div class="risk-item">
+            <div class="risk-label">Kill Switch</div>
+            <div class="risk-value {% if kill_active %}red{% else %}green{% endif %}">
+              {% if kill_active %}ACTIVE{% else %}OFF{% endif %}
             </div>
-            <div class="highlight worst">
-              <div class="hl-label">Worst Trade</div>
-              <div class="hl-value">{{ "%+.1f"|format(human_stats.worst_pips) }} pips</div>
-              <div class="hl-detail">{{ human_stats.worst_date }}</div>
-            </div>
+          </div>
+          <div class="risk-item">
+            <div class="risk-label">Balance</div>
+            <div class="risk-value white">${{ "%.2f"|format(current_balance) }}</div>
           </div>
         </div>
       </div>
 
-      <!-- Right: Agent Trades -->
-      <div class="section-card">
-        <div class="header">
+      <!-- SECTION 5: WHAT'S FORMING -->
+      <div class="section">
+        <div class="section-header">
           <h2>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f7931a" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-            Agent Trades
-            <span class="badge-count" style="background: var(--amber-dim); color: var(--amber);">{{ agent_stats.total }}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            What's Forming
           </h2>
-          <span style="font-size: 10px; color: var(--muted);">0.01 lot &middot; $100 start</span>
         </div>
-        <div class="body">
-          <div class="stats-mini">
-            <div class="stat-mini">
-              <div class="val" style="color: var(--green);">${{ "%.2f"|format(agent_stats.total_pnl_won) }}</div>
-              <div class="lbl">P&L Won</div>
-            </div>
-            <div class="stat-mini">
-              <div class="val" style="color: var(--red);">${{ "%.2f"|format(agent_stats.total_pnl_lost) }}</div>
-              <div class="lbl">P&L Lost</div>
-            </div>
-            <div class="stat-mini">
-              <div class="val {% if agent_stats.net_pnl >= 0 %}green{% else %}red{% endif %}">${{ "%+.2f"|format(agent_stats.net_pnl) }}</div>
-              <div class="lbl">Net P&L</div>
-            </div>
-          </div>
-
-          <ul class="trade-list">
-            {% for t in agent_trades_recent %}
-            <li class="trade-item" {% if t.id %}style="cursor:pointer" onclick="location.href='/trade/{{ t.id }}'"{% endif %}>
-              <div class="left">
-                <span class="dir-badge {{ t.direction }}">{{ t.direction|upper }}</span>
-                <span class="date">{{ t.entry_time | localtime_short }}</span>
-                <span class="entry">{{ "%.5f"|format(t.entry_price) }}</span>
-              </div>
-              <span class="pnl {% if (t.pnl or 0) >= 0 %}pos{% else %}neg{% endif %}">${{ "%+.2f"|format(t.pnl or 0) }}</span>
-            </li>
-            {% endfor %}
-            {% if not agent_trades_recent %}
-            <li class="trade-item" style="justify-content: center; color: var(--muted);">No backtest trades yet</li>
-            {% endif %}
-          </ul>
-
-          <div class="highlights">
-            <div class="highlight best">
-              <div class="hl-label">Best Trade</div>
-              <div class="hl-value">${{ "%+.2f"|format(agent_stats.best_pnl) }}</div>
-              <div class="hl-detail">{{ "%+.1f"|format(agent_stats.best_pips) }} pips</div>
-            </div>
-            <div class="highlight worst">
-              <div class="hl-label">Worst Trade</div>
-              <div class="hl-value">${{ "%+.2f"|format(agent_stats.worst_pnl) }}</div>
-              <div class="hl-detail">{{ "%+.1f"|format(agent_stats.worst_pips) }} pips</div>
-            </div>
-          </div>
+        <div class="watchlist-grid" id="watchlist-container">
+          <div class="empty-state" id="watchlist-loading">Loading watchlist...</div>
         </div>
       </div>
     </div>
 
-    <!-- Roadmap -->
-    <div class="roadmap">
-      <h2>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        $100 to $1,000 Roadmap
-      </h2>
-      <div class="roadmap-grid">
-        <div class="roadmap-item">
-          <div class="ri-label">Avg Pips / Trade (Mine)</div>
-          <div class="ri-value">{{ "%.1f"|format(human_stats.avg_pips) }}</div>
-          <div class="ri-sub">across {{ human_stats.total }} trades</div>
-        </div>
-        <div class="roadmap-item">
-          <div class="ri-label">At 0.01 Lot / {{ "%.1f"|format(human_stats.avg_pips) }}p Avg</div>
-          <div class="ri-value">{{ trades_to_goal }} trades</div>
-          <div class="ri-sub">~{{ weeks_to_goal }} weeks at current pace</div>
-        </div>
-        <div class="roadmap-item">
-          <div class="ri-label">This Week's Focus</div>
-          <div class="ri-value" style="font-size: 14px; line-height: 1.5;">H1 Setups</div>
-          <div class="ri-sub">Wait for zone + FVG + sweep confluence</div>
-        </div>
-      </div>
-    </div>
   </div>
+
+  <script>
+    function toggleTrade(id) {
+      const el = document.getElementById('trade-' + id);
+      if (el) el.classList.toggle('open');
+    }
+
+    function switchTab(btn, tabId) {
+      btn.closest('.section').querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      btn.closest('.section').querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+      document.getElementById('tab-' + tabId).classList.add('active');
+    }
+
+    // Load watchlist via API
+    fetch('/api/watchlist')
+      .then(r => r.json())
+      .then(data => {
+        const container = document.getElementById('watchlist-container');
+        if (!data.items || data.items.length === 0) {
+          container.innerHTML = '<div class="empty-state">No setups forming right now. Check back during London or NY session.</div>';
+          return;
+        }
+        const iconMap = { session: '\u23F0', zone: '\u25CE', setup: '\u26A1' };
+        container.innerHTML = data.items.map(item => `
+          <div class="watch-item">
+            <div class="watch-item-left">
+              <div class="watch-icon ${item.type}">${iconMap[item.type] || '\u2022'}</div>
+              <div>
+                <div class="watch-title">${item.title}</div>
+                <div class="watch-sub">${item.subtitle}</div>
+              </div>
+            </div>
+            <span class="watch-status ${item.status}">${item.status}</span>
+          </div>
+        `).join('');
+      })
+      .catch(() => {
+        document.getElementById('watchlist-container').innerHTML =
+          '<div class="empty-state">Could not load watchlist data.</div>';
+      });
+  </script>
 </body>
 </html>

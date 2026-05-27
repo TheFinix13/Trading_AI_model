@@ -91,7 +91,7 @@ class Zone:
 
 @dataclass
 class FVG:
-    """Fair Value Gap."""
+    """Fair Value Gap with quality grading."""
     direction: Direction
     top: float
     bottom: float
@@ -101,6 +101,24 @@ class FVG:
     filled: bool = False
     filled_at: datetime | None = None
 
+    # Quality assessment fields
+    creation_displacement_pips: float = 0.0
+    creation_body_pct: float = 0.0
+    formation_session: str = "off_session"
+    is_killzone: bool = False
+
+    # Fill tracking
+    fill_pct: float = 0.0
+    revisit_count: int = 0
+    is_fully_filled: bool = False
+
+    # Quality score (0-100)
+    quality_score: float = 0.0
+
+    # Alignment context (populated by strategy/engine)
+    aligns_with_htf_trend: bool = False
+    has_sweep_before: bool = False
+
 
 @dataclass
 class BreakOfStructure:
@@ -108,6 +126,18 @@ class BreakOfStructure:
     broken_swing_price: float
     broken_at: datetime
     broken_bar_index: int
+
+    # Quality assessment fields
+    break_displacement_pips: float = 0.0
+    break_body_pct: float = 0.0
+    is_body_break: bool = True
+    break_session: str = "off_session"
+    bars_since_swing: int = 0
+    left_fvg_behind: bool = False
+    left_orderblock: bool = False
+
+    # Quality score (0-100)
+    quality_score: float = 0.0
 
 
 @dataclass
@@ -117,6 +147,51 @@ class FibLevel:
     direction: Direction
     levels: dict[float, float]  # 0.382 -> price, 0.5 -> price, etc.
     created_at: datetime
+
+    # Quality fields (populated by upgraded fib detector)
+    impulse_quality: float = 0.0
+    impulse_displacement_pips: float = 0.0
+    impulse_body_pct: float = 0.0
+    impulse_left_fvg: bool = False
+    impulse_broke_structure: bool = False
+    is_active: bool = True
+
+    # Per-level weights (level_pct -> confluence_weight)
+    level_weights: dict[float, float] = field(default_factory=dict)
+
+
+@dataclass
+class GradedFibLevel:
+    """Individual fib level with quality grading and OTE awareness."""
+    level_pct: float
+    price: float
+    direction: Direction
+    swing_start: float
+    swing_end: float
+    bar_index: int
+
+    impulse_quality: float = 0.0
+    impulse_displacement_pips: float = 0.0
+    impulse_body_pct: float = 0.0
+    impulse_left_fvg: bool = False
+    impulse_broke_structure: bool = False
+
+    is_in_ote: bool = False
+    confluence_weight: float = 0.0
+    is_active: bool = True
+
+
+@dataclass
+class FibZone:
+    """The OTE zone as a tradeable band, not individual levels."""
+    direction: Direction
+    ote_top: float
+    ote_bottom: float
+    fair_value: float
+    impulse_quality: float
+    bar_index: int
+    time: datetime
+    is_active: bool = True
 
 
 @dataclass

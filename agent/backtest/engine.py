@@ -10,13 +10,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable
 
-from agent.config import Config
+from agent.config import Config, GATE_PROFILES, GATE_PROFILE_DEFAULT, GateProfile
 from agent.backtest.metrics import PerfMetrics, compute_metrics
 from agent.features.extractor import extract_features
 from agent.journal.db import Journal
 from agent.risk.manager import RiskDecision, RiskManager
 from agent.rules.engine import RuleEngine, precompute
+from agent.rules.filters import is_no_trade_day, in_no_trade_window
 from agent.rules.htf_bias import HTFBiasComputer
+from agent.strategy.registry import StrategyRouter, default_registry
 from agent.types import Bar, Direction, Setup, Trade
 from agent.utils import to_pips
 
@@ -39,22 +41,28 @@ class Backtester:
     def __init__(self, cfg: Config, scorer: ScorerFn = None, prob_threshold: float = 0.55,
                  journal: Journal | None = None, journal_mode: str = "backtest",
                  journal_symbol: str | None = None,
-                 htf_biases: list[HTFBiasComputer] | None = None):
+                 htf_biases: list[HTFBiasComputer] | None = None,
+                 lzi_scorer: ScorerFn = None):
         """If `journal` is provided, every signal (taken or skipped), every trade open,
         every trade close, and equity snapshots are written to it. Lets you query the
         full reasoning behind any historical trade after the backtest is over.
 
         `htf_biases` is an optional list of higher-timeframe bias computers (typically
         one for D1 and one for H4). When cfg.rules.htf_bias_mode is 'advisory' or 'strict',
-        the rule engine consults these to filter or tag setups."""
+        the rule engine consults these to filter or tag setups.
+
+        `lzi_scorer` is an optional LZI-specific scorer function. When provided,
+        LiquidityGrabReversal setups are scored with this instead of the generic scorer."""
         self.cfg = cfg
         self.engine = RuleEngine(cfg, htf_biases=htf_biases)
         self.risk = RiskManager(cfg)
         self.scorer = scorer
+        self.lzi_scorer = lzi_scorer
         self.prob_threshold = prob_threshold
         self.journal = journal
         self.journal_mode = journal_mode
         self.journal_symbol = journal_symbol or cfg.symbol
+        self._strategy_router = StrategyRouter(default_registry())
 
     def run(self, bars: list[Bar]) -> BacktestResult:
         balance = self.cfg.backtest.initial_balance
@@ -102,16 +110,50 @@ class Backtester:
                     self._update_excursions(open_trade, bar, migrate=True)
 
             if open_trade is None and i < len(bars) - 1:
+                # --- Setup sourcing: rule engine + strategy router ---
                 setup = self.engine.evaluate_precomputed(ctx, i)
+
+                # Also check strategy router for strategy-produced setups.
+                # If both the engine and a strategy fire, prefer the strategy
+                # setup when it has a named profile (self-validating).
+                strategy_setups = self._strategy_router.route(ctx, i, regime=None)
+                strategy_setup = strategy_setups[0] if strategy_setups else None
+
+                if strategy_setup is not None:
+                    # Strategy setups go through profile-aware gate validation
+                    profile = GATE_PROFILES.get(
+                        strategy_setup.strategy_name or "", GATE_PROFILE_DEFAULT
+                    )
+                    passed, reason = self.engine.validate_setup_gates(
+                        strategy_setup, bars, i, profile
+                    )
+                    if passed:
+                        setup = strategy_setup
+                    elif setup is None:
+                        # Strategy setup failed gates and no engine setup either
+                        skipped += 1
+                        skip_reasons[f"strategy_gate_{reason}"] = (
+                            skip_reasons.get(f"strategy_gate_{reason}", 0) + 1
+                        )
+                        if self.journal is not None:
+                            self.journal.log_signal(
+                                strategy_setup, self.journal_symbol,
+                                f"skip_strategy_{reason}",
+                                f"strategy {strategy_setup.strategy_name} "
+                                f"failed gate: {reason}",
+                            )
+                        equity.append((bar.time, balance))
+                        continue
+
                 if setup is not None:
+                    profile = GATE_PROFILES.get(
+                        setup.strategy_name or "", GATE_PROFILE_DEFAULT
+                    )
                     setup.features = extract_features(setup, bars, i)
 
                     # ---- False-breakout filter ----------------------------------
-                    # Reject the classic stop-hunt: the detection bar wicked beyond
-                    # the trade direction but closed back inside. For a long, that
-                    # means low pierced below the zone bottom (stops swept) but the
-                    # close came back above it. Same logic mirrored for shorts.
-                    if (self.cfg.rules.reject_false_breakouts
+                    if (profile.reject_false_breakouts
+                            and self.cfg.rules.reject_false_breakouts
                             and setup.zone is not None):
                         z = setup.zone
                         det = bars[i]
@@ -145,15 +187,13 @@ class Backtester:
                                 continue
 
                     # ---- Candle-close confirmation gate -------------------------
-                    # Wait one extra bar after detection. Bar i+1 must close in the
-                    # trade direction without hitting the proposed stop. If yes, the
-                    # actual entry slips to bar i+2 open (one extra bar of delay).
-                    # This filters the spike-and-reverse fakes that gave us bad M15
-                    # entries (like trade #9 the user flagged).
                     entry_bar_offset = 1  # default: enter on next bar
-                    if self.cfg.rules.require_close_confirmation:
+                    require_confirmation = (
+                        profile.require_close_confirmation
+                        and self.cfg.rules.require_close_confirmation
+                    )
+                    if require_confirmation:
                         if i >= len(bars) - 2:
-                            # No room for confirmation bar AND entry bar.
                             equity.append((bar.time, balance))
                             continue
                         confirm_bar = bars[i + 1]
@@ -196,21 +236,45 @@ class Backtester:
                         equity.append((bar.time, balance))
                         continue
 
+                    # ---- ML scorer gate (profile-aware) -------------------------
                     score = None
-                    if self.scorer is not None:
-                        score = self.scorer(setup.features)
-                        setup.ml_score = score
-                        if score < self.prob_threshold:
-                            skipped += 1
-                            skip_reasons["ml_below_threshold"] = skip_reasons.get("ml_below_threshold", 0) + 1
-                            if self.journal is not None:
-                                self.journal.log_signal(
-                                    setup, self.journal_symbol, "skip_ml",
-                                    f"ml score {score:.3f} < {self.prob_threshold:.2f}",
-                                    ml_score=score,
-                                )
-                            equity.append((bar.time, balance))
-                            continue
+                    if profile.apply_ml_scorer:
+                        is_lzi = setup.strategy_name == "LiquidityGrabReversal"
+                        active_scorer = (
+                            self.lzi_scorer if (is_lzi and self.lzi_scorer is not None)
+                            else self.scorer
+                        )
+                        if active_scorer is not None:
+                            if is_lzi and self.lzi_scorer is not None:
+                                from agent.features.lzi_extractor import LZI_FEATURE_COLUMNS, extract_lzi_features
+                                from agent.detectors.liquidity_zones import LiquidityZone
+                                lzi_zone = self._extract_lzi_zone(setup, ctx)
+                                if lzi_zone is not None:
+                                    lzi_feats = extract_lzi_features(
+                                        bars, lzi_zone, i, setup.take_profit,
+                                    )
+                                    score = active_scorer(lzi_feats.to_dict())
+                                else:
+                                    score = active_scorer(setup.features)
+                            else:
+                                score = active_scorer(setup.features)
+                            setup.ml_score = score
+                            threshold = (
+                                profile.ml_score_override
+                                if profile.ml_score_override is not None
+                                else self.prob_threshold
+                            )
+                            if score < threshold:
+                                skipped += 1
+                                skip_reasons["ml_below_threshold"] = skip_reasons.get("ml_below_threshold", 0) + 1
+                                if self.journal is not None:
+                                    self.journal.log_signal(
+                                        setup, self.journal_symbol, "skip_ml",
+                                        f"ml score {score:.3f} < {threshold:.2f}",
+                                        ml_score=score,
+                                    )
+                                equity.append((bar.time, balance))
+                                continue
 
                     decision = self.risk.evaluate(
                         setup=setup,
@@ -266,6 +330,16 @@ class Backtester:
             skipped_signals=skipped,
             skipped_reasons=skip_reasons,
         )
+
+    def _extract_lzi_zone(self, setup: Setup, ctx) -> "LiquidityZone | None":
+        """Find the triggered LZI zone that produced this setup (for LZI feature extraction)."""
+        from agent.detectors.liquidity_zones import LiquidityZone
+        liq_zones = getattr(ctx, "liquidity_zones", None) or []
+        for z in liq_zones:
+            if z.status == "triggered" and z.displacement_bar_index == setup.detected_bar_index:
+                if z.trade_direction == setup.direction:
+                    return z
+        return None
 
     def _open_trade(self, setup: Setup, next_bar: Bar, lot: float) -> Trade:
         spread = self.cfg.backtest.spread_pips * 0.0001

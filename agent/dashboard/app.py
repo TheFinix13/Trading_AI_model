@@ -12,9 +12,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3 as _sq
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -89,6 +90,7 @@ VOICE_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 
 REALISTIC_BACKTEST_DB = Path(__file__).resolve().parents[2] / "data" / "agent_realistic_apr_may.db"
+BACKTEST_V8_DB = Path(__file__).resolve().parents[2] / "data" / "backtest_2024_2026_v8.db"
 CHART_SCREENSHOTS_DIR = Path(__file__).resolve().parents[2] / "data" / "chart_screenshots"
 
 
@@ -169,6 +171,295 @@ def _get_current_price() -> float:
     return 0.0
 
 
+def _load_v8_trades() -> list[dict]:
+    """Load all closed trades from the v8 backtest DB with signal data joined."""
+    if not BACKTEST_V8_DB.exists():
+        return []
+    conn = _sq.connect(str(BACKTEST_V8_DB))
+    conn.row_factory = _sq.Row
+    rows = conn.execute("""
+        SELECT t.*, s.confluences, s.confluence_tfs_json, s.features_json,
+               s.ml_score, s.timeframe AS sig_tf, s.detected_at,
+               s.decision_reason, s.rr AS sig_rr, s.stop_pips AS sig_stop_pips
+        FROM trades t LEFT JOIN signals s ON t.signal_id = s.id
+        WHERE t.exit_reason != 'end_of_data'
+        ORDER BY t.entry_time DESC
+    """).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+_CONFLUENCE_NARRATIVES: dict[str, dict] = {
+    "zone": {
+        "long": "Price returned to a key demand zone — an area where buyers stepped in before and pushed price sharply higher.",
+        "short": "Price returned to a key supply zone — an area where sellers had previously rejected price and drove it lower.",
+    },
+    "fvg": {
+        "long": "A fair value gap (imbalance) was left behind by a strong bullish move, indicating unfilled buy orders below.",
+        "short": "A fair value gap (imbalance) was left behind by a strong bearish move, indicating unfilled sell orders above.",
+    },
+    "bos": {
+        "long": "Market structure broke to the upside — a higher high confirmed that buyers are in control.",
+        "short": "Market structure broke to the downside — a lower low confirmed that sellers are in control.",
+    },
+    "fib_382": {
+        "default": "Price pulled back to the 38.2% Fibonacci retracement — a shallow pullback typical of strong trends."
+    },
+    "fib_500": {
+        "default": "Price retraced to the 50% level — right in the middle of the prior move, a key equilibrium point."
+    },
+    "fib_618": {
+        "default": "Price reached the 61.8% golden Fibonacci retracement — the deepest pullback that still respects the trend."
+    },
+    "fib_786": {
+        "default": "Price pulled all the way back to the 78.6% Fibonacci level — a deep retracement often seen before final reversals."
+    },
+    "liquidity_wick": {
+        "long": "A long lower wick appeared — price was pushed down to grab stop-losses from trapped sellers, then snapped back up.",
+        "short": "A long upper wick appeared — price was pushed up to grab stop-losses from trapped buyers, then snapped back down.",
+    },
+    "sweep_PDL": {
+        "default": "Price swept below the previous day's low, grabbing liquidity from traders who had their stops placed there."
+    },
+    "sweep_PDH": {
+        "default": "Price swept above the previous day's high, triggering buy-stops and trapping breakout traders."
+    },
+    "sweep_PDM": {
+        "default": "Price tested the previous day's mid-point — a key psychological level where orders cluster."
+    },
+    "sweep_PWL": {
+        "default": "Price swept below last week's low — a significant liquidity grab targeting weekly stop-losses."
+    },
+    "sweep_PWM": {
+        "default": "Price tested last week's mid-point, an area that often acts as a magnet for price."
+    },
+    "sweep_swing_high": {
+        "default": "Price swept above a recent swing high, grabbing liquidity from buy-stops placed above the obvious resistance."
+    },
+    "sweep_swing_low": {
+        "default": "Price swept below a recent swing low, grabbing liquidity from sell-stops placed below the obvious support."
+    },
+    "sweep_equal_highs": {
+        "default": "Price ran above equal highs — a liquidity pool where many traders had buy-stops stacked at the same level."
+    },
+    "sweep_equal_lows": {
+        "default": "Price ran below equal lows — a liquidity pool where many traders had sell-stops stacked at the same level."
+    },
+    "near_PDH": {
+        "default": "Price was near the previous day's high — a level the market often retests before deciding direction."
+    },
+    "near_PDL": {
+        "default": "Price was near the previous day's low — a level that frequently acts as a support/resistance pivot."
+    },
+    "near_PDM": {
+        "default": "Price was near the previous day's midpoint — often a magnet level where price consolidates."
+    },
+    "near_PWL": {
+        "default": "Price was near last week's low — a high-impact reference level for weekly traders."
+    },
+    "near_PWM": {
+        "default": "Price was near last week's midpoint — a frequently-tested equilibrium area."
+    },
+    "session_london": {
+        "default": "This occurred during the London session — the highest-volume forex session, where EURUSD makes its biggest moves."
+    },
+    "session_ny": {
+        "default": "This occurred during the New York session — the second-highest volume session and a key reversal window for EURUSD."
+    },
+    "phase_distribution": {
+        "long": "Price was in a distribution phase — smart money was selling at highs before the expected reversal lower.",
+        "short": "Price was in a distribution phase — the market was distributing before a move down, aligning with the short bias.",
+    },
+    "phase_accumulation": {
+        "long": "Price was in an accumulation phase — smart money was quietly building long positions before a breakout.",
+        "short": "Price was in an accumulation phase — the market was consolidating at lows before the next move.",
+    },
+    "htf_bias_long": {
+        "default": "The higher-timeframe trend (Daily/H4) was bullish, supporting the upside direction."
+    },
+    "htf_bias_short": {
+        "default": "The higher-timeframe trend (Daily/H4) was bearish, supporting the downside direction."
+    },
+}
+
+_SESSION_LABELS = {
+    "session_london": "London", "session_ny": "New York",
+    "session_london_ny_overlap": "London/NY Overlap",
+}
+_SWEEP_LABELS = {
+    "sweep_PDL": "Swept Previous Day Low", "sweep_PDH": "Swept Previous Day High",
+    "sweep_PDM": "Near Previous Day Mid", "sweep_PWL": "Swept Previous Week Low",
+    "sweep_PWM": "Near Previous Week Mid",
+    "sweep_swing_high": "Swept Swing High", "sweep_swing_low": "Swept Swing Low",
+    "sweep_equal_highs": "Swept Equal Highs", "sweep_equal_lows": "Swept Equal Lows",
+}
+
+
+def generate_trade_narrative(trade: dict) -> str:
+    """Convert a trade's technical confluences into a plain English narrative.
+
+    Reads like a human trader explaining the trade to a friend who understands
+    basic trading concepts but not the jargon-heavy shorthand."""
+    direction = trade.get("direction", "long")
+    confluences = []
+    try:
+        confluences = json.loads(trade.get("confluences") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    features = {}
+    try:
+        features = json.loads(trade.get("features_json") or "{}")
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    tf_label = (trade.get("sig_tf") or trade.get("mode", "")).replace("backtest_", "")
+    entry_price = trade.get("entry_price", 0)
+    exit_price = trade.get("exit_price", 0)
+    pnl = trade.get("pnl", 0) or 0
+    pnl_pips = trade.get("pnl_pips", 0) or 0
+    is_win = pnl > 0
+    exit_reason = trade.get("exit_reason", "")
+
+    # Opening context
+    dir_word = "buying" if direction == "long" else "selling"
+    dir_adj = "bullish" if direction == "long" else "bearish"
+    parts = []
+
+    # Build the story: what was the market context?
+    has_sweep = any(c.startswith("sweep_") for c in confluences)
+    has_fvg = "fvg" in confluences
+    has_zone = "zone" in confluences
+    has_fib = any(c.startswith("fib_") for c in confluences)
+    has_session = any(c.startswith("session_") for c in confluences)
+    has_phase = any(c.startswith("phase_") for c in confluences)
+
+    # Paragraph 1: the setup story
+    story_parts = []
+    if has_zone:
+        zone_text = _CONFLUENCE_NARRATIVES["zone"].get(direction, "")
+        story_parts.append(zone_text)
+
+    sweep_confs = [c for c in confluences if c.startswith("sweep_")]
+    for sc in sweep_confs:
+        text = _CONFLUENCE_NARRATIVES.get(sc, {}).get("default", "")
+        if text:
+            story_parts.append(text)
+
+    if has_fvg:
+        fvg_text = _CONFLUENCE_NARRATIVES["fvg"].get(direction, "")
+        if fvg_text:
+            story_parts.append(fvg_text)
+
+    fib_confs = [c for c in confluences if c.startswith("fib_")]
+    for fc in fib_confs:
+        text = _CONFLUENCE_NARRATIVES.get(fc, {}).get("default", "")
+        if text:
+            story_parts.append(text)
+
+    if has_session:
+        for sc in confluences:
+            if sc.startswith("session_"):
+                text = _CONFLUENCE_NARRATIVES.get(sc, {}).get("default", "")
+                if text:
+                    story_parts.append(text)
+
+    phase_confs = [c for c in confluences if c.startswith("phase_")]
+    for pc in phase_confs:
+        text = _CONFLUENCE_NARRATIVES.get(pc, {}).get(direction, "")
+        if not text:
+            text = _CONFLUENCE_NARRATIVES.get(pc, {}).get("default", "")
+        if text:
+            story_parts.append(text)
+
+    near_confs = [c for c in confluences if c.startswith("near_")]
+    for nc in near_confs:
+        text = _CONFLUENCE_NARRATIVES.get(nc, {}).get("default", "")
+        if text:
+            story_parts.append(text)
+
+    if "bos" in confluences:
+        bos_text = _CONFLUENCE_NARRATIVES["bos"].get(direction, "")
+        if bos_text:
+            story_parts.append(bos_text)
+
+    if "liquidity_wick" in confluences:
+        lw_text = _CONFLUENCE_NARRATIVES["liquidity_wick"].get(direction, "")
+        if lw_text:
+            story_parts.append(lw_text)
+
+    # Compose into narrative paragraphs
+    if story_parts:
+        parts.append(f"What happened: On the {tf_label} timeframe, "
+                     f"{'several signals lined up for a ' + dir_adj + ' trade. ' if len(story_parts) > 1 else 'a clear ' + dir_adj + ' setup formed. '}"
+                     + " ".join(story_parts))
+    else:
+        parts.append(f"What happened: A {dir_adj} setup was detected on the {tf_label} timeframe "
+                     f"with {len(confluences)} confluences.")
+
+    # Paragraph 2: the entry
+    parts.append(
+        f"We entered {direction.upper()} at {entry_price:.5f} on the {tf_label} chart"
+        + (f", with a stop at {trade.get('stop_price', 0):.5f} and target at {trade.get('tp_price', 0):.5f}" if trade.get("stop_price") else "")
+        + "."
+    )
+
+    rr = trade.get("sig_rr") or features.get("rr", 0) or 0
+    if rr:
+        parts.append(f"The risk-to-reward was {rr:.1f}:1.")
+
+    # Paragraph 3: the result
+    if exit_reason == "tp":
+        parts.append(
+            f"Result: Price hit our take-profit target — a clean winner. "
+            f"Gained {abs(pnl_pips):.1f} pips (${abs(pnl):.2f})."
+        )
+    elif exit_reason == "sl":
+        parts.append(
+            f"Result: Price hit our stop-loss. "
+            f"Lost {abs(pnl_pips):.1f} pips (${abs(pnl):.2f}). "
+            f"The setup was valid but the market didn't follow through this time."
+        )
+    elif exit_price:
+        result_word = "gained" if is_win else "lost"
+        parts.append(
+            f"Result: Trade was closed ({exit_reason}). "
+            f"We {result_word} {abs(pnl_pips):.1f} pips (${abs(pnl):.2f})."
+        )
+
+    return " ".join(parts)
+
+
+def _compute_streak(trades: list[dict]) -> dict:
+    """Compute current win/loss streak from most recent trades."""
+    if not trades:
+        return {"type": "none", "count": 0}
+    sorted_trades = sorted(trades, key=lambda t: t.get("entry_time", ""), reverse=True)
+    first_pnl = (sorted_trades[0].get("pnl") or 0)
+    if first_pnl == 0:
+        return {"type": "none", "count": 0}
+    streak_type = "win" if first_pnl > 0 else "loss"
+    count = 0
+    for t in sorted_trades:
+        pnl = t.get("pnl") or 0
+        if (streak_type == "win" and pnl > 0) or (streak_type == "loss" and pnl <= 0):
+            count += 1
+        else:
+            break
+    return {"type": streak_type, "count": count}
+
+
+def _compute_period_stats(trades: list[dict], start_date: str, end_date: str) -> dict:
+    """Filter trades to a date range and compute stats."""
+    filtered = [
+        t for t in trades
+        if start_date <= (t.get("entry_time") or "")[:10] <= end_date
+    ]
+    stats = _compute_trade_stats(filtered)
+    stats["trades_count"] = len(filtered)
+    return stats
+
+
 def _human_trades_filtered(journal: Journal) -> list[dict]:
     """Return only real human trades (not ai_chart_thought or annotation metadata)."""
     all_lessons = journal.all_lessons()
@@ -224,39 +515,124 @@ def _cleanup_old_audio(max_age_seconds: int = 3600) -> None:
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    journal = _journal()
+    # Load all v8 backtest trades (with signal data joined)
+    all_trades = _load_v8_trades()
+    all_stats = _compute_trade_stats(all_trades)
 
-    # Human trades (from imported journals)
-    human_trades = _human_trades_filtered(journal)
-    human_trades.sort(key=lambda t: t.get("trade_date", ""), reverse=True)
-    human_stats = _compute_trade_stats(
-        human_trades, pnl_key="pnl_pips", pips_key="pnl_pips"
-    )
-    # For human trades, pnl_key = pnl_pips since we don't have dollar P&L stored.
-    # Recalculate dollar-equivalent at 0.01 lot ($0.10/pip).
-    human_stats["net_pnl"] = human_stats["net_pips"] * 0.10
+    now = datetime.utcnow()
 
-    # Agent trades (from realistic 0.01-lot backtest)
-    agent_trades = _load_agent_trades()
-    real_agent = [t for t in agent_trades if t.get("exit_reason") != "end_of_data"]
-    agent_stats = _compute_trade_stats(real_agent)
+    # This week stats
+    week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+    week_end = now.strftime("%Y-%m-%d")
+    week_trades = [t for t in all_trades if week_start <= (t.get("entry_time") or "")[:10] <= week_end]
+    week_stats = _compute_trade_stats(week_trades)
 
-    # Current balance: start $100 + agent net P&L
-    current_balance = 100.0 + agent_stats["net_pnl"]
-    goal_pct = max(0, min(100, (current_balance - 100) / (1000 - 100) * 100))
+    # This month stats
+    month_start = now.strftime("%Y-%m-01")
+    month_trades = [t for t in all_trades if month_start <= (t.get("entry_time") or "")[:10] <= week_end]
+    month_stats = _compute_trade_stats(month_trades)
 
-    # Roadmap projections
-    avg_pips = human_stats["avg_pips"] if human_stats["total"] > 0 else 0
-    pip_value_at_001 = 0.10
-    if avg_pips > 0:
-        pnl_per_trade = avg_pips * pip_value_at_001
-        remaining = 1000 - current_balance
-        trades_to_goal = int(remaining / pnl_per_trade) if pnl_per_trade > 0 else 9999
-        trades_per_week = max(human_stats["total"] / 3, 1)  # rough estimate
-        weeks_to_goal = int(trades_to_goal / trades_per_week) if trades_per_week > 0 else 9999
-    else:
-        trades_to_goal = 9999
-        weeks_to_goal = 9999
+    # Monthly P&L for best/worst month
+    monthly_pnl: dict[str, float] = {}
+    for t in all_trades:
+        month_key = (t.get("entry_time") or "")[:7]
+        if month_key:
+            monthly_pnl[month_key] = monthly_pnl.get(month_key, 0) + (t.get("pnl") or 0)
+    best_month = max(monthly_pnl.items(), key=lambda x: x[1]) if monthly_pnl else ("—", 0)
+    worst_month = min(monthly_pnl.items(), key=lambda x: x[1]) if monthly_pnl else ("—", 0)
+
+    starting_balance = 100.0
+    current_balance = starting_balance + all_stats["net_pnl"]
+    total_return_pct = all_stats["net_pnl"] / starting_balance * 100
+
+    streak = _compute_streak(all_trades)
+
+    # Recent trades with narratives (top 20)
+    recent_trades = []
+    for t in all_trades[:20]:
+        confs = []
+        try:
+            confs = json.loads(t.get("confluences") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            pass
+        tf = (t.get("sig_tf") or t.get("mode", "")).replace("backtest_", "")
+        narrative = generate_trade_narrative(t)
+
+        hold_duration = ""
+        if t.get("entry_time") and t.get("exit_time"):
+            try:
+                entry_dt = datetime.fromisoformat(t["entry_time"].replace("Z", "+00:00"))
+                exit_dt = datetime.fromisoformat(t["exit_time"].replace("Z", "+00:00"))
+                delta = exit_dt - entry_dt
+                hours = delta.total_seconds() / 3600
+                hold_duration = f"{int(delta.total_seconds() / 60)}m" if hours < 1 else \
+                                f"{hours:.1f}h" if hours < 24 else f"{delta.days}d {int(hours % 24)}h"
+            except Exception:
+                pass
+
+        badges = [c for c in confs if not c.startswith("phase_")]
+
+        recent_trades.append({
+            **t,
+            "tf": tf,
+            "narrative": narrative,
+            "hold_duration": hold_duration,
+            "badges": badges,
+            "is_win": (t.get("pnl") or 0) > 0,
+            "sqs": round((t.get("ml_score") or 0) * 100, 1),
+        })
+
+    # Strategy leaderboard
+    strategy_map: dict[str, list[dict]] = {}
+    tf_map: dict[str, list[dict]] = {}
+    for t in all_trades:
+        confs = []
+        try:
+            confs = json.loads(t.get("confluences") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            pass
+        strategy = _identify_strategy(confs)
+        strategy_map.setdefault(strategy, []).append(t)
+        tf = (t.get("sig_tf") or t.get("mode", "")).replace("backtest_", "")
+        tf_map.setdefault(tf, []).append(t)
+
+    def _build_rankings(group_map: dict[str, list[dict]]) -> list[dict]:
+        ranked = []
+        for name, trades_list in group_map.items():
+            stats = _compute_trade_stats(trades_list)
+            ml_scores = [t.get("ml_score") or 0 for t in trades_list if t.get("ml_score")]
+            avg_sqs = sum(ml_scores) / len(ml_scores) * 100 if ml_scores else 0
+            rr_vals = [t.get("sig_rr") or 0 for t in trades_list if t.get("sig_rr")]
+            avg_r = sum(rr_vals) / len(rr_vals) if rr_vals else 0
+            status = "hot" if stats["win_rate"] >= 55 and stats["total"] >= 3 else \
+                     "cold" if stats["win_rate"] < 45 and stats["total"] >= 3 else \
+                     "dormant" if stats["total"] < 3 else "neutral"
+            ranked.append({
+                "name": name, "sqs": round(avg_sqs, 1),
+                "win_rate": round(stats["win_rate"], 1),
+                "avg_r": round(avg_r, 2), "trades": stats["total"],
+                "net_pnl": round(stats["net_pnl"], 2), "status": status,
+            })
+        ranked.sort(key=lambda x: x["sqs"], reverse=True)
+        return ranked
+
+    strategy_rankings = _build_rankings(strategy_map)
+    tf_rankings = _build_rankings(tf_map)
+
+    # Risk status
+    today = now.strftime("%Y-%m-%d")
+    today_trades = [t for t in all_trades if (t.get("entry_time") or "")[:10] == today]
+    today_pnl = sum(t.get("pnl") or 0 for t in today_trades)
+    daily_dd_pct = abs(min(today_pnl, 0)) / current_balance * 100 if current_balance > 0 else 0
+    dd_limit_pct = cfg.risk.daily_dd_halt_pct * 100
+
+    # Daily P&L for the top bar
+    daily_pnl = sum(t.get("pnl") or 0 for t in today_trades)
+    daily_pnl_pips = sum(t.get("pnl_pips") or 0 for t in today_trades)
+
+    # Mode label for status badge
+    mode_label = "Paper Mode" if cfg.mode == "paper" else \
+                 "Active" if cfg.mode == "live" else "Backtest"
 
     return templates.TemplateResponse(
         request,
@@ -264,13 +640,22 @@ def index(request: Request):
         {
             "current_price": _get_current_price(),
             "current_balance": current_balance,
-            "goal_pct": goal_pct,
-            "human_stats": human_stats,
-            "agent_stats": agent_stats,
-            "human_trades_recent": human_trades[:8],
-            "agent_trades_recent": real_agent[-8:][::-1],
-            "trades_to_goal": trades_to_goal,
-            "weeks_to_goal": weeks_to_goal,
+            "daily_pnl": daily_pnl,
+            "daily_pnl_pips": daily_pnl_pips,
+            "mode_label": mode_label,
+            "week_stats": week_stats,
+            "month_stats": month_stats,
+            "all_stats": all_stats,
+            "total_return_pct": total_return_pct,
+            "best_month": best_month,
+            "worst_month": worst_month,
+            "streak": streak,
+            "recent_trades": recent_trades,
+            "strategy_rankings": strategy_rankings,
+            "tf_rankings": tf_rankings,
+            "daily_dd_pct": daily_dd_pct,
+            "dd_limit_pct": dd_limit_pct,
+            "today_pnl": today_pnl,
             "kill_active": cfg.kill_switch_file.exists(),
             "mode": cfg.mode,
             "symbol": cfg.symbol,
@@ -291,6 +676,320 @@ def api_trades(mode: str | None = None):
     journal = _journal()
     rows = journal.all_trades(mode=mode)
     return JSONResponse(rows)
+
+
+@app.get("/api/performance/summary")
+def api_performance_summary():
+    """Performance cards data: this week, this month, all-time."""
+    trades = _load_v8_trades()
+    now = datetime.utcnow()
+
+    # This week (Mon-Sun)
+    week_start = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+    week_end = now.strftime("%Y-%m-%d")
+    week_stats = _compute_period_stats(trades, week_start, week_end)
+
+    # This month
+    month_start = now.strftime("%Y-%m-01")
+    month_stats = _compute_period_stats(trades, month_start, week_end)
+
+    # All time
+    all_stats = _compute_trade_stats(trades)
+
+    # Monthly P&L for best/worst month
+    monthly_pnl: dict[str, float] = {}
+    for t in trades:
+        month_key = (t.get("entry_time") or "")[:7]
+        if month_key:
+            monthly_pnl[month_key] = monthly_pnl.get(month_key, 0) + (t.get("pnl") or 0)
+    best_month = max(monthly_pnl.items(), key=lambda x: x[1]) if monthly_pnl else ("—", 0)
+    worst_month = min(monthly_pnl.items(), key=lambda x: x[1]) if monthly_pnl else ("—", 0)
+
+    streak = _compute_streak(trades)
+
+    starting_balance = 100.0
+    total_return_pct = (all_stats["net_pnl"] / starting_balance * 100) if starting_balance else 0
+
+    return JSONResponse({
+        "week": week_stats,
+        "month": month_stats,
+        "all_time": {**all_stats, "total_return_pct": total_return_pct,
+                     "best_month": best_month[0], "best_month_pnl": best_month[1],
+                     "worst_month": worst_month[0], "worst_month_pnl": worst_month[1]},
+        "streak": streak,
+    })
+
+
+@app.get("/api/rankings/current")
+def api_rankings_current():
+    """Strategy, timeframe, and session leaderboard from trade data."""
+    trades = _load_v8_trades()
+
+    # Strategy ranking by confluence pattern
+    strategy_map: dict[str, list[dict]] = {}
+    tf_map: dict[str, list[dict]] = {}
+    session_map: dict[str, list[dict]] = {}
+
+    for t in trades:
+        confs = []
+        try:
+            confs = json.loads(t.get("confluences") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Identify primary strategy from confluences
+        strategy = _identify_strategy(confs)
+        strategy_map.setdefault(strategy, []).append(t)
+
+        # Group by timeframe
+        tf = (t.get("sig_tf") or t.get("mode", "")).replace("backtest_", "")
+        tf_map.setdefault(tf, []).append(t)
+
+        # Group by session
+        for c in confs:
+            if c.startswith("session_"):
+                label = _SESSION_LABELS.get(c, c.replace("session_", "").title())
+                session_map.setdefault(label, []).append(t)
+
+    def _rank_group(group_map: dict[str, list[dict]]) -> list[dict]:
+        ranked = []
+        for name, group_trades in group_map.items():
+            stats = _compute_trade_stats(group_trades)
+            ml_scores = [t.get("ml_score") or 0 for t in group_trades if t.get("ml_score")]
+            avg_sqs = sum(ml_scores) / len(ml_scores) * 100 if ml_scores else 0
+            avg_r = 0
+            rr_vals = []
+            for gt in group_trades:
+                rr = gt.get("sig_rr") or 0
+                if rr:
+                    rr_vals.append(rr)
+            avg_r = sum(rr_vals) / len(rr_vals) if rr_vals else 0
+            status = "hot" if stats["win_rate"] >= 55 and stats["total"] >= 3 else \
+                     "cold" if stats["win_rate"] < 45 and stats["total"] >= 3 else \
+                     "dormant" if stats["total"] < 3 else "neutral"
+            ranked.append({
+                "name": name,
+                "sqs": round(avg_sqs, 1),
+                "win_rate": round(stats["win_rate"], 1),
+                "avg_r": round(avg_r, 2),
+                "trades": stats["total"],
+                "net_pnl": round(stats["net_pnl"], 2),
+                "net_pips": round(stats["net_pips"], 1),
+                "status": status,
+            })
+        ranked.sort(key=lambda x: x["sqs"], reverse=True)
+        return ranked
+
+    return JSONResponse({
+        "strategies": _rank_group(strategy_map),
+        "timeframes": _rank_group(tf_map),
+        "sessions": _rank_group(session_map),
+    })
+
+
+def _identify_strategy(confluences: list[str]) -> str:
+    """Identify the primary strategy from a list of confluence tags."""
+    has_sweep = any(c.startswith("sweep_") for c in confluences)
+    has_fvg = "fvg" in confluences
+    has_zone = "zone" in confluences
+    has_fib = any(c.startswith("fib_") for c in confluences)
+    has_bos = "bos" in confluences
+    has_lw = "liquidity_wick" in confluences
+
+    if has_lw or (has_sweep and not has_fvg and not has_bos):
+        return "Liquidity Grab Reversal"
+    if has_fvg and has_zone:
+        return "FVG + Zone Retest"
+    if has_bos and (has_fvg or has_sweep):
+        return "BOS Continuation"
+    if has_fib and has_zone:
+        return "Fib Retracement"
+    if has_zone:
+        return "S/D Zone Retest"
+    if has_fvg:
+        return "Fair Value Gap"
+    if has_bos:
+        return "Structure Break"
+    return "Mixed Confluence"
+
+
+@app.get("/api/trades/recent")
+def api_trades_recent(limit: int = 20):
+    """Recent trades with full narratives."""
+    trades = _load_v8_trades()[:limit]
+    results = []
+    for t in trades:
+        confs = []
+        try:
+            confs = json.loads(t.get("confluences") or "[]")
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        narrative = generate_trade_narrative(t)
+        tf = (t.get("sig_tf") or t.get("mode", "")).replace("backtest_", "")
+
+        # Compute hold duration
+        hold_duration = ""
+        if t.get("entry_time") and t.get("exit_time"):
+            try:
+                entry_dt = datetime.fromisoformat(t["entry_time"].replace("Z", "+00:00"))
+                exit_dt = datetime.fromisoformat(t["exit_time"].replace("Z", "+00:00"))
+                delta = exit_dt - entry_dt
+                hours = delta.total_seconds() / 3600
+                if hours < 1:
+                    hold_duration = f"{int(delta.total_seconds() / 60)}m"
+                elif hours < 24:
+                    hold_duration = f"{hours:.1f}h"
+                else:
+                    hold_duration = f"{delta.days}d {int(hours % 24)}h"
+            except Exception:
+                pass
+
+        # Build confluence badges
+        badges = []
+        for c in confs:
+            if c.startswith("phase_"):
+                continue
+            badge_type = "sweep" if c.startswith("sweep_") else \
+                         "session" if c.startswith("session_") else \
+                         "fib" if c.startswith("fib_") else \
+                         "near" if c.startswith("near_") else c
+            badges.append({"tag": c, "type": badge_type})
+
+        results.append({
+            "id": t.get("id"),
+            "date": _to_local(t.get("entry_time")),
+            "entry_time": t.get("entry_time"),
+            "exit_time": t.get("exit_time"),
+            "direction": t.get("direction"),
+            "timeframe": tf,
+            "result": "WIN" if (t.get("pnl") or 0) > 0 else "LOSS",
+            "pnl": round(t.get("pnl") or 0, 2),
+            "pnl_pips": round(t.get("pnl_pips") or 0, 1),
+            "entry_price": t.get("entry_price"),
+            "exit_price": t.get("exit_price"),
+            "stop_price": t.get("stop_price"),
+            "tp_price": t.get("tp_price"),
+            "exit_reason": t.get("exit_reason"),
+            "narrative": narrative,
+            "confluences": badges,
+            "hold_duration": hold_duration,
+            "sqs": round((t.get("ml_score") or 0) * 100, 1),
+            "rr": round(t.get("sig_rr") or 0, 1),
+        })
+    return JSONResponse(results)
+
+
+@app.get("/api/risk/status")
+def api_risk_status():
+    """Drawdown meter, open positions, kill switch status."""
+    trades = _load_v8_trades()
+    starting_balance = 100.0
+    net_pnl = sum(t.get("pnl") or 0 for t in trades)
+    current_balance = starting_balance + net_pnl
+
+    # Daily drawdown: sum of today's losses
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today_trades = [t for t in trades if (t.get("entry_time") or "")[:10] == today]
+    today_pnl = sum(t.get("pnl") or 0 for t in today_trades)
+    daily_dd_pct = abs(min(today_pnl, 0)) / current_balance * 100 if current_balance > 0 else 0
+    dd_limit_pct = cfg.risk.daily_dd_halt_pct * 100
+
+    # Open positions (trades without exit_time in raw data)
+    open_positions = 0
+    if BACKTEST_V8_DB.exists():
+        try:
+            conn = _sq.connect(str(BACKTEST_V8_DB))
+            conn.row_factory = _sq.Row
+            open_rows = conn.execute(
+                "SELECT * FROM trades WHERE exit_time IS NULL"
+            ).fetchall()
+            open_positions = len(open_rows)
+            conn.close()
+        except Exception:
+            pass
+
+    return JSONResponse({
+        "daily_dd_pct": round(daily_dd_pct, 2),
+        "dd_limit_pct": dd_limit_pct,
+        "dd_status": "critical" if daily_dd_pct >= dd_limit_pct * 0.8 else
+                     "warning" if daily_dd_pct >= dd_limit_pct * 0.5 else "ok",
+        "current_balance": round(current_balance, 2),
+        "starting_balance": starting_balance,
+        "equity": round(current_balance, 2),
+        "open_positions": open_positions,
+        "max_open_positions": cfg.risk.max_open_positions,
+        "kill_switch_active": cfg.kill_switch_file.exists(),
+        "today_pnl": round(today_pnl, 2),
+        "today_trades": len(today_trades),
+    })
+
+
+@app.get("/api/watchlist")
+def api_watchlist():
+    """Forming setups and upcoming sessions."""
+    from zoneinfo import ZoneInfo
+
+    now = datetime.utcnow()
+    items = []
+
+    # Upcoming sessions
+    try:
+        ny_tz = ZoneInfo("America/New_York")
+        london_tz = ZoneInfo("Europe/London")
+        ny_now = datetime.now(ny_tz)
+        london_now = datetime.now(london_tz)
+
+        sessions = [
+            ("London Open", 8, 0, london_tz, london_now),
+            ("NY Open", 9, 30, ny_tz, ny_now),
+            ("London Close", 16, 30, london_tz, london_now),
+            ("NY Close", 17, 0, ny_tz, ny_now),
+        ]
+        for name, hour, minute, tz, tz_now in sessions:
+            session_time = tz_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if session_time < tz_now:
+                session_time += timedelta(days=1)
+            delta = session_time - tz_now
+            hours_until = delta.total_seconds() / 3600
+            if hours_until <= 12:
+                if hours_until < 1:
+                    time_str = f"{int(delta.total_seconds() / 60)}m"
+                else:
+                    h = int(hours_until)
+                    m = int((hours_until - h) * 60)
+                    time_str = f"{h}h {m}m" if m else f"{h}h"
+                items.append({
+                    "type": "session",
+                    "title": name,
+                    "subtitle": f"in {time_str}",
+                    "status": "upcoming",
+                })
+    except Exception as e:
+        log.debug("Watchlist session calc error: %s", e)
+
+    # Zones price is approaching (from chart annotations)
+    for tf in ["H1", "M15"]:
+        try:
+            annotations = load_annotations(tf, limit=200)
+            candles = load_candles(tf, limit=1)
+            if not candles:
+                continue
+            current_price = candles[-1]["close"]
+            for zone in annotations.get("zones", [])[:6]:
+                dist_pips = abs(current_price - (zone["top"] + zone["bottom"]) / 2) * 10000
+                if dist_pips < 30:
+                    dir_label = "demand" if zone["direction"] == "long" else "supply"
+                    items.append({
+                        "type": "zone",
+                        "title": f"{tf} {dir_label.title()} Zone",
+                        "subtitle": f"{zone['bottom']:.5f}–{zone['top']:.5f} ({dist_pips:.0f} pips away)",
+                        "status": "approaching" if dist_pips < 15 else "nearby",
+                    })
+        except Exception as e:
+            log.debug("Watchlist zone scan error on %s: %s", tf, e)
+
+    return JSONResponse({"items": items[:10]})
 
 
 @app.post("/api/kill")
