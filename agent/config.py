@@ -128,16 +128,14 @@ class NoTradeWindow(BaseModel):
 class SessionConfig(BaseModel):
     timezone: str = "Europe/London"
     no_trade_windows: list[NoTradeWindow] = []
-    # Days with statistically poor autonomous performance. NOT blocked — the
-    # human partner may still see and take trades on these days. The system
-    # uses these as "caution days": autonomous signals require EXTRA confirmation
-    # (score_threshold += 0.15) rather than being outright rejected.
+    # Thursday and Friday show poor autonomous WR but are not blocked —
+    # exceptional setups (score exceeds threshold + caution_boost) can still
+    # fire. The human partner can always override.
     #   * Thursday: 30% WR / -74.4 pips / -$8.14 (2024-2026 OOS)
     #   * Friday:   22% WR / -82.8 pips / -$8.91 (2025-2026 OOS)
     caution_days: list[str] = ["Thu", "Fri"]
-    # Hard-blocked days for autonomous trading. Empty by default — the human
-    # partner can always trade any day. Thursday and Friday are handled as
-    # caution days above (elevated threshold, not blocked).
+    # Nothing hard-blocked — caution_days above handle Thu/Fri via elevated
+    # threshold (+0.15), not outright rejection.
     no_trade_days: list[str] = []
 
 
