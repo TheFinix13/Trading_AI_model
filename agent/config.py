@@ -128,15 +128,21 @@ class NoTradeWindow(BaseModel):
 class SessionConfig(BaseModel):
     timezone: str = "Europe/London"
     no_trade_windows: list[NoTradeWindow] = []
-    # Thursday and Friday show poor autonomous WR but are not blocked —
-    # exceptional setups (score exceeds threshold + caution_boost) can still
-    # fire. The human partner can always override.
-    #   * Thursday: 30% WR / -74.4 pips / -$8.14 (2024-2026 OOS)
-    #   * Friday:   22% WR / -82.8 pips / -$8.91 (2025-2026 OOS)
-    caution_days: list[str] = ["Thu", "Fri"]
-    # Nothing hard-blocked — caution_days above handle Thu/Fri via elevated
-    # threshold (+0.15), not outright rejection.
-    no_trade_days: list[str] = []
+    # Caution days philosophy: Thursday and Friday have historically lower WR
+    # (Thu: 11-30%, Fri: 22-24% in various test windows). Instead of blocking
+    # them outright (which would miss legitimate setups), we:
+    #   1. Raise the ML score threshold by +caution_score_boost (0.15)
+    #   2. Require at least one positively-scored confluence booster
+    #   3. The human partner can always override manually
+    # This makes the system MORE selective on these days, not blind to them.
+    no_trade_days: list[str] = []  # No days completely blocked — human can always trade
+    caution_days: list[str] = ["Thu", "Fri"]  # Both require elevated threshold
+
+    # Extra gates for caution days: require at least one confluence booster with
+    # positive lift (from the optimizer) to fire on caution days. This ensures
+    # that Thursday/Friday trades only happen when there's structural support,
+    # not just a marginal signal.
+    caution_require_positive_booster: bool = True
 
 
 class FibConfig(BaseModel):

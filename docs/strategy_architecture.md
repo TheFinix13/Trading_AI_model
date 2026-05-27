@@ -1,220 +1,270 @@
-# EURUSD AI Trading System — Strategy Architecture
+# EURUSD AI Trading Agent — Strategy Architecture
 
-**Version:** v9b (May 2026)  
-**Status:** Profitable on OOS (2024-2026): +10.4%, PF 1.12, Sharpe 0.72, Max DD 13.1%
-
----
-
-## Philosophy
-
-This system is a **dual-partnership trading agent** — combining a discretionary trader's pattern recognition with systematic execution. Every component answers two questions:
-
-1. **WHY** does this pattern work? (institutional order flow logic)
-2. **WHEN** does it apply? (regime, session, quality grading)
-
-The system does NOT blindly trade patterns. It understands the intent behind price action.
+**Last updated:** 2026-05-27
+**Status:** Profitable on OOS data (PF 1.12, +10.4%, Sharpe 0.72)
 
 ---
 
-## How We Got Here (Development Journey)
+## Executive Summary
 
-### Phase 1: Naive Detection (April 2026)
-- Built basic detectors: zones, FVGs, BOS, fibs, trendlines
-- Rules engine counted confluences: more = better
-- Result: 50.7% WR but PF 0.84 (losing money after fees)
-- Problem: entering on DETECTION without CONFIRMATION
+This system is a systematic trading agent for EURUSD that combines three primary 
+strategies with intelligent confluence boosting and per-strategy risk controls. 
+It was built iteratively through collaboration between a discretionary ICT-style 
+trader and a quantitative framework, encoding the trader's market intuition into 
+testable, repeatable logic.
 
-### Phase 2: Gate Stack (May 2026, Week 1)
-- Added precision gates, blocked hours, session filters
-- Reduced noise from thousands of signals to ~73 trades
-- Result: still breakeven-to-negative. Gates reduced bad trades but also blocked good ones.
-
-### Phase 3: Two-Phase Philosophy (May 2026, Week 4)
-- Key insight from the human partner: "You don't trade the sweep. You trade the RETEST."
-- Rebuilt every strategy with: Detect → Wait → Confirm Reaction → Enter
-- Added quality grading to every detector (not all zones/FVGs/sweeps are equal)
-- Added PD Array targeting (targets based on market structure, not arbitrary R:R)
-- Result: +10.4% OOS, profitable system
-
-### Phase 4: Intelligence Layer (Current)
-- Per-strategy ML scorers (LZI has its own model with 15 purpose-built features)
-- Confluence Optimizer (learns which boosters help which strategy)
-- SQS Rankings (tracks strategy/timeframe/session performance over time)
-- Gate Profiles (each strategy has tailored quality control, not one-size-fits-all)
+**Key philosophy:** Every strategy uses a two-phase approach — detect the opportunity, 
+then WAIT for confirmation before entering. This patience is what separates 
+profitable from breakeven.
 
 ---
 
-## System Architecture
+## How We Got Here (The Journey)
 
-### PRIMARY STRATEGIES (Two-Phase, Self-Validating)
+### Phase 1: Naive System (April 2026)
+- Basic zone detection + BOS + fib → enter on touch
+- Result: 50.7% WR but PF 0.84 (losing money to transaction costs)
+- Problem: Entering too early, no quality filtering, no confirmation
 
-#### 1. LZI Retest (Liquidity Zone of Interest)
-**Edge:** Institutional order flow footprints via sweep-and-retest
+### Phase 2: Gate Stack (May 2026 Week 1)
+- Added precision partners, structural anchors, blocked hours
+- Result: Reduced noise but also reduced trade count drastically
+- Problem: One-size-fits-all gates blocked good setups too
 
-**How it works:**
-1. A significant wick (≥10 pips H1, ≥15 pips H4) sweeps a tagged level (PDH/PDL/PWH/PWL/swing/equal levels)
-2. Bar closes back inside (confirmed failed breakout = liquidity grab)
-3. System marks the wick range as a Liquidity Zone of Interest — does NOT trade
-4. Waits for price to RETURN to the zone (retest)
-5. Confirms consumption: 3+ bars spending time in/near the zone (orders filling)
-6. Confirms displacement: strong candle (body >60%, >10 pips) closes away from zone
-7. ENTERS in the reversal direction
-8. Stop: beyond zone extreme + 3 pip buffer
-9. TP: nearest unswept opposite-side liquidity (PD Array targeting)
+### Phase 3: Liquidity Rewrite (May 2026 Week 4)
+- Trader taught: "Don't trade the sweep — trade the RETEST"
+- Built two-phase LZI system with PD Array targeting
+- Dedicated LZI scorer with 15 purpose-built features
+- Result: LZI profitable on OOS (26.4% WR at 4.37:1 R:R)
 
-**Dedicated ML Scorer:** 15 LZI-specific features (wick quality, retest speed, displacement strength, session context, trend alignment). Threshold: 0.40.
-
-**Performance:** 26.4% WR at 4.37:1 R:R (profitable — breakeven is 18.6%)
-
----
-
-#### 2. FVG Retest (Fair Value Gap)
-**Edge:** Institutional imbalances that price returns to fill
-
-**How it works:**
-1. Detects 3-candle imbalances (gap between candle 1 high and candle 3 low)
-2. Grades quality (0-100): size, creation aggressiveness, session, fill status, revisit count
-3. Only trades FVGs with quality ≥ 40, fill < 80%, revisits ≤ 2
-4. Waits for price to return to the FVG zone
-5. Confirms reaction: rejection wick (50%+ on correct side), engulfing, OR displacement
-6. ENTERS on confirmed reaction
-7. Stop: beyond FVG boundary
-8. TP: structural target (next swing level)
-
-**Quality factors:** FVGs created during London/NY open with displacement > 65% body and leaving no prior fill are highest quality.
+### Phase 4: Strategy Ecosystem (May 2026 Week 4)
+- Applied same two-phase philosophy to FVG and SD Zones
+- Quality grading for every detector (score 0-100)
+- Reaction confirmation required (rejection wick, engulfing, displacement)
+- Per-strategy GateProfiles (each strategy gets appropriate controls)
+- Confluence Optimizer (scores which boosters help which strategy)
+- Result: Unified system PF 1.12, +10.4% OOS, 13.1% max DD
 
 ---
 
-#### 3. SD Zone Retest (Supply/Demand Order Blocks)
-**Edge:** Institutional accumulation footprints at key levels
+## Architecture Overview
 
-**How it works:**
-1. Detects zones using order-block precision (last opposing candle before displacement)
-2. Grades quality (0-100): origin type (rally-base-drop/drop-base-rally), base tightness (1-3 candles ideal), departure aggressiveness, session, FVG left behind, width vs ATR
-3. Tracks depletion: each revisit depletes remaining orders, fill % tracked
-4. Only trades zones with quality ≥ 45, not depleted (revisits < 3, fill < 80%)
-5. Waits for fresh zone touch + reaction confirmation
-6. ENTERS on confirmed reaction
-7. Stop: beyond zone extreme
-8. TP: structural target
-
-**Key nuance:** More touches = WEAKER zone (orders draining), not stronger.
-
----
-
-### CONFLUENCE BOOSTERS (Never Standalone)
-
-#### Fibonacci
-- OTE Zone (61.8%-71.0%) = maximum weight
-- 50% = fair value equilibrium (strong)
-- 38.2% = shallow pullback (moderate, only in strong trends)
-- 78.6% = INVALIDATION level (if reached, all fibs from that impulse are dead)
-- Only drawn from quality impulses (score ≥ 35, size ≥ 20 pips, displacement-driven)
-- NEVER enters alone — must confirm another primary strategy
-
-#### BOS (Break of Structure)
-- Context signal only — confirms trend direction
-- Quality scored: body break >> wick break, recent swing >> ancient, killzone >> off-session
-- Enhances FVG entries when structure breaks clean with FVG left behind
-- NOT a standalone entry trigger
-
-#### Session Timing
-- London Open (07-10 UTC) and NY Open (13-16 UTC) = kill zones (highest institutional volume)
-- Kill-zone entries get bonus conviction
-- Asia/off-session = reduced conviction
-
-#### HTF Alignment
-- D1/H4 trend direction confirms or contradicts LTF entries
-- Trading WITH the higher TF trend = bonus conviction
-- Counter-trend setups need extra confluence to compensate
-
-#### Daily Levels (PDH/PDL/PWH/PWL)
-- Proximity to previous day/week highs and lows
-- Used for sweep detection and TP targeting
-- NOT entry triggers — context for other strategies
-
----
-
-### META-LAYER (Intelligence)
-
-#### Confluence Optimizer
-- Scores each booster individually per strategy (marginal WR lift)
-- Tests pairwise combinations for additivity vs redundancy
-- In real-time: selects optimal booster subset for each setup
-- Checks price alignment (boosters pointing at same area = high conviction)
-- Updates online from every new trade (exponential moving average)
-
-#### GateProfiles
-- Each strategy has its own gate configuration
-- LZI: bypasses most gates (its 6-step internal validation is more rigorous)
-- FVG/SD Zone: bypass structural anchor (quality scoring replaces it)
-- Legacy: full gate stack active
-- Essential safety gates always on: R:R check, DD halt, position limits
-
-#### SQS Rankings (Strategy Quality Score)
-- Scores each trade 0-100 across 5 dimensions:
-  - Risk-Reward Actual (0-30)
-  - Execution Efficiency (0-25)
-  - Zone Respect / MAE (0-20)
-  - Timing (0-15)
-  - Regime Bonus (0-10)
-- Ranks strategies, timeframes, and sessions by cumulative performance
-
-#### Regime Router
-- Classifies market: trending / choppy / high-vol / low-vol
-- Routes signal priority: LZI thrives in chop, FVG thrives in trends
-- Multiple strategies can fire; highest SQS-ranked wins
+```
+MARKET DATA (H1/H4/D1 candles)
+        │
+        ▼
+┌─────────────────────────────────────────────┐
+│         DETECTION LAYER                      │
+│  Zones │ FVGs │ BOS │ Sweeps │ Fibs │ Levels│
+│  (quality-scored, not just detected)         │
+└─────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────┐
+│      PRIMARY STRATEGIES (Two-Phase)          │
+│                                              │
+│  LZI Retest:   sweep → zone → retest →      │
+│                consume → displace → ENTER    │
+│                                              │
+│  FVG Retest:   quality FVG → return →        │
+│                reaction confirmed → ENTER     │
+│                                              │
+│  SD Zone:      order-block zone → fresh →    │
+│                reaction confirmed → ENTER     │
+└─────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────┐
+│      CONFLUENCE BOOSTERS                     │
+│  (enhance, never standalone)                 │
+│                                              │
+│  • Fibonacci OTE zone (61.8-71%)            │
+│  • BOS quality (context signal)              │
+│  • Session timing (London/NY killzones)      │
+│  • HTF alignment (D1/H4 trend)              │
+│  • Daily levels (PDH/PDL proximity)          │
+│                                              │
+│  Confluence Optimizer selects which          │
+│  boosters help THIS specific setup           │
+└─────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────┐
+│      META-LAYER (Quality Control)            │
+│                                              │
+│  • GateProfile per strategy                  │
+│  • ML Scorer (generic v8 + LZI-specific v1)  │
+│  • Caution days (Thu/Fri = elevated bar)     │
+│  • Blocked hours (low-edge NY hours)         │
+│  • Risk manager (1% risk, 3% daily DD halt)  │
+│  • SQS Rankings (track what works over time) │
+│  • Regime Router (trending/chop/vol)         │
+└─────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────┐
+│      EXECUTION                               │
+│                                              │
+│  • Position sizing (1% risk per trade)       │
+│  • PD Array TP targeting (opposite liquidity)│
+│  • Breakeven at 1R                           │
+│  • One position at a time                    │
+│  • Kill switch (kill.txt file)               │
+└─────────────────────────────────────────────┘
+```
 
 ---
 
-## Risk Management
+## Primary Strategies (Detail)
 
-| Parameter | Value |
-|---|---|
-| Risk per trade | 1% of balance |
-| Daily DD halt | 3% |
-| Max open positions | 1 |
-| Lot sizing | Adaptive (0.01 under $300, 0.10 under $1000) |
-| Breakeven trigger | Move stop to entry at 1R profit |
-| Kill switch | `kill.txt` file halts all trading |
-| Caution days | Thursday + Friday (threshold += 0.15) |
-| Blocked hours (NY) | 03, 04, 12, 13, 16, 17, 18 |
+### 1. LZI Retest (Liquidity Zone of Interest)
+
+**Philosophy:** When smart money grabs liquidity (sweeps stops), they leave 
+unfilled orders in the wick zone. Price WILL return to fill those orders. 
+We trade the return, not the sweep itself.
+
+**Detection (Phase 1):**
+- Bar wick pierces a tagged level (PDH/PDL/PWH/PWL/swing/equal)
+- Bar closes back inside (failed breakout = confirmed grab)
+- Wick size ≥ 10 pips (H1) or 15 pips (H4)
+- Mark wick range as Liquidity Zone of Interest
+
+**Entry (Phase 2):**
+- Wait for price to return to the LZI (retest)
+- Confirm consumption: 3+ bars inside/touching the zone
+- Confirm displacement: strong candle (body > 60%, > 10 pips) closes away
+- Enter at displacement close
+
+**Stop:** Beyond the LZI extreme + 3 pip buffer
+**Target:** Nearest unswept opposite-side liquidity (PD Array)
+**Average R:R:** 4.37:1
+**ML Scorer:** Dedicated LZI scorer (15 features, threshold 0.40)
+**Gate Profile:** Self-validating (bypasses generic gates)
+
+### 2. FVG Retest (Fair Value Gap)
+
+**Philosophy:** Institutional displacement leaves imbalances (FVGs) in price. 
+These are unfilled orders that price WILL return to. But not all FVGs are 
+equal — only quality ones with aggressive creation deserve attention.
+
+**Quality Grading (0-100):**
+- Size: 15+ pips = 25 pts
+- Creation aggressiveness: body > 80% = 25 pts  
+- Session: London/NY killzone = 20 pts
+- Fill status: unfilled = 15 pts (degrades with each revisit)
+
+**Entry:**
+- Only FVGs with quality ≥ 40
+- Max 2 revisits, fill < 80%
+- Must see reaction: rejection wick (50%+ wick) OR engulfing OR displacement
+- Enter on reaction candle close
+
+### 3. SD Zone Retest (Supply/Demand)
+
+**Philosophy:** Zones form where institutions accumulated orders (the "base" 
+before a displacement move). The zone boundary is the ORDER BLOCK — the last 
+opposing candle before the move, not the whole consolidation.
+
+**Quality Grading (0-100):**
+- Origin type: rally-base-drop/drop-base-rally = 15 pts
+- Base tightness: 1-2 candles = 15 pts
+- Departure aggressiveness: body > 75% = 20 pts
+- FVG left behind: +10 pts
+- Session: killzone = 15 pts
+- Width vs ATR: proportional = 10 pts
+- Depletion: -5 per revisit
+
+**Entry:**
+- Quality ≥ 45, not depleted (revisits < 3, fill < 80%)
+- Reaction confirmation required
+- Enter on reaction candle close
 
 ---
 
-## Performance Summary
+## Confluence Boosters (Detail)
 
-| Metric | Training (2020-2023) | Test OOS (2024-2026) |
-|---|---|---|
-| Trades | 288 | 92 |
-| Win Rate | 44.8% | 33.7% |
-| Profit Factor | 1.45 | 1.12 |
-| Sharpe Ratio | 2.32 | 0.72 |
-| Max Drawdown | 21.5% | 13.1% |
-| Return | +73.7% | +10.4% |
+### Fibonacci (OTE Zone)
+- Only drawn from quality impulses (score ≥ 35)
+- Active levels: 38.2%, 50%, 61.8%, 70.5%
+- OTE Zone (61.8-71%): highest weight
+- 78.6% = INVALIDATION (trend thesis dead)
+- NEVER standalone — enhances primary strategies only
+
+### BOS (Break of Structure)
+- Quality-scored: body break >> wick break
+- Recency matters: break within 20 bars = significant
+- Context only: confirms trend direction for FVG/LZI
+- Bonus: if BOS leaves an FVG behind → that FVG gets extra quality
+
+### Session Timing
+- London open (07-10 UTC): sweeps and FVGs here are institutional
+- NY open (13-16 UTC): highest volume, strongest moves
+- Asia: signals here are weaker (retail activity)
+- Off-session: lowest confidence
+
+### HTF Alignment
+- D1/H4 trend direction informs H1 entries
+- Trading WITH the higher timeframe = higher WR
+- Against HTF = only if very high confluence
+
+### Daily Levels
+- PDH/PDL: previous day's high/low (key liquidity pools)
+- PWH/PWL: previous week's high/low
+- Used as both sweep targets AND TP levels (PD Array)
 
 ---
 
-## Timeframe Tiers
+## Meta-Layer (Detail)
 
-| Timeframe | Role | Status |
-|---|---|---|
-| H1 | Primary execution | Active (62.5% of trades, 35.9% WR) |
-| M15 | Secondary execution | Dormant (needs 0.55 score — only exceptional setups) |
-| H4 | Bias + zone context | Bias-only (no entries, feeds HTF analysis) |
-| D1 | Trend direction | Bias-only |
-| M5 | Not used | Disabled |
+### Confluence Optimizer
+- Scores each booster's WR lift per strategy
+- Tests pairwise combos for additivity vs redundancy
+- Checks price alignment (are boosters pointing at same price?)
+- Online learning: updates after each trade
+
+### GateProfiles
+- Each strategy has tailored quality controls
+- LZI: self-validating (bypasses generic gates)
+- FVG/SD Zone: relaxed structural anchor (their scoring IS structural)
+- Legacy: all gates active
+
+### Caution Days (Thu/Fri)
+- NOT blocked — just elevated bar (+0.15 score threshold)
+- Requires positive confluence booster
+- Human can always override
+
+### Risk Management
+- 1% risk per trade
+- 3% daily drawdown halt
+- One position at a time
+- Breakeven at 1R
+- Kill switch (file-based)
 
 ---
 
-## Next Steps
+## Performance (OOS Test: 2024-2026)
 
-1. Train per-strategy scorers for FVG and SD Zone (like we did for LZI)
+| Metric | Value |
+|--------|-------|
+| Trades | 92 |
+| Win Rate | 33.7% |
+| Profit Factor | 1.12 |
+| Sharpe | 0.72 |
+| Max Drawdown | 13.1% |
+| Return | +10.4% |
+| Avg R:R | ~3.2:1 |
+
+---
+
+## What's Next
+
+1. Train FVG-specific and SD Zone-specific scorers (like we did for LZI)
 2. Volume profile integration (HVN/LVN/POC from M1 data)
-3. Order flow proxies (absorption, effort-vs-result, delta approximation)
-4. Live demo deployment on Exness via MT5 (Windows VPS)
-5. Continuous learning from human partner feedback
+3. Order flow approximation (delta, CVD divergence)
+4. Live demo trading on Exness via MT5
+5. Continuous learning from user feedback (drawing → analysis loop)
 
 ---
 
-*This document is the source of truth for the system's logic. Update after each significant change.*
+*This document is the single source of truth for the trading strategy. 
+Update it whenever strategies are modified.*
