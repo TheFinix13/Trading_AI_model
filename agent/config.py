@@ -135,9 +135,10 @@ class SessionConfig(BaseModel):
     #   * Thursday: 30% WR / -74.4 pips / -$8.14 (2024-2026 OOS)
     #   * Friday:   22% WR / -82.8 pips / -$8.91 (2025-2026 OOS)
     caution_days: list[str] = ["Thu", "Fri"]
-    # Hard-blocked days for autonomous trading. Thursday: 11.1% WR catastrophic.
-    # The human partner can still override manually.
-    no_trade_days: list[str] = ["Thu"]
+    # Hard-blocked days for autonomous trading. Empty by default — the human
+    # partner can always trade any day. Thursday and Friday are handled as
+    # caution days above (elevated threshold, not blocked).
+    no_trade_days: list[str] = []
 
 
 class FibConfig(BaseModel):

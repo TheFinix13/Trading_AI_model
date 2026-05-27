@@ -205,4 +205,89 @@ A chronological record of what was built, discovered, and decided across all dev
 
 ---
 
+## Session 6 — May 27, 2026
+
+**Theme:** Strategy rebuild — two-phase entries, per-strategy ML, confluence optimizer, unified backtest.
+
+### What was built
+
+- **Strategy Quality Score (SQS) ranking system** (`agent/strategy/ranking.py`):
+  - Per-trade scoring (0–100) across five dimensions: risk-reward (30 pts), execution efficiency (25 pts), zone respect (20 pts), timing (15 pts), regime fit (10 pts).
+  - Tracks strategy/TF/session performance over time.
+  - Configurable thresholds in `RankingConfig`.
+
+- **LZI two-phase rebuild** (`agent/strategy/strategies/liquidity_grab_reversal.py`):
+  - Phase 1: sweep detection → mark Liquidity Zone of Interest → DO NOT TRADE.
+  - Phase 2: wait for retest → consumption (3+ bars in zone) → displacement candle → ENTER.
+  - PD Array targeting for opposite-side unswept liquidity TPs.
+  - Dedicated LZI ML scorer with 15 LZI-specific features (sweep type, consumption count, displacement metrics).
+  - Relaxed gate profile (self-validates with six-step internal logic).
+
+- **FVG quality grading + reaction confirmation**:
+  - Quality scoring (0–100): size, creation aggressiveness, session timing, fill tracking.
+  - Minimum quality threshold of 40 to consider an FVG for entry.
+  - Depletion: FVGs visited 3+ times or 80%+ filled are removed.
+  - Relaxed gate profile — FVG IS the precision partner.
+
+- **BOS context-only upgrade**:
+  - BOS demoted from entry trigger to context-only booster.
+  - Quality scored: body break > wick break, recent > ancient.
+  - Only enhances primary strategies (FVG + BOS = high conviction).
+  - BOS-only entries had bled -144 pips in detector audit — now impossible.
+
+- **SD Zone order-block precision**:
+  - Zone boundary = last opposing candle before impulse (the order block).
+  - Quality scoring: origin type, base tightness, departure strength, session, FVG left behind.
+  - Depletion tracking: each revisit depletes the zone.
+  - Relaxed gate profile with reaction confirmation.
+
+- **Fibonacci OTE zone + invalidation**:
+  - OTE zone (61.8%–71.0%) = highest weight.
+  - 78.6% retracement treated as INVALIDATION (trend is dead, not a deeper entry).
+  - Minimum impulse quality of 35 and minimum 20 pips to draw fibs.
+  - Never trades alone — must accompany a primary strategy.
+
+- **Confluence optimizer** (`agent/strategy/confluence_optimizer.py`):
+  - Measures per-booster marginal lift per strategy.
+  - Tests pairwise combinations for additivity vs redundancy.
+  - Real-time optimal booster subset selection.
+  - Alignment checking (boosters must point at same price).
+  - Online learning: updates scores after each trade.
+
+- **Gate profiles** (`agent/config.py`):
+  - Per-strategy quality gate overrides (GateProfile class).
+  - Default (all gates active), LZI (relaxed, self-validates), FVG (relaxed), SD Zone (relaxed).
+  - GATE_PROFILES dict for strategy-name lookup.
+
+- **LZI-specific ML scorer**:
+  - Separate XGBoost model for LZI setups with 15 domain-specific features.
+  - Threshold: 0.40 (relaxed vs generic 0.55 — internal validation is the primary filter).
+  - Configured in `MLConfig.lzi_scorer_path` / `lzi_score_threshold`.
+
+- **Caution day adjustment**:
+  - Thursday moved from hard-blocked (`no_trade_days`) to caution (`caution_days`).
+  - Both Thursday and Friday require elevated score threshold (+0.15).
+  - `no_trade_days` now empty — human partner can always trade any day.
+
+- **Comprehensive strategy documentation** (`docs/strategy_guide.md`):
+  - Complete system playbook covering all strategies, boosters, meta-layer, config philosophy, and performance.
+
+### Key results
+
+- **Unified backtest (OOS 2024–2026):** 92 trades, 33.7% WR, PF 1.12, Sharpe 0.72, +10.4% return.
+- **Development trajectory:** -9.6% (v7 baseline) → +10.4% (v8 with two-phase + LZI scorer + optimizer).
+- **LZI dominance:** 26.4% WR at 4.37:1 R:R — low WR but extreme R:R drives profitability.
+- **Best day:** Monday (40.7% WR). Thursday/Friday weakest — hence caution-day designation.
+- **Max drawdown:** 13.1% — within acceptable bounds for a $100 live account.
+
+### Decisions
+
+- Thursday is a caution day, not a blocked day. The system can trade but requires higher conviction (+0.15 score boost).
+- LZI Retest is the primary edge driver — it gets its own ML scorer and relaxed gates.
+- BOS is context-only — never triggers entries independently.
+- M15 remains dormant (28.6% WR OOS) but continues learning.
+- H1 is the active primary timeframe (proven 62.5% WR OOS edge).
+
+---
+
 *Update this log at the end of each development session.*
