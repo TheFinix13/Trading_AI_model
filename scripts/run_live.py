@@ -119,7 +119,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--verbose", "-v",
         action="store_true",
-        help="Enable debug logging",
+        help="Show every check cycle detail (without this, only heartbeat + signals are logged)",
     )
     parser.add_argument(
         "--skip-health",
@@ -358,7 +358,7 @@ def main() -> None:
     args = parse_args()
 
     if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+        logging.getLogger("agent.live").setLevel(logging.DEBUG)
 
     if args.kill_switch == "off":
         os.environ["SKIP_KILL_SWITCH"] = "1"
@@ -399,6 +399,8 @@ def main() -> None:
     if args.no_telegram:
         overrides["telegram_enabled"] = False
 
+    verbose = args.verbose
+
     # Set up graceful shutdown
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -422,6 +424,7 @@ def main() -> None:
                 broker_type=args.broker,
                 timeframes=args.timeframe,
                 config_path=args.config,
+                verbose=verbose,
                 **overrides,
             )
         )

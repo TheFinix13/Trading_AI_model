@@ -1,7 +1,7 @@
 """Real-time trading signal detection and execution loop.
 
 Architecture:
-1. Every N seconds (configurable, default 60s for H1), fetch latest bars
+1. Every N seconds (configurable, default 30s), fetch latest bars
 2. Run rule engine on latest bars (detectors + confluences)
 3. If setup passes all gates + ML scorer → generate signal
 4. Check risk manager (daily DD, open positions, kill switch)
@@ -35,6 +35,8 @@ from agent.utils import kill_switch_active
 
 log = logging.getLogger(__name__)
 
+_HEARTBEAT_INTERVAL_SECONDS = 15 * 60  # 15 minutes
+
 
 class SignalLoop:
     """Real-time trading signal detection and execution loop.
@@ -53,12 +55,14 @@ class SignalLoop:
         broker: BrokerConnection,
         notifier: TelegramNotifier | None = None,
         journal: Journal | None = None,
+        verbose: bool = False,
     ):
         self.config = config
         self.live_config = live_config
         self.broker = broker
         self.notifier = notifier or TelegramNotifier.from_env(dry_run=not live_config.telegram_enabled)
         self.journal = journal or Journal(config.journal_db)
+        self.verbose = verbose
 
         self.engine = RuleEngine(config)
         self.risk = RiskManager(config)
@@ -81,6 +85,14 @@ class SignalLoop:
         self._last_bar_times: dict[str, datetime | None] = {}
         self._consecutive_errors = 0
         self._max_consecutive_errors = 10
+
+        # Heartbeat / status tracking
+        self._start_time = datetime.now(tz=timezone.utc)
+        self._last_heartbeat = self._start_time
+        self._bars_checked = 0
+        self._trades_today = 0
+        self._pnl_today = 0.0
+        self._last_check_status: dict[str, str] = {}  # per-TF status from last cycle
 
     def _load_scorer(self) -> SetupScorer | None:
         """Load the ML scorer if available."""
@@ -117,9 +129,121 @@ class SignalLoop:
             log.warning("Failed to load LZI scorer: %s", e)
             return None
 
+    # ------------------------------------------------------------------
+    # Heartbeat / status logging
+    # ------------------------------------------------------------------
+
+    def _uptime_str(self) -> str:
+        delta = datetime.now(tz=timezone.utc) - self._start_time
+        total_seconds = int(delta.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        if hours > 0:
+            return f"{hours}h {minutes:02d}m"
+        return f"{minutes}m"
+
+    def _htf_bias_str(self) -> str:
+        if self._htf_context is not None:
+            bias = self._htf_context.combined_bias.value.upper()
+            conf = self._htf_context.bias_confidence
+            return f"{bias} (confidence: {conf:.2f})"
+        return "N/A (HTF disabled)" if not self._htf_analyzer else "N/A (not yet computed)"
+
+    def _zones_summary(self, ctx=None) -> str:
+        """Summarize active zones from precomputed context."""
+        parts: list[str] = []
+        if ctx is not None:
+            lzi_zones = getattr(ctx, "liquidity_zones", None) or []
+            active_lzi = [z for z in lzi_zones if getattr(z, "status", "") in ("fresh", "triggered")]
+            if active_lzi:
+                parts.append(f"{len(active_lzi)} LZI")
+
+            fvg_zones = getattr(ctx, "fvgs", None) or []
+            if fvg_zones:
+                parts.append(f"{len(fvg_zones)} FVG")
+
+            sd_zones = getattr(ctx, "sd_zones", None) or getattr(ctx, "supply_demand_zones", None) or []
+            if sd_zones:
+                parts.append(f"{len(sd_zones)} SD")
+        return ", ".join(parts) if parts else "0"
+
+    def _patterns_summary(self) -> str:
+        if self._htf_context is None:
+            return "N/A"
+        patterns = self._htf_context.active_patterns
+        if not patterns:
+            return "None"
+        return ", ".join(str(p) for p in patterns[:4])
+
+    def _next_bar_estimate(self) -> str:
+        """Estimate when the next H1 bar closes."""
+        now = datetime.now(tz=timezone.utc)
+        next_hour = now.replace(minute=0, second=0, microsecond=0)
+        from datetime import timedelta
+        if next_hour <= now:
+            next_hour += timedelta(hours=1)
+        return next_hour.strftime("%H:%M")
+
+    def _maybe_heartbeat(self) -> None:
+        """Log a 15-minute heartbeat summary if enough time has elapsed."""
+        now = datetime.now(tz=timezone.utc)
+        elapsed = (now - self._last_heartbeat).total_seconds()
+        if elapsed < _HEARTBEAT_INTERVAL_SECONDS:
+            return
+
+        self._last_heartbeat = now
+        now_str = now.strftime("%H:%M")
+        htf_bias = self._htf_bias_str()
+        zones = self._zones_summary()
+        patterns = self._patterns_summary()
+        next_bar = self._next_bar_estimate()
+
+        log.info(
+            "\n"
+            "─── %s HEARTBEAT ───\n"
+            "Status: ALIVE | Uptime: %s | Bars checked: %d\n"
+            "HTF Bias: %s\n"
+            "Active zones: %s\n"
+            "Patterns: %s\n"
+            "Next check: waiting for H1 bar close at %s\n"
+            "Trades today: %d | P&L: $%.2f\n"
+            "────────────────────────",
+            now_str,
+            self._uptime_str(), self._bars_checked,
+            htf_bias,
+            zones,
+            patterns,
+            next_bar,
+            self._trades_today, self._pnl_today,
+        )
+
+    def _log_cycle_status(self, tf: str, new_bar: bool, status: str,
+                          ctx=None) -> None:
+        """Log a per-cycle status line (always in verbose, signals always)."""
+        now_str = datetime.now(tz=timezone.utc).strftime("%H:%M")
+        htf_bias = self._htf_bias_str().split(" (")[0]  # just the bias name
+        zones = self._zones_summary(ctx)
+
+        if new_bar:
+            bar_time = self._last_bar_times.get(tf)
+            bar_str = bar_time.strftime("%H:%M") if bar_time else "?"
+            prefix = f"{now_str} | NEW {tf} BAR {bar_str}"
+        else:
+            prefix = f"{now_str} | {tf} checked"
+
+        line = f"{prefix} | HTF: {htf_bias} | Zones: {zones} | {status}"
+        self._last_check_status[tf] = status
+
+        is_signal = status.startswith("\u26a1")  # ⚡ prefix = signal found
+        if self.verbose or is_signal:
+            log.info(line)
+
     async def run(self) -> None:
         """Main loop — runs until killed or fatal error."""
         self._running = True
+        self._start_time = datetime.now(tz=timezone.utc)
+        self._last_heartbeat = self._start_time
+
         log.info("=" * 60)
         log.info("Signal loop starting")
         log.info("  Broker: %s", self.live_config.broker_type)
@@ -130,6 +254,7 @@ class SignalLoop:
         log.info("  LZI scorer: %s", "loaded" if self.lzi_scorer else "disabled")
         log.info("  Strategies: %s", ", ".join(self._strategy_router.registry.names()))
         log.info("  HTF context: %s", "enabled" if self._htf_analyzer else "disabled")
+        log.info("  Verbose: %s", "ON" if self.verbose else "OFF (heartbeat every 15m)")
         log.info("  Kill file: %s", self.live_config.kill_file)
         log.info("=" * 60)
 
@@ -152,6 +277,7 @@ class SignalLoop:
         try:
             while self._running:
                 await self._iteration()
+                self._maybe_heartbeat()
                 await asyncio.sleep(self.live_config.check_interval_seconds)
         except asyncio.CancelledError:
             log.info("Signal loop cancelled")
@@ -242,9 +368,15 @@ class SignalLoop:
         last_closed = bars[-2] if len(bars) >= 2 else bars[-1]
         prev_time = self._last_bar_times.get(timeframe)
         if prev_time == last_closed.time:
-            return  # Already processed this bar
+            next_close = self._next_bar_estimate()
+            self._log_cycle_status(
+                timeframe, new_bar=False,
+                f"No new bar since last check (waiting for {next_close} close)",
+            )
+            return
 
         self._last_bar_times[timeframe] = last_closed.time
+        self._bars_checked += 1
         log.info("New bar on %s: %s (close=%.5f)",
                  timeframe, last_closed.time.isoformat(), last_closed.close)
 
@@ -272,6 +404,7 @@ class SignalLoop:
 
         # Prefer the strategy setup when it passes its profile gates
         setup = None
+        gate_rejection_reason: str | None = None
         if strategy_setup is not None:
             profile = GATE_PROFILES.get(
                 strategy_setup.strategy_name or "", GATE_PROFILE_DEFAULT
@@ -287,6 +420,10 @@ class SignalLoop:
                     setup.entry, setup.stop, setup.take_profit, setup.confluences,
                 )
             else:
+                gate_rejection_reason = (
+                    f"Strategy [{strategy_setup.strategy_name}] detected "
+                    f"but failed gate: {gate_reason}"
+                )
                 log.info(
                     "Strategy [%s] detected but failed gate: %s",
                     strategy_setup.strategy_name, gate_reason,
@@ -301,6 +438,15 @@ class SignalLoop:
             )
 
         if setup is None:
+            # Build a descriptive "why no signal" message
+            zones_str = self._zones_summary(ctx)
+            if strategy_setup is not None and gate_rejection_reason:
+                reason = gate_rejection_reason
+            elif zones_str == "0":
+                reason = "No active zones (no recent sweeps/retests in lookback)"
+            else:
+                reason = f"{zones_str} zone(s) active but no retest confirmed"
+            self._log_cycle_status(timeframe, new_bar=True, status=f"No entry triggered — {reason}", ctx=ctx)
             return
 
         # HTF alignment check — boost/penalize or block based on context
@@ -309,12 +455,19 @@ class SignalLoop:
             htf_aligned = self._htf_context.supports_direction(direction_str)
 
             if not htf_aligned and self.config.htf.require_htf_alignment:
+                htf_bias_val = self._htf_context.combined_bias.value
                 log.info("HTF gate BLOCKED: %s conflicts with HTF bias (%s)",
-                         direction_str, self._htf_context.combined_bias.value)
+                         direction_str, htf_bias_val)
                 self.journal.log_signal(
                     setup, symbol, "skip_htf",
                     f"direction {direction_str} conflicts with HTF bias "
-                    f"{self._htf_context.combined_bias.value}",
+                    f"{htf_bias_val}",
+                )
+                self._log_cycle_status(
+                    timeframe, new_bar=True,
+                    status=f"Signal found but HTF misaligned "
+                           f"(bias {htf_bias_val.upper()}, signal {direction_str.upper()})",
+                    ctx=ctx,
                 )
                 return
 
@@ -389,6 +542,11 @@ class SignalLoop:
                         f"(strategy={setup.strategy_name or 'generic'})",
                         ml_score=ml_score,
                     )
+                    self._log_cycle_status(
+                        timeframe, new_bar=True,
+                        status=f"Signal found but ML score {ml_score:.2f} < threshold {threshold:.2f}",
+                        ctx=ctx,
+                    )
                     return
 
         # Risk management gate
@@ -410,14 +568,31 @@ class SignalLoop:
                 lot_size=decision.lot_size, actual_risk_pct=decision.actual_risk_pct,
                 ml_score=ml_score,
             )
+            self._log_cycle_status(
+                timeframe, new_bar=True,
+                status=f"Signal found but risk gate rejected: {decision.reason}",
+                ctx=ctx,
+            )
             return
 
         # Execute trade
+        direction_label = setup.direction.value.upper()
+        strategy_label = setup.strategy_name or "generic"
+        score_str_short = f" | Score: {ml_score:.2f}" if ml_score is not None else ""
+        self._log_cycle_status(
+            timeframe, new_bar=True,
+            status=(
+                f"\u26a1 SIGNAL: {strategy_label} {direction_label} "
+                f"@ {setup.entry:.5f}{score_str_short} | Sending to broker..."
+            ),
+            ctx=ctx,
+        )
+
         log.info(
             "EXECUTING: %s %s %.2f lots (risk=%.2f%%) [%s]",
-            setup.direction.value.upper(), symbol, decision.lot_size,
+            direction_label, symbol, decision.lot_size,
             decision.actual_risk_pct * 100,
-            setup.strategy_name or "generic",
+            strategy_label,
         )
 
         result = await self.broker.place_order(
@@ -426,11 +601,12 @@ class SignalLoop:
             lot=decision.lot_size,
             stop=setup.stop,
             tp=setup.take_profit,
-            comment=f"ai-agent {timeframe} {setup.strategy_name or 'generic'} "
+            comment=f"ai-agent {timeframe} {strategy_label} "
                     f"{','.join(setup.confluences[:3])}",
         )
 
         if result.success:
+            self._trades_today += 1
             log.info("Order filled: ticket=%s price=%.5f", result.ticket, result.fill_price)
             self.journal.log_signal(
                 setup, symbol, RiskDecision.APPROVED, "executed",
@@ -439,8 +615,8 @@ class SignalLoop:
             )
             score_str = f"\nScore: `{ml_score:.3f}`" if ml_score is not None else ""
             self.notifier.notify_text(
-                f"*Trade OPEN* `{setup.direction.value.upper()}` {symbol}\n"
-                f"Strategy: `{setup.strategy_name or 'generic'}`\n"
+                f"*Trade OPEN* `{direction_label}` {symbol}\n"
+                f"Strategy: `{strategy_label}`\n"
                 f"TF: `{timeframe}` | Lot: `{decision.lot_size:.2f}`\n"
                 f"Entry: `{result.fill_price:.5f}`\n"
                 f"SL: `{setup.stop:.5f}` | TP: `{setup.take_profit:.5f}`\n"
@@ -512,6 +688,7 @@ async def run_signal_loop(
     broker_type: str = "paper",
     timeframes: list[str] | None = None,
     config_path: str | None = None,
+    verbose: bool = False,
     **overrides: Any,
 ) -> None:
     """High-level entry point for starting the signal loop."""
@@ -550,6 +727,7 @@ async def run_signal_loop(
         config=config,
         live_config=live_config,
         broker=broker,
+        verbose=verbose,
     )
 
     await loop.run()

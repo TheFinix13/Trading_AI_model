@@ -14,7 +14,7 @@ class LiveConfig:
 
     symbol: str = "EURUSD"
     timeframes: list[str] = field(default_factory=lambda: ["H1"])
-    check_interval_seconds: int = 60
+    check_interval_seconds: int = 30
     broker_type: str = "paper"  # "mt5", "exness", "paper"
 
     # MT5/Exness credentials (loaded from .env)

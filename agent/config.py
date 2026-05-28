@@ -422,7 +422,7 @@ class LiquidityConfig(BaseModel):
 class LiveTradingConfig(BaseModel):
     """Configuration for the live/paper trading loop (agent/live/)."""
     broker_type: str = "paper"  # "mt5", "exness", "paper"
-    check_interval_seconds: int = 60
+    check_interval_seconds: int = 30
     risk_per_trade_pct: float = 1.0
     max_daily_dd_pct: float = 3.0
     max_open_positions: int = 1
