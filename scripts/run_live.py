@@ -48,7 +48,19 @@ logging.basicConfig(
 log = logging.getLogger("run_live")
 
 VERSION = "9b"
-SEPARATOR = "\u2550" * 51  # ═ repeated
+def _make_separator() -> str:
+    # Some Windows terminals still default to cp1252 and can't print box-drawing chars.
+    enc = (getattr(sys.stdout, "encoding", None) or "").lower()
+    if "utf" not in enc:
+        return "=" * 51
+    return "\u2550" * 51  # ═ repeated
+
+
+SEPARATOR = _make_separator()
+_UNICODE_TERMINAL = "utf" in (getattr(sys.stdout, "encoding", None) or "").lower()
+SYM_OK = "\u2713" if _UNICODE_TERMINAL else "OK"
+SYM_FAIL = "X"
+SYM_WARN = "!"
 
 
 def parse_args() -> argparse.Namespace:
@@ -113,6 +125,12 @@ def parse_args() -> argparse.Namespace:
         "--skip-health",
         action="store_true",
         help="Skip the startup health check",
+    )
+    parser.add_argument(
+        "--kill-switch",
+        choices=["on", "off"],
+        default="on",
+        help="Kill switch behavior (default: on). Use 'off' to ignore kill files.",
     )
     return parser.parse_args()
 
@@ -193,7 +211,10 @@ async def _check_broker(
 def _check_kill_switch() -> bool:
     """Return True if any kill switch file is active."""
     for name in ("kill.txt", "kill_switch"):
-        if (PROJECT_ROOT / name).exists():
+        # Uses agent.utils.kill_switch_active, which respects SKIP_KILL_SWITCH.
+        from agent.utils import kill_switch_active
+
+        if kill_switch_active(PROJECT_ROOT / name):
             return True
     return False
 
@@ -242,32 +263,38 @@ def _print_banner(
 
     # Broker
     if broker_ok:
-        print(f"  [\u2713] {args.broker.upper()} connected")
+        print(f"  [{SYM_OK}] {args.broker.upper()} connected")
     else:
-        print(f"  [X] {args.broker.upper()} connection FAILED")
+        print(f"  [{SYM_FAIL}] {args.broker.upper()} connection FAILED")
 
     # Models
     if models_found and not models_missing:
-        print(f"  [\u2713] Models loaded ({len(models_found)}/{total_models})")
+        print(f"  [{SYM_OK}] Models loaded ({len(models_found)}/{total_models})")
     elif models_found:
-        print(f"  [!] Models partial ({len(models_found)}/{total_models}) — missing: {', '.join(models_missing)}")
+        print(f"  [{SYM_WARN}] Models partial ({len(models_found)}/{total_models}) — missing: {', '.join(models_missing)}")
     else:
-        print(f"  [!] No models found — running rules-only mode")
+        print(f"  [{SYM_WARN}] No models found — running rules-only mode")
 
     # Data
-    print(f"  [\u2713] Data current (last bar: {latest_bar})")
+    print(f"  [{SYM_OK}] Data current (last bar: {latest_bar})")
 
     # Kill switch
     if kill_active:
-        print(f"  [X] Kill switch ACTIVE — remove kill.txt to resume")
+        if os.getenv("SKIP_KILL_SWITCH"):
+            print(f"  [{SYM_WARN}] Kill switch present but IGNORED (SKIP_KILL_SWITCH=1)")
+        else:
+            print(f"  [{SYM_FAIL}] Kill switch ACTIVE — remove kill.txt or run with --kill-switch off")
     else:
-        print(f"  [\u2713] No kill switch active")
+        print(f"  [{SYM_OK}] No kill switch active")
 
     print()
     if broker_ok and not kill_active:
         print(f"  Watching for setups... (Ctrl+C to stop)")
     elif kill_active:
-        print(f"  Remove kill.txt and restart to begin trading.")
+        if os.getenv("SKIP_KILL_SWITCH"):
+            print(f"  Kill switch files will be ignored for this run.")
+        else:
+            print(f"  Remove kill.txt (or use --kill-switch off) and restart to begin trading.")
     else:
         print(f"  Fix broker connection and restart.")
     print(SEPARATOR)
@@ -333,6 +360,10 @@ def main() -> None:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    if args.kill_switch == "off":
+        os.environ["SKIP_KILL_SWITCH"] = "1"
+        log.warning("Kill switch is DISABLED for this run (SKIP_KILL_SWITCH=1).")
+
     if args.broker in ("mt5", "exness"):
         if not os.getenv("MT5_LOGIN"):
             log.error(
@@ -378,7 +409,12 @@ def main() -> None:
             task.cancel()
 
     for sig_type in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig_type, _shutdown, sig_type)
+        try:
+            loop.add_signal_handler(sig_type, _shutdown, sig_type)
+        except NotImplementedError:
+            # Windows ProactorEventLoop does not support add_signal_handler.
+            # Ctrl+C still raises KeyboardInterrupt; SIGTERM handling is best-effort.
+            signal.signal(sig_type, lambda *_: _shutdown(sig_type))
 
     try:
         loop.run_until_complete(

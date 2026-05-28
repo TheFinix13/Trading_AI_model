@@ -1,190 +1,267 @@
-# ═══════════════════════════════════════════════════════════════
-# EURUSD AI Agent — Windows Deployment Script
-# Run in PowerShell (as Administrator recommended)
-# ═══════════════════════════════════════════════════════════════
+# EURUSD AI Agent — Windows setup
+# Run from an OPEN PowerShell window (do not double-click — the window will close on error).
+#
+#   cd C:\Users\Fiyin\Documents\GitHub\Trading_AI_model
+#   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+#   .\scripts\deploy_windows.ps1
+#
+param(
+    [string]$RepoPath = ""
+)
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  EURUSD AI Trading Agent — Windows Setup" -ForegroundColor Cyan
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host ""
+function Write-Step([string]$Message, [string]$Color = "White") {
+    Write-Host $Message -ForegroundColor $Color
+}
 
-# ── 1. Check Python ──────────────────────────────────────────
-$python = Get-Command python -ErrorAction SilentlyContinue
-if (-not $python) {
-    Write-Host "[!] Python not found. Installing Python 3.11..." -ForegroundColor Yellow
-    winget install Python.Python.3.11 --accept-package-agreements --accept-source-agreements
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+function Pause-ForUser {
+    Write-Host ""
+    Read-Host "Press Enter to close this window"
+}
+
+function Resolve-RepoDir {
+    param([string]$Requested)
+
+    if ($Requested -and (Test-Path (Join-Path $Requested "pyproject.toml"))) {
+        return (Resolve-Path $Requested).Path
+    }
+
+    $candidates = @(
+        (Join-Path $PSScriptRoot ".."),
+        "$HOME\Documents\GitHub\Trading_AI_model",
+        "$HOME\Documents\Trading_AI_model",
+        (Get-Location).Path
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not $candidate) { continue }
+        try {
+            $resolved = Resolve-Path $candidate -ErrorAction SilentlyContinue
+        } catch {
+            continue
+        }
+        if (-not $resolved) { continue }
+        $dir = $resolved.Path
+        if (Test-Path (Join-Path $dir "pyproject.toml")) {
+            return $dir
+        }
+    }
+
+    return ""
+}
+
+function Install-Dependencies {
+    param(
+        [string]$VenvPython,
+        [string]$VenvPip
+    )
+
+    Write-Step "~ Upgrading pip..." "Yellow"
+    & $VenvPython -m pip install --upgrade pip
+    if ($LASTEXITCODE -ne 0) {
+        throw "pip upgrade failed (exit $LASTEXITCODE)"
+    }
+
+    Write-Step "~ Installing project + MT5 support (2-5 min, output shown)..." "Yellow"
+    & $VenvPip install -e ".[mt5]"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Step "  Retrying without editable install..." "Yellow"
+        & $VenvPip install ".[mt5]"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Package installation failed (exit $LASTEXITCODE). See errors above."
+        }
+    }
+}
+
+try {
+    Write-Host ""
+    Write-Host "===========================================================" -ForegroundColor Cyan
+    Write-Host "  EURUSD AI Trading Agent - Windows Setup" -ForegroundColor Cyan
+    Write-Host "===========================================================" -ForegroundColor Cyan
+    Write-Host ""
+
     $python = Get-Command python -ErrorAction SilentlyContinue
     if (-not $python) {
-        Write-Host "[X] Python install failed. Please install Python 3.11+ manually from python.org" -ForegroundColor Red
+        Write-Step "! Python not found." "Yellow"
+        Write-Step "  Install Python 3.11+ from https://www.python.org/downloads/" "White"
+        Write-Step "  Check 'Add Python to PATH', restart PowerShell, run this script again." "White"
+        Pause-ForUser
         exit 1
     }
-}
-Write-Host "[OK] Python: $(python --version)" -ForegroundColor Green
+    Write-Step "OK Python: $(python --version)" "Green"
 
-# ── 2. Check Git ─────────────────────────────────────────────
-$git = Get-Command git -ErrorAction SilentlyContinue
-if (-not $git) {
-    Write-Host "[!] Git not found. Installing Git..." -ForegroundColor Yellow
-    winget install Git.Git --accept-package-agreements --accept-source-agreements
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
     $git = Get-Command git -ErrorAction SilentlyContinue
-    if (-not $git) {
-        Write-Host "[X] Git install failed. Please install Git manually from git-scm.com" -ForegroundColor Red
-        exit 1
+    if ($git) {
+        Write-Step "OK Git: $(git --version)" "Green"
+    } else {
+        Write-Step "! Git not in PATH (optional if repo is already cloned)" "Yellow"
     }
-}
-Write-Host "[OK] Git: $(git --version)" -ForegroundColor Green
 
-# ── 3. Clone or update repo ─────────────────────────────────
-$repoDir = "$HOME\Documents\Trading_AI_model"
-if (Test-Path $repoDir) {
-    Write-Host "[~] Updating existing repo..." -ForegroundColor Yellow
+    $repoDir = Resolve-RepoDir -Requested $RepoPath
+    if (-not $repoDir) {
+        $defaultClone = "$HOME\Documents\GitHub\Trading_AI_model"
+        if (-not $git) {
+            Write-Step "X Cannot find repo (no pyproject.toml) and Git is missing." "Red"
+            Write-Step "  Clone manually or pass: .\scripts\deploy_windows.ps1 -RepoPath 'C:\path\to\Trading_AI_model'" "White"
+            Pause-ForUser
+            exit 1
+        }
+        Write-Step "~ Cloning repo to $defaultClone ..." "Yellow"
+        $parent = Split-Path $defaultClone -Parent
+        if (-not (Test-Path $parent)) {
+            New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        }
+        git clone https://github.com/TheFinix13/Trading_AI_model.git $defaultClone
+        if ($LASTEXITCODE -ne 0) {
+            throw "git clone failed (exit $LASTEXITCODE)"
+        }
+        $repoDir = $defaultClone
+    } else {
+        Write-Step "OK Using repo: $repoDir" "Green"
+        if ($git) {
+            Push-Location $repoDir
+            git pull origin main 2>&1 | Out-Null
+            Pop-Location
+        }
+    }
+
     Set-Location $repoDir
-    git pull origin main
-    Write-Host "[OK] Repo updated" -ForegroundColor Green
-} else {
-    Write-Host "[~] Cloning repo..." -ForegroundColor Yellow
-    git clone https://github.com/TheFinix13/Trading_AI_model.git $repoDir
-    Set-Location $repoDir
-    Write-Host "[OK] Repo cloned to $repoDir" -ForegroundColor Green
-}
+    Write-Step "  Working directory: $(Get-Location)" "Gray"
 
-# ── 4. Create venv and install dependencies ──────────────────
-if (-not (Test-Path ".venv")) {
-    Write-Host "[~] Creating virtual environment..." -ForegroundColor Yellow
-    python -m venv .venv
-}
+    if (-not (Test-Path ".venv")) {
+        Write-Step "~ Creating virtual environment..." "Yellow"
+        python -m venv .venv
+        if ($LASTEXITCODE -ne 0) {
+            throw "Virtual environment creation failed (exit $LASTEXITCODE)"
+        }
+    }
 
-Write-Host "[~] Activating venv and installing dependencies..." -ForegroundColor Yellow
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip --quiet
-pip install -e ".[mt5]" --quiet
-pip install MetaTrader5 --quiet
-Write-Host "[OK] Dependencies installed" -ForegroundColor Green
+    $venvPython = Join-Path $repoDir ".venv\Scripts\python.exe"
+    $venvPip = Join-Path $repoDir ".venv\Scripts\pip.exe"
+    if (-not (Test-Path $venvPython)) {
+        throw "Missing $venvPython after venv create"
+    }
 
-# ── 5. Create .env if not exists ─────────────────────────────
-if (-not (Test-Path ".env")) {
-    Write-Host ""
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Red
-    Write-Host "  CONFIGURATION REQUIRED — Exness MT5 Credentials" -ForegroundColor Red
-    Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Red
-    Write-Host ""
-    Write-Host "  You can find these in your Exness Personal Area:" -ForegroundColor White
-    Write-Host "    - Login number (e.g. 12345678)" -ForegroundColor Gray
-    Write-Host "    - Password (your trading password)" -ForegroundColor Gray
-    Write-Host "    - Server name (e.g. Exness-MT5Trial7)" -ForegroundColor Gray
-    Write-Host ""
+    Install-Dependencies -VenvPython $venvPython -VenvPip $venvPip
+    Write-Step "OK Dependencies installed" "Green"
 
-    $login = Read-Host "  Enter MT5 Login"
-    $password = Read-Host "  Enter MT5 Password"
-    $server = Read-Host "  Enter MT5 Server (e.g. Exness-MT5Trial7)"
+    if (-not (Test-Path ".env")) {
+        Write-Host ""
+        Write-Host "===========================================================" -ForegroundColor Red
+        Write-Host "  Exness MT5 credentials (demo account)" -ForegroundColor Red
+        Write-Host "===========================================================" -ForegroundColor Red
+        Write-Host ""
+        $login = Read-Host "  MT5 Login (numbers only)"
+        $password = Read-Host "  MT5 Password"
+        $server = Read-Host "  MT5 Server (e.g. Exness-MT5Trial9)"
 
-    @"
-# ── EURUSD AI Agent — Environment Variables ──
-
-# ----- MT5 (live/paper trading) -----
+        @"
+# EURUSD AI Agent
 MT5_LOGIN=$login
 MT5_PASSWORD=$password
 MT5_SERVER=$server
-# MT5_PATH=C:\Program Files\MetaTrader 5\terminal64.exe
+"@ | Out-File -FilePath ".env" -Encoding utf8
 
-# ----- Vision API Keys (optional) -----
-GEMINI_API_KEY=
-ANTHROPIC_API_KEY=
+        Write-Step "OK .env created" "Green"
+    } else {
+        Write-Step "OK .env already exists" "Green"
+    }
 
-# ----- Telegram Alerts (optional) -----
-# TG_BOT_TOKEN=
-# TG_CHAT_ID=
-"@ | Out-File -FilePath .env -Encoding utf8
+    if (-not (Test-Path "models")) {
+        New-Item -ItemType Directory -Path "models" | Out-Null
+    }
+    if (-not (Test-Path "data\parquet")) {
+        New-Item -ItemType Directory -Path "data\parquet" -Force | Out-Null
+    }
+    Write-Step "OK data/models folders ready" "Green"
 
     Write-Host ""
-    Write-Host "[OK] .env created" -ForegroundColor Green
-} else {
-    Write-Host "[OK] .env already exists" -ForegroundColor Green
-}
+    Write-Step "~ Testing MT5 connection (MT5 must be OPEN and logged in)..." "Yellow"
+    $env:PYTHONPATH = "."
 
-# ── 6. Ensure models directory exists ────────────────────────
-if (-not (Test-Path "models")) {
-    New-Item -ItemType Directory -Path "models" | Out-Null
-}
-if (-not (Test-Path "data\parquet")) {
-    New-Item -ItemType Directory -Path "data\parquet" -Force | Out-Null
-}
-Write-Host "[OK] Directory structure ready" -ForegroundColor Green
-
-# ── 7. Test MT5 connection ───────────────────────────────────
-Write-Host ""
-Write-Host "[~] Testing MT5 connection..." -ForegroundColor Yellow
-
-$env:PYTHONPATH = "."
-$mt5Test = @"
+    $mt5Test = @'
+import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path.cwd()))
+
 try:
-    import MetaTrader5 as mt5
-except ImportError:
-    print('[X] MetaTrader5 package not installed')
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError as exc:
+    print(f"! dotenv import failed: {exc}")
     sys.exit(1)
 
-from dotenv import load_dotenv
-import os
+try:
+    import MetaTrader5 as mt5
+except ImportError as exc:
+    print(f"! MetaTrader5 import failed: {exc}")
+    sys.exit(1)
 
-load_dotenv()
-login = int(os.getenv('MT5_LOGIN', '0'))
-password = os.getenv('MT5_PASSWORD', '')
-server = os.getenv('MT5_SERVER', '')
+login_str = os.getenv("MT5_LOGIN", "").strip()
+password = os.getenv("MT5_PASSWORD", "")
+server = os.getenv("MT5_SERVER", "")
+
+if not login_str:
+    print("! MT5_LOGIN not set in .env")
+    sys.exit(0)
+
+login = int(login_str)
 
 if not mt5.initialize():
-    err = mt5.last_error()
-    print(f'[!] MT5 init failed: {err}')
-    print('    Make sure MetaTrader 5 terminal is OPEN and logged in!')
-    print('    The Python package requires the MT5 terminal to be running.')
-    mt5.shutdown()
-    sys.exit(0)
+    print("! MT5 init failed - open Exness MT5 and log into demo, then retry")
+    sys.exit(1)
 
 info = mt5.account_info()
-if info:
-    print(f'[OK] Connected! Account: {info.login}, Balance: ${info.balance:.2f}, Server: {info.server}')
-    mt5.shutdown()
-    sys.exit(0)
+if info and info.login == login:
+  print(f"OK Already logged in: {info.login} balance={info.balance:.2f} server={info.server}")
+  mt5.shutdown()
+  sys.exit(0)
 
 if mt5.login(login, password=password, server=server):
     info = mt5.account_info()
-    print(f'[OK] Connected! Account: {info.login}, Balance: ${info.balance:.2f}, Server: {info.server}')
+    print(f"OK Connected: {info.login} balance={info.balance:.2f} server={info.server}")
 else:
-    err = mt5.last_error()
-    print(f'[!] Login failed: {err}')
-    print('    Check your credentials in .env')
-    print('    Make sure the MT5 terminal is open and logged in.')
+    print(f"! Login failed: {mt5.last_error()}")
+    print("  Check MT5_SERVER spelling and that MT5 terminal is open")
 
 mt5.shutdown()
-"@
+'@
 
-python -c $mt5Test
+    & $venvPython -c $mt5Test
 
-# ── 8. Show next steps ───────────────────────────────────────
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green
-Write-Host "  SETUP COMPLETE" -ForegroundColor Green
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green
-Write-Host ""
-Write-Host "  Prerequisites:" -ForegroundColor Cyan
-Write-Host "    - MetaTrader 5 terminal must be OPEN and logged into Exness demo" -ForegroundColor White
-Write-Host ""
-Write-Host "  1. Paper trading (safe — validates signals, no real trades):" -ForegroundColor Cyan
-Write-Host "     python scripts/run_live.py --broker paper --timeframe H1 --lot 0.01" -ForegroundColor White
-Write-Host ""
-Write-Host "  2. Demo trading (real demo account execution):" -ForegroundColor Cyan
-Write-Host "     python scripts/run_live.py --broker mt5 --timeframe H1 --lot 0.01" -ForegroundColor White
-Write-Host ""
-Write-Host "  3. To stop: press Ctrl+C or create 'kill.txt' in this folder" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "  4. Monitor via dashboard (on your Mac or any browser):" -ForegroundColor Cyan
-Write-Host "     python -m uvicorn agent.dashboard.app:app --host 0.0.0.0 --port 8000" -ForegroundColor White
-Write-Host ""
-Write-Host "  5. See docs/deployment_guide.md for the full guide" -ForegroundColor Cyan
-Write-Host ""
-Write-Host "═══════════════════════════════════════════════════════════" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "===========================================================" -ForegroundColor Green
+    Write-Host "  SETUP COMPLETE" -ForegroundColor Green
+    Write-Host "===========================================================" -ForegroundColor Green
+    Write-Host ""
+    Write-Step "  Repo: $repoDir" "Cyan"
+    Write-Host ""
+    Write-Step "  Next commands (copy/paste):" "Cyan"
+    Write-Host "    cd `"$repoDir`"" -ForegroundColor Gray
+    Write-Host "    .\.venv\Scripts\Activate.ps1" -ForegroundColor Gray
+    Write-Host "    python scripts/run_live.py --broker paper --timeframe H1 --lot 0.01" -ForegroundColor Gray
+    Write-Host "    python scripts/run_live.py --broker mt5 --timeframe H1 --lot 0.01" -ForegroundColor Gray
+    Write-Host ""
+}
+catch {
+    Write-Host ""
+    Write-Step "X SETUP FAILED" "Red"
+    Write-Step $_.Exception.Message "Red"
+    if ($_.ScriptStackTrace) {
+        Write-Step $_.ScriptStackTrace "DarkGray"
+    }
+    Write-Host ""
+    Write-Step "Manual setup (same folder):" "Yellow"
+    Write-Host "  cd C:\Users\Fiyin\Documents\GitHub\Trading_AI_model" -ForegroundColor Gray
+    Write-Host "  python -m venv .venv" -ForegroundColor Gray
+    Write-Host "  .\.venv\Scripts\Activate.ps1" -ForegroundColor Gray
+    Write-Host "  pip install -e `".[mt5]`"" -ForegroundColor Gray
+    Write-Host ""
+    exit 1
+}
+finally {
+    Pause-ForUser
+}

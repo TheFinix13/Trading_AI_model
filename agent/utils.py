@@ -49,4 +49,8 @@ def atomic_write(path: Path | str, content: bytes | str) -> None:
 
 
 def kill_switch_active(path: Path | str) -> bool:
+    # Global override for local runs/tests.
+    # If set, the process ignores all kill switch files.
+    if str(os.getenv("SKIP_KILL_SWITCH", "")).strip().lower() in {"1", "true", "yes", "on"}:
+        return False
     return Path(path).exists()

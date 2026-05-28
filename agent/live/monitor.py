@@ -52,6 +52,7 @@ class PositionMonitor:
         # Daily P&L tracking
         self._day_start_balance: float = 0.0
         self._current_day: str = ""
+        self._kill_switch_handled: bool = False
 
     async def run(self) -> None:
         """Background monitoring loop. Call as asyncio.create_task(monitor.run())."""
@@ -69,7 +70,10 @@ class PositionMonitor:
             # Kill switch check — emergency close all
             kill_path = Path(self.live_config.kill_file)
             if kill_switch_active(kill_path) or kill_switch_active(self.config.kill_switch_file):
-                await self._emergency_close_all("Kill switch activated")
+                # Only react once to avoid repeated notifications/log spam.
+                if not self._kill_switch_handled:
+                    self._kill_switch_handled = True
+                    await self._emergency_close_all("Kill switch activated", create_kill_file=False)
                 return
 
             symbol = self.live_config.symbol
@@ -197,7 +201,7 @@ class PositionMonitor:
                 f"Daily DD halt: {dd_pct*100:.1f}% (limit {max_dd*100:.1f}%)"
             )
 
-    async def _emergency_close_all(self, reason: str) -> None:
+    async def _emergency_close_all(self, reason: str, *, create_kill_file: bool = True) -> None:
         """Close all open positions immediately."""
         log.warning("EMERGENCY CLOSE ALL: %s", reason)
         symbol = self.live_config.symbol
@@ -212,7 +216,9 @@ class PositionMonitor:
 
         self.notifier.notify_text(f"*EMERGENCY CLOSE*\n`{reason}`\nClosed {len(positions)} positions")
 
-        # Create kill switch to prevent re-entry
-        kill_path = Path(self.live_config.kill_file)
-        kill_path.write_text(f"Auto-kill: {reason}\n{datetime.now(tz=timezone.utc).isoformat()}\n")
-        log.warning("Kill switch file created at %s", kill_path)
+        # Create kill switch to prevent re-entry (only once).
+        if create_kill_file:
+            kill_path = Path(self.live_config.kill_file)
+            if not kill_path.exists():
+                kill_path.write_text(f"Auto-kill: {reason}\n{datetime.now(tz=timezone.utc).isoformat()}\n")
+                log.warning("Kill switch file created at %s", kill_path)
