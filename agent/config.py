@@ -386,17 +386,34 @@ class RankingConfig(BaseModel):
     session_min_trades_ok: int = 10
 
 
+class HTFConfig(BaseModel):
+    """Higher-timeframe context layer configuration."""
+    enabled: bool = True
+    lookback_days: int = 5
+    h4_lookback_bars: int = 30
+    d1_lookback_bars: int = 20
+    require_htf_alignment: bool = False
+    htf_alignment_boost: float = 0.10
+    htf_misalignment_penalty: float = 0.15
+    update_interval_bars: int = 4
+
+
 class LiquidityConfig(BaseModel):
     """Two-phase liquidity zone (LZI) retest parameters."""
     min_wick_size_pips_h1: float = 10.0
     min_wick_size_pips_h4: float = 15.0
-    retest_max_bars: int = 50
+    # Retest window: how many bars after zone formation before it expires
+    # if not yet retested. Set to 96 to accommodate multi-day setups on H1
+    # (e.g. Friday sweep retested Wednesday = ~69-72 H1 bars).
+    retest_max_bars: int = 96
     retest_proximity_pips: float = 5.0
     consumption_min_bars: int = 3
     displacement_min_body_pct: float = 0.60
     displacement_min_pips_h1: float = 10.0
     displacement_min_pips_h4: float = 12.0
-    zone_expiry_bars: int = 100
+    # Total zone lifetime. Must be > retest_max_bars + enough room for the
+    # consumption/displacement sequence after a late retest.
+    zone_expiry_bars: int = 150
     stop_buffer_pips: float = 3.0
     use_pd_array_targeting: bool = True
     fallback_rr: float = 2.0
@@ -468,6 +485,7 @@ class Config(BaseModel):
     rules: RulesConfig = RulesConfig()
     ml: MLConfig = MLConfig()
     liquidity: LiquidityConfig = LiquidityConfig()
+    htf: HTFConfig = HTFConfig()
     live: LiveTradingConfig = LiveTradingConfig()
     backtest: BacktestConfig = BacktestConfig()
     demo: DemoConfig = DemoConfig()

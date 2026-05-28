@@ -18,7 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from agent.config import Config, load_config
+from agent.config import Config, GATE_PROFILES, GATE_PROFILE_DEFAULT, GateProfile, load_config
+from agent.context.htf_context import HTFAnalyzer, HTFContext, MarketBias
 from agent.features.extractor import extract_features
 from agent.journal.db import Journal
 from agent.live.broker import BrokerConnection, OrderResult, create_broker
@@ -27,7 +28,8 @@ from agent.live.monitor import PositionMonitor
 from agent.model.scorer import SetupScorer
 from agent.notifications.telegram import TelegramNotifier
 from agent.risk.manager import RiskDecision, RiskManager
-from agent.rules.engine import RuleEngine
+from agent.rules.engine import RuleEngine, precompute
+from agent.strategy.registry import StrategyRouter, default_registry
 from agent.types import Bar, Timeframe
 from agent.utils import kill_switch_active
 
@@ -61,12 +63,19 @@ class SignalLoop:
         self.engine = RuleEngine(config)
         self.risk = RiskManager(config)
         self.scorer = self._load_scorer()
+        self.lzi_scorer = self._load_lzi_scorer()
+        self._strategy_router = StrategyRouter(default_registry())
         self.monitor = PositionMonitor(
             broker=broker,
             config=config,
             live_config=live_config,
             notifier=self.notifier,
         )
+
+        # HTF context layer
+        self._htf_analyzer = HTFAnalyzer(lookback_days=config.htf.lookback_days) if config.htf.enabled else None
+        self._htf_context: HTFContext | None = None
+        self._h1_bars_since_htf_update = 0
 
         self._running = False
         self._last_bar_times: dict[str, datetime | None] = {}
@@ -91,6 +100,23 @@ class SignalLoop:
             log.warning("Failed to load scorer: %s", e)
             return None
 
+    def _load_lzi_scorer(self) -> SetupScorer | None:
+        """Load the LZI-specific scorer if available."""
+        lzi_path = Path(self.config.ml.lzi_scorer_path)
+        if not lzi_path.is_absolute():
+            from agent.config import PROJECT_ROOT
+            lzi_path = PROJECT_ROOT / lzi_path
+        if not lzi_path.exists():
+            log.info("LZI scorer not found at %s; LZI will use generic scorer", lzi_path)
+            return None
+        try:
+            scorer = SetupScorer.load(lzi_path)
+            log.info("Loaded LZI scorer: %s", lzi_path.name)
+            return scorer
+        except Exception as e:
+            log.warning("Failed to load LZI scorer: %s", e)
+            return None
+
     async def run(self) -> None:
         """Main loop — runs until killed or fatal error."""
         self._running = True
@@ -101,6 +127,9 @@ class SignalLoop:
         log.info("  Timeframes: %s", self.live_config.timeframes)
         log.info("  Check interval: %ds", self.live_config.check_interval_seconds)
         log.info("  ML scorer: %s", "loaded" if self.scorer else "disabled")
+        log.info("  LZI scorer: %s", "loaded" if self.lzi_scorer else "disabled")
+        log.info("  Strategies: %s", ", ".join(self._strategy_router.registry.names()))
+        log.info("  HTF context: %s", "enabled" if self._htf_analyzer else "disabled")
         log.info("  Kill file: %s", self.live_config.kill_file)
         log.info("=" * 60)
 
@@ -193,11 +222,17 @@ class SignalLoop:
                 self._running = False
 
     async def _check_for_signals(self, timeframe: str) -> None:
-        """Single timeframe check: fetch bars, detect setup, evaluate, maybe trade."""
+        """Single timeframe check: fetch bars, detect setup, evaluate, maybe trade.
+
+        Runs BOTH the generic rule engine AND the strategy router (LZI, FVG
+        Retest, SD Zone Retest).  Strategy-produced setups get profile-aware
+        gate validation and per-strategy ML thresholds, matching the backtest
+        pipeline exactly.
+        """
         symbol = self.live_config.symbol
         tf = Timeframe(timeframe)
 
-        # Fetch latest bars (need ~200 for detectors to work properly)
+        # Fetch latest bars (need ~300 for detectors + LZI lookback)
         bars = await self.broker.get_latest_bars(symbol, timeframe, count=300)
         if len(bars) < 100:
             log.debug("Insufficient bars for %s %s (%d)", symbol, timeframe, len(bars))
@@ -210,37 +245,151 @@ class SignalLoop:
             return  # Already processed this bar
 
         self._last_bar_times[timeframe] = last_closed.time
-        log.debug("New bar on %s: %s", timeframe, last_closed.time.isoformat())
+        log.info("New bar on %s: %s (close=%.5f)",
+                 timeframe, last_closed.time.isoformat(), last_closed.close)
+
+        # Update HTF context every N H1 bars (= every H4 close)
+        if self._htf_analyzer and self.config.htf.enabled:
+            self._h1_bars_since_htf_update += 1
+            if (self._htf_context is None or
+                    self._h1_bars_since_htf_update >= self.config.htf.update_interval_bars):
+                await self._update_htf_context()
+                self._h1_bars_since_htf_update = 0
 
         # Run rule engine on closed bars (exclude current forming bar)
         closed_bars = bars[:-1]
         bar_index = len(closed_bars) - 1
 
-        setup = self.engine.evaluate(closed_bars, bar_index)
+        # Build precomputed context so strategies (LZI, FVG, SD) can run
+        ctx = precompute(closed_bars, self.config)
+
+        # --- Source 1: generic rule engine ---
+        engine_setup = self.engine.evaluate_precomputed(ctx, bar_index)
+
+        # --- Source 2: strategy router (LZI, FVG Retest, SD Zone, etc.) ---
+        strategy_setups = self._strategy_router.route(ctx, bar_index, regime=None)
+        strategy_setup = strategy_setups[0] if strategy_setups else None
+
+        # Prefer the strategy setup when it passes its profile gates
+        setup = None
+        if strategy_setup is not None:
+            profile = GATE_PROFILES.get(
+                strategy_setup.strategy_name or "", GATE_PROFILE_DEFAULT
+            )
+            passed, gate_reason = self.engine.validate_setup_gates(
+                strategy_setup, closed_bars, bar_index, profile
+            )
+            if passed:
+                setup = strategy_setup
+                log.info(
+                    "Strategy setup [%s] on %s: %s entry=%.5f stop=%.5f tp=%.5f confluences=%s",
+                    setup.strategy_name, timeframe, setup.direction.value,
+                    setup.entry, setup.stop, setup.take_profit, setup.confluences,
+                )
+            else:
+                log.info(
+                    "Strategy [%s] detected but failed gate: %s",
+                    strategy_setup.strategy_name, gate_reason,
+                )
+
+        if setup is None and engine_setup is not None:
+            setup = engine_setup
+            log.info(
+                "Engine setup on %s: %s entry=%.5f stop=%.5f tp=%.5f confluences=%s",
+                timeframe, setup.direction.value, setup.entry, setup.stop,
+                setup.take_profit, setup.confluences,
+            )
+
         if setup is None:
             return
 
-        log.info(
-            "Setup detected on %s: %s entry=%.5f stop=%.5f tp=%.5f confluences=%s",
-            timeframe, setup.direction.value, setup.entry, setup.stop, setup.take_profit,
-            setup.confluences,
-        )
+        # HTF alignment check — boost/penalize or block based on context
+        if self._htf_context is not None and self.config.htf.enabled:
+            direction_str = "buy" if setup.direction.value == "long" else "sell"
+            htf_aligned = self._htf_context.supports_direction(direction_str)
 
-        # ML scoring gate
-        setup.features = extract_features(setup, closed_bars, bar_index)
-        ml_score = None
-        if self.scorer is not None:
-            ml_score = self.scorer(setup.features)
-            setup.ml_score = ml_score
-            threshold = self.live_config.score_threshold
-            if ml_score < threshold:
-                log.info("ML gate rejected: score=%.3f < threshold=%.3f", ml_score, threshold)
+            if not htf_aligned and self.config.htf.require_htf_alignment:
+                log.info("HTF gate BLOCKED: %s conflicts with HTF bias (%s)",
+                         direction_str, self._htf_context.combined_bias.value)
                 self.journal.log_signal(
-                    setup, symbol, "skip_ml",
-                    f"score {ml_score:.3f} < {threshold}",
-                    ml_score=ml_score,
+                    setup, symbol, "skip_htf",
+                    f"direction {direction_str} conflicts with HTF bias "
+                    f"{self._htf_context.combined_bias.value}",
                 )
                 return
+
+            # Apply HTF-informed TP target if available
+            htf_target = self._htf_context.get_nearest_htf_target(direction_str, setup.entry)
+            if htf_target is not None:
+                log.info("HTF target available: %.5f (current TP: %.5f)", htf_target, setup.take_profit)
+
+            # Store alignment info for ML score adjustment later
+            setup._htf_aligned = htf_aligned  # type: ignore[attr-defined]
+
+        # Resolve the gate profile for this setup
+        profile = GATE_PROFILES.get(
+            setup.strategy_name or "", GATE_PROFILE_DEFAULT
+        )
+
+        # ML scoring gate (profile-aware thresholds)
+        setup.features = extract_features(setup, closed_bars, bar_index)
+        ml_score = None
+        if profile.apply_ml_scorer:
+            is_lzi = setup.strategy_name == "LiquidityGrabReversal"
+            active_scorer = (
+                self.lzi_scorer if (is_lzi and self.lzi_scorer is not None)
+                else self.scorer
+            )
+
+            if is_lzi and self.lzi_scorer is not None:
+                try:
+                    from agent.features.lzi_extractor import extract_lzi_features
+                    from agent.detectors.liquidity_zones import LiquidityZone
+                    lzi_zone = self._extract_lzi_zone(setup, ctx)
+                    if lzi_zone is not None:
+                        lzi_feats = extract_lzi_features(
+                            closed_bars, lzi_zone, bar_index, setup.take_profit,
+                        )
+                        ml_score = active_scorer(lzi_feats.to_dict())
+                    elif active_scorer is not None:
+                        ml_score = active_scorer(setup.features)
+                except Exception as e:
+                    log.warning("LZI feature extraction failed, using generic: %s", e)
+                    if active_scorer is not None:
+                        ml_score = active_scorer(setup.features)
+            elif active_scorer is not None:
+                ml_score = active_scorer(setup.features)
+
+            if ml_score is not None:
+                # Apply HTF alignment boost/penalty to ML score
+                htf_aligned = getattr(setup, '_htf_aligned', None)
+                if htf_aligned is not None and self.config.htf.enabled:
+                    if htf_aligned:
+                        ml_score += self.config.htf.htf_alignment_boost
+                        log.info("HTF alignment boost: +%.2f", self.config.htf.htf_alignment_boost)
+                    else:
+                        ml_score -= self.config.htf.htf_misalignment_penalty
+                        log.info("HTF misalignment penalty: -%.2f", self.config.htf.htf_misalignment_penalty)
+
+                setup.ml_score = ml_score
+                threshold = (
+                    profile.ml_score_override
+                    if profile.ml_score_override is not None
+                    else self.live_config.score_threshold
+                )
+                log.info(
+                    "ML score: %.3f (threshold=%.3f, strategy=%s)",
+                    ml_score, threshold, setup.strategy_name or "generic",
+                )
+                if ml_score < threshold:
+                    log.info("ML gate rejected: score=%.3f < threshold=%.3f", ml_score, threshold)
+                    self.journal.log_signal(
+                        setup, symbol, "skip_ml",
+                        f"score {ml_score:.3f} < {threshold} "
+                        f"(strategy={setup.strategy_name or 'generic'})",
+                        ml_score=ml_score,
+                    )
+                    return
 
         # Risk management gate
         account = await self.broker.get_account_info()
@@ -265,9 +414,10 @@ class SignalLoop:
 
         # Execute trade
         log.info(
-            "EXECUTING: %s %s %.2f lots (risk=%.2f%%)",
+            "EXECUTING: %s %s %.2f lots (risk=%.2f%%) [%s]",
             setup.direction.value.upper(), symbol, decision.lot_size,
             decision.actual_risk_pct * 100,
+            setup.strategy_name or "generic",
         )
 
         result = await self.broker.place_order(
@@ -276,7 +426,8 @@ class SignalLoop:
             lot=decision.lot_size,
             stop=setup.stop,
             tp=setup.take_profit,
-            comment=f"ai-agent {timeframe} {','.join(setup.confluences[:3])}",
+            comment=f"ai-agent {timeframe} {setup.strategy_name or 'generic'} "
+                    f"{','.join(setup.confluences[:3])}",
         )
 
         if result.success:
@@ -286,23 +437,70 @@ class SignalLoop:
                 lot_size=decision.lot_size, actual_risk_pct=decision.actual_risk_pct,
                 ml_score=ml_score,
             )
-            # Notify
+            score_str = f"\nScore: `{ml_score:.3f}`" if ml_score is not None else ""
             self.notifier.notify_text(
                 f"*Trade OPEN* `{setup.direction.value.upper()}` {symbol}\n"
+                f"Strategy: `{setup.strategy_name or 'generic'}`\n"
                 f"TF: `{timeframe}` | Lot: `{decision.lot_size:.2f}`\n"
                 f"Entry: `{result.fill_price:.5f}`\n"
                 f"SL: `{setup.stop:.5f}` | TP: `{setup.take_profit:.5f}`\n"
-                f"R:R = `1:{setup.rr:.1f}`\n"
-                f"Score: `{ml_score:.3f}`" if ml_score else
-                f"*Trade OPEN* `{setup.direction.value.upper()}` {symbol}\n"
-                f"TF: `{timeframe}` | Lot: `{decision.lot_size:.2f}`\n"
-                f"Entry: `{result.fill_price:.5f}`\n"
-                f"SL: `{setup.stop:.5f}` | TP: `{setup.take_profit:.5f}`\n"
-                f"R:R = `1:{setup.rr:.1f}`"
+                f"R:R = `1:{setup.rr:.1f}`{score_str}"
             )
         else:
             log.error("Order rejected by broker: %s", result.message)
             self.notifier.notify_text(f"*Order REJECTED*\n`{result.message}`")
+
+    async def _update_htf_context(self) -> None:
+        """Fetch H4 and D1 bars and recompute HTF structural context."""
+        import pandas as pd
+
+        symbol = self.live_config.symbol
+        try:
+            h4_bars_raw = await self.broker.get_latest_bars(symbol, "H4", count=self.config.htf.h4_lookback_bars)
+            d1_bars_raw = await self.broker.get_latest_bars(symbol, "D1", count=self.config.htf.d1_lookback_bars)
+
+            if len(h4_bars_raw) < 10 or len(d1_bars_raw) < 5:
+                log.debug("Insufficient HTF bars (H4=%d, D1=%d), skipping HTF update",
+                          len(h4_bars_raw), len(d1_bars_raw))
+                return
+
+            h4_df = pd.DataFrame([
+                {"time": b.time, "open": b.open, "high": b.high,
+                 "low": b.low, "close": b.close, "volume": b.volume}
+                for b in h4_bars_raw
+            ])
+            d1_df = pd.DataFrame([
+                {"time": b.time, "open": b.open, "high": b.high,
+                 "low": b.low, "close": b.close, "volume": b.volume}
+                for b in d1_bars_raw
+            ])
+
+            self._htf_context = self._htf_analyzer.analyze(h4_df, d1_df)  # type: ignore[union-attr]
+            log.info(
+                "HTF context updated: H4=%s D1=%s combined=%s confidence=%.2f "
+                "patterns=%d levels=%d buy_aligned=%s sell_aligned=%s",
+                self._htf_context.h4_bias.value,
+                self._htf_context.d1_bias.value,
+                self._htf_context.combined_bias.value,
+                self._htf_context.bias_confidence,
+                len(self._htf_context.active_patterns),
+                len(self._htf_context.structural_levels),
+                self._htf_context.buy_aligned,
+                self._htf_context.sell_aligned,
+            )
+        except Exception as e:
+            log.warning("HTF context update failed: %s", e)
+
+    @staticmethod
+    def _extract_lzi_zone(setup, ctx):
+        """Extract the LiquidityZone from a strategy-produced setup for LZI
+        feature extraction."""
+        from agent.detectors.liquidity_zones import LiquidityZone
+        lzi_zones = getattr(ctx, "liquidity_zones", None) or []
+        for z in lzi_zones:
+            if z.status == "triggered" and z.trade_direction == setup.direction:
+                return z
+        return None
 
 
 # ---------------------------------------------------------------------------
