@@ -23,6 +23,7 @@ from agent.context.htf_context import HTFAnalyzer, HTFContext, MarketBias
 from agent.features.extractor import extract_features
 from agent.journal.db import Journal
 from agent.live.broker import BrokerConnection, OrderResult, create_broker
+from agent.live.chart_drawer import ChartDrawer
 from agent.live.config import LiveConfig
 from agent.live.monitor import PositionMonitor
 from agent.model.scorer import SetupScorer
@@ -80,6 +81,10 @@ class SignalLoop:
         self._htf_analyzer = HTFAnalyzer(lookback_days=config.htf.lookback_days) if config.htf.enabled else None
         self._htf_context: HTFContext | None = None
         self._h1_bars_since_htf_update = 0
+
+        # Chart visualization bridge (writes JSON for MQL5 EA)
+        mt5_files_path = getattr(live_config, 'mt5_files_path', None)
+        self._chart_drawer = ChartDrawer(mt5_data_path=mt5_files_path)
 
         self._running = False
         self._last_bar_times: dict[str, datetime | None] = {}
@@ -328,6 +333,9 @@ class SignalLoop:
             for tf_str in self.live_config.timeframes:
                 await self._check_for_signals(tf_str)
 
+            # Update chart overlay with current analysis state
+            self._update_chart_drawings()
+
             # Reset error counter on successful iteration
             self._consecutive_errors = 0
 
@@ -394,6 +402,13 @@ class SignalLoop:
 
         # Build precomputed context so strategies (LZI, FVG, SD) can run
         ctx = precompute(closed_bars, self.config)
+
+        # Cache zone data for chart overlay
+        self._last_lzi_zones = getattr(ctx, "liquidity_zones", None)
+        self._last_fvg_zones = getattr(ctx, "fvgs", None)
+        self._last_sd_zones = (
+            getattr(ctx, "sd_zones", None) or getattr(ctx, "supply_demand_zones", None)
+        )
 
         # --- Source 1: generic rule engine ---
         engine_setup = self.engine.evaluate_precomputed(ctx, bar_index)
@@ -607,6 +622,7 @@ class SignalLoop:
 
         if result.success:
             self._trades_today += 1
+            self._last_signals = [setup]
             log.info("Order filled: ticket=%s price=%.5f", result.ticket, result.fill_price)
             self.journal.log_signal(
                 setup, symbol, RiskDecision.APPROVED, "executed",
@@ -666,6 +682,21 @@ class SignalLoop:
             )
         except Exception as e:
             log.warning("HTF context update failed: %s", e)
+
+    def _update_chart_drawings(self) -> None:
+        """Push current analysis state to the MT5 chart overlay."""
+        if not self._chart_drawer.enabled:
+            return
+        try:
+            self._chart_drawer.update_from_context(
+                htf_context=self._htf_context,
+                lzi_zones=getattr(self, '_last_lzi_zones', None),
+                fvg_zones=getattr(self, '_last_fvg_zones', None),
+                sd_zones=getattr(self, '_last_sd_zones', None),
+                active_signals=getattr(self, '_last_signals', None),
+            )
+        except Exception as e:
+            log.debug("Chart drawer update failed: %s", e)
 
     @staticmethod
     def _extract_lzi_zone(setup, ctx):
