@@ -22,14 +22,16 @@ from agent.config import Config, GATE_PROFILES, GATE_PROFILE_DEFAULT, GateProfil
 from agent.context.htf_context import HTFAnalyzer, HTFContext, MarketBias
 from agent.features.extractor import extract_features
 from agent.journal.db import Journal
-from agent.live.broker import BrokerConnection, OrderResult, create_broker
+from agent.live.broker import BrokerConnection, MT5Broker, OrderResult, create_broker
 from agent.live.chart_drawer import ChartDrawer
 from agent.live.config import LiveConfig
+from agent.live.explainer import BarCheckExplainer, ExplainedDecision, GateCheckItem
 from agent.live.monitor import PositionMonitor
 from agent.model.scorer import SetupScorer
 from agent.notifications.telegram import TelegramNotifier
 from agent.risk.manager import RiskDecision, RiskManager
 from agent.rules.engine import RuleEngine, precompute
+from agent.strategy.base import StrategyResult
 from agent.strategy.registry import StrategyRouter, default_registry
 from agent.types import Bar, Timeframe
 from agent.utils import kill_switch_active
@@ -85,6 +87,9 @@ class SignalLoop:
         # Chart visualization bridge (writes JSON for MQL5 EA)
         mt5_files_path = getattr(live_config, 'mt5_files_path', None)
         self._chart_drawer = ChartDrawer(mt5_data_path=mt5_files_path)
+
+        # Explainable AI layer
+        self._explainer = BarCheckExplainer()
 
         self._running = False
         self._last_bar_times: dict[str, datetime | None] = {}
@@ -269,6 +274,11 @@ class SignalLoop:
             log.error("Failed to connect to broker after retries. Exiting.")
             return
 
+        # Resolve symbol name (handles broker suffixes like EURUSDm, EURUSD.)
+        resolved_symbol = await self._resolve_and_verify_symbol()
+        if resolved_symbol:
+            self.live_config.symbol = resolved_symbol
+
         # Startup notification
         self.notifier.notify_text(
             f"*Agent ONLINE*\nBroker: `{self.live_config.broker_type}`\n"
@@ -320,6 +330,37 @@ class SignalLoop:
 
         return False
 
+    async def _resolve_and_verify_symbol(self) -> str | None:
+        """Resolve the broker's actual symbol name and verify bar access on startup."""
+        base_symbol = self.live_config.symbol
+        resolved = base_symbol
+
+        if isinstance(self.broker, MT5Broker):
+            resolved = await self.broker.resolve_symbol(base_symbol)
+            if resolved != base_symbol:
+                log.info("Symbol: %s (resolved from %s)", resolved, base_symbol)
+            else:
+                log.info("Symbol: %s (exact match)", resolved)
+
+        # Test-fetch 1 bar to confirm data access
+        tf = self.live_config.timeframes[0] if self.live_config.timeframes else "H1"
+        test_bars = await self.broker.get_latest_bars(resolved, tf, count=5)
+        if test_bars:
+            log.info(
+                "Startup bar test OK: %d bars fetched for %s %s "
+                "(latest close=%.5f at %s)",
+                len(test_bars), resolved, tf,
+                test_bars[-1].close, test_bars[-1].time.isoformat(),
+            )
+        else:
+            log.error(
+                "ERROR: Cannot fetch bars for %s %s. "
+                "Check MT5 Market Watch and ensure the symbol is visible.",
+                resolved, tf,
+            )
+
+        return resolved
+
     async def _iteration(self) -> None:
         """Single loop iteration: check kill switch, fetch bars, evaluate signals."""
         try:
@@ -362,6 +403,9 @@ class SignalLoop:
         Retest, SD Zone Retest).  Strategy-produced setups get profile-aware
         gate validation and per-strategy ML thresholds, matching the backtest
         pipeline exactly.
+
+        In verbose mode, outputs a full 5-step explainable-AI breakdown on
+        every new bar close.
         """
         symbol = self.live_config.symbol
         tf = Timeframe(timeframe)
@@ -369,7 +413,14 @@ class SignalLoop:
         # Fetch latest bars (need ~300 for detectors + LZI lookback)
         bars = await self.broker.get_latest_bars(symbol, timeframe, count=300)
         if len(bars) < 100:
-            log.debug("Insufficient bars for %s %s (%d)", symbol, timeframe, len(bars))
+            if len(bars) == 0:
+                log.warning(
+                    "0 bars for %s %s — symbol may not be in Market Watch or "
+                    "broker returned no data. Check MT5 terminal.",
+                    symbol, timeframe,
+                )
+            else:
+                log.debug("Insufficient bars for %s %s (%d)", symbol, timeframe, len(bars))
             return
 
         # Check if we have a new closed bar since last check
@@ -377,10 +428,17 @@ class SignalLoop:
         prev_time = self._last_bar_times.get(timeframe)
         if prev_time == last_closed.time:
             next_close = self._next_bar_estimate()
-            self._log_cycle_status(
-                timeframe, new_bar=False,
-                f"No new bar since last check (waiting for {next_close} close)",
-            )
+            if self.verbose:
+                current_bar = bars[-1]
+                waiting_line = self._explainer.format_waiting_line(
+                    timeframe, current_bar.close, next_close,
+                )
+                log.info(waiting_line)
+            else:
+                self._log_cycle_status(
+                    timeframe, new_bar=False,
+                    status=f"No new bar since last check (waiting for {next_close} close)",
+                )
             return
 
         self._last_bar_times[timeframe] = last_closed.time
@@ -410,12 +468,23 @@ class SignalLoop:
             getattr(ctx, "sd_zones", None) or getattr(ctx, "supply_demand_zones", None)
         )
 
+        # ── Explainable AI: collect strategy results for verbose output ──
+        strategy_explain_results: list[StrategyResult] = []
+        if self.verbose:
+            strategy_explain_results = self._strategy_router.route_explained(
+                ctx, bar_index, regime=None,
+            )
+
         # --- Source 1: generic rule engine ---
         engine_setup = self.engine.evaluate_precomputed(ctx, bar_index)
 
         # --- Source 2: strategy router (LZI, FVG Retest, SD Zone, etc.) ---
         strategy_setups = self._strategy_router.route(ctx, bar_index, regime=None)
         strategy_setup = strategy_setups[0] if strategy_setups else None
+
+        # ── Explainable AI: prepare the explained decision ──
+        explain_gate_checks: list[GateCheckItem] = []
+        explain_gate_profile = ""
 
         # Prefer the strategy setup when it passes its profile gates
         setup = None
@@ -461,13 +530,24 @@ class SignalLoop:
                 reason = "No active zones (no recent sweeps/retests in lookback)"
             else:
                 reason = f"{zones_str} zone(s) active but no retest confirmed"
-            self._log_cycle_status(timeframe, new_bar=True, status=f"No entry triggered — {reason}", ctx=ctx)
+            self._log_cycle_status(timeframe, new_bar=True, status=f"No entry triggered \u2014 {reason}", ctx=ctx)
+
+            # ── Explainable AI: log the full verbose breakdown ──
+            if self.verbose:
+                self._log_explained_check(
+                    last_closed, timeframe, ctx, strategy_explain_results,
+                    signal=None, gate_checks=[], gate_profile="",
+                    trade_executed=False, execution_details={},
+                    rejection_reason=reason,
+                )
             return
 
         # HTF alignment check — boost/penalize or block based on context
+        htf_aligned_flag: bool | None = None
         if self._htf_context is not None and self.config.htf.enabled:
             direction_str = "buy" if setup.direction.value == "long" else "sell"
             htf_aligned = self._htf_context.supports_direction(direction_str)
+            htf_aligned_flag = htf_aligned
 
             if not htf_aligned and self.config.htf.require_htf_alignment:
                 htf_bias_val = self._htf_context.combined_bias.value
@@ -478,26 +558,63 @@ class SignalLoop:
                     f"direction {direction_str} conflicts with HTF bias "
                     f"{htf_bias_val}",
                 )
+                explain_gate_checks.append(GateCheckItem(
+                    "htf_alignment", False,
+                    f"{direction_str.upper()} conflicts with {htf_bias_val.upper()} bias",
+                ))
                 self._log_cycle_status(
                     timeframe, new_bar=True,
                     status=f"Signal found but HTF misaligned "
                            f"(bias {htf_bias_val.upper()}, signal {direction_str.upper()})",
                     ctx=ctx,
                 )
+                if self.verbose:
+                    self._log_explained_check(
+                        last_closed, timeframe, ctx, strategy_explain_results,
+                        signal=setup, gate_checks=explain_gate_checks,
+                        gate_profile=GATE_PROFILES.get(setup.strategy_name or "", GATE_PROFILE_DEFAULT).name,
+                        trade_executed=False, execution_details={},
+                        rejection_reason=f"HTF misaligned ({htf_bias_val.upper()} vs {direction_str.upper()})",
+                    )
                 return
 
-            # Apply HTF-informed TP target if available
+            explain_gate_checks.append(GateCheckItem(
+                "htf_alignment", True,
+                f"{htf_aligned and 'ALIGNED' or 'neutral'} "
+                f"({self._htf_context.combined_bias.value.upper()} confirms {direction_str.upper()})" if htf_aligned
+                else f"HTF neutral, proceeding",
+            ))
+
             htf_target = self._htf_context.get_nearest_htf_target(direction_str, setup.entry)
             if htf_target is not None:
                 log.info("HTF target available: %.5f (current TP: %.5f)", htf_target, setup.take_profit)
 
-            # Store alignment info for ML score adjustment later
             setup._htf_aligned = htf_aligned  # type: ignore[attr-defined]
 
         # Resolve the gate profile for this setup
         profile = GATE_PROFILES.get(
             setup.strategy_name or "", GATE_PROFILE_DEFAULT
         )
+        explain_gate_profile = profile.name
+
+        # Session filter gate info
+        session_label = ""
+        if ctx.session_labels and bar_index < len(ctx.session_labels):
+            session_label = ctx.session_labels[bar_index]
+        explain_gate_checks.append(GateCheckItem(
+            "session_filter", True,
+            f"{session_label.upper().replace('_', ' ') if session_label else 'UNKNOWN'} (allowed)",
+        ))
+
+        # Caution day info
+        day_name = last_closed.time.strftime("%A")
+        caution_days = getattr(self.config.session, "caution_days", [])
+        is_caution = day_name.lower()[:3] in [d.lower()[:3] for d in caution_days]
+        if is_caution:
+            explain_gate_checks.append(GateCheckItem(
+                "caution_day", True,
+                f"{day_name} is a caution day, applying stricter thresholds",
+            ))
 
         # ML scoring gate (profile-aware thresholds)
         setup.features = extract_features(setup, closed_bars, bar_index)
@@ -529,7 +646,6 @@ class SignalLoop:
                 ml_score = active_scorer(setup.features)
 
             if ml_score is not None:
-                # Apply HTF alignment boost/penalty to ML score
                 htf_aligned = getattr(setup, '_htf_aligned', None)
                 if htf_aligned is not None and self.config.htf.enabled:
                     if htf_aligned:
@@ -545,11 +661,20 @@ class SignalLoop:
                     if profile.ml_score_override is not None
                     else self.live_config.score_threshold
                 )
+                scorer_label = "LZI scorer" if is_lzi and self.lzi_scorer else "generic scorer"
                 log.info(
                     "ML score: %.3f (threshold=%.3f, strategy=%s)",
                     ml_score, threshold, setup.strategy_name or "generic",
                 )
-                if ml_score < threshold:
+
+                ml_passed = ml_score >= threshold
+                explain_gate_checks.append(GateCheckItem(
+                    "ml_score", ml_passed,
+                    f"{ml_score:.2f} ({scorer_label}) {'>' if ml_passed else '<'} {threshold:.2f} threshold"
+                    + (f" (+{self.config.htf.htf_alignment_boost:.2f} HTF boost)" if getattr(setup, '_htf_aligned', False) else ""),
+                ))
+
+                if not ml_passed:
                     log.info("ML gate rejected: score=%.3f < threshold=%.3f", ml_score, threshold)
                     self.journal.log_signal(
                         setup, symbol, "skip_ml",
@@ -562,6 +687,14 @@ class SignalLoop:
                         status=f"Signal found but ML score {ml_score:.2f} < threshold {threshold:.2f}",
                         ctx=ctx,
                     )
+                    if self.verbose:
+                        self._log_explained_check(
+                            last_closed, timeframe, ctx, strategy_explain_results,
+                            signal=setup, gate_checks=explain_gate_checks,
+                            gate_profile=explain_gate_profile,
+                            trade_executed=False, execution_details={},
+                            rejection_reason=f"ML score {ml_score:.2f} < threshold {threshold:.2f}",
+                        )
                     return
 
         # Risk management gate
@@ -576,6 +709,12 @@ class SignalLoop:
             now=now,
         )
 
+        daily_dd_str = f"${self._pnl_today:.2f} today"
+        explain_gate_checks.append(GateCheckItem(
+            "daily_dd", decision.decision == RiskDecision.APPROVED,
+            f"{daily_dd_str} (max ${self.live_config.max_daily_dd_pct:.0f}%)",
+        ))
+
         if decision.decision != RiskDecision.APPROVED:
             log.info("Risk gate rejected: %s (%s)", decision.decision, decision.reason)
             self.journal.log_signal(
@@ -588,9 +727,17 @@ class SignalLoop:
                 status=f"Signal found but risk gate rejected: {decision.reason}",
                 ctx=ctx,
             )
+            if self.verbose:
+                self._log_explained_check(
+                    last_closed, timeframe, ctx, strategy_explain_results,
+                    signal=setup, gate_checks=explain_gate_checks,
+                    gate_profile=explain_gate_profile,
+                    trade_executed=False, execution_details={},
+                    rejection_reason=f"Risk gate: {decision.reason}",
+                )
             return
 
-        # Execute trade
+        # ── All gates passed — execute trade ──
         direction_label = setup.direction.value.upper()
         strategy_label = setup.strategy_name or "generic"
         score_str_short = f" | Score: {ml_score:.2f}" if ml_score is not None else ""
@@ -620,6 +767,7 @@ class SignalLoop:
                     f"{','.join(setup.confluences[:3])}",
         )
 
+        exec_details: dict = {"lot_size": decision.lot_size}
         if result.success:
             self._trades_today += 1
             self._last_signals = [setup]
@@ -638,9 +786,111 @@ class SignalLoop:
                 f"SL: `{setup.stop:.5f}` | TP: `{setup.take_profit:.5f}`\n"
                 f"R:R = `1:{setup.rr:.1f}`{score_str}"
             )
+            exec_details["fill_price"] = result.fill_price
         else:
             log.error("Order rejected by broker: %s", result.message)
             self.notifier.notify_text(f"*Order REJECTED*\n`{result.message}`")
+            exec_details["rejected"] = True
+            exec_details["reject_reason"] = result.message
+
+        # ── Explainable AI: log the full verbose breakdown for trades ──
+        if self.verbose:
+            self._log_explained_check(
+                last_closed, timeframe, ctx, strategy_explain_results,
+                signal=setup, gate_checks=explain_gate_checks,
+                gate_profile=explain_gate_profile,
+                trade_executed=result.success, execution_details=exec_details,
+                htf_aligned=htf_aligned_flag,
+            )
+
+    # ------------------------------------------------------------------
+    # Explainable AI: verbose bar-check output
+    # ------------------------------------------------------------------
+
+    def _log_explained_check(
+        self,
+        bar: Bar,
+        timeframe: str,
+        ctx,
+        strategy_results: list[StrategyResult],
+        *,
+        signal=None,
+        gate_checks: list[GateCheckItem] | None = None,
+        gate_profile: str = "",
+        trade_executed: bool = False,
+        execution_details: dict | None = None,
+        rejection_reason: str = "",
+        htf_aligned: bool | None = None,
+    ) -> None:
+        """Compose and log the full 5-step explainable-AI output."""
+        bar_index = len(ctx.bars) - 1
+        session_label = ""
+        if ctx.session_labels and bar_index < len(ctx.session_labels):
+            session_label = ctx.session_labels[bar_index]
+
+        day_name = bar.time.strftime("%A")
+        caution_days = getattr(self.config.session, "caution_days", [])
+        is_caution = day_name.lower()[:3] in [d.lower()[:3] for d in caution_days]
+
+        # ── Header ──
+        bar_time_str = bar.time.strftime("%Y-%m-%d %H:%M UTC")
+        session_disp = session_label.upper().replace("_", " ") if session_label else "UNKNOWN"
+        caution_tag = " (CAUTION)" if is_caution else ""
+
+        parts: list[str] = [
+            "",
+            f"\u2550\u2550\u2550 BAR CHECK: {bar_time_str} ({timeframe}) \u2550\u2550\u2550",
+            f"Price: {bar.close:.5f} | Session: {session_disp} | Day: {day_name}{caution_tag}",
+            "",
+        ]
+
+        # ── Step 1: Market Context ──
+        step1_text, _ = self._explainer.explain_context(
+            self._htf_context, bar, session_label,
+        )
+        parts.append(step1_text)
+
+        # ── Step 2: Zone Detection ──
+        step2_text, _ = self._explainer.explain_detections(ctx, bar_index)
+        parts.append(step2_text)
+
+        # ── Step 3: Strategy Evaluation ──
+        step3_text = self._explainer.explain_strategies(strategy_results)
+        parts.append(step3_text)
+
+        # ── Step 4: Gate Check ──
+        step4_text = self._explainer.explain_gates(
+            signal, gate_checks or [], gate_profile,
+        )
+        parts.append(step4_text)
+
+        # ── Step 5: Decision ──
+        nearest_setup = ""
+        watching_for = ""
+        hypothetical = ""
+
+        # Find best "nearest" setup from strategy results
+        watching_results = [sr for sr in strategy_results if sr.status == "WATCHING"]
+        if watching_results:
+            best_watching = watching_results[0]
+            nearest_setup = f"{best_watching.strategy_name} needs confirmation"
+            watching_for = best_watching.next_trigger
+            if best_watching.zones_details:
+                nearest_setup += f" ({best_watching.zones_details[0][:50]})"
+
+        step5_text = self._explainer.explain_decision(
+            trade_executed=trade_executed,
+            signal=signal,
+            execution_details=execution_details,
+            rejection_reason=rejection_reason,
+            nearest_setup=nearest_setup,
+            watching_for=watching_for,
+            hypothetical=hypothetical,
+            htf_aligned=htf_aligned,
+        )
+        parts.append(step5_text)
+
+        log.info("\n".join(parts))
 
     async def _update_htf_context(self) -> None:
         """Fetch H4 and D1 bars and recompute HTF structural context."""

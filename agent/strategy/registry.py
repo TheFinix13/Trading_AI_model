@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from agent.regime.detector import RegimeLabel
-from agent.strategy.base import Strategy
+from agent.strategy.base import Strategy, StrategyResult
 from agent.types import Setup
 
 log = logging.getLogger(__name__)
@@ -225,6 +225,31 @@ class StrategyRouter:
             out.append(setup)
         return out
 
+    def route_explained(self, ctx, at_index: int, regime: RegimeLabel | None = None) -> list[StrategyResult]:
+        """Run evaluate_explained() on every compatible strategy.
+
+        Returns a StrategyResult for EVERY strategy (not just those with
+        signals), giving the explainer full visibility into what each
+        strategy considered and why it did or did not fire.
+        """
+        if regime is None:
+            strategies: Iterable[Strategy] = list(self.registry)
+        else:
+            strategies = self.registry.compatible(regime.primary)
+        out: list[StrategyResult] = []
+        for strat in strategies:
+            try:
+                result = strat.evaluate_explained(ctx, at_index)
+            except Exception as e:
+                log.exception("Strategy %s raised during evaluate_explained(): %s", strat.name, e)
+                result = StrategyResult(
+                    strategy_name=strat.name,
+                    status="BLOCKED",
+                    checks_failed=[f"Exception: {e}"],
+                )
+            out.append(result)
+        return out
+
     def select_best(
         self,
         candidates: list[Setup],
@@ -295,6 +320,7 @@ __all__ = [
     "StrategyRegistry",
     "StrategyRouter",
     "StrategyStats",
+    "StrategyResult",
     "StatsHistory",
     "RouterDecision",
     "default_registry",

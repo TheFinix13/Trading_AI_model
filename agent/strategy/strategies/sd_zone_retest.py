@@ -14,7 +14,7 @@ from agent.detectors.zones import (
     detect_qualified_zones,
     fresh_qualified_zones,
 )
-from agent.strategy.base import Strategy, build_basic_setup
+from agent.strategy.base import Strategy, StrategyResult, build_basic_setup
 from agent.types import Direction, Setup
 
 
@@ -100,3 +100,99 @@ class SDZoneRetest(Strategy):
         atr_by_index = getattr(ctx, "atr_by_index", None) or {}
         a = atr_by_index.get(at_index, 0.0)
         return max(0.0, a * 10000.0) if a > 0 else None
+
+    def evaluate_explained(self, ctx, at_index: int) -> StrategyResult:
+        bars = getattr(ctx, "bars", None)
+        if not bars or at_index < 1 or at_index >= len(bars):
+            return StrategyResult(strategy_name=self.name, status="NOT_ACTIVE")
+
+        qualified_zones = getattr(ctx, "qualified_zones", None)
+        zones = getattr(ctx, "zones", None) or []
+        cur = bars[at_index]
+
+        zones_details: list[str] = []
+        checks_passed: list[str] = []
+        checks_failed: list[str] = []
+        best_status = "NOT_ACTIVE"
+        next_trigger = ""
+
+        if not qualified_zones and not zones:
+            return StrategyResult(
+                strategy_name=self.name, status="NOT_ACTIVE",
+                checks_failed=["No SD zones detected"],
+                next_trigger="Need impulsive move to create supply/demand zone",
+            )
+
+        if qualified_zones:
+            for qz in qualified_zones[:6]:
+                dir_label = "Supply" if qz.direction == Direction.SHORT else "Demand"
+                q_score = qz.quality.quality_score if hasattr(qz, "quality") else 0
+                grade = "A" if q_score >= 70 else ("B" if q_score >= 45 else "C")
+                zones_details.append(
+                    f"{dir_label} {qz.bottom:.4f}-{qz.top:.4f} "
+                    f"(quality {grade}, score {q_score:.0f})"
+                )
+
+            for qz in qualified_zones:
+                q_score = qz.quality.quality_score if hasattr(qz, "quality") else 0
+                price_in_zone = cur.low <= qz.top and cur.high >= qz.bottom
+                if price_in_zone:
+                    checks_passed.append(f"Price in zone {qz.bottom:.4f}-{qz.top:.4f}")
+                    if q_score >= 45:
+                        checks_passed.append(f"Zone quality {q_score:.0f} >= 45 threshold")
+                        best_status = "WATCHING"
+                        next_trigger = "Need reaction confirmation (rejection wick or engulfing)"
+                    else:
+                        checks_failed.append(f"Zone quality {q_score:.0f} < 45 threshold")
+                else:
+                    dist = min(abs(cur.close - qz.top), abs(cur.close - qz.bottom)) * 10000
+                    if dist < 20:
+                        checks_failed.append(f"Price approaching zone ({dist:.0f} pips away)")
+                        if best_status != "WATCHING":
+                            next_trigger = f"Price must reach zone {qz.bottom:.4f}-{qz.top:.4f}"
+                    else:
+                        checks_failed.append(f"Price not in zone (current {cur.close:.5f}, zone starts {qz.bottom:.4f})")
+
+            entries = check_zone_retest_entries(
+                bars, qualified_zones, at_index,
+                min_quality_score=45.0, max_revisits=2,
+                max_fill_pct=0.80, require_reaction=True,
+            )
+            if entries:
+                best = max(entries, key=lambda e: e.quality_score)
+                atr_pips = self._get_atr_pips(ctx, at_index)
+                setup = build_basic_setup(
+                    bar=cur, at_index=at_index, direction=best.direction,
+                    confluences=best.confluences, strategy_name=self.name,
+                    atr_pips=atr_pips,
+                )
+                return StrategyResult(
+                    strategy_name=self.name, signal=setup,
+                    zones_found=len(qualified_zones), zones_details=zones_details,
+                    checks_passed=checks_passed, status="SIGNAL_GENERATED",
+                )
+        else:
+            for z in zones[:6]:
+                dir_label = "Supply" if z.direction == Direction.SHORT else "Demand"
+                zones_details.append(
+                    f"{dir_label} {z.bottom:.4f}-{z.top:.4f} "
+                    f"(impulse {z.impulse_pips:.0f} pips)"
+                )
+            legacy = self._legacy_evaluate(ctx, bars, zones, at_index)
+            if legacy:
+                return StrategyResult(
+                    strategy_name=self.name, signal=legacy,
+                    zones_found=len(zones), zones_details=zones_details,
+                    checks_passed=["Legacy zone overlap detected"],
+                    status="SIGNAL_GENERATED",
+                )
+
+        return StrategyResult(
+            strategy_name=self.name,
+            zones_found=len(qualified_zones or zones),
+            zones_details=zones_details,
+            checks_passed=checks_passed,
+            checks_failed=checks_failed,
+            status=best_status,
+            next_trigger=next_trigger,
+        )

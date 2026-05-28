@@ -153,6 +153,8 @@ class MT5Broker(BrokerConnection):
         "D1": "TIMEFRAME_D1",
     }
 
+    _SYMBOL_SUFFIXES = ["", "m", ".", "c", "M", ".raw", "#"]
+
     def __init__(self, login: int, password: str, server: str, path: str = ""):
         self._login = login
         self._password = password
@@ -160,6 +162,7 @@ class MT5Broker(BrokerConnection):
         self._path = path
         self._mt5: Any = None
         self._connected = False
+        self._resolved_symbols: dict[str, str] = {}
 
     async def connect(self) -> bool:
         try:
@@ -205,6 +208,46 @@ class MT5Broker(BrokerConnection):
             self._connected = False
             log.info("MT5 disconnected")
 
+    def _resolve_symbol_sync(self, base_symbol: str) -> str:
+        """Find the actual symbol name on this broker (synchronous, call from thread)."""
+        mt5 = self._mt5
+
+        for suffix in self._SYMBOL_SUFFIXES:
+            variant = f"{base_symbol}{suffix}"
+            info = mt5.symbol_info(variant)
+            if info is not None:
+                mt5.symbol_select(variant, True)
+                return variant
+
+        # Fuzzy search across all available symbols
+        all_symbols = mt5.symbols_get()
+        if all_symbols:
+            base_lower = base_symbol.lower()
+            for s in all_symbols:
+                if base_lower in s.name.lower():
+                    mt5.symbol_select(s.name, True)
+                    return s.name
+
+        return base_symbol
+
+    async def resolve_symbol(self, base_symbol: str) -> str:
+        """Resolve a base symbol (e.g. EURUSD) to the broker's actual name.
+
+        Caches the result so subsequent calls are instant.
+        """
+        if base_symbol in self._resolved_symbols:
+            return self._resolved_symbols[base_symbol]
+
+        resolved = await asyncio.to_thread(self._resolve_symbol_sync, base_symbol)
+        self._resolved_symbols[base_symbol] = resolved
+
+        if resolved != base_symbol:
+            log.info("Symbol resolved: %s -> %s", base_symbol, resolved)
+        else:
+            log.info("Symbol confirmed: %s (exact match)", base_symbol)
+
+        return resolved
+
     async def get_latest_bars(self, symbol: str, timeframe: str, count: int) -> list[Bar]:
         mt5 = self._mt5
         tf_attr = self._TF_MAP.get(timeframe)
@@ -212,13 +255,21 @@ class MT5Broker(BrokerConnection):
             log.error("Unsupported timeframe: %s", timeframe)
             return []
 
+        resolved = await self.resolve_symbol(symbol)
+
         def _fetch():
+            mt5.symbol_select(resolved, True)
             tf_val = getattr(mt5, tf_attr)
-            rates = mt5.copy_rates_from_pos(symbol, tf_val, 0, count)
+            rates = mt5.copy_rates_from_pos(resolved, tf_val, 0, count)
             return rates
 
         rates = await asyncio.to_thread(_fetch)
         if rates is None or len(rates) == 0:
+            err = mt5.last_error() if mt5 else "mt5 not initialized"
+            log.warning(
+                "0 bars returned for %s %s (resolved=%s). MT5 error: %s",
+                symbol, timeframe, resolved, err,
+            )
             return []
 
         tf_enum = Timeframe(timeframe)
@@ -240,6 +291,7 @@ class MT5Broker(BrokerConnection):
         stop: float, tp: float, comment: str = "",
     ) -> OrderResult:
         mt5 = self._mt5
+        symbol = await self.resolve_symbol(symbol)
 
         def _place():
             tick = mt5.symbol_info_tick(symbol)
@@ -278,6 +330,7 @@ class MT5Broker(BrokerConnection):
 
     async def close_position(self, ticket: int, symbol: str) -> OrderResult:
         mt5 = self._mt5
+        symbol = await self.resolve_symbol(symbol)
 
         def _close():
             positions = mt5.positions_get(symbol=symbol)
@@ -313,6 +366,7 @@ class MT5Broker(BrokerConnection):
         self, ticket: int, symbol: str, stop: float | None = None, tp: float | None = None
     ) -> OrderResult:
         mt5 = self._mt5
+        symbol = await self.resolve_symbol(symbol)
 
         def _modify():
             positions = mt5.positions_get(symbol=symbol)
@@ -336,6 +390,8 @@ class MT5Broker(BrokerConnection):
 
     async def get_open_positions(self, symbol: str | None = None) -> list[Position]:
         mt5 = self._mt5
+        if symbol:
+            symbol = await self.resolve_symbol(symbol)
 
         def _get():
             if symbol:
@@ -384,6 +440,7 @@ class MT5Broker(BrokerConnection):
 
     async def get_current_price(self, symbol: str) -> tuple[float, float]:
         mt5 = self._mt5
+        symbol = await self.resolve_symbol(symbol)
 
         def _price():
             tick = mt5.symbol_info_tick(symbol)

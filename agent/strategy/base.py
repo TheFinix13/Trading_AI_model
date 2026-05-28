@@ -12,7 +12,8 @@ gating logic. The design doc (section 4) lists the migration path.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
 from agent.types import Bar, Direction, Setup, Timeframe
 
@@ -20,6 +21,24 @@ from agent.types import Bar, Direction, Setup, Timeframe
 ANY_REGIME: frozenset[str] = frozenset(
     {"trending_up", "trending_down", "chop", "low_vol", "high_vol", "unknown"}
 )
+
+
+@dataclass
+class StrategyResult:
+    """Rich diagnostic output from a strategy evaluation.
+
+    Captures the full reasoning chain — which zones were found, which
+    criteria passed/failed, and what would trigger a signal next — so
+    the explainable-AI layer can render a step-by-step thought process.
+    """
+    strategy_name: str
+    signal: Optional[Setup] = None
+    zones_found: int = 0
+    zones_details: list[str] = field(default_factory=list)
+    checks_passed: list[str] = field(default_factory=list)
+    checks_failed: list[str] = field(default_factory=list)
+    status: str = "NOT_ACTIVE"  # WATCHING, NOT_ACTIVE, SIGNAL_GENERATED, BLOCKED
+    next_trigger: str = ""
 
 
 @dataclass
@@ -40,6 +59,10 @@ class Strategy(ABC):
         * implement `evaluate(ctx, at_index) -> Setup | None`
 
     `min_confluences` defaults to 1; override per-strategy if needed.
+
+    Subclasses may also override `evaluate_explained()` to return a
+    `StrategyResult` with detailed reasoning.  The default implementation
+    wraps `evaluate()` with minimal diagnostics.
     """
 
     name: str = "abstract"
@@ -67,6 +90,27 @@ class Strategy(ABC):
         Use `build_basic_setup` below for a default Setup constructor.
         """
         raise NotImplementedError
+
+    def evaluate_explained(self, ctx, at_index: int) -> StrategyResult:
+        """Return a StrategyResult with rich diagnostics.
+
+        Default implementation wraps evaluate(). Override in subclasses
+        for detailed per-check reasoning.
+        """
+        setup = self.evaluate(ctx, at_index)
+        if setup is not None:
+            return StrategyResult(
+                strategy_name=self.name,
+                signal=setup,
+                status="SIGNAL_GENERATED",
+                zones_found=1,
+                checks_passed=list(setup.confluences),
+            )
+        return StrategyResult(
+            strategy_name=self.name,
+            signal=None,
+            status="NOT_ACTIVE",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -135,4 +179,4 @@ def build_basic_setup(
     )
 
 
-__all__ = ["Strategy", "StrategyMeta", "ANY_REGIME", "build_basic_setup"]
+__all__ = ["Strategy", "StrategyMeta", "StrategyResult", "ANY_REGIME", "build_basic_setup"]
