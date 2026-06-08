@@ -40,6 +40,29 @@ log = logging.getLogger(__name__)
 
 _HEARTBEAT_INTERVAL_SECONDS = 15 * 60  # 15 minutes
 
+# Short, MT5-safe abbreviations for each strategy so the order comment stays
+# well under MT5's 31-char limit and contains no special characters.
+_STRATEGY_SHORTCODES = {
+    "LiquidityGrabReversal": "LZI",
+    "FVGRetest": "FVG",
+    "BOSContinuation": "BOS",
+    "FibRetracement": "FIB",
+    "SDZoneRetest": "SD",
+    "generic": "GEN",
+}
+
+
+def _short_order_comment(strategy_label: str, timeframe: str, direction_label: str) -> str:
+    """Build a compact, MT5-safe order comment, e.g. ``FVG H1 L``.
+
+    The broker sanitizes/truncates again as a safety net, but keeping the
+    comment short and meaningful here makes positions easy to identify in the
+    MT5 terminal.
+    """
+    short = _STRATEGY_SHORTCODES.get(strategy_label, (strategy_label or "AI")[:6])
+    side = "L" if direction_label.upper().startswith("L") else "S"
+    return f"{short} {timeframe} {side}"
+
 
 class SignalLoop:
     """Real-time trading signal detection and execution loop.
@@ -763,8 +786,7 @@ class SignalLoop:
             lot=decision.lot_size,
             stop=setup.stop,
             tp=setup.take_profit,
-            comment=f"ai-agent {timeframe} {strategy_label} "
-                    f"{','.join(setup.confluences[:3])}",
+            comment=_short_order_comment(strategy_label, timeframe, direction_label),
         )
 
         exec_details: dict = {"lot_size": decision.lot_size}
@@ -788,7 +810,11 @@ class SignalLoop:
             )
             exec_details["fill_price"] = result.fill_price
         else:
-            log.error("Order rejected by broker: %s", result.message)
+            log.error(
+                "Order rejected by broker [%s %s %s @ %.5f lot=%.2f]: %s",
+                strategy_label, direction_label, timeframe, setup.entry,
+                decision.lot_size, result.message,
+            )
             self.notifier.notify_text(f"*Order REJECTED*\n`{result.message}`")
             exec_details["rejected"] = True
             exec_details["reject_reason"] = result.message

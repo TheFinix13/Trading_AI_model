@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -22,6 +23,30 @@ import pandas as pd
 from agent.types import Bar, Direction, Timeframe
 
 log = logging.getLogger(__name__)
+
+# MT5 enforces a 31-character limit on order comments and only accepts a
+# narrow set of ASCII characters. Anything outside that range (brackets,
+# quotes, commas, etc.) triggers a "-2 Invalid 'comment' argument" rejection.
+_MT5_COMMENT_MAX_LEN = 31
+_MT5_COMMENT_SAFE_RE = re.compile(r"[^A-Za-z0-9 _\-]")
+
+
+def _sanitize_mt5_comment(comment: str | None, max_len: int = _MT5_COMMENT_MAX_LEN) -> str:
+    """Make an order comment safe for MT5's strict ``order_send`` validation.
+
+    MT5 rejects comments longer than 31 characters or containing characters
+    outside basic ASCII alphanumerics, spaces, underscores and hyphens. This
+    strips any unsafe characters, collapses surrounding whitespace and
+    truncates to ``max_len``. Always returns a non-empty, valid string so the
+    request can never be rejected on the ``comment`` field.
+    """
+    if not comment:
+        return "AI"
+    safe = _MT5_COMMENT_SAFE_RE.sub("", str(comment))
+    safe = safe.strip()
+    if not safe:
+        return "AI"
+    return safe[:max_len]
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +311,26 @@ class MT5Broker(BrokerConnection):
             ))
         return bars
 
+    def _get_filling_mode(self, symbol: str) -> int:
+        """Pick a filling mode the symbol actually supports.
+
+        ``filling_mode`` is a bitmask of the modes the broker allows for the
+        symbol. Sending an unsupported filling type is one of the most common
+        causes of Exness order rejections, so we probe it explicitly and fall
+        back to IOC if the info is unavailable.
+        """
+        mt5 = self._mt5
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            return mt5.ORDER_FILLING_IOC
+        filling = getattr(info, "filling_mode", 0)
+        # Bit 1 = FOK, Bit 2 = IOC (per MT5 SYMBOL_FILLING_* flags).
+        if filling & 1:
+            return mt5.ORDER_FILLING_FOK
+        if filling & 2:
+            return mt5.ORDER_FILLING_IOC
+        return mt5.ORDER_FILLING_RETURN
+
     async def place_order(
         self, symbol: str, direction: Direction, lot: float,
         stop: float, tp: float, comment: str = "",
@@ -306,19 +351,28 @@ class MT5Broker(BrokerConnection):
                 "symbol": symbol,
                 "volume": float(lot),
                 "type": order_type,
-                "price": price,
+                "price": float(price),
                 "sl": float(stop),
                 "tp": float(tp),
-                "deviation": 10,
-                "magic": 271828,
-                "comment": comment or "eurusd-ai-agent",
+                "deviation": 20,
+                "magic": int(271828),
+                "comment": _sanitize_mt5_comment(comment),
                 "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
+                "type_filling": self._get_filling_mode(symbol),
             }
             result = mt5.order_send(request)
             if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
                 err = mt5.last_error()
-                return OrderResult(False, message=f"Order rejected: rc={getattr(result, 'retcode', '?')} {err}")
+                retcode = getattr(result, "retcode", "?")
+                res_comment = getattr(result, "comment", "")
+                log.error(
+                    "Order rejected: retcode=%s comment=%r last_error=%s request=%s",
+                    retcode, res_comment, err, request,
+                )
+                return OrderResult(
+                    False,
+                    message=f"Order rejected: retcode={retcode} comment={res_comment!r} last_error={err}",
+                )
             return OrderResult(
                 success=True,
                 ticket=result.order,
@@ -345,19 +399,29 @@ class MT5Broker(BrokerConnection):
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": symbol,
-                "volume": pos.volume,
+                "volume": float(pos.volume),
                 "type": opp_type,
                 "position": ticket,
-                "price": price,
-                "deviation": 10,
-                "magic": 271828,
-                "comment": "eurusd-ai-agent close",
+                "price": float(price),
+                "deviation": 20,
+                "magic": int(271828),
+                "comment": _sanitize_mt5_comment("AI close"),
                 "type_time": mt5.ORDER_TIME_GTC,
-                "type_filling": mt5.ORDER_FILLING_IOC,
+                "type_filling": self._get_filling_mode(symbol),
             }
             result = mt5.order_send(request)
             if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
-                return OrderResult(False, message=f"Close failed: rc={getattr(result, 'retcode', '?')}")
+                err = mt5.last_error()
+                retcode = getattr(result, "retcode", "?")
+                res_comment = getattr(result, "comment", "")
+                log.error(
+                    "Close rejected: retcode=%s comment=%r last_error=%s request=%s",
+                    retcode, res_comment, err, request,
+                )
+                return OrderResult(
+                    False,
+                    message=f"Close failed: retcode={retcode} comment={res_comment!r} last_error={err}",
+                )
             return OrderResult(True, ticket=ticket, fill_price=result.price, fill_time=datetime.now(tz=timezone.utc))
 
         return await asyncio.to_thread(_close)
