@@ -115,6 +115,45 @@ so predicted probabilities actually match observed win rates.
 
 ---
 
+## Reaction engine, adaptive sizing & live learning
+
+On top of the anticipation stack above, the live agent now also **reacts to
+committed moves in present time**, **sizes by risk**, and **learns from its own
+results day by day**. Full details: **[docs/reaction_and_learning.md](docs/reaction_and_learning.md)**.
+
+- **Reaction engine** (`agent/reaction/`) — measures displacement, range
+  expansion, momentum and order-flow imbalance on the just-closed bar(s), blends
+  them into a conviction score, and fires when price commits at a marked level.
+  Uses a *lighter* gate set than anticipation, so it actually trades.
+- **Anticipation → reaction flip** — abandons an anticipated setup when momentum
+  commits hard the other way.
+- **Modes** — `--mode anticipation | reaction | hybrid` (default `hybrid`:
+  anticipation marks levels, reaction pulls the trigger).
+- **Adaptive sizing** (`agent/live/position_sizer.py`) — risks a conviction-scaled
+  % of live equity (band `--risk-min`…`--risk-max`), respecting lot step, min/max
+  lot and free margin. `--lot` becomes an optional upper cap.
+- **Learning** — a fresh per-day journal (`data/journal/live/`, markdown + JSONL
+  feature snapshots) plus an online performance memory keyed by setup signature
+  that feeds expectancy back into conviction.
+
+```bash
+# Live (Exness MT5), hybrid engine, risk-based sizing, fresh journal, verbose logs
+PYTHONPATH=. .venv/bin/python scripts/run_live.py \
+    --broker exness --timeframe H1 --mode hybrid \
+    --risk-min 0.005 --risk-max 0.02 --reset-journal --verbose
+
+# Learning backtest: reaction + risk sizing + online memory, day by day
+PYTHONPATH=. .venv/bin/python scripts/run_learning_backtest.py \
+    --years 2 --start-balance 100 --leverage 1000 --reset
+```
+
+In `--verbose` you'll see a **REACTION ENGINE** step (the four component scores +
+conviction vs threshold), a **SIZING** line (balance, risk%, stop pips, lot,
+margin), and a **LEARN** line on every close (signature win-rate, expectancy, next
+conviction adjustment).
+
+---
+
 ## Installation
 
 Requires **Python 3.11**.

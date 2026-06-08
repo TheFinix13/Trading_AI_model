@@ -1,7 +1,10 @@
 # EURUSD AI Trading Agent — Strategy Architecture
 
-**Last updated:** 2026-05-27
-**Status:** Profitable on OOS data (PF 1.12, +10.4%, Sharpe 0.72)
+**Last updated:** 2026-06-08
+**Status:** Profitable on OOS data (PF 1.12, +10.4%, Sharpe 0.72). Now augmented
+with a present-time **reaction engine**, **risk-based adaptive sizing**, and an
+**online learning** loop — see
+[reaction_and_learning.md](reaction_and_learning.md).
 
 ---
 
@@ -105,13 +108,22 @@ MARKET DATA (H1/H4/D1 candles)
 ┌─────────────────────────────────────────────┐
 │      EXECUTION                               │
 │                                              │
-│  • Position sizing (1% risk per trade)       │
+│  • Adaptive sizing (risk-%, conviction-      │
+│    scaled, broker-constraint safe)           │
 │  • PD Array TP targeting (opposite liquidity)│
 │  • Breakeven at 1R                           │
 │  • One position at a time                    │
 │  • Kill switch (kill.txt file)               │
+│  • Daily journal + online perf memory        │
 └─────────────────────────────────────────────┘
 ```
+
+The detection + strategy + meta layers above are the **anticipation** path. In
+parallel, a **reaction engine** measures committed price action every bar and
+pulls the trigger on present-time commitment at marked levels. The `--mode` flag
+(`anticipation` | `reaction` | `hybrid`, default `hybrid`) selects how they
+combine. See [reaction_and_learning.md](reaction_and_learning.md) for the reaction
+engine, the anticipation→reaction flip, adaptive sizing, and the learning journal.
 
 ---
 
@@ -234,11 +246,27 @@ opposing candle before the move, not the whole consolidation.
 - Human can always override
 
 ### Risk Management
-- 1% risk per trade
+- Risk-based adaptive sizing: conviction-scaled within a band (default 0.5%–2.0%),
+  respecting lot step, min/max lot and free margin (see
+  [reaction_and_learning.md](reaction_and_learning.md))
 - 3% daily drawdown halt
 - One position at a time
 - Breakeven at 1R
 - Kill switch (file-based)
+
+---
+
+## Reaction Engine & Online Learning
+
+The anticipation stack waits for a full retest choreography and rarely fires. A
+**reaction engine** (`agent/reaction/`) trades present-time commitment instead —
+measured displacement, range expansion, momentum and order-flow imbalance at a
+pre-marked level — using a lighter gate set so it actually pulls the trigger. An
+**anticipation→reaction flip** abandons an anticipated setup when momentum commits
+hard the other way. A fresh per-day **learning journal** (`data/journal/live/`)
+plus an **online performance memory** (expectancy per setup signature) feed
+results back into conviction so the agent leans into what's working. Full detail,
+log examples and run commands: **[reaction_and_learning.md](reaction_and_learning.md)**.
 
 ---
 
@@ -261,8 +289,15 @@ opposing candle before the move, not the whole consolidation.
 1. Train FVG-specific and SD Zone-specific scorers (like we did for LZI)
 2. Volume profile integration (HVN/LVN/POC from M1 data)
 3. Order flow approximation (delta, CVD divergence)
-4. Live demo trading on Exness via MT5
+4. Periodic full scorer retraining on the journal's captured entry-feature
+   snapshots (the heavy follow-on to the always-on online performance memory)
 5. Continuous learning from user feedback (drawing → analysis loop)
+
+**Recently shipped:** present-time reaction engine + anticipation→reaction flip,
+risk-based conviction-scaled position sizing, fresh per-day learning journal with
+an online performance-memory feedback loop, and a learning backtest
+(`scripts/run_learning_backtest.py`). Live demo on Exness via MT5 is wired through
+`scripts/run_live.py --mode hybrid`.
 
 ---
 
