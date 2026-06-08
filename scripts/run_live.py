@@ -88,10 +88,35 @@ def parse_args() -> argparse.Namespace:
         help="Check interval in seconds (default: auto based on timeframe)",
     )
     parser.add_argument(
+        "--mode", "-m",
+        choices=["anticipation", "reaction", "hybrid"],
+        default=None,
+        help="Trading mode (default: from config, 'hybrid'). "
+             "anticipation=strategy/gate stack only; reaction=reaction engine "
+             "pulls the trigger; hybrid=anticipation marks levels + reaction triggers.",
+    )
+    parser.add_argument(
         "--lot",
         type=float,
         default=None,
-        help="Fixed lot size override (bypasses risk calculator)",
+        help="Manual lot CAP / override (upper bound on the risk-based sizer)",
+    )
+    parser.add_argument(
+        "--risk-min",
+        type=float,
+        default=None,
+        help="Minimum risk per trade as a fraction (e.g. 0.005 = 0.5%%)",
+    )
+    parser.add_argument(
+        "--risk-max",
+        type=float,
+        default=None,
+        help="Maximum risk per trade as a fraction (e.g. 0.02 = 2%%)",
+    )
+    parser.add_argument(
+        "--reset-journal",
+        action="store_true",
+        help="Archive the existing live journal aside and start a fresh one",
     )
     parser.add_argument(
         "--balance",
@@ -243,6 +268,7 @@ def _print_banner(
 
     mode_map = {"paper": "PAPER (local simulation)", "mt5": "DEMO (MT5)", "exness": "DEMO (Exness MT5)"}
     mode_label = mode_map.get(args.broker, args.broker.upper())
+    trade_mode = (args.mode or getattr(config.reaction, "mode", "hybrid")).upper()
 
     total_models = len(models_found) + len(models_missing)
     if total_models == 0:
@@ -252,8 +278,9 @@ def _print_banner(
     print(SEPARATOR)
     print(f"  EURUSD AI Trading Agent v{VERSION}")
     print(f"  Mode: {mode_label}")
+    print(f"  Engine: {trade_mode} (anticipation/reaction/hybrid)")
     print(f"  Timeframe: {tf_str}")
-    print(f"  Lot size: {lot}")
+    print(f"  Lot: risk-based sizing (manual cap: {args.lot or 'none'})")
     print(f"  Strategies: {strategies}")
     print(f"  Scorer: LZI v1 (threshold {lzi_threshold:.2f}) + Generic v8")
     print(f"  Risk: {risk_pct:.0f}% per trade, {dd_pct:.0f}% daily DD halt")
@@ -390,14 +417,21 @@ def main() -> None:
     overrides: dict = {}
     if args.interval is not None:
         overrides["check_interval_seconds"] = args.interval
+    if args.mode is not None:
+        overrides["mode"] = args.mode
     if args.lot is not None:
         overrides["lot_size_override"] = args.lot
+    if args.risk_min is not None:
+        overrides["risk_min_pct"] = args.risk_min
+    if args.risk_max is not None:
+        overrides["risk_max_pct"] = args.risk_max
     if args.balance is not None:
         overrides["paper_initial_balance"] = args.balance
     if args.score_threshold is not None:
         overrides["score_threshold"] = args.score_threshold
     if args.no_telegram:
         overrides["telegram_enabled"] = False
+    overrides["reset_journal"] = args.reset_journal
 
     verbose = args.verbose
 

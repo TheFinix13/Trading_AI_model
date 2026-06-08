@@ -254,6 +254,55 @@ class BarCheckExplainer:
 
         return _format_box("STEP 3: STRATEGY EVALUATION", lines)
 
+    def explain_reaction(
+        self,
+        *,
+        components: Optional[dict] = None,
+        conviction: float = 0.0,
+        threshold: float = 0.0,
+        direction: str = "",
+        agreement: float = 0.0,
+        level_label: str = "",
+        is_breakout: bool = False,
+        fired: bool = False,
+        rejection: str = "",
+    ) -> str:
+        """Build the REACTION ENGINE step so the user can SEE the measured
+        commitment scores (displacement / expansion / momentum / imbalance),
+        the composite conviction vs threshold, and why it did or didn't react."""
+        lines: list[str] = []
+        comp = components or {}
+        if comp:
+            def _bar(v: float) -> str:
+                filled = int(round(max(0.0, min(1.0, v)) * 10))
+                return "\u2588" * filled + "\u2591" * (10 - filled)
+            lines.append(f"Displacement : {_bar(comp.get('displacement', 0)):<10} {comp.get('displacement', 0):.2f}")
+            lines.append(f"Expansion    : {_bar(comp.get('expansion', 0)):<10} {comp.get('expansion', 0):.2f}")
+            lines.append(f"Momentum     : {_bar(comp.get('momentum', 0)):<10} {comp.get('momentum', 0):.2f}")
+            lines.append(f"Imbalance    : {_bar(comp.get('imbalance', 0)):<10} {comp.get('imbalance', 0):.2f}")
+            lines.append("")
+        dir_label = "BUY" if str(direction).lower() in ("long", "buy") else ("SELL" if direction else "—")
+        conv_sym = SYM_PASS if conviction >= threshold else SYM_FAIL
+        lines.append(
+            f"Conviction: {conviction:.2f} {conv_sym} (threshold {threshold:.2f}) "
+            f"| dir {dir_label} | agreement {agreement:.2f}"
+        )
+        if level_label:
+            verb = "breaking" if is_breakout else "at"
+            lines.append(f"Level: {verb} {level_label}")
+        if fired:
+            lines.append(f"{SYM_LIGHTNING} REACTION FIRED — committed move confirmed")
+        elif rejection:
+            lines.append(f"{SYM_NO} no reaction: {rejection}")
+        else:
+            lines.append("No reaction this bar")
+        return _format_box("STEP 3.5: REACTION ENGINE", lines)
+
+    def explain_sizing(self, sizing_summary: str) -> str:
+        """Build the POSITION SIZING step showing the risk-based math."""
+        lines = [sizing_summary] if sizing_summary else ["[no sizing performed]"]
+        return _format_box("STEP 6: POSITION SIZING", lines)
+
     def explain_gates(
         self,
         signal: Optional[Setup],

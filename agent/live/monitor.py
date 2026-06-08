@@ -9,6 +9,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from agent.config import Config
 from agent.live.broker import BrokerConnection, Position
@@ -38,21 +39,40 @@ class PositionMonitor:
         live_config: LiveConfig,
         notifier: TelegramNotifier | None = None,
         check_interval: float = 5.0,
+        trade_closed_cb: Callable[[int, dict], None] | None = None,
     ):
         self.broker = broker
         self.config = config
         self.live_config = live_config
         self.notifier = notifier or TelegramNotifier.from_env(dry_run=True)
         self.check_interval = check_interval
+        # Optional callback invoked when an open position closes, with
+        # (ticket, exit_info dict). Used to journal exits + feed learning.
+        self.trade_closed_cb = trade_closed_cb
 
         # Track which positions we've already moved to breakeven
         self._breakeven_applied: set[int] = set()
         # Track known open tickets to detect closes
         self._known_tickets: set[int] = set()
+        # Per-ticket entry context registered by the signal loop (signature,
+        # source, stop/tp, conviction…) so we can journal a rich exit.
+        self._entry_ctx: dict[int, dict] = {}
+        # Per-ticket running excursion + last-seen state for exit reconstruction.
+        self._excursion: dict[int, dict] = {}
         # Daily P&L tracking
         self._day_start_balance: float = 0.0
         self._current_day: str = ""
         self._kill_switch_handled: bool = False
+
+    def register_entry(self, ticket: int, context: dict) -> None:
+        """Record entry context so an eventual close can be journaled richly."""
+        self._entry_ctx[ticket] = context
+        self._excursion[ticket] = {
+            "mae_pips": 0.0,
+            "mfe_pips": 0.0,
+            "last_price": context.get("entry", 0.0),
+            "last_profit": 0.0,
+        }
 
     async def run(self) -> None:
         """Background monitoring loop. Call as asyncio.create_task(monitor.run())."""
@@ -83,13 +103,18 @@ class PositionMonitor:
             # Daily DD check
             await self._check_daily_dd(account.balance, account.equity, positions)
 
+            # Update running excursion for each open position BEFORE detecting
+            # closes, so the last-seen MAE/MFE is current when a close happens.
+            for pos in positions:
+                self._track_excursion(pos)
+
             # Detect closed positions (were open, now gone)
             current_tickets = {p.ticket for p in positions}
             closed_tickets = self._known_tickets - current_tickets
             if closed_tickets:
                 for ticket in closed_tickets:
                     log.info("Position %d closed (SL/TP or manual)", ticket)
-                self._known_tickets = current_tickets
+                    self._handle_close(ticket)
                 self._breakeven_applied -= closed_tickets
 
             # Update known tickets
@@ -101,6 +126,75 @@ class PositionMonitor:
 
         except Exception as e:
             log.debug("Monitor check error: %s", e)
+
+    def _track_excursion(self, pos: Position) -> None:
+        """Update running MAE/MFE (in pips) and last-seen state for a position."""
+        exc = self._excursion.get(pos.ticket)
+        if exc is None:
+            # Position we didn't register (e.g. opened before this run). Track
+            # it anyway so a close is still journaled with best-effort data.
+            exc = {"mae_pips": 0.0, "mfe_pips": 0.0,
+                   "last_price": pos.open_price, "last_profit": 0.0}
+            self._excursion[pos.ticket] = exc
+        if pos.direction == Direction.LONG:
+            fav = (pos.current_price - pos.open_price) * 10000
+            adv = (pos.open_price - pos.current_price) * 10000
+        else:
+            fav = (pos.open_price - pos.current_price) * 10000
+            adv = (pos.current_price - pos.open_price) * 10000
+        exc["mfe_pips"] = max(exc["mfe_pips"], fav)
+        exc["mae_pips"] = max(exc["mae_pips"], adv)
+        exc["last_price"] = pos.current_price
+        exc["last_profit"] = pos.profit
+        exc["open_price"] = pos.open_price
+        exc["direction"] = pos.direction.value
+
+    def _handle_close(self, ticket: int) -> None:
+        """Reconstruct exit info for a closed ticket and fire the callback."""
+        exc = self._excursion.pop(ticket, None)
+        ctx = self._entry_ctx.pop(ticket, None)
+        if self.trade_closed_cb is None:
+            return
+        exc = exc or {}
+        ctx = ctx or {}
+        exit_price = exc.get("last_price", ctx.get("entry", 0.0))
+        entry_price = ctx.get("entry", exc.get("open_price", exit_price))
+        stop = ctx.get("stop")
+        tp = ctx.get("take_profit")
+        direction = ctx.get("direction", exc.get("direction", "long"))
+        if direction == "long":
+            pnl_pips = (exit_price - entry_price) * 10000
+        else:
+            pnl_pips = (entry_price - exit_price) * 10000
+        stop_pips = abs(entry_price - stop) * 10000 if stop else 0.0
+        r_multiple = (pnl_pips / stop_pips) if stop_pips > 0 else 0.0
+        pnl = exc.get("last_profit", 0.0)
+
+        # Infer exit reason from proximity to TP/SL.
+        reason = "manual"
+        if tp is not None and abs(exit_price - tp) * 10000 <= 3:
+            reason = "tp"
+        elif stop is not None and abs(exit_price - stop) * 10000 <= 3:
+            reason = "sl"
+        elif pnl_pips > 0:
+            reason = "tp"
+        elif pnl_pips < 0:
+            reason = "sl"
+
+        info = {
+            "exit_price": exit_price,
+            "exit_reason": reason,
+            "pnl": pnl,
+            "pnl_pips": pnl_pips,
+            "r_multiple": r_multiple,
+            "mae_pips": exc.get("mae_pips", 0.0),
+            "mfe_pips": exc.get("mfe_pips", 0.0),
+            "entry_ctx": ctx,
+        }
+        try:
+            self.trade_closed_cb(ticket, info)
+        except Exception as e:  # never let journaling crash the monitor
+            log.warning("trade_closed_cb failed for ticket %d: %s", ticket, e)
 
     async def _manage_position(self, pos: Position) -> None:
         """Apply breakeven and trailing stop logic to a single position."""

@@ -23,11 +23,22 @@ class LiveConfig:
     mt5_server: str = ""
     mt5_path: str = ""
 
+    # Trading mode: "anticipation" | "reaction" | "hybrid".
+    # hybrid (default): anticipation marks levels, reaction pulls the trigger.
+    mode: str = "hybrid"
+
     # Risk parameters (override global risk config for live)
     risk_per_trade_pct: float = 1.0
     max_daily_dd_pct: float = 3.0
     max_open_positions: int = 1
     lot_size_override: float | None = None
+
+    # Adaptive risk band for conviction-scaled sizing (fractions of balance).
+    risk_min_pct: float = 0.005
+    risk_max_pct: float = 0.02
+
+    # Live journal + learning store
+    journal_root: str = "data/journal/live"
 
     # Notification
     telegram_enabled: bool = True
