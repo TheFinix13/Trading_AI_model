@@ -502,6 +502,20 @@ class LiveTradingConfig(BaseModel):
     max_reconnect_attempts: int = 5
     reconnect_delay_seconds: int = 10
 
+    # ── Adaptive sizing band + post-loss / no-revenge guard ──
+    risk_min_pct: float = 0.005
+    risk_max_pct: float = 0.02
+    # Hard ceiling on a single trade's risk (fraction of balance); oversized
+    # lots are clamped down to fit (never below the broker minimum lot).
+    max_trade_risk_pct: float = 0.02
+    revenge_guard_enabled: bool = True
+    post_loss_cooldown_minutes: float = 60.0
+    post_loss_cooldown_bars: int = 2
+    post_loss_risk_multiplier: float = 0.5
+    max_consecutive_losses: int = 3
+    catastrophic_loss_frac: float = 0.10
+    halt_on_stop_out: bool = True
+
 
 class BacktestConfig(BaseModel):
     initial_balance: float = 10000.0

@@ -99,6 +99,7 @@ class PositionSizer:
         free_margin: float | None = None,
         constraints: SymbolConstraints | None = None,
         manual_cap: float | None = None,
+        max_risk_pct_hard: float | None = None,
     ) -> SizingResult:
         """Compute the lot size that risks ``risk_pct`` of ``balance``.
 
@@ -108,6 +109,13 @@ class PositionSizer:
         configured band. The result is rounded down to the broker lot step,
         clamped to [min_lot, max_lot], capped by available free margin under the
         given leverage, and optionally capped by a manual ``--lot`` override.
+
+        ``max_risk_pct_hard`` is an independent oversize ceiling (decoupled from
+        the conviction band): if the final lot would risk more than this
+        fraction of balance, it is clamped down so the trade risks at most
+        ``max_risk_pct_hard`` — but never below the broker minimum lot, so a
+        small account can still trade its smallest size. This is the guard that
+        turns a 1.0-lot-on-$100 mistake into a 0.01-lot trade.
         """
         c = constraints or SymbolConstraints()
         pv = pip_value or c.pip_value_per_lot
@@ -195,6 +203,26 @@ class PositionSizer:
         lot = round(lot, 2)
         final_risk_amount = lot * stop_distance_pips * pv
         margin_required = margin_per_lot * lot
+
+        # Oversize hard ceiling — clamp DOWN any lot that would risk more than
+        # ``max_risk_pct_hard`` of balance, but never below the broker minimum
+        # (the minimum is already the smallest tradeable, safest size).
+        if (max_risk_pct_hard is not None and max_risk_pct_hard > 0
+                and balance > 0 and lot > c.min_lot):
+            hard_amount = balance * max_risk_pct_hard
+            if final_risk_amount > hard_amount * (1 + 1e-9):
+                hard_lot = _floor_to_step(hard_amount / (stop_distance_pips * pv), c.lot_step)
+                hard_lot = max(c.min_lot, hard_lot)
+                if hard_lot < lot:
+                    notes.append(
+                        f"oversize: {lot:.2f} risks "
+                        f"{final_risk_amount / balance * 100:.1f}% > hard cap "
+                        f"{max_risk_pct_hard * 100:.1f}%; clamped to {hard_lot:.2f}"
+                    )
+                    lot = hard_lot
+                    capped_by = "max_risk_hard"
+                    final_risk_amount = lot * stop_distance_pips * pv
+                    margin_required = margin_per_lot * lot
 
         return SizingResult(
             lot=lot,

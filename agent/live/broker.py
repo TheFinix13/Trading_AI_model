@@ -99,6 +99,39 @@ class OrderResult:
 class BrokerConnection(ABC):
     """Abstract broker interface for the live trading loop."""
 
+    @staticmethod
+    def validate_sltp(
+        direction: Direction, stop: float, tp: float, ref_price: float | None = None
+    ) -> tuple[bool, str]:
+        """Mandatory pre-trade SL/TP invariant — REFUSES naked orders.
+
+        The Jun 2026 post-mortem found 10 of 11 real trades were placed with no
+        stop loss; one became a margin stop-out that wiped the account. Every
+        order this agent sends MUST carry a structural stop and a take profit on
+        the correct side of price. Returns (ok, reason). When ``ok`` is False
+        the caller must NOT place the order.
+        """
+        if stop is None or tp is None:
+            return False, "missing SL/TP (naked order refused)"
+        try:
+            stop = float(stop)
+            tp = float(tp)
+        except (TypeError, ValueError):
+            return False, "non-numeric SL/TP"
+        if stop <= 0 or tp <= 0:
+            return False, f"invalid SL/TP (sl={stop}, tp={tp}); naked order refused"
+        if direction == Direction.LONG:
+            if not stop < tp:
+                return False, f"long needs SL ({stop}) below TP ({tp})"
+            if ref_price is not None and not (stop < ref_price < tp):
+                return False, f"long SL/TP not bracketing price {ref_price} (sl={stop}, tp={tp})"
+        else:
+            if not stop > tp:
+                return False, f"short needs SL ({stop}) above TP ({tp})"
+            if ref_price is not None and not (tp < ref_price < stop):
+                return False, f"short SL/TP not bracketing price {ref_price} (sl={stop}, tp={tp})"
+        return True, ""
+
     @abstractmethod
     async def connect(self) -> bool:
         """Establish connection to the broker. Returns True on success."""
@@ -344,6 +377,14 @@ class MT5Broker(BrokerConnection):
                 return OrderResult(False, message=f"No tick data for {symbol}")
 
             price = tick.ask if direction == Direction.LONG else tick.bid
+
+            # Mandatory SL/TP invariant — never send a naked order.
+            ok, reason = self.validate_sltp(direction, stop, tp, ref_price=price)
+            if not ok:
+                log.error("Order REFUSED (SL/TP guard): %s [%s %s lot=%s]",
+                          reason, symbol, direction.value, lot)
+                return OrderResult(False, message=f"SL/TP guard: {reason}")
+
             order_type = mt5.ORDER_TYPE_BUY if direction == Direction.LONG else mt5.ORDER_TYPE_SELL
 
             request = {
@@ -690,6 +731,15 @@ class PaperBroker(BrokerConnection):
         bid, ask = self._last_prices.get(symbol, (0.0, 0.0))
         if bid == 0:
             return OrderResult(False, message="No price data available for paper execution")
+
+        ref_price = ask if direction == Direction.LONG else bid
+
+        # Mandatory SL/TP invariant — never simulate a naked order either.
+        ok, reason = self.validate_sltp(direction, stop, tp, ref_price=ref_price)
+        if not ok:
+            log.error("PAPER order REFUSED (SL/TP guard): %s [%s %s lot=%s]",
+                      reason, symbol, direction.value, lot)
+            return OrderResult(False, message=f"SL/TP guard: {reason}")
 
         # Simulate fill with slippage
         slippage = self._slippage_pips * 0.0001 * random.choice([1, -1, 0, 0])

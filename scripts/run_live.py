@@ -114,6 +114,30 @@ def parse_args() -> argparse.Namespace:
         help="Maximum risk per trade as a fraction (e.g. 0.02 = 2%%)",
     )
     parser.add_argument(
+        "--max-trade-risk",
+        type=float,
+        default=None,
+        help="Hard ceiling on a single trade's risk as a fraction (e.g. 0.02 = 2%%). "
+             "Oversized/override lots are clamped down to fit.",
+    )
+    parser.add_argument(
+        "--no-revenge-guard",
+        action="store_true",
+        help="Disable the post-loss cooldown / no-revenge guard (NOT recommended)",
+    )
+    parser.add_argument(
+        "--cooldown-minutes",
+        type=float,
+        default=None,
+        help="Minutes to block new entries after a loss (default: 60)",
+    )
+    parser.add_argument(
+        "--max-consecutive-losses",
+        type=int,
+        default=None,
+        help="Halt new entries for the session after this many losses in a row (default: 3)",
+    )
+    parser.add_argument(
         "--reset-journal",
         action="store_true",
         help="Archive the existing live journal aside and start a fresh one",
@@ -425,6 +449,14 @@ def main() -> None:
         overrides["risk_min_pct"] = args.risk_min
     if args.risk_max is not None:
         overrides["risk_max_pct"] = args.risk_max
+    if args.max_trade_risk is not None:
+        overrides["max_trade_risk_pct"] = args.max_trade_risk
+    if args.no_revenge_guard:
+        overrides["revenge_guard_enabled"] = False
+    if args.cooldown_minutes is not None:
+        overrides["post_loss_cooldown_minutes"] = args.cooldown_minutes
+    if args.max_consecutive_losses is not None:
+        overrides["max_consecutive_losses"] = args.max_consecutive_losses
     if args.balance is not None:
         overrides["paper_initial_balance"] = args.balance
     if args.score_threshold is not None:

@@ -35,6 +35,7 @@ from agent.model.scorer import SetupScorer
 from agent.notifications.telegram import TelegramNotifier
 from agent.reaction import LevelOfInterest, ReactionAssessment, ReactionEngine, ReactionSignal
 from agent.risk.manager import RiskDecision, RiskManager
+from agent.risk.post_loss_guard import GuardConfig, PostLossGuard
 from agent.rules.engine import RuleEngine, precompute
 from agent.strategy.base import StrategyResult
 from agent.types import Bar, Direction, Setup, Timeframe
@@ -150,6 +151,20 @@ class SignalLoop:
             min_risk_pct=getattr(live_config, "risk_min_pct", 0.005),
             max_risk_pct=getattr(live_config, "risk_max_pct", 0.02),
         )
+        # Hard ceiling on a single trade's risk (oversize block / clamp).
+        self.max_trade_risk_pct = getattr(live_config, "max_trade_risk_pct", 0.02)
+
+        # ── Post-loss cooldown / no-revenge guard ──
+        self.post_loss_guard = PostLossGuard(GuardConfig(
+            enabled=getattr(live_config, "revenge_guard_enabled", True),
+            cooldown_minutes=getattr(live_config, "post_loss_cooldown_minutes", 60.0),
+            cooldown_bars=getattr(live_config, "post_loss_cooldown_bars", 2),
+            loss_risk_multiplier=getattr(live_config, "post_loss_risk_multiplier", 0.5),
+            max_consecutive_losses=getattr(live_config, "max_consecutive_losses", 3),
+            catastrophic_loss_frac=getattr(live_config, "catastrophic_loss_frac", 0.10),
+            halt_on_stop_out=getattr(live_config, "halt_on_stop_out", True),
+        ))
+        self._last_balance: float = 0.0
 
         # ── Fresh live journal + online performance memory (learning) ──
         journal_root = Path(getattr(live_config, "journal_root", "data/journal/live"))
@@ -357,9 +372,14 @@ class SignalLoop:
         log.info("  Reaction engine: %s (threshold %.2f)",
                  "enabled" if self.reaction_engine else "disabled",
                  self.config.reaction.conviction_threshold)
-        log.info("  Sizing: risk-based %.1f%%-%.1f%% (conviction-scaled)",
+        log.info("  Sizing: risk-based %.1f%%-%.1f%% (conviction-scaled, hard cap %.1f%%)",
                  self.position_sizer.min_risk_pct * 100,
-                 self.position_sizer.max_risk_pct * 100)
+                 self.position_sizer.max_risk_pct * 100,
+                 self.max_trade_risk_pct * 100)
+        g = self.post_loss_guard.cfg
+        log.info("  Risk guard: %s (cooldown %.0fm/%db, x%.2f after loss, breaker %d losses)",
+                 "ON" if g.enabled else "OFF", g.cooldown_minutes, g.cooldown_bars,
+                 g.loss_risk_multiplier, g.max_consecutive_losses)
         log.info("  Live journal: %s", self.live_journal.root)
         log.info("  Timeframes: %s", self.live_config.timeframes)
         log.info("  Check interval: %ds", self.live_config.check_interval_seconds)
@@ -984,6 +1004,42 @@ class SignalLoop:
             )
         return None
 
+    def _ensure_sl_tp(self, setup: Setup, ctx, bar_index: int) -> str:
+        """Guarantee the setup has a structural SL and TP on the correct side of
+        entry, deriving them from ATR + an R:R target if the signal omitted them.
+        Returns "" if the setup is tradeable, or a reason string if it cannot be
+        made valid (the caller must then refuse the trade)."""
+        entry = setup.entry
+        if entry is None or entry <= 0:
+            return "no entry price"
+        is_long = setup.direction == Direction.LONG
+        atr = ctx.atr_by_index.get(bar_index, 0.0) if ctx is not None else 0.0
+
+        def _valid_stop(s) -> bool:
+            return s is not None and s > 0 and (s < entry if is_long else s > entry)
+
+        def _valid_tp(t) -> bool:
+            return t is not None and t > 0 and (t > entry if is_long else t < entry)
+
+        if not _valid_stop(setup.stop):
+            stop_dist = (atr * self.config.reaction.stop_atr_mult) if atr > 0 else 0.0
+            if stop_dist <= 0:
+                stop_dist = self.config.rules.stop_buffer_pips * 4 * 0.0001  # ~20p fallback
+            stop_dist += self.config.reaction.stop_buffer_pips * 0.0001
+            setup.stop = entry - stop_dist if is_long else entry + stop_dist
+            log.info("Derived structural SL for %s: %.5f (%.1f pips)",
+                     setup.strategy_name or "setup", setup.stop, setup.stop_pips)
+        if not _valid_tp(setup.take_profit):
+            rr = max(self.config.reaction.min_rr, self.config.reaction.fallback_rr)
+            risk = abs(entry - setup.stop)
+            setup.take_profit = entry + rr * risk if is_long else entry - rr * risk
+            log.info("Derived R:R target for %s: %.5f (1:%.1f)",
+                     setup.strategy_name or "setup", setup.take_profit, rr)
+
+        if not (_valid_stop(setup.stop) and _valid_tp(setup.take_profit)):
+            return "could not derive a valid structural SL/TP"
+        return ""
+
     async def _execute_signal(
         self, action: TradeAction, ctx, bar_index, timeframe, last_closed, symbol,
         ant: AnticipationOutcome, rxn_assess: ReactionAssessment | None,
@@ -997,6 +1053,42 @@ class SignalLoop:
         account = await self.broker.get_account_info()
         positions = await self.broker.get_open_positions(symbol)
         now = datetime.now(tz=timezone.utc)
+        self._last_balance = account.balance
+
+        # ── Post-loss / no-revenge guard (HIGHEST-priority pre-trade gate) ──
+        guard_decision = self.post_loss_guard.pre_trade_check(now, bar_index)
+        if not guard_decision.allowed:
+            reason = f"Risk guard ({guard_decision.code}): {guard_decision.reason}"
+            log.warning("BLOCKED by post-loss guard: %s", guard_decision.reason)
+            self.journal.log_signal(setup, symbol, f"skip_{guard_decision.code}",
+                                    guard_decision.reason, ml_score=action.ml_score)
+            self.live_journal.note(
+                last_closed.time,
+                f"Entry BLOCKED by no-revenge guard ({guard_decision.code}): "
+                f"{guard_decision.reason}", kind="note",
+            )
+            self._log_cycle_status(timeframe, new_bar=True, status=reason, ctx=ctx)
+            if self.verbose:
+                parts = [self._explainer.explain_guard(
+                    self.post_loss_guard.status(), guard_decision.code, guard_decision.reason)]
+                log.info("\n".join(parts))
+            return
+
+        # ── Mandatory SL/TP enforcement: derive if missing, refuse if impossible ──
+        sltp_problem = self._ensure_sl_tp(setup, ctx, bar_index)
+        if sltp_problem:
+            log.error("Order REFUSED — %s [%s %s]", sltp_problem, strategy_label, direction_label)
+            self.journal.log_signal(setup, symbol, "skip_no_sltp", sltp_problem,
+                                    ml_score=action.ml_score)
+            self.live_journal.note(
+                last_closed.time,
+                f"Order REFUSED (no valid SL/TP): {sltp_problem}", kind="note",
+            )
+            self._log_cycle_status(
+                timeframe, new_bar=True,
+                status=f"Signal found but refused (no SL/TP): {sltp_problem}", ctx=ctx,
+            )
+            return
 
         # Hard account gates only (kill switch / daily halt / max positions).
         decision = self.risk.evaluate(
@@ -1033,18 +1125,34 @@ class SignalLoop:
             max_lot=self.config.risk.lot_hard_cap,
             pip_value_per_lot=self.config.backtest.pip_value_per_lot,
         )
+        # Post-loss size reduction: halve (or configured) risk after a loss.
+        risk_mult = self.post_loss_guard.risk_multiplier()
+        base_risk_pct = self.position_sizer.risk_pct_for_conviction(action.conviction)
+        applied_risk_pct = base_risk_pct * risk_mult
+        if risk_mult < 1.0:
+            log.warning(
+                "GUARD size reduction: risk x%.2f after %d consecutive loss(es) "
+                "(%.2f%% -> %.2f%%)",
+                risk_mult, self.post_loss_guard.consecutive_losses,
+                base_risk_pct * 100, applied_risk_pct * 100,
+            )
         sizing = self.position_sizer.calculate_lot(
             balance=account.balance,
             stop_distance_pips=setup.stop_pips,
             conviction=action.conviction,
+            risk_pct=applied_risk_pct,
             pip_value=self.config.backtest.pip_value_per_lot,
             price=setup.entry,
             leverage=account.leverage or 500,
             free_margin=account.free_margin,
             constraints=constraints,
             manual_cap=self.live_config.lot_size_override,
+            max_risk_pct_hard=self.max_trade_risk_pct,
         )
         log.info("SIZING: %s", sizing.summary())
+        if sizing.capped_by == "max_risk_hard":
+            log.warning("GUARD oversize block: lot clamped to %.2f to cap single-trade "
+                        "risk at %.1f%%", sizing.lot, self.max_trade_risk_pct * 100)
         if sizing.lot <= 0:
             reason = f"sizing produced 0 lots ({sizing.capped_by})"
             self.journal.log_signal(setup, symbol, "skip_sizing", reason,
@@ -1227,6 +1335,20 @@ class SignalLoop:
         r = float(info.get("r_multiple", 0.0))
         pnl = float(info.get("pnl", 0.0))
         self._pnl_today += pnl
+        # Feed the outcome into the post-loss / no-revenge guard FIRST so the
+        # cooldown / size reduction / circuit breaker are armed before any new bar.
+        try:
+            self.post_loss_guard.register_close(
+                pnl=pnl, r_multiple=r, exit_reason=str(info.get("exit_reason", "")),
+                now=datetime.now(tz=timezone.utc),
+                account_balance=self._last_balance or None,
+            )
+            gs = self.post_loss_guard.status()
+            if gs["session_halted"]:
+                log.warning("Risk guard: session halted (%s) — no new entries today",
+                            gs["halt_reason"])
+        except Exception as e:
+            log.warning("post-loss guard register_close failed for %s: %s", ticket, e)
         try:
             if signature:
                 stats = self.perf_memory.record(signature, r)
@@ -1296,6 +1418,11 @@ class SignalLoop:
             f"Price: {bar.close:.5f} | Session: {session_disp} | Day: {day_name}{caution_tag}",
             "",
         ]
+
+        # ── Step 0: Risk Guard (post-loss / no-revenge) ──
+        gs = self.post_loss_guard.status()
+        if gs["session_halted"] or gs["consecutive_losses"] or gs["size_multiplier"] != 1.0:
+            parts.append(self._explainer.explain_guard(gs))
 
         # ── Step 1: Market Context ──
         step1_text, _ = self._explainer.explain_context(
@@ -1462,6 +1589,16 @@ async def run_signal_loop(
         max_daily_dd_pct=config.risk.daily_dd_halt_pct * 100,
         max_open_positions=config.risk.max_open_positions,
         score_threshold=config.ml.prob_threshold,
+        risk_min_pct=config.live.risk_min_pct,
+        risk_max_pct=config.live.risk_max_pct,
+        max_trade_risk_pct=config.live.max_trade_risk_pct,
+        revenge_guard_enabled=config.live.revenge_guard_enabled,
+        post_loss_cooldown_minutes=config.live.post_loss_cooldown_minutes,
+        post_loss_cooldown_bars=config.live.post_loss_cooldown_bars,
+        post_loss_risk_multiplier=config.live.post_loss_risk_multiplier,
+        max_consecutive_losses=config.live.max_consecutive_losses,
+        catastrophic_loss_frac=config.live.catastrophic_loss_frac,
+        halt_on_stop_out=config.live.halt_on_stop_out,
     )
 
     # Apply any CLI overrides

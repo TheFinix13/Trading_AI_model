@@ -37,6 +37,19 @@ class LiveConfig:
     risk_min_pct: float = 0.005
     risk_max_pct: float = 0.02
 
+    # ── Post-loss cooldown / no-revenge guard ──
+    # Hard ceiling on the risk a SINGLE trade may take (fraction of balance).
+    # An oversized/override lot that would risk more than this is clamped down
+    # (never below the broker minimum lot). Prevents the Jun-2 1.0-lot-on-$100.
+    max_trade_risk_pct: float = 0.02
+    revenge_guard_enabled: bool = True
+    post_loss_cooldown_minutes: float = 60.0   # no new entry for N minutes after a loss
+    post_loss_cooldown_bars: int = 2           # …or N bars (bar-driven harnesses)
+    post_loss_risk_multiplier: float = 0.5     # halve next trade's risk until a win
+    max_consecutive_losses: int = 3            # circuit breaker: halt session after N losses
+    catastrophic_loss_frac: float = 0.10       # a single loss >= 10% of balance halts session
+    halt_on_stop_out: bool = True
+
     # Live journal + learning store
     journal_root: str = "data/journal/live"
 

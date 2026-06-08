@@ -112,3 +112,42 @@ def test_invalid_inputs_return_zero():
     res = s.calculate_lot(balance=0.0, stop_distance_pips=20.0, risk_pct=0.01)
     assert res.lot == 0.0
     assert res.capped_by == "invalid_inputs"
+
+
+def test_oversize_hard_cap_clamps_lot_down():
+    # A reckless 10% risk request on $10k / 20-pip stop = 5.0 lots; the hard 2%
+    # ceiling clamps it down to the 2%-risk lot (1.0, since 20p*$10 = $200/lot).
+    s = _sizer()
+    res = s.calculate_lot(
+        balance=10_000.0, stop_distance_pips=20.0, risk_pct=0.10,
+        pip_value=10.0, price=1.10, leverage=1000,
+        max_risk_pct_hard=0.02,
+    )
+    assert res.capped_by == "max_risk_hard"
+    assert abs(res.lot - 1.0) < 1e-9
+    assert res.actual_risk_pct <= 0.02 + 1e-9
+
+
+def test_oversize_hard_cap_models_the_jun2_disaster():
+    # 1.0-lot intent on a $100 account with a 20-pip stop would risk ~$200 (200%).
+    # The guard clamps it to the broker minimum 0.01 lot (~$2 risk).
+    s = _sizer()
+    res = s.calculate_lot(
+        balance=100.0, stop_distance_pips=20.0, risk_pct=1.0,
+        pip_value=10.0, price=1.16, leverage=1000,
+        max_risk_pct_hard=0.02,
+    )
+    assert res.lot == 0.01
+    assert res.actual_risk_pct <= 0.03  # min-lot floor, far below the 200% it was
+
+
+def test_oversize_hard_cap_leaves_min_lot_trades_untouched():
+    # A legitimate min-lot trade on a small account is never blocked/clamped.
+    s = _sizer()
+    res = s.calculate_lot(
+        balance=100.0, stop_distance_pips=20.0, conviction=0.5,
+        pip_value=10.0, price=1.10, leverage=1000,
+        max_risk_pct_hard=0.02,
+    )
+    assert res.lot == 0.01
+    assert res.capped_by == "min_lot"

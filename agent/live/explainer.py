@@ -303,6 +303,25 @@ class BarCheckExplainer:
         lines = [sizing_summary] if sizing_summary else ["[no sizing performed]"]
         return _format_box("STEP 6: POSITION SIZING", lines)
 
+    def explain_guard(self, status: dict, decision: str = "", reason: str = "") -> str:
+        """Build the RISK GUARD step so the user can SEE the post-loss / no-revenge
+        guard working (cooldown, size reduction, circuit breaker, stop-out halt)."""
+        lines: list[str] = []
+        cl = status.get("consecutive_losses", 0)
+        mult = status.get("size_multiplier", 1.0)
+        halted = status.get("session_halted", False)
+        cooldown = status.get("cooldown_until")
+        lines.append(f"Consecutive losses: {cl} | next-trade risk x{mult:.2f}")
+        if cooldown:
+            lines.append(f"Cooldown until: {cooldown}")
+        if halted:
+            lines.append(f"{SYM_NO} SESSION HALTED: {status.get('halt_reason', '')}")
+        if decision and decision != "ok":
+            lines.append(f"{SYM_NO} ENTRY BLOCKED ({decision}): {reason}")
+        elif not halted:
+            lines.append(f"{SYM_PASS} entries allowed")
+        return _format_box("STEP 0: RISK GUARD (post-loss / no-revenge)", lines)
+
     def explain_gates(
         self,
         signal: Optional[Setup],
