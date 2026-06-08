@@ -632,6 +632,8 @@ class SignalLoop:
         self._log_cycle_status(
             timeframe, new_bar=True, status=f"No entry triggered \u2014 {reason}", ctx=ctx,
         )
+        # Log declined setups lightly so an over-strict filter is visible later.
+        self._journal_declines(ant, rxn_assess, last_closed, session_label)
         if self.verbose:
             self._log_explained_check(
                 last_closed, timeframe, ctx, strategy_explain_results,
@@ -1157,6 +1159,13 @@ class SignalLoop:
         day = bar.time.strftime("%Y-%m-%d")
         if day in self._journaled_days:
             return
+        # New calendar day: roll up the previous day (calibration + scorecard).
+        if self._journaled_days:
+            prev = max(self._journaled_days)
+            try:
+                self.live_journal.log_daily_rollup(prev)
+            except Exception as e:
+                log.debug("daily rollup failed for %s: %s", prev, e)
         self._journaled_days.add(day)
         htf_bias = self._htf_bias_str()
         zones = self._zones_summary(ctx)
@@ -1174,6 +1183,41 @@ class SignalLoop:
             )
         except Exception as e:
             log.debug("live journal start_day failed: %s", e)
+
+    def _journal_declines(
+        self, ant: AnticipationOutcome, rxn_assess: ReactionAssessment | None,
+        last_closed: Bar, session_label: str,
+    ) -> None:
+        """Record detected-but-not-taken setups (gate failed / conviction below
+        threshold) so an over-strict filter shows up in the daily review."""
+        try:
+            # Anticipation: a setup was anticipated but never confirmed.
+            if (ant.pre_gate_direction is not None and ant.confirmed_setup is None
+                    and ant.rejection_reason):
+                sig = make_signature(
+                    "generic", ant.pre_gate_direction.value, session_label,
+                    ant.htf_aligned, "anticipation",
+                )
+                self.live_journal.log_declined(
+                    last_closed.time, signature=sig, reason=ant.rejection_reason,
+                    source="anticipation", direction=ant.pre_gate_direction.value,
+                )
+            # Reaction: a directional near-miss at a level that didn't clear gate.
+            if (rxn_assess is not None and not rxn_assess.fired
+                    and rxn_assess.direction is not None and rxn_assess.level is not None
+                    and rxn_assess.conviction >= 0.5 * rxn_assess.threshold):
+                sig = make_signature(
+                    "Reaction", rxn_assess.direction.value, session_label,
+                    ant.htf_aligned, "reaction",
+                )
+                self.live_journal.log_declined(
+                    last_closed.time, signature=sig,
+                    reason=rxn_assess.rejection or "below threshold",
+                    source="reaction", conviction=rxn_assess.conviction,
+                    direction=rxn_assess.direction.value,
+                )
+        except Exception as e:
+            log.debug("decline journaling failed: %s", e)
 
     def _on_trade_closed(self, ticket: int, info: dict) -> None:
         """Monitor callback: record the closed trade into the journal + the
@@ -1199,6 +1243,7 @@ class SignalLoop:
                 pnl=pnl, pnl_pips=float(info.get("pnl_pips", 0.0)),
                 r_multiple=r, mae_pips=float(info.get("mae_pips", 0.0)),
                 mfe_pips=float(info.get("mfe_pips", 0.0)), signature=signature,
+                conviction=ctx.get("conviction"), source=ctx.get("source", ""),
             )
         except Exception as e:
             log.warning("journal/learn on close failed for %s: %s", ticket, e)

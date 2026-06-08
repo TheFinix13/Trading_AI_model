@@ -138,6 +138,42 @@ def _exit(exit_price, reason, pnl_pips, stop_pips, mae, mfe, time) -> dict:
     }
 
 
+def forward_outcome(bars, i, direction, atr, cfg, n_bars: int) -> dict | None:
+    """What WOULD have happened to a declined setup over the next N bars, using a
+    nominal ATR stop and the reaction config's fallback R:R target. Conservative:
+    a same-bar stop+target tie counts as the stop. Returns verdict + excursions."""
+    stop_dist = atr * cfg.reaction.stop_atr_mult
+    if stop_dist <= 0:
+        return None
+    target_dist = stop_dist * cfg.reaction.fallback_rr
+    entry = bars[i].close
+    is_long = direction == Direction.LONG
+    end = min(len(bars), i + 1 + n_bars)
+    max_fav = 0.0
+    max_adv = 0.0
+    for j in range(i + 1, end):
+        b = bars[j]
+        if is_long:
+            fav = b.high - entry
+            adv = entry - b.low
+        else:
+            fav = entry - b.low
+            adv = b.high - entry
+        max_fav = max(max_fav, fav)
+        max_adv = max(max_adv, adv)
+        if adv >= stop_dist:
+            return {"verdict": "loss", "won": False,
+                    "max_fav_r": round(max_fav / stop_dist, 2),
+                    "max_adv_r": round(max_adv / stop_dist, 2)}
+        if fav >= target_dist:
+            return {"verdict": "win", "won": True,
+                    "max_fav_r": round(max_fav / stop_dist, 2),
+                    "max_adv_r": round(max_adv / stop_dist, 2)}
+    return {"verdict": "open", "won": False,
+            "max_fav_r": round(max_fav / stop_dist, 2),
+            "max_adv_r": round(max_adv / stop_dist, 2)}
+
+
 def run(args) -> None:
     cfg = load_config(args.config)
     symbol = args.symbol or cfg.symbol
@@ -188,11 +224,12 @@ def run(args) -> None:
         day = bar.time.strftime("%Y-%m-%d")
         session = ctx.session_labels[i] if i < len(ctx.session_labels) else ""
 
-        # Day rollover: flush a learning summary for the day that just ended.
+        # Day rollover: flush a learning summary + calibration roll-up.
         if day != cur_day:
             if cur_day:
                 _log_day_summary(journal, cur_day, day_trades, day_pnl,
                                  day_start_equity, equity, perf)
+                journal.log_daily_rollup(cur_day)
             cur_day = day
             day_start_equity = equity
             day_trades = 0
@@ -220,6 +257,22 @@ def run(args) -> None:
             closed, atr=atr, levels=levels, daily_levels=daily, swings=ctx.swings,
         )
         if not assess.fired or assess.signal is None:
+            # Log directional near-misses (detected, not taken) with a would-have
+            # outcome so an over-strict filter is visible day-by-day.
+            if (assess.direction is not None and assess.level is not None
+                    and assess.conviction >= 0.5 * assess.threshold):
+                fo = forward_outcome(bars, i, assess.direction, atr, cfg,
+                                     args.decline_lookahead)
+                sigd = make_signature("Reaction", assess.direction.value, session,
+                                      None, "reaction")
+                note = (f"{fo['verdict']} next {args.decline_lookahead}b "
+                        f"(+{fo['max_fav_r']}R/-{fo['max_adv_r']}R)" if fo else "")
+                journal.log_declined(
+                    day, signature=sigd,
+                    reason=assess.rejection or "below threshold", source="reaction",
+                    conviction=assess.conviction, direction=assess.direction.value,
+                    would_have_won=(fo["won"] if fo else None), would_have_note=note,
+                )
             i += 1
             continue
 
@@ -235,6 +288,18 @@ def run(args) -> None:
             free_margin=equity, constraints=constraints,
         )
         if sizing.lot <= 0:
+            # A fired signal we couldn't size (risk/margin) is also a decline.
+            fo = forward_outcome(bars, i, sig.direction, atr, cfg,
+                                 args.decline_lookahead)
+            note = (f"{fo['verdict']} next {args.decline_lookahead}b "
+                    f"(+{fo['max_fav_r']}R/-{fo['max_adv_r']}R)" if fo else "")
+            journal.log_declined(
+                day, signature=signature,
+                reason=f"sizing produced 0 lots ({sizing.capped_by})",
+                source="reaction", conviction=conviction,
+                direction=sig.direction.value,
+                would_have_won=(fo["won"] if fo else None), would_have_note=note,
+            )
             i += 1
             continue
 
@@ -265,6 +330,7 @@ def run(args) -> None:
             exit_reason=result["exit_reason"], pnl=pnl, pnl_pips=result["pnl_pips"],
             r_multiple=result["r_multiple"], mae_pips=result["mae_pips"],
             mfe_pips=result["mfe_pips"], signature=signature,
+            conviction=conviction, source="reaction",
         )
         perf.record(signature, result["r_multiple"])
 
@@ -286,9 +352,11 @@ def run(args) -> None:
     if cur_day:
         _log_day_summary(journal, cur_day, day_trades, day_pnl,
                          day_start_equity, equity, perf)
+        journal.log_daily_rollup(cur_day)
     perf.save()
 
-    _print_summary(trades, args.start_balance, equity, max_dd, perf, journal_root)
+    _print_summary(trades, args.start_balance, equity, max_dd, perf, journal_root,
+                   journal)
 
 
 def _log_day_summary(journal, day, n, pnl, start_eq, end_eq, perf) -> None:
@@ -303,7 +371,8 @@ def _log_day_summary(journal, day, n, pnl, start_eq, end_eq, perf) -> None:
     )
 
 
-def _print_summary(trades, start_balance, equity, max_dd, perf, journal_root) -> None:
+def _print_summary(trades, start_balance, equity, max_dd, perf, journal_root,
+                   journal=None) -> None:
     n = len(trades)
     wins = sum(1 for t in trades if t["pnl"] > 0)
     total_r = sum(t["r"] for t in trades)
@@ -322,6 +391,34 @@ def _print_summary(trades, start_balance, equity, max_dd, perf, journal_root) ->
     print(f"  Final equity      : ${equity:,.2f}")
     print(f"  Total return      : {((equity - start_balance) / start_balance * 100) if start_balance else 0:+.1f}%")
     print(f"  Max drawdown      : {max_dd * 100:.1f}%")
+
+    # Attribution breakdown (bad_setup vs good_setup_failed need opposite fixes).
+    from agent.journal.live_journal import calibration_report, classify_outcome
+    attr: dict[str, int] = {}
+    cal_records = []
+    for t in trades:
+        a = classify_outcome(t.get("conviction"), t.get("r", 0.0))
+        attr[a] = attr.get(a, 0) + 1
+        cal_records.append({"conviction": t.get("conviction"), "r_multiple": t.get("r", 0.0)})
+    if attr:
+        print("  Attribution       : "
+              + ", ".join(f"{k}={v}" for k, v in sorted(attr.items())))
+
+    cal = calibration_report(cal_records)
+    print("  Conviction calibration (by band):")
+    for b in cal["buckets"]:
+        if b["n"]:
+            print(f"    {b['band']:<5} n={b['n']:>3} wr={b['win_rate'] * 100:>5.1f}% "
+                  f"exp={b['expectancy_r']:+.2f}R")
+    print(f"    verdict: {'MISCALIBRATED' if cal['miscalibrated'] else 'ok'} — {cal['message']}")
+
+    # Declined-setup summary — the over-strict-filter signal.
+    if journal is not None:
+        all_decl = [d for day in journal._day_declines.values() for d in day]
+        if all_decl:
+            wh = sum(1 for d in all_decl if d.get("would_have_won") is True)
+            print(f"  Declined setups   : {len(all_decl)} "
+                  f"(would have won: {wh})")
     print(f"\n  Per-signature learning (final state):")
     rows = perf.summary_rows()
     if not rows:
@@ -347,6 +444,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--risk-max", type=float, default=0.02)
     p.add_argument("--max-hold", type=int, default=120,
                    help="Max bars to hold a trade before a time stop")
+    p.add_argument("--decline-lookahead", type=int, default=24,
+                   help="Bars to look ahead when scoring a declined setup's "
+                        "would-have outcome")
     p.add_argument("--warmup", type=int, default=50)
     p.add_argument("--reset", action="store_true",
                    help="Archive existing backtest logs + reset perf memory first")
