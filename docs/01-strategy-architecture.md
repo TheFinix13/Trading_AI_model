@@ -2,9 +2,11 @@
 
 **Last updated:** 2026-06-08
 **Status:** Profitable on OOS data (PF 1.12, +10.4%, Sharpe 0.72). Now augmented
-with a present-time **reaction engine**, **risk-based adaptive sizing**, and an
-**online learning** loop — see
-[reaction_and_learning.md](reaction_and_learning.md).
+with a present-time **reaction engine** ([04](04-reaction-engine.md)),
+**risk-based adaptive sizing** ([05](05-position-sizing-and-risk.md)), and an
+**online learning** loop ([06](06-learning-journal.md)).
+
+> Part of the numbered docs — start at [00 — Overview](00-overview.md).
 
 ---
 
@@ -122,12 +124,44 @@ The detection + strategy + meta layers above are the **anticipation** path. In
 parallel, a **reaction engine** measures committed price action every bar and
 pulls the trigger on present-time commitment at marked levels. The `--mode` flag
 (`anticipation` | `reaction` | `hybrid`, default `hybrid`) selects how they
-combine. See [reaction_and_learning.md](reaction_and_learning.md) for the reaction
-engine, the anticipation→reaction flip, adaptive sizing, and the learning journal.
+combine. See [04 — Reaction Engine](04-reaction-engine.md) for the reaction
+engine and the anticipation→reaction flip,
+[05 — Position Sizing & Risk](05-position-sizing-and-risk.md) for adaptive sizing,
+and [06 — Learning Journal](06-learning-journal.md) for the learning loop.
+
+---
+
+## 01.1 Detection layer (detectors)
+
+Each detector is a pure function (`list[Bar] → list[Detection]`): no state, no
+side effects, so the whole suite can be precomputed once per backtest. Detector
+mechanics (how each is computed and when it's valid) are documented in
+[03 — HTF Context & Pattern Mechanics](03-htf-context-and-pattern-mechanics.md).
+
+| File | What it detects |
+|------|-----------------|
+| `agent/detectors/zones.py` | Supply/demand zones (base + impulse; rolling local median). The one required factor by default. |
+| `agent/detectors/fvg.py` | Fair value gaps (unfilled 3-candle imbalances), with fill tracking. |
+| `agent/detectors/bos.py` | Break of structure (swing high/low violations), body vs wick quality. |
+| `agent/detectors/fib.py` | Fibonacci retracements (38.2 / 50 / 61.8 / 78.6) off the last significant swing. |
+| `agent/detectors/daily_levels.py` | PDH/PDL/PDM, PWH/PWL/PWM — no look-ahead. |
+| `agent/detectors/liquidity_sweep.py` | Tagged sweeps (names what was swept: PDH, swing_high, equal_lows…). |
+| `agent/detectors/sessions.py` | Session labels (Asia/London/NY/overlap), DST-aware. |
+| `agent/detectors/range_phase.py` | ICT Power of Three (accumulation → manipulation → distribution). |
+| `agent/detectors/pd_array.py` | Next unswept PD-array / liquidity level used for take-profit targeting. |
+| `agent/detectors/trendlines.py`, `liquidity.py`, `swings.py`, `atr.py` | Trendlines, liquidity wicks, swings, ATR (volatility-aware tolerance). |
+
+Two evaluation modes feed off these: `RuleEngine.evaluate()` (live, detect from
+scratch on the latest bars) and `evaluate_precomputed()` (backtests — run
+detectors once, slice by index, ~100× faster).
 
 ---
 
 ## Primary Strategies (Detail)
+
+> This is the architecture-level summary. The full per-strategy playbook (entry
+> choreography, quality grading, gate profile, best conditions) lives in
+> [02 — Strategies](02-strategies.md).
 
 ### 1. LZI Retest (Liquidity Zone of Interest)
 
@@ -228,17 +262,53 @@ opposing candle before the move, not the whole consolidation.
 
 ## Meta-Layer (Detail)
 
-### Confluence Optimizer
-- Scores each booster's WR lift per strategy
-- Tests pairwise combos for additivity vs redundancy
-- Checks price alignment (are boosters pointing at same price?)
-- Online learning: updates after each trade
+### 01.2 Gate profiles
 
-### GateProfiles
-- Each strategy has tailored quality controls
-- LZI: self-validating (bypasses generic gates)
-- FVG/SD Zone: relaxed structural anchor (their scoring IS structural)
-- Legacy: all gates active
+**Code:** `agent/config.py` (`GateProfile` class, `GATE_PROFILES` dict).
+
+Each strategy carries a custom gate profile that controls which quality gates
+apply, so one strategy's controls don't strangle another's:
+
+- **Default** — all gates active (precision partner, structural anchor, close
+  confirmation, false-breakout filter, minimum confluence). Used for any strategy
+  without a custom profile.
+- **LZI** — self-validating. Disables precision partner, structural anchor, close
+  confirmation, false-breakout filter, FVG-or-sweep-with-BOS, and min-confluence;
+  the six-step internal logic (sweep → zone → retest → consume → displace → PD
+  target) is its own quality control. Only safety gates (R:R, DD halt, max
+  positions, stop bounds) + ML scorer remain.
+- **FVG** — relaxed. The FVG *is* the precision partner; quality score + reaction
+  replaces structural anchor and close confirmation. False-breakout filter stays
+  on; ML threshold slightly relaxed (0.30).
+- **SD Zone** — relaxed. Quality scoring + depletion + reaction is the
+  self-contained validation. Similar to FVG.
+
+The **reaction engine** uses its own lighter gate set (see
+[04](04-reaction-engine.md)) — committed displacement + momentum + imbalance at a
+level is the confirmation, but the hard risk gates still apply.
+
+### 01.3 Confluence optimizer
+
+**Code:** `agent/strategy/confluence_optimizer.py`.
+
+Not all confluence combinations are additive. The optimizer:
+
+- measures each booster × strategy pair's marginal lift (Δ win-rate / Δ PF when
+  present vs absent),
+- tests pairwise combinations for additivity vs redundancy (FVG + BOS is
+  synergistic; two fibs confirming the same thing is redundant),
+- selects the optimal booster subset in real time for the active strategy,
+- checks alignment (all boosters pointing at the same price area), and
+- updates booster scores after each trade (online learning).
+
+Two related meta-components ride alongside it:
+
+- **SQS rankings** (`agent/strategy/ranking.py`) — every closed trade gets a 0–100
+  Strategy Quality Score across risk-reward, execution, zone respect, timing and
+  regime fit, building a per strategy/TF/session performance database.
+- **Regime router** (`agent/regime/`) — classifies trending / chop / high-vol /
+  low-vol and adjusts (does not block) conviction by strategy-regime affinity
+  (LZI & SD Zone favour chop/low-vol; FVG favours trends).
 
 ### Caution Days (Thu/Fri)
 - NOT blocked — just elevated bar (+0.15 score threshold)
@@ -246,13 +316,11 @@ opposing candle before the move, not the whole consolidation.
 - Human can always override
 
 ### Risk Management
-- Risk-based adaptive sizing: conviction-scaled within a band (default 0.5%–2.0%),
-  respecting lot step, min/max lot and free margin (see
-  [reaction_and_learning.md](reaction_and_learning.md))
-- 3% daily drawdown halt
-- One position at a time
-- Breakeven at 1R
-- Kill switch (file-based)
+
+Risk-based adaptive sizing (conviction-scaled within a band, respecting lot step,
+min/max lot and free margin), the 3% daily DD halt, one-position-at-a-time,
+breakeven at 1R and the file-based kill switch are all documented in
+[05 — Position Sizing & Risk](05-position-sizing-and-risk.md).
 
 ---
 
@@ -266,7 +334,9 @@ pre-marked level — using a lighter gate set so it actually pulls the trigger. 
 hard the other way. A fresh per-day **learning journal** (`data/journal/live/`)
 plus an **online performance memory** (expectancy per setup signature) feed
 results back into conviction so the agent leans into what's working. Full detail,
-log examples and run commands: **[reaction_and_learning.md](reaction_and_learning.md)**.
+log examples and run commands: **[04 — Reaction Engine](04-reaction-engine.md)**,
+**[05 — Position Sizing & Risk](05-position-sizing-and-risk.md)**, and
+**[06 — Learning Journal](06-learning-journal.md)**.
 
 ---
 

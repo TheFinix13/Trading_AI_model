@@ -12,6 +12,26 @@ scoring rationale, and outcome.
 
 ---
 
+## Documentation
+
+Full docs are numbered so you can read the build top-to-bottom. Start at
+**[docs/00-overview.md](docs/00-overview.md)**.
+
+| # | Doc | What's inside |
+|---|-----|---------------|
+| 00 | [Overview & Index](docs/00-overview.md) | Numbered table of contents + build-phase map. |
+| 01 | [Strategy Architecture](docs/01-strategy-architecture.md) | Pipeline; detectors, gate profiles, confluence optimizer. |
+| 02 | [Strategies](docs/02-strategies.md) | LZI, FVG, SD zones, BOS, Fibs. |
+| 03 | [HTF Context & Pattern Mechanics](docs/03-htf-context-and-pattern-mechanics.md) | How each ICT concept is detected and when it's valid. |
+| 04 | [Reaction Engine & Flip](docs/04-reaction-engine.md) | Present-time commitment engine + anticipation→reaction flip + modes. |
+| 05 | [Position Sizing & Risk](docs/05-position-sizing-and-risk.md) | Conviction-scaled risk-based sizing + risk controls. |
+| 06 | [Learning Journal & Performance Memory](docs/06-learning-journal.md) | Per-day logs, attribution, calibration, declined setups, online memory. |
+| 07 | [Backtesting](docs/07-backtesting.md) | Standard portfolio backtest + learning backtest. |
+| 08 | [Live Trading & Deployment](docs/08-live-trading-and-deployment.md) | Windows/VM, Exness/MT5, chart overlay EA. |
+| 09 | [Dashboard](docs/09-dashboard.md) | FastAPI dashboard routes + CLIs. |
+
+---
+
 ## Table of contents
 
 1. [Trading philosophy](#trading-philosophy)
@@ -119,7 +139,10 @@ so predicted probabilities actually match observed win rates.
 
 On top of the anticipation stack above, the live agent now also **reacts to
 committed moves in present time**, **sizes by risk**, and **learns from its own
-results day by day**. Full details: **[docs/reaction_and_learning.md](docs/reaction_and_learning.md)**.
+results day by day**. Full details:
+**[04 — Reaction Engine](docs/04-reaction-engine.md)**,
+**[05 — Position Sizing & Risk](docs/05-position-sizing-and-risk.md)**, and
+**[06 — Learning Journal](docs/06-learning-journal.md)**.
 
 - **Reaction engine** (`agent/reaction/`) — measures displacement, range
   expansion, momentum and order-flow imbalance on the just-closed bar(s), blends
@@ -451,7 +474,8 @@ Same setup, change `AGENT_MODE=live` and supply live MT5 credentials. The risk
 manager is calibrated for $100 (3% pct_floor, lot=0.01) so the bot will size
 appropriately. Daily DD halt at 3% will protect against runaway losses.
 
-See [docs/live_trading.md](docs/live_trading.md) for the full step-by-step guide.
+See [08 — Live Trading & Deployment](docs/08-live-trading-and-deployment.md) for the
+full step-by-step guide (Windows/VM, Exness/MT5, and the chart overlay EA).
 
 ---
 
@@ -497,9 +521,9 @@ eurusd-ai-agent/
 ├── config/
 │   └── default.yaml                # tunable parameters
 ├── data/                           # parquet cache (gitignored)
-├── docs/
-│   ├── data_sources.md
-│   └── live_trading.md
+├── docs/                           # numbered docs (00–09) + archive/
+│   ├── 00-overview.md              # index
+│   └── 01..09-*.md                 # architecture, strategies, reaction, ...
 ├── models/                         # trained scorers/discoverers (gitignored)
 ├── scripts/                        # CLIs
 │   ├── download_data.py            # fetch bars
