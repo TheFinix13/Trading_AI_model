@@ -398,6 +398,72 @@ class HTFConfig(BaseModel):
     update_interval_bars: int = 4
 
 
+class ReactionConfig(BaseModel):
+    """Reaction engine: present-tense commitment detection.
+
+    The anticipation stack (strategies + gates) waits for a full retest
+    choreography and almost never fires. The reaction engine instead measures
+    *committed* price action on the just-closed bar(s) — displacement, range
+    expansion, momentum, order-flow imbalance — and fires when conviction is
+    high AND price is acting on a pre-marked level. All thresholds live here so
+    they can be tuned without touching code.
+    """
+
+    enabled: bool = True
+    # Default trading mode. One of: "anticipation", "reaction", "hybrid".
+    #   anticipation — legacy behaviour: only the strategy/gate stack trades.
+    #   reaction     — only the reaction engine pulls the trigger.
+    #   hybrid       — anticipation marks levels, reaction pulls the trigger,
+    #                  and a confirmed anticipation setup still trades.
+    mode: str = "hybrid"
+
+    # ── Component 1: Displacement (body vs ATR, strong directional close) ──
+    displacement_atr_mult: float = 1.3
+    # Close must sit in the top/bottom `displacement_close_frac` of the bar
+    # range to count as a strong directional close (0.66 = top/bottom third).
+    displacement_close_frac: float = 0.62
+
+    # ── Component 2: Range expansion (volatility ignition) ──
+    expansion_lookback: int = 20
+    expansion_mult: float = 1.5
+    expansion_bars: int = 1  # measure the last N bars' range vs the prior avg
+
+    # ── Component 3: Momentum (ROC normalised by ATR + consecutive closes) ──
+    momentum_lookback: int = 4
+    # ROC over the lookback that, normalised by ATR, maps to a momentum
+    # score of 1.0. e.g. 2.0 means "moved 2 ATR over the lookback = max".
+    momentum_atr_norm: float = 2.0
+
+    # ── Component 4: Order-flow imbalance proxy ──
+    imbalance_use_volume: bool = True
+    imbalance_volume_lookback: int = 10
+
+    # ── Composite blend ──
+    weight_displacement: float = 0.35
+    weight_expansion: float = 0.20
+    weight_momentum: float = 0.25
+    weight_imbalance: float = 0.20
+    conviction_threshold: float = 0.58
+
+    # ── Level proximity ──
+    # Price counts as "at/near" a level when within this * ATR of it.
+    level_proximity_atr_mult: float = 0.8
+    # When True, a reaction only fires at/near a marked level OR when breaking
+    # through one with force. When False, strong commitment alone can fire.
+    require_level: bool = True
+
+    # ── Stop / target ──
+    stop_atr_mult: float = 1.1
+    stop_buffer_pips: float = 3.0
+    fallback_rr: float = 2.0
+    min_rr: float = 1.2
+
+    # ── Anticipation → reaction flip ──
+    flip_enabled: bool = True
+    # Minimum reaction conviction required to flip against an anticipated bias.
+    flip_min_conviction: float = 0.66
+
+
 class LiquidityConfig(BaseModel):
     """Two-phase liquidity zone (LZI) retest parameters."""
     min_wick_size_pips_h1: float = 10.0
@@ -485,6 +551,7 @@ class Config(BaseModel):
     rules: RulesConfig = RulesConfig()
     ml: MLConfig = MLConfig()
     liquidity: LiquidityConfig = LiquidityConfig()
+    reaction: ReactionConfig = ReactionConfig()
     htf: HTFConfig = HTFConfig()
     live: LiveTradingConfig = LiveTradingConfig()
     backtest: BacktestConfig = BacktestConfig()
