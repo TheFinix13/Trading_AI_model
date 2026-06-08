@@ -443,7 +443,14 @@ class ReactionConfig(BaseModel):
     weight_expansion: float = 0.20
     weight_momentum: float = 0.25
     weight_imbalance: float = 0.20
-    conviction_threshold: float = 0.58
+    # Conviction gate. Lowered 0.58 -> 0.54 after the Jun-2026 gate-loosening
+    # study (scripts/run_learning_backtest.py over a 2-yr H1 window): the
+    # over-strict gate declined ~32% would-have-won setups. Dropping to 0.54
+    # improved profit factor (0.63 -> 0.66) and expectancy (-0.184R -> -0.135R)
+    # while lowering max drawdown (27.4% -> 26.2%). Going further to 0.50 helped
+    # PF/expectancy more but pushed drawdown to 30.9%, so we stopped at the
+    # conservative point. See docs/05-position-sizing-and-risk.md §05.5.
+    conviction_threshold: float = 0.54
 
     # ── Level proximity ──
     # Price counts as "at/near" a level when within this * ATR of it.

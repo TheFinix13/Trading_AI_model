@@ -154,7 +154,7 @@ def test_declined_logged_to_md_and_jsonl(tmp_path):
     j.start_day("2024-04-01")
     j.log_declined(
         "2024-04-01", signature="Reaction|long|london|htfNA|reaction",
-        reason="conviction 0.50 < 0.58", source="reaction", conviction=0.50,
+        reason="conviction 0.50 < 0.54", source="reaction", conviction=0.50,
         direction="long", would_have_won=True,
         would_have_note="win next 24b (+2.0R/-0.1R)",
     )

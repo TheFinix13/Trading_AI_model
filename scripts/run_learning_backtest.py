@@ -176,6 +176,14 @@ def forward_outcome(bars, i, direction, atr, cfg, n_bars: int) -> dict | None:
 
 def run(args) -> None:
     cfg = load_config(args.config)
+    # Gate-loosening validation harness: override the reaction conviction gate
+    # so before/after expectancy/PF/drawdown can be measured on the same data.
+    if args.conviction_threshold is not None:
+        cfg.reaction.conviction_threshold = args.conviction_threshold
+        log.info("Reaction conviction_threshold overridden -> %.3f",
+                 cfg.reaction.conviction_threshold)
+    if args.flip_min_conviction is not None:
+        cfg.reaction.flip_min_conviction = args.flip_min_conviction
     symbol = args.symbol or cfg.symbol
     tf = Timeframe(args.timeframe)
     bars = load_bars(cfg, symbol, tf, args.years)
@@ -448,6 +456,10 @@ def parse_args() -> argparse.Namespace:
                    help="Bars to look ahead when scoring a declined setup's "
                         "would-have outcome")
     p.add_argument("--warmup", type=int, default=50)
+    p.add_argument("--conviction-threshold", type=float, default=None,
+                   help="Override reaction conviction_threshold (gate-loosening test)")
+    p.add_argument("--flip-min-conviction", type=float, default=None,
+                   help="Override reaction flip_min_conviction")
     p.add_argument("--reset", action="store_true",
                    help="Archive existing backtest logs + reset perf memory first")
     p.add_argument("--config", default=None)
