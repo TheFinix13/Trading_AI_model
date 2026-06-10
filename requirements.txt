@@ -11,7 +11,9 @@ scikit-learn>=1.4
 joblib>=1.3
 xgboost>=2.0
 matplotlib>=3.8
-mplfinance>=0.12
+# mplfinance only publishes pre-release versions (0.12.xbY), so the floor
+# must name one explicitly or pip refuses to match it.
+mplfinance>=0.12.10b0
 fastapi>=0.110
 uvicorn[standard]>=0.27
 jinja2>=3.1
