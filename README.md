@@ -1,136 +1,92 @@
-# EURUSD AI Agent — a validation-first FX zone-fade portfolio
+# AI Trading Agent
 
-A trading agent that runs **one statistically validated strategy** across three
-FX majors, instead of an ensemble of indicators. It began as a codified
-discretionary ICT system with seven stacked concepts; that version produced
-impressive in-sample numbers and noise out of sample, so it was burned and
-rebuilt around a strict rule: **every concept must earn its place alone, with
-bootstrap p-values and multiple-testing correction, before it touches live
-money**. One concept survived — supply/demand zones — and one configuration of
-it passed holdout, walk-forward, and frozen cross-pair validation. That is what
-trades today, on a demo account. This is a research-discipline project, not a
-"profitable bot" pitch.
+A personal trading agent that trades three currency pairs (EUR/USD, GBP/USD,
+USD/CAD) using one carefully tested strategy. It runs on a demo account while
+it proves itself.
 
-## The validated strategy
+Early versions of this project tried to combine many popular trading ideas at
+once. They looked great on paper and fell apart in practice. So everything was
+torn down and rebuilt around one rule: **an idea only gets used with real money
+behavior if it survives serious testing first.** Out of seven trading ideas
+tested, one made the cut — and that one idea, in one specific form, is what
+trades today.
 
-`zone_d1_against`: an H4 supply/demand zone touch **faded against the D1
-trend** (the zone edge is mean-reversion — trading it *with* the higher-TF
-trend destroys it). The same logic, byte-for-byte, is deployed on three
-symbols via a routing table (`agent/alphas/zone_routing.py`):
+## What it actually does
 
-| Symbol | Cell | risk_scale | Evidence | Key numbers |
-|---|---|---|---|---|
-| EURUSD | H4 / all sessions | 1.0 | full pipeline + 7-window walk-forward | 7/7 OOS windows positive, median +11.34 pips/trade, ~66 trades/yr |
-| GBPUSD | H4 / all sessions | 0.5 | frozen cross-pair, zero re-tuning, costs ×1.5 | +10.24/trade, Sharpe 2.42, p=0.001, 11/11 positive years (n=1,161) |
-| USDCAD | H4 / all sessions | 0.5 | frozen cross-pair, zero re-tuning, costs ×1.8 | +4.63/trade, Sharpe 1.16, p=0.028, 10/11 positive years (n=858) |
+- It watches for price to return to **important price zones** — areas where
+  the market previously made a strong move.
+- When price touches such a zone *and* the bigger daily picture points the
+  right way, it trades the bounce.
+- It checks the market every 30 seconds, but only makes decisions when a
+  4-hour candle closes. Most of the time the right decision is to do nothing.
+- Expect roughly **3–5 trades per week across all three pairs combined**. It
+  is deliberately picky — that's a feature, not a flaw.
+- Every trade has a fixed maximum loss: about 0.5–2% of the account, sized
+  automatically. The two newer pairs trade at half size until they prove
+  themselves live.
 
-AUDUSD and NZDUSD were tested the same frozen way and **excluded** (8/11 and
-6/11 positive years; below the deployment rubric). EURUSD D1 is a tracked
-candidate, not deployed. Half-risk slots are promoted only when live results
-confirm the backtest distribution.
+## Why trust it
 
-A sealed Jan–Jun 2026 first look on EURUSD showed 16 trades, +7.75/trade,
-p=0.29 — directionally consistent but statistically inconclusive, exactly what
-a small sample should look like. It is monitored, not celebrated.
+The strategy was not chosen because it looks clever — it was chosen because it
+kept making money in tests designed to kill it:
 
-## How it was validated
+1. **Tested alone.** Each of the seven original ideas was tested by itself,
+   over ten years of price history, with proper statistics. Six failed. Zones
+   survived.
+2. **Tested on data it had never seen.** The strategy was built using
+   2015–2022 data, then checked on 2023–2025. Most variations collapsed; one
+   held up.
+3. **Tested year by year.** Rolled forward through every year from 2019 to
+   2025 — it stayed profitable in every single test window on EUR/USD.
+4. **Tested on other currency pairs it was never tuned for.** The exact same
+   settings, applied cold to GBP/USD and USD/CAD with higher trading costs,
+   were profitable in 11 of 11 and 10 of 11 years respectively. A fluke
+   strategy cannot pass this test — there was nothing to tune.
 
-```
-7 concepts → ablation + BH-FDR → holdout → walk-forward → frozen cross-pair → 3 deployments
-```
+Two other pairs (AUD/USD, NZD/USD) were tested the same way, did worse, and
+were left out. Discipline cuts both ways.
 
-1. **Single-concept ablation** — each v1 concept (FVG, BOS, order blocks,
-   fibs, momentum, liquidity sweeps, zones) tested ALONE across 5 timeframes ×
-   5 sessions with bootstrap p-values and Benjamini-Hochberg FDR at 5% across
-   the whole grid. Six concepts died; zones survived.
-2. **Holdout (IS 2015–2022 / OOS 2023–2025)** — of 8 in-sample survivors, only
-   1 validated out of sample. The big D1 cells collapsed (+25 → +1/trade).
-3. **Walk-forward (7 rolling 4yr-IS / 1yr-OOS windows)** — exposed the
-   holdout's session restriction as selection bias; H4/all-sessions posted
-   positive OOS expectancy in 7/7 windows and became the deployed cell.
-4. **Frozen cross-pair tests** — the deployed config run byte-for-byte, zero
-   re-tuning, with costs scaled UP, on pairs the pipeline had never touched.
-   Nothing was fit to those pairs, so their entire 2015–2025 history is
-   out-of-sample: this evidence cannot be overfitting. GBPUSD and USDCAD
-   passed; AUDUSD and NZDUSD did not.
+The full story of how this project got here — including the wrong turns — is
+in [docs/00-journey.md](docs/00-journey.md). The current state is always
+summarized in [docs/CHECKPOINT.md](docs/CHECKPOINT.md).
 
-The full narrative — including the two selection-bias lessons the project paid
-for — is in [docs/00-journey.md](docs/00-journey.md). Raw evidence lives in
-dated, never-edited write-ups under [docs/reviews/](docs/reviews/).
-
-## Quickstart
+## Running it
 
 Requires Python 3.11.
 
 ```bash
 pip install -r requirements.txt
 
-# Paper trading (no broker, works on macOS):
+# Practice mode (no broker account needed):
 python scripts/run_live.py --broker paper
 
-# Live/demo (MT5/Exness, Windows): one process per deployed symbol
+# Demo account (MT5/Exness on Windows) — one window per pair:
 python scripts/run_live.py --broker exness --symbol EURUSD --verbose
 python scripts/run_live.py --broker exness --symbol GBPUSD --verbose
 python scripts/run_live.py --broker exness --symbol USDCAD --verbose
 ```
 
-The runner defaults to the routing table: it fixes the alpha, the H4
-timeframe, and the `risk_scale` fed into position sizing (conviction band
-0.5–2% of balance × the cell's risk_scale, margin-aware). Undeployed symbols
-refuse to start. The old `ReactionAlpha` survives only behind an explicit
-`--alpha reaction` experimental flag — unvalidated, never for funded accounts.
+Step-by-step Windows setup lives in
+[docs/runbooks/vmware-windows.md](docs/runbooks/vmware-windows.md).
 
-Full Windows VM / MT5 setup (credentials, expected startup lines, trade
-frequency, stopping safely): [docs/runbooks/vmware-windows.md](docs/runbooks/vmware-windows.md).
+## What you'll see while it runs
 
-## Observability
+- **Daily log files** in `Documents/TradingAgentLogs/`, one folder per pair,
+  one file per day (e.g. `EURUSD/EURUSD_2026-06-10.log`).
+- A **heartbeat message every 15 minutes** with the account balance and the
+  time of the next decision — so you always know it's alive.
+- A note at every 4-hour close, even when it decides not to trade.
+- **Chart snapshots** of trades it almost took and trades it lost, saved as
+  images next to the logs — so its behavior can be reviewed visually, not
+  just trusted.
 
-- **Per-symbol daily logs** — `{SYMBOL}_{YYYY-MM-DD}.log` under
-  `~/Documents/TradingAgentLogs/{SYMBOL}/`, one file per UTC day, 30 days kept.
-- **Heartbeats** every 15 minutes (balance, equity, open positions, next H4
-  close) and an explicit "evaluated, no setup" line at every H4 close — so a
-  quiet log is provably alive, not silently broken.
-- **Near-miss and loss vaults** — observation-only JSONL + chart-snapshot PNGs
-  beside the logs: zone touches rejected by the HTF gate, signals dropped by
-  guards/risk/sizing, and every losing close with its trade lifetime.
-- **Weekly resolver** — `scripts/resolve_near_misses.py --symbol <SYM>` scores
-  each hypothetical (SL-first tie-break, conservative) and prints a per-reason
-  summary. Vault output is hypothesis-generating only; gates change only
-  through the validation pipeline.
+## Current status
 
-## Repo map
-
-| Path | What's there |
-|---|---|
-| `agent/alphas/` | the zone strategy, the deployment router, the ablation grid harness |
-| `agent/live/` | broker bridge, signal loop, position sizer, router wiring |
-| `agent/detectors/` | zones, BOS, FVG, swings, ATR, liquidity primitives |
-| `scripts/` | research pipeline (ablation, holdout, walk-forward, cross-pair) + `run_live.py` + the vault resolver |
-| `docs/` | [journey](docs/00-journey.md), [checkpoint](docs/CHECKPOINT.md), [reviews](docs/reviews/) (evidence record), [runbooks](docs/runbooks/) |
-| `tests/` | 259 tests, including routing-table contract tests |
-
-## Project principles
-
-- **Observation before adaptation.** Vaults and live monitoring record what
-  the agent *didn't* do; nothing acts on those observations until they
-  graduate through the full statistical pipeline.
-- **Every gate must earn its keep.** A filter, session restriction, or
-  threshold exists only if removing it measurably hurts validated results.
-- **Peeked data is burned data.** Looking at a sealed window spends it; each
-  look is recorded in a dated review. The v1 reset deleted everything the old
-  process had implicitly trained on.
-- **The strongest evidence is the test you couldn't have rigged.** Frozen
-  cross-pair runs with zero re-tuning and scaled-up costs cannot overfit —
-  nothing was fit.
-- **Consistency over significance at small n.** Positive OOS expectancy across
-  every walk-forward window is the robustness signal; per-window p-values at
-  ~15 trades/yr are underpowered.
-
-## Status
-
-Checkpoint **2026-06-10** — 3 deployed cells, demo stage, **259 tests
-passing**. Current deployed table, evidence summary, methodology gates, and
-parked work: [docs/CHECKPOINT.md](docs/CHECKPOINT.md).
+Running on a demo account since June 2026. Live results so far are positive
+but the sample is still far too small to draw conclusions — that is expected,
+and it is exactly why it's on a demo account. Nothing about the strategy
+changes based on individual wins or losses; changes only happen through the
+same testing pipeline that built it.
 
 ## License
 
