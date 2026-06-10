@@ -16,7 +16,7 @@ Quality grading assesses zone tradability based on:
 from __future__ import annotations
 
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 from agent.detectors.sessions import label_session

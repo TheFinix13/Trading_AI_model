@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from typing import Literal
 
 from agent.detectors.daily_levels import DailyLevels
-from agent.detectors.swings import detect_swings
 from agent.types import Bar, Direction, Swing
 
 PIP = 0.0001

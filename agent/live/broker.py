@@ -163,8 +163,12 @@ class BrokerConnection(ABC):
         ...
 
     @abstractmethod
-    async def close_position(self, ticket: int, symbol: str) -> OrderResult:
-        """Close an open position by ticket."""
+    async def close_position(self, ticket: int, symbol: str,
+                             volume: float | None = None) -> OrderResult:
+        """Close an open position by ticket.
+
+        ``volume`` closes only that many lots (a partial close); ``None`` closes
+        the whole position."""
         ...
 
     @abstractmethod
@@ -423,7 +427,8 @@ class MT5Broker(BrokerConnection):
 
         return await asyncio.to_thread(_place)
 
-    async def close_position(self, ticket: int, symbol: str) -> OrderResult:
+    async def close_position(self, ticket: int, symbol: str,
+                             volume: float | None = None) -> OrderResult:
         mt5 = self._mt5
         symbol = await self.resolve_symbol(symbol)
 
@@ -437,10 +442,12 @@ class MT5Broker(BrokerConnection):
             price = tick.bid if pos.type == mt5.POSITION_TYPE_BUY else tick.ask
             opp_type = mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
 
+            # Partial close sends a smaller volume against the same position id.
+            close_vol = float(pos.volume) if volume is None else min(float(volume), float(pos.volume))
             request = {
                 "action": mt5.TRADE_ACTION_DEAL,
                 "symbol": symbol,
-                "volume": float(pos.volume),
+                "volume": close_vol,
                 "type": opp_type,
                 "position": ticket,
                 "price": float(price),
@@ -769,26 +776,38 @@ class PaperBroker(BrokerConnection):
         )
         return OrderResult(True, ticket=ticket, fill_price=fill_price, fill_time=pos.open_time)
 
-    async def close_position(self, ticket: int, symbol: str) -> OrderResult:
+    async def close_position(self, ticket: int, symbol: str,
+                             volume: float | None = None) -> OrderResult:
         if ticket not in self._positions:
             return OrderResult(False, message=f"Paper position {ticket} not found")
 
-        pos = self._positions.pop(ticket)
+        pos = self._positions[ticket]
         bid, ask = self._last_prices.get(symbol, (pos.open_price, pos.open_price))
         close_price = bid if pos.direction == Direction.LONG else ask
 
-        # Calculate P&L
+        # Partial close: reduce the position's volume and bank the realised slice.
+        close_vol = pos.volume if volume is None else min(volume, pos.volume)
+        partial = close_vol < pos.volume - 1e-9
+
         pips = (close_price - pos.open_price) * 10000
         if pos.direction == Direction.SHORT:
             pips = -pips
-        pnl = pips * pos.volume * 10.0  # pip_value_per_lot = $10 for EURUSD standard lot
+        pnl = pips * close_vol * 10.0  # pip_value_per_lot = $10 for EURUSD standard lot
         self._balance += pnl
         self._equity = self._balance
 
-        log.info(
-            "PAPER CLOSE: ticket=%d %s %.5f -> %.5f pnl=%.2f (%.1f pips)",
-            ticket, pos.direction.value, pos.open_price, close_price, pnl, pips,
-        )
+        if partial:
+            pos.volume -= close_vol
+            log.info(
+                "PAPER PARTIAL CLOSE: ticket=%d %s %.2f lots @ %.5f pnl=%.2f (%.1f pips), %.2f left",
+                ticket, pos.direction.value, close_vol, close_price, pnl, pips, pos.volume,
+            )
+        else:
+            self._positions.pop(ticket)
+            log.info(
+                "PAPER CLOSE: ticket=%d %s %.5f -> %.5f pnl=%.2f (%.1f pips)",
+                ticket, pos.direction.value, pos.open_price, close_price, pnl, pips,
+            )
         return OrderResult(True, ticket=ticket, fill_price=close_price, fill_time=datetime.now(tz=timezone.utc))
 
     async def modify_position(

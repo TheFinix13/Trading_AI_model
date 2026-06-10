@@ -42,6 +42,38 @@ class StructuralLevel:
 
 
 @dataclass
+class StructuralZone:
+    """A higher-timeframe demand/supply ZONE (an order-block range, not a point).
+
+    This is the daily/4H demand or supply *band* a discretionary trader draws —
+    the area price is *drawn to* (a target) and may be *consumed* on a revisit.
+    ``mitigated`` means price has already traded back into the band (the orders
+    there are being filled); a *fresh* (unmitigated) zone ahead of price is the
+    strongest draw / take-profit magnet.
+    """
+
+    top: float
+    bottom: float
+    kind: str          # "demand" (bullish OB) | "supply" (bearish OB)
+    timeframe: str     # "H4" | "D1"
+    created_idx: int
+    departure_pips: float = 0.0   # displacement size out of the zone (strength)
+    mitigated: bool = False       # price has returned INTO the band
+    swept: bool = False           # price has closed fully through the band
+
+    @property
+    def mid(self) -> float:
+        return (self.top + self.bottom) / 2.0
+
+    @property
+    def height(self) -> float:
+        return self.top - self.bottom
+
+    def contains(self, price: float) -> bool:
+        return self.bottom <= price <= self.top
+
+
+@dataclass
 class PatternSignal:
     pattern_type: PatternType
     timeframe: str
@@ -79,6 +111,7 @@ class HTFContext:
     active_patterns: List[PatternSignal] = field(default_factory=list)
     weekly: Optional[WeeklyNarrative] = None
     htf_fib_levels: List[Tuple[float, str]] = field(default_factory=list)
+    htf_zones: List[StructuralZone] = field(default_factory=list)
 
     sell_aligned: bool = False
     buy_aligned: bool = False
@@ -100,6 +133,30 @@ class HTFContext:
             below = [l.price for l in self.structural_levels if l.price < entry_price]
             return max(below) if below else None
 
+    def nearest_zone_draw(
+        self, direction: str, entry_price: float
+    ) -> Optional["StructuralZone"]:
+        """The nearest FRESH (unmitigated) HTF zone price is being drawn toward.
+
+        For a SHORT this is the nearest demand zone *below* (price falls into it);
+        for a LONG the nearest supply zone *above* (price rises into it). This is
+        the daily zone the impulse is heading to — the draw / take-profit magnet.
+        """
+        is_long = direction.lower() in ("buy", "long")
+        cands = []
+        for z in self.htf_zones:
+            if z.mitigated or z.swept:
+                continue
+            if is_long and z.kind == "supply" and z.bottom > entry_price:
+                cands.append(z)
+            elif (not is_long) and z.kind == "demand" and z.top < entry_price:
+                cands.append(z)
+        if not cands:
+            return None
+        # Nearest by the edge price first touches on the way to the zone.
+        key = (lambda z: z.bottom - entry_price) if is_long else (lambda z: entry_price - z.top)
+        return min(cands, key=key)
+
 
 class HTFAnalyzer:
     """
@@ -112,10 +169,13 @@ class HTFAnalyzer:
     - Context updates every H4 bar close (every 4 hours)
     """
 
-    def __init__(self, lookback_days: int = 5):
+    def __init__(self, lookback_days: int = 5, d1_zone_lookback_bars: int = 180):
         self.lookback_days = lookback_days
         self.lookback_h4_bars = lookback_days * 6
         self.lookback_h1_bars = lookback_days * 24
+        # Demand/supply zones persist for months until consumed, so they get a
+        # much deeper daily lookback than the bias/level window (see HTFConfig).
+        self.d1_zone_lookback_bars = d1_zone_lookback_bars
 
     def analyze(self, h4_bars: pd.DataFrame, d1_bars: pd.DataFrame,
                 h1_bars: Optional[pd.DataFrame] = None) -> HTFContext:
@@ -134,16 +194,37 @@ class HTFAnalyzer:
         patterns = self._detect_patterns(h4_bars, levels)
         weekly = self._build_weekly_narrative(h4_bars, h1_bars)
         fibs = self._compute_htf_fibs(h4_bars, d1_bars)
+        zones = self._find_htf_zones(h4_bars, d1_bars, levels)
 
-        sell_aligned = combined_bias == MarketBias.BEARISH or any(
-            p.implied_direction == MarketBias.BEARISH for p in patterns
+        # Directional alignment. A clear swing bias is decisive (a confirmed
+        # uptrend should not also green-light shorts). When the swing bias is
+        # NEUTRAL we let the *net* pattern lean — confidence-weighted — break the
+        # tie, so a dominant pattern like a double top (failed_breakout_high)
+        # still biases short even in a rangey market. Only when patterns are
+        # genuinely two-sided do we fall back to "both directions allowed".
+        # Use the STRONGEST pattern per side, not the sum — the detector emits
+        # several near-duplicate signals per swing, so summing would let the
+        # side with more swing pairs win even in a symmetric range.
+        bull_score = max(
+            (p.confidence for p in patterns
+             if p.implied_direction == MarketBias.BULLISH), default=0.0,
         )
-        buy_aligned = combined_bias == MarketBias.BULLISH or any(
-            p.implied_direction == MarketBias.BULLISH for p in patterns
+        bear_score = max(
+            (p.confidence for p in patterns
+             if p.implied_direction == MarketBias.BEARISH), default=0.0,
         )
-        if combined_bias == MarketBias.NEUTRAL:
-            sell_aligned = True
-            buy_aligned = True
+        # Minimum confidence gap before patterns override a neutral bias.
+        PATTERN_LEAN_MARGIN = 0.35
+        if combined_bias == MarketBias.BULLISH:
+            buy_aligned, sell_aligned = True, False
+        elif combined_bias == MarketBias.BEARISH:
+            sell_aligned, buy_aligned = True, False
+        elif bear_score - bull_score >= PATTERN_LEAN_MARGIN:
+            sell_aligned, buy_aligned = True, False
+        elif bull_score - bear_score >= PATTERN_LEAN_MARGIN:
+            buy_aligned, sell_aligned = True, False
+        else:
+            sell_aligned = buy_aligned = True
 
         confidence = self._compute_bias_confidence(h4_bias, d1_bias, patterns)
 
@@ -156,6 +237,7 @@ class HTFAnalyzer:
             active_patterns=patterns,
             weekly=weekly,
             htf_fib_levels=fibs,
+            htf_zones=zones,
             sell_aligned=sell_aligned,
             buy_aligned=buy_aligned,
         )
@@ -268,6 +350,156 @@ class HTFAnalyzer:
             ))
 
         return sorted(levels, key=lambda l: abs(l.price - current_price))
+
+    def _find_htf_zones(self, h4_bars: pd.DataFrame, d1_bars: pd.DataFrame,
+                        levels: List[StructuralLevel]) -> List[StructuralZone]:
+        """Detect demand/supply ZONES on D1 and H4 from two complementary sources.
+
+        1. **Order blocks** (mirrors `agent/detectors/zones.py`): a demand zone is
+           the base candle before a strong bullish displacement; a supply zone the
+           base before a bearish displacement. Captures clean institutional OBs.
+        2. **Structural bands**: nearby support levels clustered into a demand band
+           and resistance levels into a supply band — this is the broad daily
+           demand/supply *region* a discretionary trader draws (tested repeatedly),
+           which a single-candle OB misses.
+
+        Zones are tagged ``mitigated`` once price trades back into the band and
+        ``swept`` once price trades fully through it — a fresh (unmitigated) zone
+        ahead of price is the strongest draw / take-profit magnet for the LTF
+        reaction engine.
+        """
+        cur = float(h4_bars["close"].iloc[-1])
+        # Daily zones live for months — scan a deep D1 window so a demand zone
+        # drawn weeks ago (e.g. an April base still unconsumed in June) is seen.
+        d1_deep = d1_bars.tail(self.d1_zone_lookback_bars)
+        zones: List[StructuralZone] = []
+        for df, tf, disp_mult, keep in ((d1_deep, "D1", 1.3, 10), (h4_bars, "H4", 1.5, 6)):
+            zones.extend(self._zones_from_df(df, tf, disp_mult, keep))
+        # Structural bands: recent levels (from `levels`) PLUS deep D1 swing
+        # points, so an old swing low (resting liquidity / a deeper draw) and an
+        # old demand base both register as bands, not just recent structure.
+        band_levels = list(levels) + self._deep_d1_levels(d1_deep, cur)
+        zones.extend(self._zones_from_levels(band_levels, cur))
+        zones = self._dedup_zones(zones)
+        if zones:
+            zones.sort(key=lambda z: abs(z.mid - cur))
+        return zones
+
+    def _deep_d1_levels(self, d1_deep: pd.DataFrame,
+                        current_price: float) -> List[StructuralLevel]:
+        """Swing highs/lows over the deep daily window as support/resistance
+        points — the months-old highs/lows a discretionary trader keeps marked."""
+        if len(d1_deep) < 6:
+            return []
+        tol = 15 * 0.0001
+        out: List[StructuralLevel] = []
+        highs = self._find_swing_points(d1_deep, "high", is_high=True, window=2)
+        lows = self._find_swing_points(d1_deep, "low", is_high=False, window=2)
+        for p in highs:
+            out.append(StructuralLevel(price=p, level_type="resistance", timeframe="D1",
+                                       strength=3, last_test_bar=len(d1_deep) - 1,
+                                       swept=current_price > p + tol))
+        for p in lows:
+            out.append(StructuralLevel(price=p, level_type="support", timeframe="D1",
+                                       strength=3, last_test_bar=len(d1_deep) - 1,
+                                       swept=current_price < p - tol))
+        return out
+
+    @staticmethod
+    def _dedup_zones(zones: List[StructuralZone],
+                     overlap_tol_pips: float = 8.0) -> List[StructuralZone]:
+        """Merge near-duplicate zones of the same kind (overlapping bands found by
+        both the order-block and band detectors are the same zone)."""
+        tol = overlap_tol_pips * 0.0001
+        kept: List[StructuralZone] = []
+        # Prefer fresh + larger-departure zones when collapsing duplicates.
+        for z in sorted(zones, key=lambda x: (not (x.mitigated or x.swept), x.departure_pips),
+                        reverse=True):
+            dup = False
+            for k in kept:
+                if k.kind == z.kind and abs(k.mid - z.mid) <= max(tol, 0.5 * (k.height + z.height)):
+                    dup = True
+                    break
+            if not dup:
+                kept.append(z)
+        return kept
+
+    def _zones_from_levels(self, levels: List[StructuralLevel], current_price: float,
+                           cluster_tol_pips: float = 25.0,
+                           pad_pips: float = 4.0) -> List[StructuralZone]:
+        """Cluster nearby support levels into demand bands and resistance levels
+        into supply bands — the broad structural zones drawn by hand."""
+        tol = cluster_tol_pips * 0.0001
+        pad = pad_pips * 0.0001
+        out: List[StructuralZone] = []
+        for kind, ltype in (("demand", "support"), ("supply", "resistance")):
+            pts = sorted(lv.price for lv in levels if lv.level_type == ltype)
+            if not pts:
+                continue
+            clusters: List[List[float]] = []
+            for p in pts:
+                if clusters and (p - clusters[-1][-1]) <= tol:
+                    clusters[-1].append(p)
+                else:
+                    clusters.append([p])
+            for cl in clusters:
+                bottom, top = min(cl) - pad, max(cl) + pad
+                mitigated = bottom <= current_price <= top
+                swept = (current_price < bottom) if kind == "demand" else (current_price > top)
+                out.append(StructuralZone(
+                    top=top, bottom=bottom, kind=kind, timeframe="HTF",
+                    created_idx=0, departure_pips=len(cl) * 20.0,
+                    mitigated=mitigated, swept=swept,
+                ))
+        return out
+
+    def _zones_from_df(self, df: pd.DataFrame, tf: str,
+                       disp_mult: float, keep: int) -> List[StructuralZone]:
+        if len(df) < 20:
+            return []
+        o = df["open"].values
+        h = df["high"].values
+        l = df["low"].values
+        c = df["close"].values
+        rng = (df["high"] - df["low"]).rolling(14).mean().values
+        cur = float(c[-1])
+        out: List[StructuralZone] = []
+        # Leave a small forward margin so a "displacement" has room after the base.
+        for i in range(2, len(df) - 1):
+            atr = rng[i] if not np.isnan(rng[i]) else 0.0
+            if atr <= 0:
+                continue
+            body = abs(c[i] - o[i])
+            if body < disp_mult * atr:
+                continue
+            base = i - 1  # the order-block candle just before the displacement
+            if c[i] > o[i] and c[base] < o[base]:           # bullish displacement → demand
+                top, bottom, kind = float(h[base]), float(l[base]), "demand"
+            elif c[i] < o[i] and c[base] > o[base]:          # bearish displacement → supply
+                top, bottom, kind = float(h[base]), float(l[base]), "supply"
+            else:
+                continue
+            if top - bottom <= 0:
+                continue
+            # Mitigation / sweep after formation.
+            after_lows = l[i + 1:]
+            after_highs = h[i + 1:]
+            after_close = c[i + 1:]
+            mitigated = swept = False
+            if len(after_close):
+                if kind == "demand":
+                    mitigated = bool(np.any(after_lows <= top))
+                    swept = bool(np.any(after_close < bottom))
+                else:
+                    mitigated = bool(np.any(after_highs >= bottom))
+                    swept = bool(np.any(after_close > top))
+            out.append(StructuralZone(
+                top=top, bottom=bottom, kind=kind, timeframe=tf, created_idx=i,
+                departure_pips=body / 0.0001, mitigated=mitigated, swept=swept,
+            ))
+        # Keep the most significant (largest departure) fresh+recent ones.
+        out.sort(key=lambda z: (not (z.mitigated or z.swept), z.departure_pips), reverse=True)
+        return out[:keep]
 
     def _detect_patterns(self, h4_bars: pd.DataFrame,
                          levels: List[StructuralLevel]) -> List[PatternSignal]:
@@ -606,42 +838,42 @@ class HTFAnalyzer:
     def _compute_htf_fibs(self, h4_bars: pd.DataFrame,
                           d1_bars: pd.DataFrame) -> List[Tuple[float, str]]:
         """
-        Compute Fibonacci levels from the most recent HTF swing.
-        Uses the last significant swing high->low or low->high on H4.
+        Compute Fibonacci retracement levels from the most recent H4 *and* D1
+        swing. The D1 fib (drawn off the last daily swing) is the macro OTE the
+        user references; the H4 fib refines it for entries. Both are emitted so
+        the reaction engine can treat a fib confluence as a level of interest.
         """
         fibs: List[Tuple[float, str]] = []
-        recent = h4_bars.tail(30)
+        fibs.extend(self._fibs_from_df(h4_bars.tail(30), "H4", window=3))
+        fibs.extend(self._fibs_from_df(d1_bars.tail(20), "D1", window=2))
+        return fibs
 
-        swing_highs = self._find_swing_points(recent, 'high', is_high=True, window=3)
-        swing_lows = self._find_swing_points(recent, 'low', is_high=False, window=3)
-
+    def _fibs_from_df(self, recent: pd.DataFrame, tf: str,
+                      window: int) -> List[Tuple[float, str]]:
+        swing_highs = self._find_swing_points(recent, 'high', is_high=True, window=window)
+        swing_lows = self._find_swing_points(recent, 'low', is_high=False, window=window)
         if not swing_highs or not swing_lows:
-            return fibs
+            return []
 
         last_high = swing_highs[-1]
         last_low = swing_lows[-1]
-
         high_vals = recent['high'].values.tolist()
         low_vals = recent['low'].values.tolist()
         high_idx = len(high_vals) - 1 - high_vals[::-1].index(last_high) if last_high in high_vals else 0
         low_idx = len(low_vals) - 1 - low_vals[::-1].index(last_low) if last_low in low_vals else 0
 
         fib_levels = [0.236, 0.382, 0.5, 0.618, 0.786]
-
+        swing_range = last_high - last_low
+        out: List[Tuple[float, str]] = []
         if high_idx > low_idx:
             # Swing is low -> high, retracement goes down
-            swing_range = last_high - last_low
             for fib in fib_levels:
-                level = last_high - (swing_range * fib)
-                fibs.append((level, f"H4 {fib * 100:.1f}%"))
+                out.append((last_high - (swing_range * fib), f"{tf} {fib * 100:.1f}%"))
         else:
             # Swing is high -> low, retracement goes up
-            swing_range = last_high - last_low
             for fib in fib_levels:
-                level = last_low + (swing_range * fib)
-                fibs.append((level, f"H4 {fib * 100:.1f}%"))
-
-        return fibs
+                out.append((last_low + (swing_range * fib), f"{tf} {fib * 100:.1f}%"))
+        return out
 
     def _combine_bias(self, h4_bias: MarketBias, d1_bias: MarketBias) -> MarketBias:
         """Combine H4 and D1 bias. D1 has more weight."""

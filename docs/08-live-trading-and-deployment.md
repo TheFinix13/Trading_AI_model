@@ -1,21 +1,96 @@
 # 08 — Live Trading & Deployment
 
-> Part of the numbered docs — start at [00 — Overview](00-overview.md). Run the
-> agent with the modes from [04 — Reaction Engine](04-reaction-engine.md) and the
-> sizing/risk controls from [05 — Position Sizing & Risk](05-position-sizing-and-risk.md).
+> **Current (2026-06-10).** This doc reflects the v2 router-based live loop.
+> What trades live, and the evidence behind it, is in
+> [CHECKPOINT.md](CHECKPOINT.md); the path that got here is
+> [00-journey.md](00-journey.md).
 
-Deploy the EURUSD agent on a Windows machine (VMware, VPS, or native) connected to an
-Exness MT5 account. The live `MetaTrader5` Python package is **Windows-only**, so live
-trading needs Windows; everything else (backtests, dashboard) runs anywhere.
+The live agent trades the **validated zone strategy** (`zone_d1_against` — H4
+supply/demand zone touch faded against the D1 trend) through the deployment
+router. There is no strategy selection at the CLI: the routing table
+(`agent/alphas/zone_routing.py`) decides what a symbol trades, on which
+timeframe, and at what risk scale — or refuses to trade it at all.
 
-**Progression: paper → demo → live.** Always validate signals in paper, then on a
-demo account, before risking real capital. Goal: grow a $100 demo to $1,000 first.
+The live `MetaTrader5` Python package is **Windows-only**, so MT5/Exness
+execution needs Windows (VM, VPS, or native); paper trading and all research
+run anywhere.
+
+**Progression: paper → demo → live.** Always validate on paper, then demo,
+before risking real capital.
 
 ---
 
-## 08.1 Windows / VM setup
+## 08.1 How the live loop is wired
 
-### Prerequisites
+```
+ROUTING_TABLE (zone_routing.py)          evidence-gated deployments
+        │  survivors() only — skip cells never leak
+        ▼
+build_live_routes(symbol)  (agent/live/router_wiring.py)
+        │  alpha + timeframe + risk_scale per cell
+        │  unknown symbol → UndeployedSymbolError (hard startup failure)
+        ▼
+scripts/run_live.py  --alpha router      one process per symbol
+        ▼
+SignalLoop ── PositionSizer (risk band × risk_scale) ── risk guards ── broker
+```
+
+Key facts:
+
+- **`run_live.py` defaults to the router** (`--alpha router`). The routing
+  table fixes the timeframe (H4 for every deployed cell today); a `--timeframe`
+  override is ignored with a warning, because changing the TF silently changes
+  the strategy away from what was validated.
+- **Undeployed symbols refuse to start.** There is deliberately no fallback
+  alpha — trading anything the validation pipeline didn't sign off is worse
+  than not trading.
+- **`risk_scale` flows into sizing.** Each routed cell's risk multiplier
+  (EURUSD 1.0, GBPUSD 0.5, USDCAD 0.5) scales the conviction-band risk before
+  the `PositionSizer` computes lots. Half-risk cells are frozen-cross-pair
+  deployments awaiting live confirmation.
+- **`--alpha reaction` is an escape hatch**, not a mode: it runs the
+  UNVALIDATED/experimental `ReactionAlpha`. Never use it on a funded account.
+- The v1 `--mode anticipation|reaction|hybrid` flag, ML scorers, and the
+  dashboard no longer exist.
+
+## 08.2 Multi-symbol deployment: one process per pair
+
+The portfolio is three processes, each pinned to one symbol via the `SYMBOL`
+environment variable (or config):
+
+```bash
+# macOS/dev: paper trading, one terminal per symbol
+SYMBOL=EURUSD PYTHONPATH=. .venv/bin/python scripts/run_live.py --broker paper
+SYMBOL=GBPUSD PYTHONPATH=. .venv/bin/python scripts/run_live.py --broker paper
+SYMBOL=USDCAD PYTHONPATH=. .venv/bin/python scripts/run_live.py --broker paper
+```
+
+Each process loads only its own symbol's routed cells, so a failure in one pair
+can't take down the others. The shared account-level guards (3% daily-DD halt,
+kill switch) still protect the account as a whole.
+
+> **Correlation caveat:** the three pairs are USD-correlated — EURUSD long +
+> GBPUSD long + USDCAD short is roughly one "USD down" bet (~4% worst-case
+> combined risk under today's per-trade caps). A portfolio-level USD-exposure
+> manager is on the roadmap ([CHECKPOINT.md](CHECKPOINT.md)); until then the
+> bound is per-trade caps + the daily-DD account guard.
+
+## 08.3 Sizing and the small-account caveat
+
+Sizing is risk-based: conviction interpolates within a **0.5%–2.0%** band of
+live balance, multiplied by the cell's `risk_scale`, then clamped to broker lot
+step / min / max and free margin (see
+[05 — Position Sizing & Risk](05-position-sizing-and-risk.md)).
+
+> **$100-account caveat (H4 reality).** H4 structural stops are wide. At the
+> broker minimum lot (0.01), the dollar risk of an H4 stop can exceed the
+> entire 0.5–2% risk band on a $100 balance — in that case the sizer **skips
+> the trade** rather than oversize it. On a half-risk pair (GBPUSD/USDCAD) the
+> band is effectively 0.25–1%, making skips more likely still.
+> **Recommendation: run the demo with $500+** so minimum-lot H4 trades fit
+> inside the risk band and the live distribution actually matches the backtest.
+
+## 08.4 Windows / VM setup
 
 | Requirement | Details |
 |---|---|
@@ -23,8 +98,6 @@ demo account, before risking real capital. Goal: grow a $100 demo to $1,000 firs
 | **MetaTrader 5** | Installed and logged into your Exness account |
 | **Python 3.11+** | Auto-installed by the deploy script if missing |
 | **Git** | Auto-installed by the deploy script if missing |
-
-### Quick start (PowerShell)
 
 ```powershell
 # Option A — one-liner (Run PowerShell as Administrator)
@@ -36,36 +109,34 @@ cd "$HOME\Documents\Trading_AI_model"
 .\scripts\deploy_windows.ps1
 ```
 
-The script installs Python + Git if missing, clones the repo, creates a venv,
-installs dependencies, prompts for Exness credentials, and tests the MT5 connection.
-
-### Running 24/5 as a Windows service (NSSM)
+### Running 24/5 as Windows services (NSSM) — one service per symbol
 
 ```powershell
 nssm install eurusd-agent
 # Path:        ...\.venv\Scripts\python.exe
-# Arguments:   scripts\run_live.py --broker mt5 --timeframe H1 --mode hybrid
+# Arguments:   scripts\run_live.py --broker mt5
 # Startup dir: ...\Trading_AI_model
+# Environment: SYMBOL=EURUSD
+nssm set eurusd-agent AppEnvironmentExtra SYMBOL=EURUSD
 
-nssm install eurusd-dashboard
-# Path:        ...\.venv\Scripts\uvicorn.exe
-# Arguments:   agent.dashboard.app:app --host 0.0.0.0 --port 8000
+nssm install gbpusd-agent   # same, with SYMBOL=GBPUSD
+nssm install usdcad-agent   # same, with SYMBOL=USDCAD
 
-nssm start eurusd-agent; nssm start eurusd-dashboard
+nssm start eurusd-agent; nssm start gbpusd-agent; nssm start usdcad-agent
 ```
 
 Services auto-restart on crash and survive reboots.
 
----
-
-## 08.2 Exness / MT5 connection
+## 08.5 Exness / MT5 connection
 
 ### Get demo credentials
 
 1. Sign up at [exness.com](https://www.exness.com) (free, no deposit for demo).
-2. Personal Area → **Open New Account** → MetaTrader 5, USD, leverage 1:100, **Demo**.
+2. Personal Area → **Open New Account** → MetaTrader 5, USD, **Demo** —
+   fund it **$500+** (see the small-account caveat above).
 3. Note the **Login** (numeric), **Password**, and **Server** (e.g. `Exness-MT5Trial7`).
-4. Install MT5 from the Exness Personal Area, log in, and confirm a EURUSD chart loads.
+4. Install MT5 from the Exness Personal Area, log in, confirm charts load for
+   EURUSD, GBPUSD, USDCAD.
 
 ### Configure `.env`
 
@@ -88,66 +159,54 @@ MT5_SERVER=Exness-MT5Trial7
 .\.venv\Scripts\Activate.ps1
 
 # Step 1 — paper mode (full pipeline, in-memory fills; validate signals first)
-python scripts/run_live.py --broker paper --timeframe H1 --mode hybrid
+$env:SYMBOL="EURUSD"; python scripts/run_live.py --broker paper
 
 # Step 2 — demo execution (MT5 must be open and logged in)
-python scripts/run_live.py --broker mt5 --timeframe H1 --mode hybrid \
-    --risk-min 0.005 --risk-max 0.02
+$env:SYMBOL="EURUSD"; python scripts/run_live.py --broker mt5
 ```
 
-**Key flags:** `--broker {paper,mt5,exness}`, `--timeframe`, `--mode
-{anticipation,reaction,hybrid}`, `--risk-min/--risk-max` (sizing band),
-`--lot` (upper cap on risk-based size), `--reset-journal`, `--no-telegram`,
-`--verbose`. See [04](04-reaction-engine.md) and [05](05-position-sizing-and-risk.md).
+**Key flags:** `--broker {paper,mt5,exness}`, `--alpha {router,reaction}`
+(default router), `--interval` (poll seconds), `--balance` (paper starting
+balance), `--no-revenge-guard` (NOT recommended), `--no-telegram`,
+`--kill-switch {on,off}`, `--verbose`.
 
-**What to expect:** 1–3 signals/day during London (08–12 UTC) and NY (13–17 UTC);
-no signals in Asia, weekends, or when the kill switch is active; higher threshold on
-Thu/Fri.
+**What to expect:** H4 cells trade on H4 candle closes that touch a daily zone
+counter to the D1 trend — roughly 66 trades/yr on EURUSD (~1–2/week), any
+session, so days with no signal are normal. Startup logs print each routed
+cell: `Routed cell: EURUSD/H4/all mode=htf_against risk_scale=1.00 ...`.
 
 ### Troubleshooting
 
-- **"MT5 init failed"** — the terminal must be open and logged in on the same machine
-  (the package talks to it via IPC). Open MT5, log in, wait for the chart, restart.
-- **"No signals firing"** — normal outside kill zones; check Thu/Fri threshold,
-  `kill.txt`, and that models loaded.
-- **"Connection lost"** — the agent auto-reconnects with exponential backoff (up to 5
-  tries) then exits cleanly; NSSM restarts it.
-- **"Order rejected: invalid stops"** — raise `rules.stop_buffer_pips` or use a wider
-  TF.
+- **"Symbol 'X' has no deployed cells"** — by design: the symbol isn't in the
+  routing table. Deployments are earned through the validation pipeline, not
+  config.
+- **"MT5 init failed"** — the terminal must be open and logged in on the same
+  machine (the package talks to it via IPC). Open MT5, log in, restart.
+- **Sizer skips every trade** — balance too small for H4 min-lot risk (see
+  08.3). Increase the demo balance.
+- **"Connection lost"** — the agent auto-reconnects with backoff then exits
+  cleanly; NSSM restarts it.
 
 ### Monitoring & kill switch
 
 ```powershell
-# Dashboard (open http://<windows-ip>:8000) — see 09
-python -m uvicorn agent.dashboard.app:app --host 0.0.0.0 --port 8000
-
-# Kill switch (any one halts new trades)
-echo halt > kill.txt        # file-based, checked each loop
-#  ...or click "Kill Switch" in the dashboard, or Ctrl+C
+# Kill switch (halts new trades; delete the file to resume)
+echo halt > kill.txt
 ```
 
-Telegram alerts (trade open/close, breakeven, DD halt, kill switch) activate when
-`TG_BOT_TOKEN` / `TG_CHAT_ID` are set in `.env`.
+Telegram alerts (trade open/close, DD halt, kill switch) activate when
+`TG_BOT_TOKEN` / `TG_CHAT_ID` are set in `.env`. The per-day journal
+(markdown + JSONL) is the trade record; the v1 web dashboard was burned in the
+reset ([09](09-dashboard.md)).
 
-**Daily review ritual:** check the dashboard equity curve, review overnight trades
-(`python scripts/journal_query.py --last 10`), confirm no DD halt/kill fired, and
-spot-check one trade's reasoning.
+**Daily review ritual:** check overnight trades in the journal, confirm no DD
+halt / kill fired, spot-check one trade's reasoning against the routed cell.
 
 ---
 
-## 08.3 MT5 chart overlay EA
+## 08.6 MT5 chart overlay EA (historical)
 
-**Code:** `mt5/TradingPartner_Overlay.mq5` (see `mt5/README.md`).
-
-The EA visualises the agent's analysis directly on your MT5 chart. The Python agent
-writes `MQL5/Files/agent_drawings.json`; the EA reads it every ~5 s and redraws.
-
-**Install:** copy the `.mq5` to MT5's `MQL5/Experts` folder (File → Open Data Folder),
-compile in MetaEditor (F7), drag it onto a EURUSD chart, and enable "Allow Algo
-Trading".
-
-**It draws:** purple = LZI zones, blue = FVGs, orange = supply/demand zones, red =
-resistance, green = support, gold dotted = fib levels, arrows = entry signals
-(green buy / red sell), and a top-left label with current HTF bias + confidence.
-Toggle elements, colours, and the update interval in EA settings. When the agent
-stops, the EA shows the last known state; removing the EA clears all drawings.
+`mt5/TradingPartner_Overlay.mq5` visualised the v1 agent's analysis (LZI zones,
+FVGs, fibs) by reading `agent_drawings.json`, which the burned v1
+`chart_drawer.py` produced. **The current agent does not write that file**, so
+the EA is inert — kept in-tree for reference only.

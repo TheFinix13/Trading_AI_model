@@ -48,10 +48,6 @@ htmlcov/
 data/
 # trained models (re-trainable, can be very large)
 models/
-# BUT keep production scorer files (small enough for git, needed on all machines)
-!models/scorer_EURUSD_H1_v8.joblib
-!models/scorer_EURUSD_M15_v8.joblib
-!models/scorer_EURUSD_LZI_H1_v1.joblib
 # SQLite journals
 *.db
 *.db-journal

@@ -184,6 +184,66 @@ def calibration_report(records: list[dict], *, min_n: int = 3) -> dict:
     return {"buckets": rows, "miscalibrated": miscalibrated, "message": message}
 
 
+def directional_bias_check(trades: list[dict], *, min_n: int = 3) -> dict:
+    """Sanity-check whether trades were taken WITH or AGAINST the HTF bias.
+
+    The Jun 2026 post-mortem found the single most expensive habit was fighting
+    the higher-timeframe trend — buying a market that D1/H4 said was bearish.
+    This bucket splits closed trades by their ``htf_aligned`` flag (True = with
+    bias, False = against, None = bias unknown/neutral) and reports each bucket's
+    win-rate + expectancy, then flags a systematic counter-trend habit.
+
+    Returns counts, per-bucket stats and a human verdict.
+    """
+    aligned = [t for t in trades if t.get("htf_aligned") is True]
+    against = [t for t in trades if t.get("htf_aligned") is False]
+    neutral = [t for t in trades if t.get("htf_aligned") is None]
+
+    def _stats(group: list[dict]) -> dict:
+        n = len(group)
+        wins = sum(1 for t in group if t.get("r_multiple", 0.0) > 0)
+        sum_r = sum(t.get("r_multiple", 0.0) for t in group)
+        return {
+            "n": n,
+            "win_rate": round(wins / n, 3) if n else 0.0,
+            "expectancy_r": round(sum_r / n, 3) if n else 0.0,
+        }
+
+    a_stats = _stats(aligned)
+    x_stats = _stats(against)
+    n_known = a_stats["n"] + x_stats["n"]
+
+    fighting = False
+    if n_known >= min_n:
+        against_share = x_stats["n"] / n_known if n_known else 0.0
+        # Flag if a meaningful share of trades fought the trend AND those
+        # counter-trend trades lost money (or clearly underperformed with-trend).
+        if against_share >= 0.5 and x_stats["expectancy_r"] < 0:
+            fighting = True
+        elif (x_stats["n"] >= min_n and a_stats["n"] >= min_n
+              and x_stats["expectancy_r"] < a_stats["expectancy_r"] - 0.20):
+            fighting = True
+
+    if n_known < min_n:
+        message = "not enough HTF-tagged trades for a directional verdict yet"
+    elif fighting:
+        message = (
+            f"FIGHTING THE TREND — {x_stats['n']}/{n_known} trades went against the "
+            f"HTF bias at {x_stats['expectancy_r']:+.2f}R vs {a_stats['expectancy_r']:+.2f}R "
+            f"with-trend. Favour with-bias setups."
+        )
+    else:
+        message = "trades are mostly trading WITH the HTF bias — good directional discipline"
+
+    return {
+        "with_bias": a_stats,
+        "against_bias": x_stats,
+        "neutral_n": len(neutral),
+        "fighting_trend": fighting,
+        "message": message,
+    }
+
+
 def scorecard(trades: list[dict], declines: list[dict]) -> dict:
     """Anticipated-vs-reactive scorecard: per perspective, how many were marked
     (detected) vs acted (taken), the win-rate/expectancy of those acted, and how
@@ -351,6 +411,7 @@ class LiveJournal:
         rationale: str = "",
         features: dict | None = None,
         reaction_components: dict | None = None,
+        htf_aligned: bool | None = None,
     ) -> None:
         day = self._day_of(time)
         if day not in self._day_initialised and not self._md_path(day).exists():
@@ -364,6 +425,7 @@ class LiveJournal:
         self._open[ticket] = {
             "conviction": conviction, "source": source, "strategy": strategy,
             "signature": signature, "direction": direction, "stop_pips": stop_pips,
+            "htf_aligned": htf_aligned,
         }
 
         block = (
@@ -483,7 +545,8 @@ class LiveJournal:
 
         # Feed the calibration accumulators.
         agg = {"conviction": conviction, "r_multiple": r_multiple, "pnl": pnl,
-               "source": source, "attribution": attribution, "signature": signature}
+               "source": source, "attribution": attribution, "signature": signature,
+               "htf_aligned": octx.get("htf_aligned")}
         self._day_trades.setdefault(day, []).append(agg)
         self._all_trades.append(agg)
         return record
@@ -548,6 +611,7 @@ class LiveJournal:
         day_cal = calibration_report(trades)
         roll_cal = calibration_report(self._all_trades)
         card = scorecard(trades, declines)
+        dir_bias = directional_bias_check(self._all_trades)
 
         n = len(trades)
         wins = sum(1 for t in trades if t.get("r_multiple", 0.0) > 0)
@@ -599,6 +663,17 @@ class LiveJournal:
         if card.get("best_perspective"):
             lines.append(f"  - **Paid the most:** {card['best_perspective']}")
 
+        # Directional-bias sanity check — are we trading with or against HTF?
+        db_flag = "⚠️ " if dir_bias["fighting_trend"] else "✅ "
+        wb, xb = dir_bias["with_bias"], dir_bias["against_bias"]
+        lines.append("- **Directional-bias sanity check (rolling):**")
+        lines.append(
+            f"  - with-bias: {wb['n']} trades, win {wb['win_rate'] * 100:.0f}%, "
+            f"exp {wb['expectancy_r']:+.2f}R | against-bias: {xb['n']} trades, "
+            f"win {xb['win_rate'] * 100:.0f}%, exp {xb['expectancy_r']:+.2f}R"
+        )
+        lines.append(f"  - {db_flag}{dir_bias['message']}")
+
         if declines:
             lines.append(
                 f"- **Declined setups:** {len(declines)}"
@@ -618,6 +693,7 @@ class LiveJournal:
             "calibration_today": day_cal,
             "calibration_rolling": roll_cal,
             "scorecard": card,
+            "directional_bias": dir_bias,
             "declined": len(declines),
             "declined_would_have_won": would_win,
         }

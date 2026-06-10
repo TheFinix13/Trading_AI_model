@@ -1,4 +1,16 @@
-"""Top-level CLI dispatcher: `eurusd-agent <subcommand>`."""
+"""Top-level CLI dispatcher for v2.
+
+Most v1 subcommands were burned with their backing scripts in the v2 reset
+(training, retraining, walk-forward, confluence optimisation, ranking,
+visual-sanity, journal-query …). What survives:
+
+  download   — fetch / refresh OHLC parquet for a symbol
+  evaluate   — run the v2 evaluation harness over the 224-cell ablation grid
+  alphas     — per-alpha scorecards on the locked OOS window
+  live       — start the live signal loop (paper / Exness / MT5)
+  paper      — alias for ``live`` with ``--broker paper``
+  smoke      — quick end-to-end sanity check
+"""
 from __future__ import annotations
 
 import importlib
@@ -6,17 +18,15 @@ import sys
 
 COMMANDS = {
     "download": "scripts.download_data",
-    "backtest": "scripts.run_backtest",
-    "train": "scripts.train_model",
-    "gate": "scripts.check_gate",
+    "evaluate": "scripts.evaluate",
+    "alphas": "scripts.evaluate_alphas",
     "live": "scripts.run_live",
     "paper": "scripts.run_live",
-    "retrain": "scripts.weekly_retrain",
-    "sanity": "scripts.visual_sanity",
+    "smoke": "scripts.smoke_test",
 }
 
 
-def main():
+def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
         print("Usage: eurusd-agent <command> [args...]")
         print("Commands:")

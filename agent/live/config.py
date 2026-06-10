@@ -49,6 +49,21 @@ class LiveConfig:
     max_consecutive_losses: int = 3            # circuit breaker: halt session after N losses
     catastrophic_loss_frac: float = 0.10       # a single loss >= 10% of balance halts session
     halt_on_stop_out: bool = True
+    # A strong reaction OPPOSITE to the last loss may bypass the cooldown (a
+    # committed flip into a reversal is not revenge). The circuit breaker / stop-
+    # out halt are never bypassed. 0 disables the override.
+    post_loss_cooldown_override_conviction: float = 0.80
+    post_loss_cooldown_override_opposite_only: bool = True
+
+    # ── Synthetic ("soft") stop layer: stop-hunt mitigation ──
+    # Soft stop = the real risk level, held in memory, acted on only when a bar
+    # CLOSES beyond it (wick-proof). A wide catastrophe stop rests on the broker
+    # as an offline backstop. See agent/live/soft_stop.py.
+    soft_stop_enabled: bool = True
+    soft_stop_confirm_on_close: bool = True
+    catastrophe_stop_mult: float = 2.5
+    soft_stop_panic_mult: float = 1.0
+    soft_stop_min_catastrophe_pips: float = 8.0
 
     # Live journal + learning store
     journal_root: str = "data/journal/live"
@@ -63,6 +78,15 @@ class LiveConfig:
     move_be_at_r: float = 1.0
     trailing_stop_enabled: bool = False
     trailing_stop_distance_pips: float = 20.0
+
+    # ── Partial scale-out (KEEP-INFRA, default OFF) ──
+    # Wired through PositionMonitor; remained as infra after the v2 reset
+    # because the underlying SoftStop / monitor loop already handles it. The
+    # Phase-C / Phase-D allocator + managed-exit policy layers were burned.
+    partial_exit_enabled: bool = False
+    partial_at_r: float = 1.0
+    partial_fraction: float = 0.5
+    partial_move_to_be: bool = True
 
     # Kill switch
     kill_file: str = "kill.txt"

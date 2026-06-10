@@ -1,5 +1,17 @@
 # 03 — HTF Context & Pattern Mechanics
 
+> ⚠️ **PARTLY HISTORICAL — superseded by the zone-only validated pipeline.**
+> The detector *mechanics* described here (zones, BOS, FVG, sweeps, sessions,
+> daily levels) still match code under `agent/detectors/` and
+> `agent/context/`, but the **trading claims are v1 artifacts**: the audit
+> win-rates quoted below (e.g. "fvg + zone 80–89% WR", "fib_382 + fvg + zone =
+> 100% WR") were in-sample, tiny-sample selections that did not survive honest
+> validation, and the concepts they promote were **eliminated in the ablation
+> grid**. ERL/IRL magnets and HTF "draws" are not live components. The one HTF
+> finding that *did* validate is the opposite of v1's with-trend bias: the zone
+> edge is **mean-reversion**, gated AGAINST the D1 trend (`zone_d1_against`).
+> See [00-journey.md](00-journey.md) and [CHECKPOINT.md](CHECKPOINT.md).
+
 > Part of the numbered docs — start at [00 — Overview](00-overview.md). This is the
 > reference for *how* each ICT concept is detected and *when* it's valid. The
 > strategies that consume them are in [02 — Strategies](02-strategies.md); the
@@ -27,6 +39,73 @@ themselves.
 
 **Timeframe tiers:** H1 active (primary edge), M15 dormant (signals detected but
 elevated threshold), H4 + D1 bias-only, M5 disabled.
+
+### What HTF stores (beyond bias)
+
+The context (`agent/context/htf_context.py::HTFContext`) carries more than a
+bias label — these are the "details and zones" the lower-timeframe reaction
+engine reads:
+
+| Field | What it is | How the LTF uses it |
+|-------|-----------|---------------------|
+| `combined_bias` + `buy/sell_aligned` | D1/H4 trend. When bias is neutral, the **net pattern lean** (confidence-weighted) breaks the tie, so a dominant double-top still biases short in a range. | Directional filter — boosts/penalises reaction conviction. |
+| `structural_levels` | D1/H4 swing highs/lows as **support/resistance points**. | Added to the reaction level set ("is price at a level"). |
+| `htf_zones` | D1/H4 demand & supply **zones (ranges)** — from order blocks *and* clustered structural bands (the broad daily zone you draw by hand). Tagged `mitigated`/`swept`. | A fresh zone ahead is the **draw / take-profit target**; zone mids join the level set. |
+| `htf_fib_levels` | Fib retracements off the last **H4 *and* D1** swing (38.2/50/61.8/78.6). | Fib confluence as a level of interest. |
+| `weekly` | Week high/low/open, unswept liquidity, expansion direction. | Narrative + unswept-liquidity targets. |
+
+### HTF zones as draws (the daily demand zone an impulse heads toward)
+
+A daily demand/supply zone is the *area price is being pulled into* — the
+**draw**. `htf_zones` represents it as a band (`top`/`bottom`), not a point, and
+flags it `mitigated` once price trades back into it and `swept` once price closes
+fully through.
+
+**Deep lookback (zones live for months).** A discretionary trader keeps a daily
+zone drawn until it's consumed — often weeks or months. So zone detection uses a
+dedicated `htf.d1_zone_lookback_bars` (default **180 D1 bars ≈ 9 months**),
+*separate* from the short bias/level window (`d1_lookback_bars = 20`). This is the
+fix for "the demand zone was drawn from April 6 but it's now June": with the
+shallow window the agent literally couldn't see it; with the deep window an
+April base and the March lower-low liquidity both remain on the radar as draws
+until price actually consumes them. Bias and structural-level detection still use
+their own short windows, so the deeper history only affects zones.
+
+`HTFContext.nearest_zone_draw(direction, price)` returns the
+nearest **fresh** (unmitigated) zone *ahead* of price — a demand zone below for a
+short, a supply zone above for a long. The reaction engine
+([04](04-reaction-engine.md)) takes that as its take-profit when the resulting
+risk-reward clears `min_rr` (target label `htf_zone_draw`), otherwise it falls
+back to PD-array liquidity. This is what lets the agent "see reason" to ride an
+impulsive move *toward* the daily zone instead of guessing a fixed RR. Because it
+targets a *with-trend* draw (not a counter-trend fade), it improves expected RR
+rather than degrading it — unlike the ERL "fade the draw" experiment in
+[04.2b](04-reaction-engine.md).
+
+**Symmetry — supply is perceived exactly like demand.** Detection is fully
+two-sided at every stage: `_zones_from_df` emits a **demand** zone on a bullish
+displacement *and* a **supply** zone on a bearish one; `_zones_from_levels`
+clusters support→demand bands *and* resistance→supply bands; `_deep_d1_levels`
+marks old swing **lows** (demand/resting sell-side liquidity) *and* swing **highs**
+(supply/buy-side liquidity) over the same 9-month window. So the agent sees the
+upside supply draws a long is pulled toward just as it sees the downside demand
+draws — confirmed empirically: over a 4-year H1 span a supply-above draw is marked
+on ~23.8k bars and a demand-below draw on ~23.9k (balanced).
+
+**Now measured in Phase B/C.** The isolated alphas previously never received these
+deep draws, so their *value* was untested. `agent/context/htf_draws.py`
+reconstructs them **causally** over the full series (daily cadence, only closed
+D1/H4 bars — preserving the 9-month lookback that a per-chunk warm-up can't), keyed
+by bar time so it survives chunk-slicing. Two new alpha variants — `reaction_htf_draws`
+and `reaction_erl_irl_htf` — target them. Finding (full locked span 2015→2025):
+targeting the deeper daily draw is **net-negative** — it hurts both the plain
+reaction and the ERL lead (expectancy +5.47→+2.38, Sharpe 0.92→0.40) because the
+draw is often far and trades away hit-rate; the meta-allocator gives
+`reaction_htf_draws` 0% weight. (A shorter 4-year window had *flattered* it with a
+drawdown improvement that the full span reversed — see the honest-measurement note
+in [10 §10.5](10-quant-validation-and-modular-overhaul.md).) So they ship as
+scored-but-off variants, not defaults — but the value is now **measured**,
+symmetrically, rather than assumed.
 
 ---
 

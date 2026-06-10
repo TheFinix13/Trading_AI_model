@@ -109,3 +109,53 @@ def test_scratch_is_neutral():
     assert g.consecutive_losses == 1
     g.register_close(pnl=0.0, now=t)  # breakeven scratch
     assert g.consecutive_losses == 1  # unchanged
+
+
+def test_strong_opposite_reaction_overrides_cooldown():
+    # Stopped LONG, then a strong SHORT reaction (the Jun-5 break to the lows):
+    # a flip is not revenge, so it bypasses the cooldown.
+    g = PostLossGuard(GuardConfig(
+        cooldown_minutes=60.0, cooldown_override_conviction=0.80,
+        cooldown_override_opposite_only=True,
+    ))
+    t = _now()
+    g.register_close(pnl=-5.0, now=t, direction="long")
+    soon = t + timedelta(minutes=10)
+    # A strong opposite (short) reaction bypasses the cooldown.
+    d = g.pre_trade_check(soon, reaction_conviction=0.92, direction="short")
+    assert d.allowed
+    assert d.code == "cooldown_override"
+
+
+def test_same_direction_reaction_does_not_override_cooldown():
+    # A same-side re-entry IS revenge — never bypasses the cooldown.
+    g = PostLossGuard(GuardConfig(cooldown_minutes=60.0, cooldown_override_conviction=0.80))
+    t = _now()
+    g.register_close(pnl=-5.0, now=t, direction="long")
+    soon = t + timedelta(minutes=10)
+    d = g.pre_trade_check(soon, reaction_conviction=0.95, direction="long")
+    assert not d.allowed
+    assert d.code == "cooldown"
+
+
+def test_weak_opposite_reaction_does_not_override_cooldown():
+    g = PostLossGuard(GuardConfig(cooldown_minutes=60.0, cooldown_override_conviction=0.80))
+    t = _now()
+    g.register_close(pnl=-5.0, now=t, direction="long")
+    soon = t + timedelta(minutes=10)
+    d = g.pre_trade_check(soon, reaction_conviction=0.70, direction="short")
+    assert not d.allowed
+
+
+def test_cooldown_override_cannot_bypass_circuit_breaker():
+    # A halted session is NEVER overridable, however strong the reaction.
+    g = PostLossGuard(GuardConfig(
+        max_consecutive_losses=2, cooldown_minutes=60.0,
+        cooldown_override_conviction=0.80,
+    ))
+    t = _now()
+    g.register_close(pnl=-1.0, now=t, direction="long")
+    g.register_close(pnl=-1.0, now=t, direction="long")
+    d = g.pre_trade_check(t, reaction_conviction=0.99, direction="short")
+    assert not d.allowed
+    assert d.code == "circuit_breaker"

@@ -268,6 +268,28 @@ below.
 
 ---
 
+## 7b. Implementation status (built after this review)
+
+All five recommendations are now implemented and tested:
+
+| # | Recommendation | Status | Where |
+|---|---|---|---|
+| 1 | Post-loss cooldown + size-reduction + circuit breaker + re-deposit guard | **done** | `agent/risk/post_loss_guard.py`, [05.4](../05-position-sizing-and-risk.md) |
+| 2 | "Every order has SL+TP" hard invariant | **done** | `agent/live/broker.py` `validate_sltp`, [05.3](../05-position-sizing-and-risk.md) |
+| — | *(new)* Synthetic soft stop + catastrophe backstop (stop-hunt mitigation) | **done** | `agent/live/soft_stop.py`, [05.5](../05-position-sizing-and-risk.md) |
+| 3 | Calibrate the reaction engine on this week | **done** | `scripts/simulate_week.py`, [07.3](../07-backtesting.md#073-week-simulation-human-vs-agent-side-by-side) |
+| 4 | Loosen the over-strict gates | **done** | `conviction_threshold` 0.54→0.50 + HTF reaction filter, [05.6](../05-position-sizing-and-risk.md) |
+| 5 | Directional-bias sanity check in the roll-up | **done** | `directional_bias_check`, [06.5](../06-learning-journal.md) |
+
+**Simulated re-run of this week (`scripts/simulate_week.py`):** the agent nets
+**−$5.49** with a **5.5%** max drawdown and a worst single trade of **−$3.10**,
+versus the human's **−$50.60** and two account blow-ups. It took roughly the same
+losing direction calls on Jun 2 / Jun 5, but as 0.01-lot, soft-stopped paper-cuts.
+The HTF read **neutral** all week (a genuinely two-sided range), so the win is risk
+control, not direction-calling — exactly the lesson of this post-mortem.
+
+---
+
 ## 8. One-paragraph verdict
 
 The week was not lost to bad analysis — the user's zone and liquidity reads were

@@ -115,15 +115,81 @@ def test_engine_fires_on_commitment_at_level():
 
 
 def test_engine_holds_off_without_level_when_required():
-    cfg = ReactionConfig(require_level=True)
+    # With the impulse override OFF, a strong move far from any level must NOT
+    # fire when require_level is set.
+    cfg = ReactionConfig(require_level=True, impulse_override_enabled=False)
     engine = ReactionEngine(cfg)
     bars = _ignition_series()
-    # Level far away -> no level context -> should not fire.
     far = LevelOfInterest(price=1.2000, label="far", kind="daily")
     assess = engine.assess(bars, atr=0.0020, levels=[far])
     assert not assess.fired
     assert assess.signal is None
     assert "level" in assess.rejection.lower()
+
+
+def test_impulse_override_fires_in_open_space():
+    # A clean impulse (high displacement + expansion + conviction) fires WITHOUT
+    # an adjacent level when the override is enabled — reacting to the move itself.
+    cfg = ReactionConfig(require_level=True, impulse_override_enabled=True)
+    engine = ReactionEngine(cfg)
+    bars = _ignition_series()
+    far = LevelOfInterest(price=1.2000, label="far", kind="daily")
+    assess = engine.assess(bars, atr=0.0020, levels=[far])
+    assert assess.fired
+    assert assess.is_impulse
+    assert assess.signal is not None
+    assert "impulse" in assess.signal.rationale.lower()
+
+
+def test_draw_bias_penalises_chasing_into_premium():
+    from agent.detectors.liquidity_magnet import RangeLiquidity
+    # 1.1080 close sits in the premium of this range -> a LONG is chasing the
+    # buy-side draw and should be penalised vs the no-range baseline.
+    cfg = ReactionConfig(
+        require_level=False, liquidity_magnet_enabled=True,
+        magnet_chase_penalty=0.20, magnet_conviction_boost=0.05,
+    )
+    engine = ReactionEngine(cfg)
+    bars = _ignition_series()  # bullish ignition (LONG)
+    rl = RangeLiquidity(erl_high=1.1085, erl_low=1.0985)
+    base = engine.assess(bars, atr=0.0020, levels=[])
+    biased = engine.assess(bars, atr=0.0020, levels=[], range_liq=rl)
+    assert biased.conviction < base.conviction  # chasing into premium is penalised
+
+
+def test_impulse_override_respects_floors():
+    # A weaker move (below the impulse floors) still holds off without a level.
+    cfg = ReactionConfig(
+        require_level=True, impulse_override_enabled=True,
+        impulse_min_conviction=0.95,  # set unreachably high
+    )
+    engine = ReactionEngine(cfg)
+    bars = _ignition_series()
+    far = LevelOfInterest(price=1.2000, label="far", kind="daily")
+    assess = engine.assess(bars, atr=0.0020, levels=[far])
+    assert not assess.fired
+
+
+def test_session_label_is_a_passthrough_in_v2():
+    """In v2 the reaction engine no longer mutates conviction by session — session
+    is an explicit ablation AXIS (London / NY / Asia / all) handled at the
+    evaluation harness level. ``session_label`` is preserved for downstream
+    tagging only; any label (or none) must produce identical conviction.
+    """
+    cfg = ReactionConfig(require_level=False, session_aware=True,
+                         session_conviction_boost=0.10,
+                         off_session_conviction_penalty=0.05)
+    engine = ReactionEngine(cfg)
+    bars = _ignition_series()
+    base = engine.assess(bars, atr=0.0020, levels=[])
+    overlap = engine.assess(bars, atr=0.0020, levels=[],
+                            session_label="london_ny_overlap")
+    off = engine.assess(bars, atr=0.0020, levels=[], session_label="asia")
+    prefixed = engine.assess(bars, atr=0.0020, levels=[],
+                             session_label="session_london_ny_overlap")
+    assert overlap.conviction == base.conviction
+    assert off.conviction == base.conviction
+    assert prefixed.conviction == base.conviction
 
 
 def test_engine_low_conviction_no_fire():

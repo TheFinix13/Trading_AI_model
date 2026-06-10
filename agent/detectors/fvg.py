@@ -25,11 +25,15 @@ if TYPE_CHECKING:
     pass
 
 
-def detect_fvgs(bars: list[Bar], min_size_pips: float = 5.0) -> list[FVG]:
+def detect_fvgs(bars: list[Bar], min_size_pips: float = 5.0,
+                up_to_index: int | None = None) -> list[FVG]:
     """Detect FVGs and compute quality scores.
 
-    Backward-compatible: still returns list[FVG] with all legacy fields intact.
-    New quality fields are populated on each FVG.
+    ``up_to_index`` bounds the forward fill-tracking scan so quality fields stay
+    CAUSAL when called from a backtest harness. Without it the scan runs to the
+    end of the series, leaking future fill state into the quality score applied
+    at an earlier decision bar. The default of ``None`` preserves the old wide
+    behaviour for clients that need it (e.g. visual sanity / dashboard).
     """
     fvgs: list[FVG] = []
     if len(bars) < 3:
@@ -66,7 +70,7 @@ def detect_fvgs(bars: list[Bar], min_size_pips: float = 5.0) -> list[FVG]:
                 _enrich_quality(fvg, b1)
                 fvgs.append(fvg)
 
-    _update_fill_tracking(fvgs, bars)
+    _update_fill_tracking(fvgs, bars, up_to_index=up_to_index)
     return fvgs
 
 
@@ -165,18 +169,25 @@ def compute_fvg_quality(fvg: FVG) -> float:
     return max(0.0, min(100.0, score))
 
 
-def _update_fill_tracking(fvgs: list[FVG], bars: list[Bar]) -> None:
+def _update_fill_tracking(fvgs: list[FVG], bars: list[Bar],
+                          up_to_index: int | None = None) -> None:
     """Track partial fill percentage and revisit count for each FVG.
 
     Also sets the legacy `filled`/`filled_at` fields for backward compatibility.
+
+    ``up_to_index`` bounds the forward scan so fill state is computed CAUSALLY
+    (only using bars at or before that index). Without it the scan runs to the
+    end of the series, which leaks the future into a fill-state filter applied at
+    an earlier decision bar — a look-ahead bug for backtesting (see docs/10 §10.5).
     """
+    end = len(bars) if up_to_index is None else min(len(bars), up_to_index + 1)
     for fvg in fvgs:
         fvg_range = fvg.top - fvg.bottom
         if fvg_range <= 0:
             continue
 
         max_penetration = 0.0
-        for j in range(fvg.created_bar_index + 1, len(bars)):
+        for j in range(fvg.created_bar_index + 1, end):
             b = bars[j]
 
             if fvg.direction == Direction.LONG:

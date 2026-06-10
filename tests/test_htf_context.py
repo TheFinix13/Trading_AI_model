@@ -3,16 +3,13 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from agent.context.htf_context import (
     HTFAnalyzer,
     HTFContext,
     MarketBias,
-    PatternSignal,
     PatternType,
     StructuralLevel,
-    WeeklyNarrative,
 )
 
 
@@ -385,7 +382,9 @@ class TestHTFFibs:
         # Should produce fib levels if swings are found
         if ctx.htf_fib_levels:
             assert all(isinstance(f, tuple) and len(f) == 2 for f in ctx.htf_fib_levels)
-            assert all("H4" in f[1] for f in ctx.htf_fib_levels)
+            # Fibs are now emitted for both H4 and D1 swings.
+            assert all(("H4" in f[1] or "D1" in f[1]) for f in ctx.htf_fib_levels)
+            assert any("H4" in f[1] for f in ctx.htf_fib_levels)
 
     def test_fib_levels_within_swing_range(self):
         analyzer = HTFAnalyzer(lookback_days=5)
@@ -518,7 +517,7 @@ class TestFullPipeline:
 
 class TestHTFConfig:
     def test_config_has_htf_field(self):
-        from agent.config import load_config, Config, HTFConfig
+        from agent.config import load_config, HTFConfig
         cfg = load_config()
         assert hasattr(cfg, 'htf')
         assert isinstance(cfg.htf, HTFConfig)
@@ -527,3 +526,118 @@ class TestHTFConfig:
         assert cfg.htf.h4_lookback_bars == 30
         assert cfg.htf.d1_lookback_bars == 20
         assert cfg.htf.update_interval_bars == 4
+
+
+# ---------------------------------------------------------------------------
+# Tests: HTF demand/supply ZONES (draws)
+# ---------------------------------------------------------------------------
+
+class TestHTFZones:
+    def test_order_block_demand_zone_detected(self):
+        # Flat base, one bearish base candle, then a strong bullish displacement
+        # → a demand order block at the base candle's range.
+        prices = []
+        for _ in range(18):
+            prices.append((1.1500, 1.1505, 1.1495, 1.1500))
+        prices.append((1.1500, 1.1502, 1.1492, 1.1494))   # bearish base candle
+        prices.append((1.1494, 1.1560, 1.1493, 1.1558))   # strong bullish displacement
+        for _ in range(3):
+            prices.append((1.1558, 1.1565, 1.1552, 1.1560))
+        df = _make_bars(prices)
+        analyzer = HTFAnalyzer(lookback_days=5)
+        zones = analyzer._zones_from_df(df, "H4", disp_mult=1.5, keep=6)
+        demand = [z for z in zones if z.kind == "demand"]
+        assert demand, "expected a demand order block before the bullish displacement"
+        z = demand[0]
+        assert z.bottom <= 1.1494 <= z.top
+
+    def test_structural_band_from_clustered_supports(self):
+        analyzer = HTFAnalyzer(lookback_days=5)
+        levels = [
+            StructuralLevel(price=1.1500, level_type="support", timeframe="D1", strength=3, last_test_bar=0),
+            StructuralLevel(price=1.1510, level_type="support", timeframe="H4", strength=2, last_test_bar=0),
+            StructuralLevel(price=1.1700, level_type="resistance", timeframe="D1", strength=3, last_test_bar=0),
+        ]
+        zones = analyzer._zones_from_levels(levels, current_price=1.1600)
+        demand = [z for z in zones if z.kind == "demand"]
+        supply = [z for z in zones if z.kind == "supply"]
+        assert demand and supply
+        # The two nearby supports (1.1500/1.1510) cluster into one demand band.
+        d = demand[0]
+        assert d.bottom <= 1.1500 and d.top >= 1.1510
+        # Price 1.1600 is above the demand band (a draw below) and below supply.
+        assert d.swept is False and d.mitigated is False
+
+    def test_nearest_zone_draw_short_targets_demand_below(self):
+        ctx = HTFContext(
+            h4_bias=MarketBias.BEARISH, d1_bias=MarketBias.BEARISH,
+            combined_bias=MarketBias.BEARISH, bias_confidence=0.7,
+            sell_aligned=True, buy_aligned=False,
+        )
+        from agent.context.htf_context import StructuralZone
+        ctx.htf_zones = [
+            StructuralZone(top=1.1520, bottom=1.1480, kind="demand", timeframe="D1", created_idx=0),
+            StructuralZone(top=1.1700, bottom=1.1660, kind="supply", timeframe="D1", created_idx=0),
+        ]
+        z = ctx.nearest_zone_draw("short", entry_price=1.1620)
+        assert z is not None and z.kind == "demand"
+        assert z.top == 1.1520  # the near edge is the take-profit draw
+
+    def test_deep_lookback_sees_old_demand_zone(self):
+        # An old demand order block far beyond the 20-bar bias window must still
+        # be detected when the zone lookback is deep (the April-zone-in-June case).
+        rows = []
+        # 30 quiet bars, then a demand OB (bearish base + strong bullish push),
+        # then ~150 quiet bars holding above — the zone stays fresh.
+        for _ in range(30):
+            rows.append((1.1500, 1.1505, 1.1495, 1.1500))
+        rows.append((1.1500, 1.1502, 1.1492, 1.1494))   # bearish base
+        rows.append((1.1494, 1.1560, 1.1493, 1.1558))   # strong bullish displacement
+        for _ in range(150):
+            rows.append((1.1560, 1.1566, 1.1554, 1.1560))
+        df = _make_bars(rows)
+        # Mirror reality: H4 is sliced short by callers, D1 carries deep history.
+        h4_short = df.tail(30)
+
+        deep = HTFAnalyzer(lookback_days=5, d1_zone_lookback_bars=200)
+        zones_deep = deep._find_htf_zones(h4_short, df, [])
+        old_demand = [z for z in zones_deep if z.kind == "demand"
+                      and z.bottom <= 1.1494 <= z.top]
+        assert old_demand, "deep lookback should still see the old demand OB"
+
+        shallow = HTFAnalyzer(lookback_days=5, d1_zone_lookback_bars=20)
+        zones_shallow = shallow._find_htf_zones(h4_short, df, [])
+        old_demand_shallow = [z for z in zones_shallow if z.kind == "demand"
+                              and z.bottom <= 1.1494 <= z.top]
+        assert not old_demand_shallow, "shallow lookback can't reach the old OB"
+
+    def test_mitigated_zone_is_not_a_draw(self):
+        from agent.context.htf_context import StructuralZone
+        ctx = HTFContext(
+            h4_bias=MarketBias.BEARISH, d1_bias=MarketBias.BEARISH,
+            combined_bias=MarketBias.BEARISH, bias_confidence=0.7,
+            sell_aligned=True, buy_aligned=False,
+        )
+        ctx.htf_zones = [
+            StructuralZone(top=1.1520, bottom=1.1480, kind="demand", timeframe="D1",
+                           created_idx=0, mitigated=True),
+        ]
+        assert ctx.nearest_zone_draw("short", entry_price=1.1620) is None
+
+
+def test_reaction_engine_targets_htf_zone_draw():
+    from agent.config import ReactionConfig
+    from agent.reaction.engine import ReactionEngine
+    from tests.test_reaction_engine import bar, flat_series
+
+    # A bearish ignition with an HTF demand draw below should target the draw.
+    bars = flat_series(25, price=1.1600, rng=0.0008)
+    bars.append(bar(1.1600, 1.1601, 1.1518, 1.1520, i=25))  # strong bearish impulse
+    cfg = ReactionConfig(require_level=False, min_rr=1.0)
+    engine = ReactionEngine(cfg)
+    draw = 1.1400  # daily demand top below (far enough for valid RR vs the wide stop)
+    a = engine.assess(bars, atr=0.0020, levels=[], htf_target_short=draw)
+    assert a.fired and a.signal is not None
+    assert a.signal.direction.value == "short"
+    assert a.signal.target_label == "htf_zone_draw"
+    assert abs(a.signal.take_profit - draw) < 1e-9

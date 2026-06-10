@@ -14,6 +14,7 @@ from typing import Callable
 from agent.config import Config
 from agent.live.broker import BrokerConnection, Position
 from agent.live.config import LiveConfig
+from agent.live.soft_stop import SoftStopConfig, evaluate_soft_stop
 from agent.notifications.telegram import TelegramNotifier
 from agent.types import Direction
 from agent.utils import kill_switch_active
@@ -40,6 +41,7 @@ class PositionMonitor:
         notifier: TelegramNotifier | None = None,
         check_interval: float = 5.0,
         trade_closed_cb: Callable[[int, dict], None] | None = None,
+        soft_stop_cfg: SoftStopConfig | None = None,
     ):
         self.broker = broker
         self.config = config
@@ -49,9 +51,18 @@ class PositionMonitor:
         # Optional callback invoked when an open position closes, with
         # (ticket, exit_info dict). Used to journal exits + feed learning.
         self.trade_closed_cb = trade_closed_cb
+        # Synthetic ("soft") stop layer — agent-managed wick-proof exits.
+        self.soft_stop_cfg = soft_stop_cfg or SoftStopConfig(enabled=False)
 
         # Track which positions we've already moved to breakeven
         self._breakeven_applied: set[int] = set()
+        # Track which positions have already booked a partial scale-out
+        self._partial_applied: set[int] = set()
+        # Exit reason recorded when WE close a position (soft stop / breakeven)
+        # so the close handler journals the true cause, not an inferred one.
+        self._forced_exit_reason: dict[int, str] = {}
+        # Per-cycle cache of the latest closed bar by timeframe (soft-stop eval).
+        self._last_closed_bar_cache: dict[str, object] = {}
         # Track known open tickets to detect closes
         self._known_tickets: set[int] = set()
         # Per-ticket entry context registered by the signal loop (signature,
@@ -116,16 +127,86 @@ class PositionMonitor:
                     log.info("Position %d closed (SL/TP or manual)", ticket)
                     self._handle_close(ticket)
                 self._breakeven_applied -= closed_tickets
+                self._partial_applied -= closed_tickets
 
             # Update known tickets
             self._known_tickets = current_tickets
 
-            # Manage each open position
+            # Refresh the closed-bar cache once per cycle for soft-stop checks.
+            self._last_closed_bar_cache = {}
+
+            # Manage each open position: soft stop first (may close), then the
+            # legacy breakeven/trailing logic for anything still open.
             for pos in positions:
+                closed = await self._manage_soft_stop(pos)
+                if closed:
+                    continue
+                if self.live_config.partial_exit_enabled:
+                    await self._manage_partial_scaleout(pos)
                 await self._manage_position(pos)
 
         except Exception as e:
             log.debug("Monitor check error: %s", e)
+
+    async def _latest_closed_price(self, symbol: str, timeframe: str) -> float | None:
+        """Return the close of the most recent CLOSED bar for a timeframe,
+        cached for the current monitoring cycle."""
+        if timeframe in self._last_closed_bar_cache:
+            cached = self._last_closed_bar_cache[timeframe]
+            return cached if cached is not None else None
+        try:
+            bars = await self.broker.get_latest_bars(symbol, timeframe, count=3)
+        except Exception:
+            bars = []
+        close = None
+        if bars and len(bars) >= 2:
+            close = bars[-2].close  # exclude the still-forming bar
+        elif bars:
+            close = bars[-1].close
+        self._last_closed_bar_cache[timeframe] = close
+        return close
+
+    async def _manage_soft_stop(self, pos: Position) -> bool:
+        """Evaluate the agent-managed soft stop for a position. Closes via a
+        market order when the soft level is confirmed broken (close beyond it)
+        or blown clean through intrabar (panic). Returns True if it closed."""
+        if not self.soft_stop_cfg.enabled:
+            return False
+        ctx = self._entry_ctx.get(pos.ticket)
+        if not ctx:
+            return False
+        soft_stop = ctx.get("soft_stop")
+        if soft_stop is None:
+            return False
+        entry = ctx.get("entry", pos.open_price)
+        is_long = pos.direction == Direction.LONG
+        timeframe = ctx.get("timeframe") or (
+            self.live_config.timeframes[0] if self.live_config.timeframes else "H1"
+        )
+        last_closed_price = await self._latest_closed_price(pos.symbol, timeframe)
+
+        decision = evaluate_soft_stop(
+            direction_is_long=is_long,
+            entry=entry,
+            soft_stop=soft_stop,
+            last_closed_price=last_closed_price,
+            current_price=pos.current_price,
+            cfg=self.soft_stop_cfg,
+        )
+        if not decision.should_close:
+            return False
+
+        log.info("SOFT STOP fired for ticket=%d: %s", pos.ticket, decision.detail)
+        result = await self.broker.close_position(pos.ticket, pos.symbol)
+        if result.success:
+            self._forced_exit_reason[pos.ticket] = decision.reason
+            self.notifier.notify_text(
+                f"*Soft stop exit* ticket=`{pos.ticket}`\n`{decision.detail}`"
+            )
+            return True
+        log.error("Soft stop close FAILED for ticket=%d: %s — broker catastrophe "
+                  "stop remains as backstop", pos.ticket, result.message)
+        return False
 
     def _track_excursion(self, pos: Position) -> None:
         """Update running MAE/MFE (in pips) and last-seen state for a position."""
@@ -153,13 +234,16 @@ class PositionMonitor:
         """Reconstruct exit info for a closed ticket and fire the callback."""
         exc = self._excursion.pop(ticket, None)
         ctx = self._entry_ctx.pop(ticket, None)
+        forced_reason = self._forced_exit_reason.pop(ticket, None)
         if self.trade_closed_cb is None:
             return
         exc = exc or {}
         ctx = ctx or {}
         exit_price = exc.get("last_price", ctx.get("entry", 0.0))
         entry_price = ctx.get("entry", exc.get("open_price", exit_price))
-        stop = ctx.get("stop")
+        # Risk is defined by the SOFT stop (the agent's real exit), not the wide
+        # broker catastrophe stop, so R-multiples reflect the intended risk.
+        stop = ctx.get("soft_stop", ctx.get("stop"))
         tp = ctx.get("take_profit")
         direction = ctx.get("direction", exc.get("direction", "long"))
         if direction == "long":
@@ -170,16 +254,20 @@ class PositionMonitor:
         r_multiple = (pnl_pips / stop_pips) if stop_pips > 0 else 0.0
         pnl = exc.get("last_profit", 0.0)
 
-        # Infer exit reason from proximity to TP/SL.
-        reason = "manual"
-        if tp is not None and abs(exit_price - tp) * 10000 <= 3:
-            reason = "tp"
-        elif stop is not None and abs(exit_price - stop) * 10000 <= 3:
-            reason = "sl"
-        elif pnl_pips > 0:
-            reason = "tp"
-        elif pnl_pips < 0:
-            reason = "sl"
+        # Prefer the true reason if WE closed it (soft stop / breakeven); else
+        # infer from proximity to TP/SL.
+        if forced_reason:
+            reason = forced_reason
+        else:
+            reason = "manual"
+            if tp is not None and abs(exit_price - tp) * 10000 <= 3:
+                reason = "tp"
+            elif stop is not None and abs(exit_price - stop) * 10000 <= 3:
+                reason = "sl"
+            elif pnl_pips > 0:
+                reason = "tp"
+            elif pnl_pips < 0:
+                reason = "sl"
 
         info = {
             "exit_price": exit_price,
@@ -196,6 +284,61 @@ class PositionMonitor:
         except Exception as e:  # never let journaling crash the monitor
             log.warning("trade_closed_cb failed for ticket %d: %s", ticket, e)
 
+    def _r_multiple(self, pos: Position) -> tuple[float, float]:
+        """Return (R-multiple of current MFE, stop distance in pips) for a
+        position, measured against the SOFT stop (real risk) when present."""
+        if pos.direction == Direction.LONG:
+            mfe_pips = (pos.current_price - pos.open_price) * 10000
+        else:
+            mfe_pips = (pos.open_price - pos.current_price) * 10000
+        ctx = self._entry_ctx.get(pos.ticket) or {}
+        soft_stop = ctx.get("soft_stop")
+        entry = ctx.get("entry", pos.open_price)
+        if soft_stop is not None:
+            stop_distance_pips = abs(entry - soft_stop) * 10000
+        else:
+            stop_distance_pips = abs(pos.open_price - pos.stop_loss) * 10000
+        if stop_distance_pips == 0:
+            return 0.0, 0.0
+        return mfe_pips / stop_distance_pips, stop_distance_pips
+
+    async def _manage_partial_scaleout(self, pos: Position) -> bool:
+        """Book a partial at `partial_at_r` R and (optionally) push the rest to
+        break-even, letting the runner chase the draw. Phase C — DEFAULT OFF; see
+        LiveConfig.partial_exit_enabled for why. Returns True if it scaled out."""
+        if pos.ticket in self._partial_applied:
+            return False
+        r_multiple, _ = self._r_multiple(pos)
+        if r_multiple < self.live_config.partial_at_r:
+            return False
+
+        close_vol = round(pos.volume * self.live_config.partial_fraction, 2)
+        if close_vol <= 0 or close_vol >= pos.volume:
+            return False  # too small to split (or would close the whole thing)
+
+        result = await self.broker.close_position(pos.ticket, pos.symbol, volume=close_vol)
+        if not result.success:
+            log.warning("Partial scale-out failed for ticket=%d: %s", pos.ticket, result.message)
+            return False
+        self._partial_applied.add(pos.ticket)
+        log.info("PARTIAL scale-out: ticket=%d closed %.2f of %.2f lots at %.2fR",
+                 pos.ticket, close_vol, pos.volume, r_multiple)
+        self.notifier.notify_text(
+            f"*Partial scale-out* ticket=`{pos.ticket}`\n"
+            f"closed `{close_vol:.2f}` lots at `{r_multiple:.1f}R`, runner chasing draw"
+        )
+
+        # Push the runner to break-even so the banked move can't turn into a loss.
+        if self.live_config.partial_move_to_be and pos.ticket not in self._breakeven_applied:
+            new_stop = pos.open_price
+            if self._is_better_stop(pos, new_stop):
+                be = await self.broker.modify_position(pos.ticket, pos.symbol, stop=new_stop)
+                if be.success:
+                    self._breakeven_applied.add(pos.ticket)
+                    if pos.ticket in self._entry_ctx and self._entry_ctx[pos.ticket].get("soft_stop") is not None:
+                        self._entry_ctx[pos.ticket]["soft_stop"] = new_stop
+        return True
+
     async def _manage_position(self, pos: Position) -> None:
         """Apply breakeven and trailing stop logic to a single position."""
         # Calculate how far price has moved in our favor (in pips)
@@ -204,7 +347,16 @@ class PositionMonitor:
         else:
             mfe_pips = (pos.open_price - pos.current_price) * 10000
 
-        stop_distance_pips = abs(pos.open_price - pos.stop_loss) * 10000
+        # R is measured against the SOFT stop (real risk) when we have one, not
+        # the wide broker catastrophe stop — otherwise breakeven would trigger
+        # far too late.
+        ctx = self._entry_ctx.get(pos.ticket) or {}
+        soft_stop = ctx.get("soft_stop")
+        entry = ctx.get("entry", pos.open_price)
+        if soft_stop is not None:
+            stop_distance_pips = abs(entry - soft_stop) * 10000
+        else:
+            stop_distance_pips = abs(pos.open_price - pos.stop_loss) * 10000
         if stop_distance_pips == 0:
             return
 
@@ -227,6 +379,10 @@ class PositionMonitor:
                 )
                 if result.success:
                     self._breakeven_applied.add(pos.ticket)
+                    # Pull the in-memory soft stop up to breakeven too, so the
+                    # agent-managed exit also protects the locked-in level.
+                    if soft_stop is not None and pos.ticket in self._entry_ctx:
+                        self._entry_ctx[pos.ticket]["soft_stop"] = new_stop
                     log.info(
                         "Moved to breakeven: ticket=%d new_sl=%.5f (was %.5f, at %.1fR)",
                         pos.ticket, new_stop, pos.stop_loss, r_multiple,

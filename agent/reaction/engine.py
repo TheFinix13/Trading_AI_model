@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from agent.config import ReactionConfig
 from agent.detectors.daily_levels import DailyLevels
+from agent.detectors.liquidity_magnet import RangeLiquidity
 from agent.detectors.pd_array import find_draw_on_liquidity
 from agent.reaction.components import ReactionComponents, compute_components
 from agent.types import Bar, Direction, Swing
@@ -55,6 +56,7 @@ class ReactionAssessment:
     fired: bool
     rejection: str
     signal: "ReactionSignal | None"
+    is_impulse: bool = False
 
 
 @dataclass
@@ -71,6 +73,7 @@ class ReactionSignal:
     level_label: str = ""
     level_kind: str = ""
     is_breakout: bool = False
+    is_impulse: bool = False
     target_label: str = "fallback_rr"
     agreement: float = 1.0
 
@@ -146,6 +149,36 @@ class ReactionEngine:
     # Level context
     # ------------------------------------------------------------------
 
+    def _draw_bias(
+        self, direction: Direction, entry: float, range_liq: RangeLiquidity | None
+    ) -> tuple[float, str]:
+        """Bias conviction by where price sits in the dealing range (ERL framing).
+
+        Price in the **premium** (upper part) of the range is being drawn toward
+        the external buy-side pool; a fresh LONG there is *chasing into liquidity*
+        (penalised), while a SHORT is *fading the draw* (boosted). Symmetric in
+        the **discount**. Mid-range is neutral. This is the reel's thesis encoded:
+        external liquidity tells you where price wants to go — you fade it there.
+        """
+        if range_liq is None or not self.cfg.liquidity_magnet_enabled:
+            return 0.0, ""
+        h = range_liq.height
+        if h <= 0:
+            return 0.0, ""
+        pos = (entry - range_liq.erl_low) / h  # 0 = at range low, 1 = at high
+        prem = self.cfg.range_premium_frac
+        boost = self.cfg.magnet_conviction_boost
+        pen = self.cfg.magnet_chase_penalty
+        if pos >= prem:  # premium — external draw is the buy-side pool above
+            if direction == Direction.SHORT:
+                return +boost, "fading the buy-side draw from premium"
+            return -pen, "chasing a long into the buy-side draw (premium)"
+        if pos <= (1.0 - prem):  # discount — external draw is the sell-side below
+            if direction == Direction.LONG:
+                return +boost, "fading the sell-side draw from discount"
+            return -pen, "chasing a short into the sell-side draw (discount)"
+        return 0.0, "mid-range (no draw bias)"
+
     def _level_context(
         self,
         bar: Bar,
@@ -210,9 +243,17 @@ class ReactionEngine:
         stop: float,
         daily_levels: DailyLevels | None,
         swings: list[Swing] | None,
+        htf_draw: float | None = None,
     ) -> tuple[float, str]:
-        """Target the next unswept PD-array / liquidity level; fall back to RR."""
+        """Target the draw: prefer a fresh HTF zone the move is heading toward,
+        then the next unswept PD-array / liquidity level; fall back to RR."""
         stop_dist = abs(entry - stop)
+        # 1) A fresh higher-timeframe demand/supply zone ahead is the strongest
+        #    draw (the daily zone the impulse is being pulled into).
+        if htf_draw is not None and stop_dist > 0:
+            ahead = (htf_draw > entry) if direction == Direction.LONG else (htf_draw < entry)
+            if ahead and (abs(htf_draw - entry) / stop_dist) >= self.cfg.min_rr:
+                return htf_draw, "htf_zone_draw"
         target = find_draw_on_liquidity(
             bars,
             at_index,
@@ -245,6 +286,10 @@ class ReactionEngine:
         daily_levels: DailyLevels | None = None,
         swings: list[Swing] | None = None,
         conviction_threshold: float | None = None,
+        range_liq: RangeLiquidity | None = None,
+        htf_target_long: float | None = None,
+        htf_target_short: float | None = None,
+        session_label: str | None = None,
     ) -> ReactionSignal | None:
         """Evaluate committed price action on the just-closed bar(s).
 
@@ -259,6 +304,10 @@ class ReactionEngine:
             daily_levels=daily_levels,
             swings=swings,
             conviction_threshold=conviction_threshold,
+            range_liq=range_liq,
+            htf_target_long=htf_target_long,
+            htf_target_short=htf_target_short,
+            session_label=session_label,
         ).signal
 
     def assess(
@@ -271,6 +320,10 @@ class ReactionEngine:
         daily_levels: DailyLevels | None = None,
         swings: list[Swing] | None = None,
         conviction_threshold: float | None = None,
+        range_liq: RangeLiquidity | None = None,
+        htf_target_long: float | None = None,
+        htf_target_short: float | None = None,
+        session_label: str | None = None,
     ) -> ReactionAssessment:
         """Like :meth:`evaluate` but always returns a full diagnostic, even when
         no signal fires (so the explainer can show the scores every bar)."""
@@ -300,6 +353,18 @@ class ReactionEngine:
 
         conviction, agreement = self._conviction(comp)
 
+        # ERL draw bias: fade external draws, don't chase into them.
+        draw_delta, draw_note = self._draw_bias(
+            comp.direction, bars[-1].close, range_liq
+        )
+        if draw_delta:
+            conviction = max(0.0, min(1.0, conviction + draw_delta))
+
+        # Session is intentionally NOT folded into conviction here. In v2 it is
+        # an explicit ablation axis (see docs/audit/preservation_list.md §I).
+        # The `session_label` parameter is preserved for downstream tagging only.
+        _ = session_label
+
         levels = levels or []
         nearest, is_breakout = self._level_context(
             bars[-1], comp.direction, atr, levels, comp.displacement
@@ -314,12 +379,22 @@ class ReactionEngine:
                 signal=None,
             )
 
-        if self.cfg.require_level and nearest is None:
+        # Is this a genuine impulse? A clean volatility-ignition move that may
+        # fire WITHOUT an adjacent marked level (reacting to the move itself).
+        is_impulse = (
+            self.cfg.impulse_override_enabled
+            and conviction >= self.cfg.impulse_min_conviction
+            and comp.displacement >= self.cfg.impulse_min_displacement
+            and comp.expansion >= self.cfg.impulse_min_expansion
+        )
+
+        if self.cfg.require_level and nearest is None and not is_impulse:
             return ReactionAssessment(
                 components=comp, conviction=conviction, agreement=agreement,
                 threshold=threshold, direction=comp.direction, level=None,
                 is_breakout=False, fired=False,
-                rejection="no level of interest at price", signal=None,
+                rejection="no level of interest at price (and not a clean impulse)",
+                signal=None, is_impulse=False,
             )
 
         bar = bars[-1]
@@ -331,9 +406,14 @@ class ReactionEngine:
                 threshold=threshold, direction=comp.direction, level=nearest,
                 is_breakout=is_breakout, fired=False,
                 rejection="degenerate stop distance", signal=None,
+                is_impulse=is_impulse,
             )
+        htf_draw = (
+            htf_target_long if comp.direction == Direction.LONG else htf_target_short
+        )
         tp, target_label = self._target(
-            bars, len(bars) - 1, comp.direction, entry, stop, daily_levels, swings
+            bars, len(bars) - 1, comp.direction, entry, stop, daily_levels, swings,
+            htf_draw=htf_draw,
         )
 
         signal = ReactionSignal(
@@ -347,6 +427,7 @@ class ReactionEngine:
             level_label=nearest.label if nearest else "",
             level_kind=nearest.kind if nearest else "",
             is_breakout=is_breakout,
+            is_impulse=is_impulse and nearest is None,
             target_label=target_label,
             agreement=agreement,
         )
@@ -356,13 +437,14 @@ class ReactionEngine:
                 threshold=threshold, direction=comp.direction, level=nearest,
                 is_breakout=is_breakout, fired=False,
                 rejection=f"R:R {signal.rr:.1f} < {self.cfg.min_rr}",
-                signal=None,
+                signal=None, is_impulse=is_impulse,
             )
         signal.rationale = self._rationale(signal, anticipated_direction)
         return ReactionAssessment(
             components=comp, conviction=conviction, agreement=agreement,
             threshold=threshold, direction=comp.direction, level=nearest,
             is_breakout=is_breakout, fired=True, rejection="", signal=signal,
+            is_impulse=is_impulse and nearest is None,
         )
 
     def _rationale(
@@ -376,6 +458,11 @@ class ReactionEngine:
         if sig.level_label:
             verb = "breaking through" if sig.is_breakout else "reacting at"
             parts.append(f"Price {verb} {sig.level_label} [{sig.level_kind}].")
+        elif sig.is_impulse:
+            parts.append(
+                "Reacting to a clean impulse in open space (displacement + "
+                "volatility ignition) — no adjacent level required."
+            )
         parts.append(
             f"Target {sig.target_label} @ {sig.take_profit:.5f} "
             f"(R:R 1:{sig.rr:.1f}, stop {sig.stop_pips:.0f}p)."

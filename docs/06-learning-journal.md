@@ -1,5 +1,15 @@
 # 06 — Learning Journal & Performance Memory
 
+> ⚠️ **PARTLY HISTORICAL.** The per-day live journal (`agent/journal/live_journal.py`,
+> markdown + JSONL) survives in v2. The **online performance memory** (06.6) was
+> **burned in the 2026-06-09 reset** (`agent/journal/performance_memory.py` no
+> longer exists): feeding realised results back into conviction mid-flight is
+> exactly the kind of in-sample adaptation the validated pipeline forbids —
+> strategy changes now only happen through the ablation/walk-forward gates. The
+> learning *backtest* referenced below was also burned. A live trade journal +
+> live-vs-backtest distribution monitor is the planned v2 replacement — see
+> [CHECKPOINT.md](CHECKPOINT.md).
+
 > Part of the numbered docs — start at [00 — Overview](00-overview.md). The trades
 > recorded here come from [04 — Reaction Engine](04-reaction-engine.md) /
 > [02 — Strategies](02-strategies.md) and are sized per
@@ -107,6 +117,12 @@ At each day rollover the journal writes a roll-up:
   (detected) vs *acted* (taken), the win-rate/expectancy of those acted, declined
   count, and (backtest) how many declined would have won — plus which perspective
   paid the most.
+- **Directional-bias sanity check** — splits closed trades by whether they traded
+  **with** or **against** the HTF bias (`htf_aligned`), reports each side's win-rate
+  + expectancy, and flags `⚠️ FIGHTING THE TREND` when a meaningful share of trades
+  went counter-trend and lost. This is the journal-side guard against the
+  post-mortem's most expensive habit — being net-long a bearish week.
+  (`directional_bias_check` in `agent/journal/live_journal.py`.)
 
 ```
 ## Daily Roll-up
@@ -120,6 +136,9 @@ At each day rollover the journal writes a roll-up:
 - **Anticipated vs reactive scorecard:**
   - **reaction:** marked 11 / acted 2 / declined 9 | win 50% | exp +0.47R | declined-would-have-won 3
   - **Paid the most:** reaction
+- **Directional-bias sanity check (rolling):**
+  - with-bias: 3 trades, win 67%, exp +0.55R | against-bias: 4 trades, win 25%, exp -0.50R
+  - ⚠️ FIGHTING THE TREND — 4/7 trades went against the HTF bias at -0.50R vs +0.55R with-trend. Favour with-bias setups.
 - **Declined setups:** 9 (of which 3 would have won — filter may be too strict)
 ```
 

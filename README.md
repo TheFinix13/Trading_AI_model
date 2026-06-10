@@ -1,34 +1,37 @@
 # EURUSD AI Trading Agent
 
-A self-learning AI trading agent for **EURUSD on Exness MT5** that codifies a personal
-discretionary trading style — **supply/demand zones with break-of-structure confirmation,
-support/resistance trendlines, Fair Value Gaps, Fibonacci 50/61.8 retracements, and
-liquidity wicks** — into a fully audited, backtestable, ML-augmented system.
+> ⚠️ **STATUS (2026-06-10): much of this README is HISTORICAL.** It describes
+> the v1 multi-concept system (strategy ensembles, ML scorers, reaction-engine
+> modes, dashboard) that was **burned in the 2026-06-09 reset** after its
+> results proved to be overfitting. What trades live today is a single
+> statistically-validated strategy — `zone_d1_against` (H4 supply/demand zone
+> faded against the D1 trend) — deployed through a multi-symbol router on
+> **EURUSD (risk 1.0), GBPUSD (0.5), USDCAD (0.5)**. `scripts/run_live.py`
+> trades the router by default; the old `ReactionAlpha` survives only as an
+> experimental `--alpha reaction` escape hatch. Read first:
+> **[docs/00-journey.md](docs/00-journey.md)** (how we got here) and
+> **[docs/CHECKPOINT.md](docs/CHECKPOINT.md)** (current state + evidence).
 
-The system is designed to take a $100 demo account to $1,000 before any live capital
-is risked. It is **not** a black box: every trade it takes can be opened up and
-explained in plain English, with the exact confluences, market state at entry, ML
-scoring rationale, and outcome.
+A trading agent for **FX majors on Exness MT5** that grew out of codifying a
+personal discretionary ICT style and matured — through a reset, single-concept
+ablation, and a walk-forward + frozen cross-pair validation gauntlet — into a
+small, evidence-gated zone-fade portfolio.
 
 ---
 
 ## Documentation
 
-Full docs are numbered so you can read the build top-to-bottom. Start at
-**[docs/00-overview.md](docs/00-overview.md)**.
+Start at **[docs/00-overview.md](docs/00-overview.md)** (the index with status
+flags per doc). The two living documents:
 
-| # | Doc | What's inside |
-|---|-----|---------------|
-| 00 | [Overview & Index](docs/00-overview.md) | Numbered table of contents + build-phase map. |
-| 01 | [Strategy Architecture](docs/01-strategy-architecture.md) | Pipeline; detectors, gate profiles, confluence optimizer. |
-| 02 | [Strategies](docs/02-strategies.md) | LZI, FVG, SD zones, BOS, Fibs. |
-| 03 | [HTF Context & Pattern Mechanics](docs/03-htf-context-and-pattern-mechanics.md) | How each ICT concept is detected and when it's valid. |
-| 04 | [Reaction Engine & Flip](docs/04-reaction-engine.md) | Present-time commitment engine + anticipation→reaction flip + modes. |
-| 05 | [Position Sizing & Risk](docs/05-position-sizing-and-risk.md) | Conviction-scaled risk-based sizing + risk controls. |
-| 06 | [Learning Journal & Performance Memory](docs/06-learning-journal.md) | Per-day logs, attribution, calibration, declined setups, online memory. |
-| 07 | [Backtesting](docs/07-backtesting.md) | Standard portfolio backtest + learning backtest. |
-| 08 | [Live Trading & Deployment](docs/08-live-trading-and-deployment.md) | Windows/VM, Exness/MT5, chart overlay EA. |
-| 09 | [Dashboard](docs/09-dashboard.md) | FastAPI dashboard routes + CLIs. |
+| Doc | What's inside |
+|---|---|
+| **[docs/00-journey.md](docs/00-journey.md)** | The full narrative: v1 era → reset → ablation funnel → zone-only → validation → multi-symbol deployment. With diagrams. |
+| **[docs/CHECKPOINT.md](docs/CHECKPOINT.md)** | Current-state snapshot: deployed cells, evidence, methodology gates, parked work, checkpoint routine. |
+
+Numbered docs 01–07 and 09 are **historical** (v1 world, banners at the top of
+each); [docs/08](docs/08-live-trading-and-deployment.md) is current (router-based
+live trading and deployment).
 
 ---
 

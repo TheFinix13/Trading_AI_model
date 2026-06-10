@@ -1,10 +1,25 @@
 # EURUSD AI Trading Agent — Strategy Architecture
 
-**Last updated:** 2026-06-08
-**Status:** Profitable on OOS data (PF 1.12, +10.4%, Sharpe 0.72). Now augmented
-with a present-time **reaction engine** ([04](04-reaction-engine.md)),
+> ⚠️ **HISTORICAL — superseded by the zone-only validated pipeline.** This doc
+> describes the **v1 multi-strategy stack** (LZI/FVG/SD-zone strategies, gate
+> profiles, confluence optimizer, ML scorers, regime router, dashboard). That
+> stack was **burned in the 2026-06-09 reset** after its OOS numbers proved to be
+> overfitting; its concepts were then tested ALONE in the ablation grid and all
+> but the supply/demand zone were **eliminated with data**. The "lead candidate"
+> below (reaction + ERL/IRL) was likewise superseded: under the v2 fair-shot
+> grids it showed no BH-significant edge. What trades live today is the
+> **zone_d1_against router deployment** — see [00-journey.md](00-journey.md) and
+> [CHECKPOINT.md](CHECKPOINT.md). Most modules referenced below no longer exist
+> (see [audit/README.md](audit/README.md) for the burn list).
+
+**Last updated:** 2026-06-09 (frozen as historical 2026-06-10)
+**Status (at the time):** Under honest revalidation. The stacked rule engine's tuned OOS numbers
+(PF 1.12, +10.4%, Sharpe 0.72) **do not survive** purged walk-forward (Phase A) and
+isolated per-alpha measurement (Phase B) — see [10](10-quant-validation-and-modular-overhaul.md).
+The system carries a present-time **reaction engine** ([04](04-reaction-engine.md)),
 **risk-based adaptive sizing** ([05](05-position-sizing-and-risk.md)), and an
-**online learning** loop ([06](06-learning-journal.md)).
+**online learning** loop ([06](06-learning-journal.md)); the current lead candidate
+is the reaction engine + ERL/IRL liquidity magnets (see the modular-alpha section below).
 
 > Part of the numbered docs — start at [00 — Overview](00-overview.md).
 
@@ -354,6 +369,56 @@ log examples and run commands: **[04 — Reaction Engine](04-reaction-engine.md)
 
 ---
 
+## Modular alpha layer (decomposition for honest measurement)
+
+> ⚠️ **Important caveat on the OOS table above.** Those numbers come from the
+> *stacked* rule engine. When the same concepts are measured **in isolation under
+> a clean fill model** (Phase B), none of the five anticipation strategies shows a
+> standalone out-of-sample edge, and a fill-state **look-ahead** was found to have
+> inflated FVG results. Treat the stacked numbers with suspicion until the
+> rebuild lands. Full diagnosis: [10 — Quant Validation & Modular Overhaul](10-quant-validation-and-modular-overhaul.md).
+
+To fight overfitting we decomposed the tangled engine into **alphas** — one
+isolated trading concept each — that can be kept or cut individually on data we
+haven't fit to. See `agent/alphas/`.
+
+- **`Alpha` interface** (`agent/alphas/base.py`): `signal(actx, i) -> AlphaSignal|None`.
+  Causal by contract (uses only `bars[:i+1]`). Strategies and the reaction engine
+  are wrapped as alphas via thin adapters.
+- **Isolated fill model** (`agent/alphas/backtest.py`): every alpha runs through
+  the *same* simulator — market entry on the next open, stop/TP **re-anchored to
+  the fill** with the signal's own risk geometry, intra-bar worst-case SL, one
+  position at a time. No gates, no ML, no BE migration: we measure each concept's
+  *raw* edge, not the gated blob. A causal FVG fill-state tracker prevents the
+  look-ahead leak described in doc 10.
+- **Per-alpha scorecards** (`scripts/evaluate_alphas.py`): expectancy / PF / WR /
+  Sharpe / maxDD with bootstrap CIs, and a sample-size guard (a great win rate over
+  a handful of trades is flagged `thin`, not `EDGE`).
+- **Correlation-aware meta-allocator** (`agent/alphas/allocator.py`): mean-variance
+  (tangency) weights with covariance shrinkage, long-only, so two alphas firing the
+  same trade don't double-size. Reports the ensemble vs the best single alpha.
+
+**Current standings (dev span H1, 2015→2025-12).** The five anticipation
+strategies are all noise/negative standalone. The reaction engine alone is a coin
+flip. The **reaction engine + ERL/IRL liquidity magnets** is the single best alpha
+(expectancy +5.47 pips, PF 1.16, maxDD 10.1%, Sharpe 0.92) with a CI lower bound
+just below zero — promoted to **lead candidate**, pending sealed-test confirmation,
+and handed **79.8%** of the correlation-aware book (the ensemble doesn't beat it
+alone). See the full table in [10 §10.4](10-quant-validation-and-modular-overhaul.md).
+
+**Reaction-engine variants under measurement.** Because the reaction path is the
+lead, its risk/targeting nuances are scored as sibling alphas rather than baked in:
+`reaction_erl_irl` (ERL/IRL magnets), `reaction_htf_draws` and
+`reaction_erl_irl_htf` (target the **deep daily demand/supply draw** — built
+causally over the full series, symmetric for supply-above and demand-below, see
+`agent/context/htf_draws.py`), plus an optional managed-exit (partial scale-out)
+A/B via `--manage`. Findings so far: partial scaling and deep-draw targeting are
+each **net-neutral-to-negative** on the lead alpha (deep draws *do* cut drawdown ~⅓
+on the ERL variant) — so both ship measured-but-off, and the runner-to-nearest-draw
+default stands. Detail in [10 §10.5](10-quant-validation-and-modular-overhaul.md).
+
+---
+
 ## What's Next
 
 1. Train FVG-specific and SD Zone-specific scorers (like we did for LZI)
@@ -371,5 +436,5 @@ an online performance-memory feedback loop, and a learning backtest
 
 ---
 
-*This document is the single source of truth for the trading strategy. 
-Update it whenever strategies are modified.*
+*This document was the v1 source of truth. It is preserved as history; the
+current source of truth is [CHECKPOINT.md](CHECKPOINT.md).*

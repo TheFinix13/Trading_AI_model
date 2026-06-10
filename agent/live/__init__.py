@@ -1,7 +1,7 @@
 """Live trading module — real-time signal detection and execution.
 
 Usage:
-    from agent.live.signal_loop import SignalLoop, run_signal_loop
+    from agent.live.signal_loop import SignalLoop
     from agent.live.broker import PaperBroker, MT5Broker, ExnessDemoBroker, create_broker
     from agent.live.monitor import PositionMonitor
     from agent.live.config import LiveConfig
@@ -18,7 +18,7 @@ from agent.live.broker import (
 )
 from agent.live.config import LiveConfig
 from agent.live.monitor import PositionMonitor
-from agent.live.signal_loop import SignalLoop, run_signal_loop
+from agent.live.signal_loop import SignalLoop
 
 __all__ = [
     "AccountInfo",
@@ -32,5 +32,4 @@ __all__ = [
     "PositionMonitor",
     "SignalLoop",
     "create_broker",
-    "run_signal_loop",
 ]

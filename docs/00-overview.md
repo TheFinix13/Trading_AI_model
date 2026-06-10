@@ -1,42 +1,50 @@
 # 00 — Overview & Documentation Index
 
-The EURUSD AI Trading Agent codifies a discretionary ICT trading style into an
-audited, backtestable, ML-augmented system that runs live on Exness MT5. It is not a
-black box: every trade can be opened up and explained in plain English.
+**Current system (2026-06-10):** the agent trades the **validated zone-fade
+strategy** (`zone_d1_against`) through a multi-symbol deployment router —
+EURUSD/GBPUSD/USDCAD on H4 — after a full reset, single-concept ablation, and a
+walk-forward + frozen cross-pair validation gauntlet. Start here:
 
-These docs are numbered so you can read the build top-to-bottom — from how the market
-is read, through the strategies and the present-time reaction engine, to sizing,
-learning, backtesting, and live deployment.
+| Doc | What's inside |
+|---|---|
+| **[00-journey.md](00-journey.md)** | **The full narrative** — v1 multi-concept era → reset → ablation funnel → zone-only → validation gauntlet → multi-symbol deployment. Diagrams included. |
+| **[CHECKPOINT.md](CHECKPOINT.md)** | **Current-state snapshot** — deployed cells, evidence, validation gates, parked work, the checkpoint routine. |
+| [audit/README.md](audit/README.md) | The v2 reset record — what was kept, what was burned, why. |
+| [reviews/](reviews/) | Dated evidence record (walk-forward, cross-pair tests, week reviews). Never deleted. |
 
-## Numbered index
+## Numbered docs — status key
 
-| # | Doc | What's inside |
-|---|-----|---------------|
-| 00 | **Overview** (this file) | The numbered table of contents and build-phase map. |
-| 01 | [Strategy Architecture](01-strategy-architecture.md) | End-to-end pipeline. **01.1** detectors · **01.2** gate profiles · **01.3** confluence optimizer (+ SQS rankings, regime router). |
-| 02 | [Strategies](02-strategies.md) | **02.1** LZI retest · **02.2** FVG retest · **02.3** SD zones · **02.4** BOS · **02.5** Fibs. |
-| 03 | [HTF Context & Pattern Mechanics](03-htf-context-and-pattern-mechanics.md) | How each ICT concept is detected and when it's valid; HTF bias, sweeps, sessions, Power of Three. |
-| 04 | [Reaction Engine & Anticipation→Reaction Flip](04-reaction-engine.md) | Present-time commitment engine, the flip, and `--mode`. |
-| 05 | [Position Sizing & Risk](05-position-sizing-and-risk.md) | Conviction-scaled risk-based sizing + hard risk controls. |
-| 06 | [Learning Journal & Performance Memory](06-learning-journal.md) | Per-day logs, attribution, counterfactual, calibration, declined setups, online memory. |
-| 07 | [Backtesting](07-backtesting.md) | **07.1** standard portfolio backtest · **07.2** learning backtest (+ data sources). |
-| 08 | [Live Trading & Deployment](08-live-trading-and-deployment.md) | **08.1** Windows/VM · **08.2** Exness/MT5 connection · **08.3** MT5 chart overlay EA. |
-| 09 | [Dashboard](09-dashboard.md) | FastAPI dashboard routes, API, and related CLIs. |
+Most numbered docs below describe the **v1 world** that the reset and the
+ablation pipeline superseded. They are kept as historical context (the concepts
+they describe were eliminated with data, and the docs explain what those concepts
+were). Each carries a status banner at the top.
 
-## Build phases (read in order)
+| # | Doc | Status |
+|---|-----|--------|
+| 00 | **Overview** (this file) | current |
+| 01 | [Strategy Architecture](01-strategy-architecture.md) | **HISTORICAL** — v1 multi-strategy/ML/confluence stack, burned in the reset |
+| 02 | [Strategies](02-strategies.md) | **HISTORICAL** — LZI/FVG/SD-zone/BOS/fib playbook; all but the zone concept eliminated |
+| 03 | [HTF Context & Pattern Mechanics](03-htf-context-and-pattern-mechanics.md) | **PARTLY HISTORICAL** — detector mechanics still exist in code; v1 audit claims and ERL/IRL framing superseded |
+| 04 | [Reaction Engine](04-reaction-engine.md) | **HISTORICAL** — reaction engine is now an experimental escape hatch only |
+| 05 | [Position Sizing & Risk](05-position-sizing-and-risk.md) | **PARTLY CURRENT** — sizer/guards/soft-stop live on; the v1 study sections are historical |
+| 06 | [Learning Journal](06-learning-journal.md) | **PARTLY HISTORICAL** — per-day journal survives; online performance memory was burned |
+| 07 | [Backtesting](07-backtesting.md) | **HISTORICAL** — v1 backtesters burned; see the validation scripts in [CHECKPOINT.md](CHECKPOINT.md) |
+| 08 | [Live Trading & Deployment](08-live-trading-and-deployment.md) | **current** — updated for the router-based live loop |
+| 09 | [Dashboard](09-dashboard.md) | **HISTORICAL** — the dashboard was burned in the reset |
+| 10 | [Quant Validation & Modular Overhaul](10-quant-validation-and-modular-overhaul.md) | **HISTORICAL** — the plan that led to the reset; its Phase A–D findings are preserved |
 
-1. **Read the market** — [03](03-htf-context-and-pattern-mechanics.md) (mechanics) →
-   [01](01-strategy-architecture.md) (architecture).
-2. **Find setups** — [02](02-strategies.md) (anticipation strategies) +
-   [04](04-reaction-engine.md) (present-time reaction).
-3. **Commit risk** — [05](05-position-sizing-and-risk.md) (sizing + risk gates).
-4. **Learn** — [06](06-learning-journal.md) (journal + online performance memory).
-5. **Validate** — [07](07-backtesting.md) (standard + learning backtests).
-6. **Deploy** — [08](08-live-trading-and-deployment.md) (Windows/Exness/MT5) +
-   [09](09-dashboard.md) (monitoring).
+## How to validate / deploy anything today
+
+The pipeline of record (detail in [CHECKPOINT.md](CHECKPOINT.md)):
+
+1. Stage-1 ablation grid (`scripts/run_ablation.py`, `scripts/run_zone_all_tfs.py`) — BH-FDR 5%.
+2. Holdout (`scripts/run_holdout_validation.py`).
+3. Walk-forward (`scripts/run_walk_forward.py` + `scripts/analyze_walk_forward.py`).
+4. Frozen cross-pair transfer for new symbols (`scripts/run_cross_pair_frozen.py`).
+5. Router entry (`agent/alphas/zone_routing.py`) gated by `tests/test_zone_routing.py`.
+6. Live at half risk until live results confirm (`scripts/run_live.py`).
 
 ## Archived docs
 
-Earlier status reports, roadmaps, and superseded guides are preserved (not deleted)
-under [`archive/`](archive/) — see [`archive/README.md`](archive/README.md) for what
-moved where.
+Earlier status reports, roadmaps, and superseded guides are preserved (not
+deleted) under [`archive/`](archive/) — see [`archive/README.md`](archive/README.md).

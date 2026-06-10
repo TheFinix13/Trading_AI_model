@@ -52,6 +52,11 @@ class GuardConfig:
     # a margin stop-out / account-killer trade.
     catastrophic_loss_frac: float = 0.10
     halt_on_stop_out: bool = True
+    # A strong reaction OPPOSITE to the losing trade may bypass the cooldown (a
+    # flip into a committed reversal is not revenge). 0 disables. The circuit
+    # breaker / stop-out halt are never bypassable.
+    cooldown_override_conviction: float = 0.80
+    cooldown_override_opposite_only: bool = True
 
 
 @dataclass
@@ -74,6 +79,7 @@ class PostLossGuard:
         self.cooldown_until_bar: int | None = None
         self.session_halted = False
         self.halt_reason = ""
+        self.last_loss_direction: str | None = None
         self._day: date | None = None
 
     # ------------------------------------------------------------------
@@ -97,6 +103,7 @@ class PostLossGuard:
             self.cooldown_until_bar = None
             self.session_halted = False
             self.halt_reason = ""
+            self.last_loss_direction = None
 
     # ------------------------------------------------------------------
     # Outcome recording
@@ -111,12 +118,15 @@ class PostLossGuard:
         now: datetime | None = None,
         bar_index: int | None = None,
         account_balance: float | None = None,
+        direction: str | None = None,
     ) -> None:
         """Update guard state from a just-closed trade.
 
         A loss starts the cooldown, halves the next trade's risk, and counts
         toward the circuit breaker. A win clears the loss streak and restores
-        full size. A scratch (pnl == 0) is neutral.
+        full size. A scratch (pnl == 0) is neutral. ``direction`` ("long"/"short")
+        is remembered on a loss so a later opposite-direction reaction can be let
+        through the cooldown (a flip is not revenge).
         """
         if not self.cfg.enabled:
             return
@@ -125,6 +135,7 @@ class PostLossGuard:
         if pnl < 0:
             self.consecutive_losses += 1
             self.size_multiplier = self.cfg.loss_risk_multiplier
+            self.last_loss_direction = (direction or "").lower() or None
 
             if now is not None and self.cfg.cooldown_minutes > 0:
                 self.cooldown_until = now + timedelta(minutes=self.cfg.cooldown_minutes)
@@ -168,9 +179,17 @@ class PostLossGuard:
     # ------------------------------------------------------------------
 
     def pre_trade_check(
-        self, now: datetime | None = None, bar_index: int | None = None
+        self,
+        now: datetime | None = None,
+        bar_index: int | None = None,
+        reaction_conviction: float | None = None,
+        direction: str | None = None,
     ) -> GuardDecision:
-        """Decide whether a new entry is allowed right now."""
+        """Decide whether a new entry is allowed right now.
+
+        ``reaction_conviction`` / ``direction`` describe the candidate reaction;
+        a strong reaction opposite to the last loss can bypass the cooldown (but
+        never the circuit breaker / stop-out halt)."""
         if not self.cfg.enabled:
             return GuardDecision(True, "disabled", "guard disabled")
         self._maybe_roll_day(now)
@@ -181,22 +200,50 @@ class PostLossGuard:
                 f"session halted for the day ({self.halt_reason})",
             )
 
-        if now is not None and self.cooldown_until is not None and now < self.cooldown_until:
-            mins = (self.cooldown_until - now).total_seconds() / 60.0
-            return GuardDecision(
-                False, "cooldown",
-                f"post-loss cooldown active — {mins:.0f} min remaining "
-                f"(until {self.cooldown_until.strftime('%H:%M UTC')})",
-            )
-
-        if (bar_index is not None and self.cooldown_until_bar is not None
-                and bar_index < self.cooldown_until_bar):
+        in_cooldown_time = (
+            now is not None and self.cooldown_until is not None and now < self.cooldown_until
+        )
+        in_cooldown_bars = (
+            bar_index is not None and self.cooldown_until_bar is not None
+            and bar_index < self.cooldown_until_bar
+        )
+        if in_cooldown_time or in_cooldown_bars:
+            if self._cooldown_override_ok(reaction_conviction, direction):
+                return GuardDecision(
+                    True, "cooldown_override",
+                    f"cooldown bypassed: {reaction_conviction:.2f}-conviction "
+                    f"{(direction or '').lower()} reaction opposes the last loss "
+                    f"({self.last_loss_direction}) — a flip, not revenge (taken at "
+                    f"x{self.size_multiplier:.2f} size)",
+                )
+            if in_cooldown_time:
+                mins = (self.cooldown_until - now).total_seconds() / 60.0
+                return GuardDecision(
+                    False, "cooldown",
+                    f"post-loss cooldown active — {mins:.0f} min remaining "
+                    f"(until {self.cooldown_until.strftime('%H:%M UTC')})",
+                )
             return GuardDecision(
                 False, "cooldown",
                 f"post-loss cooldown active — {self.cooldown_until_bar - bar_index} bar(s) remaining",
             )
 
         return GuardDecision(True, "ok", "")
+
+    def _cooldown_override_ok(
+        self, conviction: float | None, direction: str | None
+    ) -> bool:
+        """A strong reaction opposite to the last loss may bypass the cooldown."""
+        floor = self.cfg.cooldown_override_conviction
+        if floor <= 0 or conviction is None or conviction < floor:
+            return False
+        if self.cfg.cooldown_override_opposite_only:
+            d = (direction or "").lower()
+            if not d or self.last_loss_direction is None:
+                return False
+            if d == self.last_loss_direction:
+                return False  # same direction = revenge, not a flip
+        return True
 
     # ------------------------------------------------------------------
     # Risk scaling + introspection

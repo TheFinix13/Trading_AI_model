@@ -27,7 +27,7 @@ the narrative; it does not pretend to be a market-microstructure model.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date
 from typing import Literal
 
 from agent.detectors.daily_levels import _ny_date

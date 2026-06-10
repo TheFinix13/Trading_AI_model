@@ -10,7 +10,6 @@ rule engine and precompute pipeline — it now delegates to the upgraded interna
 """
 from __future__ import annotations
 
-from datetime import datetime
 
 from agent.detectors.swings import detect_swings
 from agent.types import Bar, Direction, FibLevel, FibZone, GradedFibLevel

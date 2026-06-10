@@ -1,31 +1,50 @@
-"""Start the live trading agent.
+"""Start the v2 live trading agent.
+
+Wraps :class:`agent.live.signal_loop.SignalLoop` with a small argparse + health
+check shell. The v1 startup banner / ML / strategy-router checks were burned in
+the v2 reset (those subsystems are gone). What remains is a focused health
+ping for broker connectivity, the parquet cache, and the kill switch.
+
+By default the process trades the VALIDATED zone strategy from the deployment
+router (``agent.alphas.zone_routing``): the configured symbol's deployed
+cell(s) determine the alpha, the polled timeframe, and the risk_scale applied
+to position sizing. Symbols with no deployed cells refuse to start.
 
 Usage:
     # Paper trading (default, no broker needed, works on macOS):
-    python scripts/run_live.py --broker paper --timeframe H1
+    python scripts/run_live.py --broker paper
 
     # MT5 demo (requires Windows or Docker bridge):
-    python scripts/run_live.py --broker mt5 --timeframe H1 --lot 0.01
+    python scripts/run_live.py --broker mt5
 
     # Exness demo via MT5:
-    python scripts/run_live.py --broker exness --timeframe H1
+    python scripts/run_live.py --broker exness
 
-    # Multiple timeframes:
-    python scripts/run_live.py --broker paper --timeframe H1 --timeframe M15
+    # One process per deployed symbol (separate terminals):
+    python scripts/run_live.py --broker exness --symbol EURUSD --verbose
+    python scripts/run_live.py --broker exness --symbol GBPUSD --verbose
+    python scripts/run_live.py --broker exness --symbol USDCAD --verbose
 
 Environment variables (from .env):
     MT5_LOGIN, MT5_PASSWORD, MT5_SERVER, MT5_PATH
     TG_BOT_TOKEN, TG_CHAT_ID
-    AGENT_MODE (paper|live)
+    SYMBOL (default EURUSD; must have a deployed routing cell;
+            overridden by --symbol)
+
+Each process also writes a daily log file to a per-symbol folder under
+~/Documents/TradingAgentLogs (override with --log-dir); see
+``setup_live_logging``.
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
 import logging
+import logging.handlers
 import os
 import signal
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -36,38 +55,116 @@ from dotenv import load_dotenv
 from agent.config import PROJECT_ROOT, load_config
 from agent.live.broker import create_broker
 from agent.live.config import LiveConfig
-from agent.live.signal_loop import run_signal_loop
+from agent.live.router_wiring import UndeployedSymbolError, build_live_routes
+from agent.live.signal_loop import SignalLoop
 
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 
+LOG_FORMAT = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
+LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
+
+# User-discoverable default (Explorer/Finder), NOT buried in the repo:
+# C:\Users\<name>\Documents\TradingAgentLogs on Windows,
+# ~/Documents/TradingAgentLogs on macOS/Linux. Override with --log-dir.
+DEFAULT_LOG_ROOT = Path.home() / "Documents" / "TradingAgentLogs"
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    format=LOG_FORMAT,
+    datefmt=LOG_DATEFMT,
 )
 log = logging.getLogger("run_live")
 
-VERSION = "9b"
-def _make_separator() -> str:
-    # Some Windows terminals still default to cp1252 and can't print box-drawing chars.
-    enc = (getattr(sys.stdout, "encoding", None) or "").lower()
-    if "utf" not in enc:
-        return "=" * 51
-    return "\u2550" * 51  # ═ repeated
+
+class _DailyDateFileHandler(logging.handlers.TimedRotatingFileHandler):
+    """Daily file handler whose ACTIVE file is named for the current UTC day.
+
+    The stock TimedRotatingFileHandler writes to a fixed base name and only
+    appends the date when it rotates; here the ISO date IS the filename
+    (``2026-06-10.log``), so files sort chronologically in Explorer and a
+    process left running for days produces exactly one file per UTC day.
+    Rollover just switches to the new day's file — no renames.
+    """
+
+    def __init__(self, directory: Path, backup_count: int = 30):
+        self._directory = directory
+        super().__init__(
+            directory / self._current_name(), when="midnight", utc=True,
+            backupCount=backup_count, encoding="utf-8", delay=False,
+        )
+
+    @staticmethod
+    def _current_name() -> str:
+        return datetime.now(tz=timezone.utc).strftime("%Y-%m-%d") + ".log"
+
+    def doRollover(self) -> None:  # noqa: N802 (logging API name)
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+        self.baseFilename = os.fspath(self._directory / self._current_name())
+        self.stream = self._open()
+
+        if self.backupCount > 0:
+            dated = sorted(
+                p for p in self._directory.glob("????-??-??.log")
+                if p.stem.replace("-", "").isdigit()
+            )
+            for old in dated[:-self.backupCount]:
+                try:
+                    old.unlink()
+                except OSError:  # pragma: no cover - best-effort cleanup
+                    pass
+
+        # Same schedule arithmetic as the parent class.
+        current_time = int(time.time())
+        new_rollover_at = self.computeRollover(current_time)
+        while new_rollover_at <= current_time:
+            new_rollover_at += self.interval
+        self.rolloverAt = new_rollover_at
 
 
-SEPARATOR = _make_separator()
-_UNICODE_TERMINAL = "utf" in (getattr(sys.stdout, "encoding", None) or "").lower()
-SYM_OK = "\u2713" if _UNICODE_TERMINAL else "OK"
-SYM_FAIL = "X"
-SYM_WARN = "!"
+def setup_live_logging(symbol: str, log_dir: Path | None = None) -> Path:
+    """Attach a per-symbol daily log file to the ROOT logger.
+
+    Layout: ``{log_dir}/{SYMBOL}/{YYYY-MM-DD}.log`` (directories are
+    created), one subfolder per symbol so three concurrent processes never
+    mix lines, one ISO-date-named file per UTC day (rolls over at UTC
+    midnight, 30 days kept). ``log_dir`` defaults to
+    :data:`DEFAULT_LOG_ROOT` (~/Documents/TradingAgentLogs).
+
+    The handler is attached to the root logger with no handler-level filter,
+    so every ``agent.*`` logger flows into it and --verbose (which raises the
+    ``agent.live`` logger to DEBUG) affects the file exactly as it affects
+    the console. Returns the active (today's) log file path.
+    """
+    symbol_dir = (log_dir or DEFAULT_LOG_ROOT) / symbol
+    symbol_dir.mkdir(parents=True, exist_ok=True)
+    handler = _DailyDateFileHandler(symbol_dir, backup_count=30)
+    handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=LOG_DATEFMT))
+    logging.getLogger().addHandler(handler)
+    return Path(handler.baseFilename)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="EURUSD AI Agent — Live Trading Loop",
+        description="EURUSD AI Agent — v2 Live Trading Loop",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
+    )
+    parser.add_argument(
+        "--symbol", "-s",
+        default=None,
+        help="Trading symbol override (e.g. GBPUSD). Default: the SYMBOL "
+             "env var / config (EURUSD). The symbol must have a deployed "
+             "cell in the zone routing table or the process refuses to "
+             "start.",
+    )
+    parser.add_argument(
+        "--log-dir",
+        default=None,
+        help="Root folder for log files (default: ~/Documents/"
+             "TradingAgentLogs). Each symbol gets its own subfolder with "
+             "one YYYY-MM-DD.log file per UTC day.",
     )
     parser.add_argument(
         "--broker", "-b",
@@ -79,421 +176,169 @@ def parse_args() -> argparse.Namespace:
         "--timeframe", "-t",
         action="append",
         default=None,
-        help="Timeframe(s) to monitor (e.g. H1, M15). Can specify multiple.",
+        help="Timeframe(s) to monitor (e.g. H1, M15). Can specify multiple. "
+             "Ignored with --alpha router (the routing table fixes the TF).",
+    )
+    parser.add_argument(
+        "--alpha",
+        choices=["router", "reaction"],
+        default="router",
+        help="Alpha source (default: router = the validated zone routing "
+             "table). 'reaction' runs the UNVALIDATED/experimental "
+             "ReactionAlpha — never use it on a funded account.",
     )
     parser.add_argument(
         "--interval", "-i",
         type=int,
         default=None,
-        help="Check interval in seconds (default: auto based on timeframe)",
+        help="Check interval in seconds (default: 30)",
     )
     parser.add_argument(
-        "--mode", "-m",
-        choices=["anticipation", "reaction", "hybrid"],
-        default=None,
-        help="Trading mode (default: from config, 'hybrid'). "
-             "anticipation=strategy/gate stack only; reaction=reaction engine "
-             "pulls the trigger; hybrid=anticipation marks levels + reaction triggers.",
-    )
-    parser.add_argument(
-        "--lot",
-        type=float,
-        default=None,
-        help="Manual lot CAP / override (upper bound on the risk-based sizer)",
-    )
-    parser.add_argument(
-        "--risk-min",
-        type=float,
-        default=None,
-        help="Minimum risk per trade as a fraction (e.g. 0.005 = 0.5%%)",
-    )
-    parser.add_argument(
-        "--risk-max",
-        type=float,
-        default=None,
-        help="Maximum risk per trade as a fraction (e.g. 0.02 = 2%%)",
-    )
-    parser.add_argument(
-        "--max-trade-risk",
-        type=float,
-        default=None,
-        help="Hard ceiling on a single trade's risk as a fraction (e.g. 0.02 = 2%%). "
-             "Oversized/override lots are clamped down to fit.",
-    )
-    parser.add_argument(
-        "--no-revenge-guard",
-        action="store_true",
+        "--no-revenge-guard", action="store_true",
         help="Disable the post-loss cooldown / no-revenge guard (NOT recommended)",
     )
     parser.add_argument(
-        "--cooldown-minutes",
-        type=float,
-        default=None,
-        help="Minutes to block new entries after a loss (default: 60)",
-    )
-    parser.add_argument(
-        "--max-consecutive-losses",
-        type=int,
-        default=None,
-        help="Halt new entries for the session after this many losses in a row (default: 3)",
-    )
-    parser.add_argument(
-        "--reset-journal",
-        action="store_true",
-        help="Archive the existing live journal aside and start a fresh one",
-    )
-    parser.add_argument(
-        "--balance",
-        type=float,
-        default=None,
+        "--balance", type=float, default=None,
         help="Paper broker starting balance (default: 10000)",
     )
     parser.add_argument(
-        "--score-threshold",
-        type=float,
-        default=None,
-        help="ML score threshold for trade entry (default: from config)",
-    )
-    parser.add_argument(
-        "--no-telegram",
-        action="store_true",
+        "--no-telegram", action="store_true",
         help="Disable Telegram notifications",
     )
     parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to config YAML file",
+        "--config", type=str, default=None, help="Path to config YAML file",
     )
     parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Show every check cycle detail (without this, only heartbeat + signals are logged)",
+        "--verbose", "-v", action="store_true",
+        help="Verbose logging in agent.live",
     )
     parser.add_argument(
-        "--skip-health",
-        action="store_true",
-        help="Skip the startup health check",
-    )
-    parser.add_argument(
-        "--kill-switch",
-        choices=["on", "off"],
-        default="on",
-        help="Kill switch behavior (default: on). Use 'off' to ignore kill files.",
+        "--kill-switch", choices=["on", "off"], default="on",
+        help="Kill switch behaviour (default: on). 'off' ignores kill files.",
     )
     return parser.parse_args()
 
 
-# ── Health Check ──────────────────────────────────────────────
+def _build_live_config(cfg, args: argparse.Namespace,
+                       timeframes: list[str]) -> LiveConfig:
+    live = LiveConfig(
+        symbol=cfg.symbol,
+        timeframes=timeframes,
+        broker_type=args.broker,
+        mt5_login=int(cfg.mt5_login) if cfg.mt5_login else 0,
+        mt5_password=cfg.mt5_password,
+        mt5_server=cfg.mt5_server,
+        mt5_path=cfg.mt5_path,
+        check_interval_seconds=args.interval or 30,
+        revenge_guard_enabled=not args.no_revenge_guard,
+        paper_initial_balance=args.balance if args.balance is not None else 10000.0,
+        telegram_enabled=not args.no_telegram,
+    )
+    return live
 
 
-def _check_models(model_dir: Path) -> tuple[list[str], list[str]]:
-    """Return (found, missing) model file basenames."""
-    expected = [
-        "scorer_EURUSD_H1_v8.joblib",
-        "scorer_EURUSD_LZI_H1_v1.joblib",
-    ]
-    found: list[str] = []
-    missing: list[str] = []
-    for name in expected:
-        if (model_dir / name).exists():
-            found.append(name)
-        else:
-            missing.append(name)
-    # Also pick up any other joblib files present
-    for p in sorted(model_dir.glob("*.joblib")):
-        if p.name not in expected and p.name not in found:
-            found.append(p.name)
-    return found, missing
-
-
-def _check_data(data_dir: Path, symbol: str, timeframes: list[str]) -> tuple[list[str], str]:
-    """Check parquet data files exist and return latest bar timestamp."""
-    found: list[str] = []
-    latest_bar = ""
-    for tf in timeframes:
-        parquet = data_dir / f"{symbol}_{tf}.parquet"
-        if parquet.exists():
-            found.append(f"{symbol}_{tf}")
-            try:
-                import pandas as pd
-                df = pd.read_parquet(parquet)
-                if not df.empty:
-                    last_ts = df.index[-1]
-                    ts_str = str(last_ts)[:19]
-                    if not latest_bar or ts_str > latest_bar:
-                        latest_bar = ts_str
-            except Exception:
-                pass
-    if not latest_bar:
-        latest_bar = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M") + " UTC"
-    return found, latest_bar
-
-
-async def _check_broker(
-    broker_type: str, login: int, password: str, server: str, path: str,
-    initial_balance: float, data_dir: Path,
-) -> tuple[bool, str, float]:
-    """Test broker connectivity. Returns (ok, account_desc, balance)."""
+async def _startup_health(args: argparse.Namespace, cfg, live: LiveConfig) -> bool:
     broker = create_broker(
-        broker_type=broker_type,
-        login=login,
-        password=password,
-        server=server,
-        path=path,
-        initial_balance=initial_balance,
-        data_dir=data_dir,
+        broker_type=live.broker_type,
+        login=live.mt5_login,
+        password=live.mt5_password,
+        server=live.mt5_server,
+        path=live.mt5_path,
+        initial_balance=live.paper_initial_balance,
+        data_dir=cfg.data_dir,
     )
     try:
-        connected = await broker.connect()
-        if not connected:
-            return False, "connection failed", 0.0
-        info = await broker.get_account_info()
-        desc = f"#{info.login}" if info.login else "paper"
-        balance = info.balance
-        await broker.disconnect()
-        return True, desc, balance
+        ok = await broker.connect()
     except Exception as e:
-        return False, str(e)[:60], 0.0
-
-
-def _check_kill_switch() -> bool:
-    """Return True if any kill switch file is active."""
-    for name in ("kill.txt", "kill_switch"):
-        # Uses agent.utils.kill_switch_active, which respects SKIP_KILL_SWITCH.
-        from agent.utils import kill_switch_active
-
-        if kill_switch_active(PROJECT_ROOT / name):
-            return True
+        log.error("Broker connect failed: %s", e)
+        ok = False
+    if ok:
+        info = await broker.get_account_info()
+        log.info("Broker OK: %s balance=$%.2f", live.broker_type, info.balance)
+        await broker.disconnect()
+        return True
+    log.error("Broker check failed for %s. Aborting startup.", live.broker_type)
     return False
-
-
-def _print_banner(
-    args: argparse.Namespace,
-    config,
-    broker_ok: bool,
-    account_desc: str,
-    balance: float,
-    models_found: list[str],
-    models_missing: list[str],
-    latest_bar: str,
-    kill_active: bool,
-) -> None:
-    """Print the formatted startup banner."""
-    timeframes = args.timeframe or [config.primary_timeframe]
-    tf_str = ", ".join(timeframes)
-    lot = args.lot or config.risk.lot_min
-    strategies = "LZI Retest, FVG Retest, SD Zone"
-    lzi_threshold = 0.40
-    generic_threshold = args.score_threshold or config.ml.prob_threshold
-    risk_pct = config.risk.pct_target * 100
-    dd_pct = config.risk.daily_dd_halt_pct * 100
-    caution = ", ".join(config.session.caution_days) if config.session.caution_days else "None"
-
-    mode_map = {"paper": "PAPER (local simulation)", "mt5": "DEMO (MT5)", "exness": "DEMO (Exness MT5)"}
-    mode_label = mode_map.get(args.broker, args.broker.upper())
-    trade_mode = (args.mode or getattr(config.reaction, "mode", "hybrid")).upper()
-
-    total_models = len(models_found) + len(models_missing)
-    if total_models == 0:
-        total_models = 2
-
-    print()
-    print(SEPARATOR)
-    print(f"  EURUSD AI Trading Agent v{VERSION}")
-    print(f"  Mode: {mode_label}")
-    print(f"  Engine: {trade_mode} (anticipation/reaction/hybrid)")
-    print(f"  Timeframe: {tf_str}")
-    print(f"  Lot: risk-based sizing (manual cap: {args.lot or 'none'})")
-    print(f"  Strategies: {strategies}")
-    print(f"  Scorer: LZI v1 (threshold {lzi_threshold:.2f}) + Generic v8")
-    print(f"  Risk: {risk_pct:.0f}% per trade, {dd_pct:.0f}% daily DD halt")
-    print(f"  Caution days: {caution}")
-    print(f"  Account: {account_desc} (${balance:,.2f})")
-    print(SEPARATOR)
-
-    # Broker
-    if broker_ok:
-        print(f"  [{SYM_OK}] {args.broker.upper()} connected")
-    else:
-        print(f"  [{SYM_FAIL}] {args.broker.upper()} connection FAILED")
-
-    # Models
-    if models_found and not models_missing:
-        print(f"  [{SYM_OK}] Models loaded ({len(models_found)}/{total_models})")
-    elif models_found:
-        print(f"  [{SYM_WARN}] Models partial ({len(models_found)}/{total_models}) — missing: {', '.join(models_missing)}")
-    else:
-        print(f"  [{SYM_WARN}] No models found — running rules-only mode")
-
-    # Data
-    print(f"  [{SYM_OK}] Data current (last bar: {latest_bar})")
-
-    # Kill switch
-    if kill_active:
-        if os.getenv("SKIP_KILL_SWITCH"):
-            print(f"  [{SYM_WARN}] Kill switch present but IGNORED (SKIP_KILL_SWITCH=1)")
-        else:
-            print(f"  [{SYM_FAIL}] Kill switch ACTIVE — remove kill.txt or run with --kill-switch off")
-    else:
-        print(f"  [{SYM_OK}] No kill switch active")
-
-    print()
-    if broker_ok and not kill_active:
-        print(f"  Watching for setups... (Ctrl+C to stop)")
-    elif kill_active:
-        if os.getenv("SKIP_KILL_SWITCH"):
-            print(f"  Kill switch files will be ignored for this run.")
-        else:
-            print(f"  Remove kill.txt (or use --kill-switch off) and restart to begin trading.")
-    else:
-        print(f"  Fix broker connection and restart.")
-    print(SEPARATOR)
-    print()
-
-
-async def startup_health_check(args: argparse.Namespace) -> bool:
-    """Run all startup checks and print the banner. Returns True if OK to proceed."""
-    config = load_config(args.config)
-    timeframes = args.timeframe or [config.primary_timeframe]
-
-    # Models
-    models_found, models_missing = _check_models(config.model_dir)
-
-    # Data
-    _, latest_bar = _check_data(config.data_dir, config.symbol, timeframes)
-
-    # Kill switch
-    kill_active = _check_kill_switch()
-
-    # Broker
-    mt5_login = int(config.mt5_login) if config.mt5_login else 0
-    balance_default = args.balance or 10000.0
-    broker_ok, account_desc, balance = await _check_broker(
-        broker_type=args.broker,
-        login=mt5_login,
-        password=config.mt5_password,
-        server=config.mt5_server,
-        path=config.mt5_path,
-        initial_balance=balance_default,
-        data_dir=config.data_dir,
-    )
-
-    _print_banner(
-        args=args,
-        config=config,
-        broker_ok=broker_ok,
-        account_desc=account_desc,
-        balance=balance,
-        models_found=models_found,
-        models_missing=models_missing,
-        latest_bar=latest_bar,
-        kill_active=kill_active,
-    )
-
-    if not broker_ok and args.broker in ("mt5", "exness"):
-        log.error("Broker connection failed. Is MetaTrader 5 open and logged in?")
-        return False
-
-    if kill_active:
-        log.warning("Kill switch is active. Remove kill.txt to trade.")
-        return False
-
-    return True
-
-
-# ── Main ─────────────────────────────────────────────────────
 
 
 def main() -> None:
     args = parse_args()
-
     if args.verbose:
         logging.getLogger("agent.live").setLevel(logging.DEBUG)
-
     if args.kill_switch == "off":
         os.environ["SKIP_KILL_SWITCH"] = "1"
-        log.warning("Kill switch is DISABLED for this run (SKIP_KILL_SWITCH=1).")
+        log.warning("Kill switch DISABLED for this run (SKIP_KILL_SWITCH=1).")
+    if args.broker in ("mt5", "exness") and not os.getenv("MT5_LOGIN"):
+        log.error("MT5_LOGIN not set. Configure .env or use --broker paper.")
+        sys.exit(1)
 
-    if args.broker in ("mt5", "exness"):
-        if not os.getenv("MT5_LOGIN"):
-            log.error(
-                "MT5_LOGIN not set. For %s broker, you need:\n"
-                "  MT5_LOGIN, MT5_PASSWORD, MT5_SERVER in your .env file.\n"
-                "  See docs/deployment_guide.md for details.\n"
-                "  Use --broker paper to test without a real account.",
-                args.broker,
-            )
-            sys.exit(1)
+    cfg = load_config(args.config)
+    # Must happen BEFORE build_live_routes and _build_live_config: both read
+    # cfg.symbol, so the flag overrides the SYMBOL env var / config default.
+    if args.symbol:
+        cfg.symbol = args.symbol.strip().upper()
 
-    # Run startup health check
-    if not args.skip_health:
-        loop_check = asyncio.new_event_loop()
+    log_file = setup_live_logging(
+        cfg.symbol, Path(args.log_dir) if args.log_dir else None)
+    log.info("Logging to: %s", log_file)
+    log.info("(one YYYY-MM-DD.log file per UTC day in that folder; "
+             "30 days kept)")
+
+    risk_scales: dict[str, float] = {}
+    if args.alpha == "router":
         try:
-            ok = loop_check.run_until_complete(startup_health_check(args))
-        finally:
-            loop_check.close()
-
-        if not ok:
+            routes = build_live_routes(cfg.symbol, cfg)
+        except UndeployedSymbolError as e:
+            log.error("%s", e)
             sys.exit(1)
+        alphas = [r.alpha for r in routes]
+        risk_scales = {r.alpha.name: r.risk_scale for r in routes}
+        # The routing table fixes the timeframe(s) the validated cells were
+        # proven on; a CLI override here would silently change the strategy.
+        timeframes = sorted({r.timeframe for r in routes})
+        if args.timeframe and sorted(set(args.timeframe)) != timeframes:
+            log.warning("--timeframe %s ignored: router cells for %s run on %s",
+                        args.timeframe, cfg.symbol, timeframes)
+        for r in routes:
+            log.info("Routed cell: %s/%s/%s mode=%s risk_scale=%.2f alpha=%s",
+                     r.symbol, r.timeframe, r.session, r.mode,
+                     r.risk_scale, r.alpha.name)
+    else:
+        log.warning("Running UNVALIDATED experimental ReactionAlpha "
+                    "(--alpha reaction). Not for funded accounts.")
+        from agent.alphas.reaction_alpha import ReactionAlpha
+        alphas = [ReactionAlpha(cfg, name="reaction")]
+        timeframes = args.timeframe or [cfg.primary_timeframe]
 
-    # Build overrides dict
-    overrides: dict = {}
-    if args.interval is not None:
-        overrides["check_interval_seconds"] = args.interval
-    if args.mode is not None:
-        overrides["mode"] = args.mode
-    if args.lot is not None:
-        overrides["lot_size_override"] = args.lot
-    if args.risk_min is not None:
-        overrides["risk_min_pct"] = args.risk_min
-    if args.risk_max is not None:
-        overrides["risk_max_pct"] = args.risk_max
-    if args.max_trade_risk is not None:
-        overrides["max_trade_risk_pct"] = args.max_trade_risk
-    if args.no_revenge_guard:
-        overrides["revenge_guard_enabled"] = False
-    if args.cooldown_minutes is not None:
-        overrides["post_loss_cooldown_minutes"] = args.cooldown_minutes
-    if args.max_consecutive_losses is not None:
-        overrides["max_consecutive_losses"] = args.max_consecutive_losses
-    if args.balance is not None:
-        overrides["paper_initial_balance"] = args.balance
-    if args.score_threshold is not None:
-        overrides["score_threshold"] = args.score_threshold
-    if args.no_telegram:
-        overrides["telegram_enabled"] = False
-    overrides["reset_journal"] = args.reset_journal
+    live = _build_live_config(cfg, args, timeframes)
 
-    verbose = args.verbose
+    health_loop = asyncio.new_event_loop()
+    try:
+        ok = health_loop.run_until_complete(_startup_health(args, cfg, live))
+    finally:
+        health_loop.close()
+    if not ok:
+        sys.exit(1)
 
-    # Set up graceful shutdown
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    signal_loop = SignalLoop(alphas, config=cfg, live_config=live,
+                             risk_scales=risk_scales, verbose=args.verbose)
 
     def _shutdown(sig: signal.Signals) -> None:
         log.info("Received %s, shutting down...", sig.name)
-        for task in asyncio.all_tasks(loop):
-            task.cancel()
+        loop.create_task(signal_loop.stop())
 
     for sig_type in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig_type, _shutdown, sig_type)
         except NotImplementedError:
-            # Windows ProactorEventLoop does not support add_signal_handler.
-            # Ctrl+C still raises KeyboardInterrupt; SIGTERM handling is best-effort.
             signal.signal(sig_type, lambda *_: _shutdown(sig_type))
 
+    started_at = datetime.now(tz=timezone.utc).isoformat()
+    log.info("Starting v2 signal loop at %s", started_at)
     try:
-        loop.run_until_complete(
-            run_signal_loop(
-                broker_type=args.broker,
-                timeframes=args.timeframe,
-                config_path=args.config,
-                verbose=verbose,
-                **overrides,
-            )
-        )
+        loop.run_until_complete(signal_loop.run())
     except KeyboardInterrupt:
         log.info("Interrupted")
     finally:

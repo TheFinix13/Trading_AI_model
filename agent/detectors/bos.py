@@ -27,21 +27,40 @@ def detect_bos(bars: list[Bar], swing_lookback: int = 5) -> list[BreakOfStructur
 
     Backward-compatible: returns list[BreakOfStructure] with all legacy fields,
     plus new quality fields populated on each BOS event.
+
+    Performance: the v2 version rebuilt ``prior_highs = [s for s in swings if
+    ... < i - lookback]`` for every bar (O(N × S) ≈ 136M ops on H1 → ~30s).
+    Only ``prior_highs[-1]`` was ever used, so we instead maintain two
+    monotonic cursors over the chronological swing lists. Equivalence to the
+    v2 output is locked in by ``tests/test_bos_speedup.py``.
     """
     swings = detect_swings(bars, lookback=swing_lookback)
     if not swings:
         return []
 
+    # Chronological swing arrays (detect_swings already returns ascending by
+    # bar_index, but sort defensively so a future change doesn't break us).
+    high_swings = sorted([s for s in swings if s.is_high], key=lambda s: s.bar_index)
+    low_swings = sorted([s for s in swings if not s.is_high], key=lambda s: s.bar_index)
+
     breaks: list[BreakOfStructure] = []
     last_broken_high: float | None = None
     last_broken_low: float | None = None
 
-    for i, bar in enumerate(bars):
-        prior_highs = [s for s in swings if s.is_high and s.bar_index < i - swing_lookback]
-        prior_lows = [s for s in swings if not s.is_high and s.bar_index < i - swing_lookback]
+    high_cursor = 0  # number of high_swings that are visible at bar i
+    low_cursor = 0
 
-        if prior_highs:
-            ref = prior_highs[-1]
+    for i, bar in enumerate(bars):
+        # Advance the cursors to include every swing whose bar_index <
+        # i - swing_lookback (matches the v2 strict-less-than visibility).
+        threshold = i - swing_lookback
+        while high_cursor < len(high_swings) and high_swings[high_cursor].bar_index < threshold:
+            high_cursor += 1
+        while low_cursor < len(low_swings) and low_swings[low_cursor].bar_index < threshold:
+            low_cursor += 1
+
+        if high_cursor > 0:
+            ref = high_swings[high_cursor - 1]
             if bar.close > ref.price and (last_broken_high is None or ref.price > last_broken_high):
                 bos = BreakOfStructure(
                     direction=Direction.LONG,
@@ -53,8 +72,8 @@ def detect_bos(bars: list[Bar], swing_lookback: int = 5) -> list[BreakOfStructur
                 breaks.append(bos)
                 last_broken_high = ref.price
 
-        if prior_lows:
-            ref = prior_lows[-1]
+        if low_cursor > 0:
+            ref = low_swings[low_cursor - 1]
             if bar.close < ref.price and (last_broken_low is None or ref.price < last_broken_low):
                 bos = BreakOfStructure(
                     direction=Direction.SHORT,

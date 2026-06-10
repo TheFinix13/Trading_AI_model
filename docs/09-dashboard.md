@@ -1,5 +1,12 @@
 # 09 — Dashboard
 
+> ⚠️ **HISTORICAL — the dashboard was burned in the 2026-06-09 reset.**
+> `agent/dashboard/`, `scripts/journal_query.py` and `scripts/explain.py` no
+> longer exist. Live monitoring today is the structured logs of
+> `scripts/run_live.py`, the per-day journal, and optional Telegram alerts —
+> see [08 — Live Trading & Deployment](08-live-trading-and-deployment.md) and
+> [CHECKPOINT.md](CHECKPOINT.md).
+
 > Part of the numbered docs — start at [00 — Overview](00-overview.md).
 
 A FastAPI + Jinja2 web dashboard for inspecting the agent: equity curve, trades with

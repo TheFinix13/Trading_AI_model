@@ -15,10 +15,11 @@ around each scheduled high-impact USD or EUR release. This keeps the
 edge intact during quiet hour-13 sessions and only freezes the engine
 when the calendar says volatility is going to spike for non-edge reasons.
 
-All-day / Tentative entries (e.g. holidays, "FOMC Member Speaks
-Tentative") are surfaced separately via `is_all_day_blackout` so the
-caller can decide whether to treat them as full-day blocks (the default
-behaviour for Holidays) or ignore them.
+All-day / Tentative entries (e.g. holidays) have no time and can't be
+matched by a +/- minute window. Holiday-day blocking should be handled
+via ``SessionConfig.no_trade_days`` rather than the news layer. The
+previous ``is_all_day_blackout`` helper has been removed (it was a
+permanent no-op that returned False regardless of input).
 """
 from __future__ import annotations
 
@@ -117,44 +118,6 @@ def is_news_blackout(
     return False
 
 
-def is_all_day_blackout(
-    now: datetime,
-    events: list[NewsEvent],
-    *,
-    currencies: Iterable[str] = DEFAULT_CURRENCIES,
-    block_holidays: bool = True,
-) -> bool:
-    """True iff `now`'s UTC date matches an all-day Holiday entry for
-    any of the watched currencies. Useful for skipping bank-holiday days
-    where liquidity is thin and the regular blackout window can't catch
-    a non-time-bound entry."""
-    if not events or not block_holidays:
-        return False
-    now = _ensure_utc(now)
-    cur_set = {c.upper() for c in currencies}
-    today = now.date()
-    for e in events:
-        if not e.all_day:
-            continue
-        if e.currency not in cur_set:
-            continue
-        if e.impact != "Holiday":
-            continue
-        # All-day entries don't carry a time but they do carry a date in
-        # the *original* feed. We keep that date in time_utc=None and
-        # rely on the caller to pre-filter by date when storing. As a
-        # fallback, skip events without a usable date marker.
-        # (Future: extend NewsEvent with an explicit date_utc field.)
-        # For now, we treat any all-day Holiday as "active today" only
-        # if the parser stamped a date in `title` -- which we do not.
-        # Conservative: return False here; explicit holidays should be
-        # added to session.no_trade_days. Keeping the API for
-        # forward-compat.
-        del today  # explicit no-op to avoid lint
-        return False
-    return False
-
-
 def next_blackout(
     now: datetime,
     events: list[NewsEvent],
@@ -193,7 +156,6 @@ def next_blackout(
 
 __all__ = [
     "is_news_blackout",
-    "is_all_day_blackout",
     "next_blackout",
     "DEFAULT_BEFORE_MIN",
     "DEFAULT_AFTER_MIN",

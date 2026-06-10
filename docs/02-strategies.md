@@ -1,5 +1,15 @@
 # 02 — Strategies
 
+> ⚠️ **HISTORICAL — superseded by the zone-only validated pipeline.** The three
+> "primary strategies" and the confluence-booster framework described here were
+> v1 components, burned in the 2026-06-09 reset. Tested ALONE in the stage-1
+> ablation grid: FVG-retest, BOS, order blocks and fibs were eliminated first;
+> liquidity-sweep (LZI) and momentum were eliminated after fair-shot grids. The
+> **supply/demand zone** concept (02.3) is the sole survivor and now trades live
+> as `zone_d1_against` via the deployment router. See
+> [00-journey.md](00-journey.md) and [CHECKPOINT.md](CHECKPOINT.md). The
+> strategy classes referenced below (`agent/strategy/…`) no longer exist.
+
 > Part of the numbered docs — start at [00 — Overview](00-overview.md). For the
 > architecture that wraps these strategies (detectors, gate profiles, confluence
 > optimizer) see [01 — Strategy Architecture](01-strategy-architecture.md). For

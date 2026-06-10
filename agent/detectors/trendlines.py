@@ -2,7 +2,13 @@
 
 Bullish trendline: a line connecting the last 2+ confirmed swing lows with positive slope.
 Bearish trendline: connecting last 2+ confirmed swing highs with negative slope.
-A trendline is invalidated by 2 closes through it."""
+
+``fit_trendlines`` returns the *geometry* of the line plus its anchors. Validity
+(whether the line has been broken) is intentionally evaluated **per-bar** by
+:func:`is_valid_at`, so callers that fit once and then check at multiple bars
+cannot accidentally see the future. The legacy ``tl.valid`` field is left at its
+default and is now ignored by the v2 harnesses; rely on ``is_valid_at`` instead.
+"""
 from __future__ import annotations
 
 from agent.detectors.swings import detect_swings
@@ -10,6 +16,7 @@ from agent.types import Bar, Direction, Trendline
 
 
 def fit_trendlines(bars: list[Bar], swing_lookback: int = 5) -> list[Trendline]:
+    """Return trendline geometry. Does NOT pre-compute validity."""
     swings = detect_swings(bars, lookback=swing_lookback)
     lows = [s for s in swings if not s.is_high]
     highs = [s for s in swings if s.is_high]
@@ -18,31 +25,38 @@ def fit_trendlines(bars: list[Bar], swing_lookback: int = 5) -> list[Trendline]:
 
     if len(lows) >= 2:
         a, b = lows[-2], lows[-1]
-        if b.price > a.price:  # higher low: bullish trendline
+        if b.price > a.price:
             slope = (b.price - a.price) / max(1, b.bar_index - a.bar_index)
             intercept = a.price - slope * a.bar_index
-            tl = Trendline(slope=slope, intercept=intercept, anchors=[a, b], direction=Direction.LONG)
-            tl.valid = _validate(tl, bars)
-            lines.append(tl)
+            lines.append(Trendline(
+                slope=slope, intercept=intercept, anchors=[a, b], direction=Direction.LONG,
+            ))
 
     if len(highs) >= 2:
         a, b = highs[-2], highs[-1]
-        if b.price < a.price:  # lower high: bearish trendline
+        if b.price < a.price:
             slope = (b.price - a.price) / max(1, b.bar_index - a.bar_index)
             intercept = a.price - slope * a.bar_index
-            tl = Trendline(slope=slope, intercept=intercept, anchors=[a, b], direction=Direction.SHORT)
-            tl.valid = _validate(tl, bars)
-            lines.append(tl)
+            lines.append(Trendline(
+                slope=slope, intercept=intercept, anchors=[a, b], direction=Direction.SHORT,
+            ))
 
     return lines
 
 
-def _validate(tl: Trendline, bars: list[Bar], tolerance_pips: float = 5.0) -> bool:
-    """Trendline is invalid if 2 closes have crossed through it (with tolerance)."""
+def is_valid_at(
+    tl: Trendline,
+    bars: list[Bar],
+    at_index: int,
+    tolerance_pips: float = 5.0,
+) -> bool:
+    """Causal validity check: True iff fewer than 2 closes have broken ``tl``
+    between its last anchor and ``at_index`` (inclusive). Uses no future bars."""
     tol = tolerance_pips * 0.0001
     breaks = 0
     start_idx = tl.anchors[-1].bar_index + 1
-    for i in range(start_idx, len(bars)):
+    end_idx = min(at_index, len(bars) - 1)
+    for i in range(start_idx, end_idx + 1):
         line_price = tl.price_at(i)
         b = bars[i]
         if tl.direction == Direction.LONG and b.close < line_price - tol:
