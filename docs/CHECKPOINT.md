@@ -79,6 +79,13 @@ the dated write-ups in [`reviews/`](reviews/).
 
 1. Live trade journal + **live-vs-backtest distribution monitor** (detect drift
    between live fills and the validated distribution).
+   - Shipped first piece: **near-miss & loss vaults** — observation-only JSONL +
+     chart snapshots under `~/Documents/TradingAgentLogs/{SYMBOL}/near_misses/`
+     and `/losses/` (HTF-gate rejections via an inert alpha hook; guard / risk /
+     sizing rejections via SignalLoop; losing closes with trade lifetime).
+     Weekly: `scripts/resolve_near_misses.py --symbol <SYM>` scores the
+     hypotheticals (SL-first tie-break) and prints a per-reason summary —
+     hypothesis-generating only, gates change only via the validation pipeline.
 2. **Portfolio USD-exposure manager** — the 3 pairs are correlated (EURUSD long +
    GBPUSD long + USDCAD short ≈ one "USD down" bet, ~4% worst-case combined
    risk); today bounded only by per-trade caps + the shared 3% daily-DD guard.

@@ -29,13 +29,21 @@ Causality contract: ``fresh_zones(at_index=i)`` already honours
 """
 from __future__ import annotations
 
-from typing import Optional
+import logging
+from typing import Callable, Optional, Sequence
 
 from agent.alphas.base import Alpha, AlphaContext, AlphaSignal
 from agent.alphas.concepts._htf import HTFBias, htf_bias_at
 from agent.config import Config
 from agent.detectors.zones import fresh_zones
 from agent.types import Bar, Direction, Zone
+
+log = logging.getLogger(__name__)
+
+# Observation-only near-miss hook: receives (event dict, bars). Wired by the
+# live vault (agent.journal.vault.VaultRecorder.alpha_hook); always None in
+# backtests/grids.
+NearMissHook = Callable[[dict, Sequence[Bar]], None]
 
 
 def _has_touched_before(
@@ -95,8 +103,18 @@ class SupplyDemandAlpha(Alpha):
         htf_align_mode: str = "with",  # "with" or "against"
         htf_lookback: int = 5,
         htf_min_move_pips: float = 30.0,
+        near_miss_hook: NearMissHook | None = None,
     ) -> None:
         """
+        ``near_miss_hook`` is an OBSERVATION-ONLY callback (default ``None``).
+        When set, a zone touch that passes every check but is rejected by the
+        HTF alignment gate alone emits a near-miss event (the hypothetical
+        direction/entry/SL/TP it would have traded, tagged ``htf_gate``).
+        Trading output is identical with or without the hook: the gate's
+        decision is unchanged, the hook only records what it blocked. When
+        unset (every backtest/grid), the rejected zone is skipped before any
+        hypothetical math runs — zero behaviour and zero cost change.
+
         ``htf_align`` is the alignment-filter switch:
           * ``None`` (default) — no HTF filter, v3.2 behaviour.
           * a TF string ("D1", "H4", …) — gate fires when ``htf_bias_at``
@@ -122,6 +140,7 @@ class SupplyDemandAlpha(Alpha):
         self.htf_align_mode = htf_align_mode
         self.htf_lookback = htf_lookback
         self.htf_min_move_pips = htf_min_move_pips
+        self.near_miss_hook = near_miss_hook
 
     def signal(self, actx: AlphaContext, i: int) -> Optional[AlphaSignal]:
         bars = actx.bars
@@ -147,58 +166,110 @@ class SupplyDemandAlpha(Alpha):
                 continue
             if _has_touched_before(zone, bars, i):
                 continue
+            htf_blocked = False
             if bias is not None:
                 ok = (bias.matches(zone.direction) if self.htf_align_mode == "with"
                       else bias.opposes(zone.direction))
                 if not ok:
-                    continue
+                    if self.near_miss_hook is None:
+                        continue
+                    # Observation only: build the hypothetical the gate
+                    # blocked, record it, then skip the zone exactly as the
+                    # bare `continue` above would have.
+                    htf_blocked = True
 
-            atr_buf = self.stop_atr_mult * atr
-
-            if zone.direction == Direction.LONG:
-                entry = max(bar.close, zone.bottom)
-                stop = zone.bottom - atr_buf
-                if not (stop < entry):
-                    continue
-                risk = entry - stop
-
-                tp = None
-                if self.target_via_structure:
-                    structural = _structural_tp(
-                        bars, actx.ctx.swings, i, Direction.LONG,
-                        lookahead=self.structural_lookback,
-                    )
-                    if structural is not None and (structural - entry) >= self.min_structural_rr * risk:
-                        tp = structural
-                if tp is None:
-                    tp = entry + self.target_rr * risk
-
-                return AlphaSignal(
-                    direction=Direction.LONG, entry=entry, stop=stop,
-                    take_profit=tp, reason="zone_demand",
-                    conviction=0.65,
-                )
-            else:
-                entry = min(bar.close, zone.top)
-                stop = zone.top + atr_buf
-                if not (stop > entry):
-                    continue
-                risk = stop - entry
-
-                tp = None
-                if self.target_via_structure:
-                    structural = _structural_tp(
-                        bars, actx.ctx.swings, i, Direction.SHORT,
-                        lookahead=self.structural_lookback,
-                    )
-                    if structural is not None and (entry - structural) >= self.min_structural_rr * risk:
-                        tp = structural
-                if tp is None:
-                    tp = entry - self.target_rr * risk
-
-                return AlphaSignal(
-                    direction=Direction.SHORT, entry=entry, stop=stop,
-                    take_profit=tp, reason="zone_supply",
-                    conviction=0.65,
-                )
+            sig = self._zone_signal(zone, bar, bars, actx, i, atr)
+            if sig is None:
+                continue
+            if htf_blocked:
+                self._emit_near_miss(sig, zone, bar, bias, bars)
+                continue
+            return sig
         return None
+
+    def _zone_signal(
+        self, zone: Zone, bar: Bar, bars: list[Bar],
+        actx: AlphaContext, i: int, atr: float,
+    ) -> Optional[AlphaSignal]:
+        """Entry/SL/TP construction for one touched zone (gate-free)."""
+        atr_buf = self.stop_atr_mult * atr
+
+        if zone.direction == Direction.LONG:
+            entry = max(bar.close, zone.bottom)
+            stop = zone.bottom - atr_buf
+            if not (stop < entry):
+                return None
+            risk = entry - stop
+
+            tp = None
+            if self.target_via_structure:
+                structural = _structural_tp(
+                    bars, actx.ctx.swings, i, Direction.LONG,
+                    lookahead=self.structural_lookback,
+                )
+                if structural is not None and (structural - entry) >= self.min_structural_rr * risk:
+                    tp = structural
+            if tp is None:
+                tp = entry + self.target_rr * risk
+
+            return AlphaSignal(
+                direction=Direction.LONG, entry=entry, stop=stop,
+                take_profit=tp, reason="zone_demand",
+                conviction=0.65,
+            )
+        else:
+            entry = min(bar.close, zone.top)
+            stop = zone.top + atr_buf
+            if not (stop > entry):
+                return None
+            risk = stop - entry
+
+            tp = None
+            if self.target_via_structure:
+                structural = _structural_tp(
+                    bars, actx.ctx.swings, i, Direction.SHORT,
+                    lookahead=self.structural_lookback,
+                )
+                if structural is not None and (entry - structural) >= self.min_structural_rr * risk:
+                    tp = structural
+            if tp is None:
+                tp = entry - self.target_rr * risk
+
+            return AlphaSignal(
+                direction=Direction.SHORT, entry=entry, stop=stop,
+                take_profit=tp, reason="zone_supply",
+                conviction=0.65,
+            )
+
+    def _emit_near_miss(
+        self, sig: AlphaSignal, zone: Zone, bar: Bar,
+        bias: HTFBias | None, bars: list[Bar],
+    ) -> None:
+        """Fire the observation hook for an HTF-gate-only rejection.
+        A hook failure must never reach the signal path."""
+        try:
+            self.near_miss_hook({
+                "ts": bar.time.isoformat(),
+                "tf": bar.timeframe.value,
+                "reason": "htf_gate",
+                "direction": sig.direction.value,
+                "entry": sig.entry,
+                "stop": sig.stop,
+                "take_profit": sig.take_profit,
+                "conviction": sig.conviction,
+                "signal_reason": sig.reason,
+                "alpha": self.name,
+                "htf_bias": bias.value if bias is not None else None,
+                "htf_align": self.htf_align,
+                "htf_align_mode": self.htf_align_mode,
+                "zone": {
+                    "direction": zone.direction.value,
+                    "top": zone.top,
+                    "bottom": zone.bottom,
+                    "created_at": zone.created_at.isoformat(),
+                    "created_bar_index": zone.created_bar_index,
+                    "impulse_pips": zone.impulse_pips,
+                },
+            }, bars)
+        except Exception as e:
+            log.warning("near-miss hook failed (ignored): %s", e)

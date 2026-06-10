@@ -1,0 +1,150 @@
+"""Near-miss and loss vaults — observation-only JSONL + chart snapshots.
+
+Two append-only evidence stores under the per-symbol live log folder
+(``~/Documents/TradingAgentLogs/{SYMBOL}/``):
+
+* ``near_misses/events.jsonl`` — trades the agent ALMOST took: zone touches
+  rejected only by the HTF alignment gate (alpha-level, via the optional
+  ``near_miss_hook`` on :class:`SupplyDemandAlpha`) and alpha signals dropped
+  downstream by the post-loss guard / risk manager / sizing skip
+  (loop-level, via :class:`SignalLoop`).
+* ``losses/events.jsonl`` — live positions that closed at a loss, with the
+  trade's lifetime rendered on the chart.
+
+Each event appends ONE JSON line and renders a PNG snapshot beside it.
+
+Hard contract: this module is pure logging. Every public method swallows its
+own exceptions (warning log only), so a full disk, a bad event dict or a
+matplotlib failure can never affect trading behaviour. The hypothetical
+outcomes are scored later by ``scripts/resolve_near_misses.py`` — they are
+hypothesis-generating evidence only, never a reason to bypass the validation
+pipeline.
+"""
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Callable, Sequence
+
+from agent.journal.chart_snapshot import render_snapshot
+from agent.types import Bar
+
+log = logging.getLogger(__name__)
+
+DEFAULT_VAULT_ROOT = Path.home() / "Documents" / "TradingAgentLogs"
+
+# A hook receives (event dict, bars at decision time). Matches
+# SupplyDemandAlpha.near_miss_hook.
+AlphaNearMissHook = Callable[[dict, Sequence[Bar]], None]
+
+
+def _parse_ts(value) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _png_name(ts: datetime | None, tag: str) -> str:
+    stamp = (ts or datetime.now(tz=timezone.utc)).strftime("%Y-%m-%d_%H%M")
+    safe_tag = "".join(c if (c.isalnum() or c in "-_") else "_" for c in tag)
+    return f"{stamp}_{safe_tag}.png"
+
+
+class VaultRecorder:
+    """Appends vault events and renders their chart snapshots."""
+
+    def __init__(self, symbol: str, root: Path | str | None = None) -> None:
+        self.symbol = symbol
+        self.root = Path(root) if root is not None else DEFAULT_VAULT_ROOT
+        self.near_miss_dir = self.root / symbol / "near_misses"
+        self.loss_dir = self.root / symbol / "losses"
+
+    # ------------------------------------------------------------------
+    # Near misses
+    # ------------------------------------------------------------------
+    def record_near_miss(self, event: dict, bars: Sequence[Bar] | None = None) -> None:
+        """Append one near-miss event + render its snapshot. Never raises."""
+        try:
+            record = self._normalise(event)
+            record.setdefault("reason", "unknown")
+            record.setdefault("resolved", False)
+            record.setdefault("outcome", "open")
+            self._append_jsonl(self.near_miss_dir / "events.jsonl", record)
+            self._render(self.near_miss_dir, record, bars,
+                         tag=record["reason"])
+        except Exception as e:
+            log.warning("near-miss vault write failed: %s", e)
+
+    def alpha_hook(self, timeframe: str) -> AlphaNearMissHook:
+        """Build the callback to attach as ``SupplyDemandAlpha.near_miss_hook``."""
+        def hook(event: dict, bars: Sequence[Bar]) -> None:
+            evt = dict(event)
+            evt.setdefault("tf", timeframe)
+            self.record_near_miss(evt, bars)
+        return hook
+
+    # ------------------------------------------------------------------
+    # Losses
+    # ------------------------------------------------------------------
+    def record_loss(self, event: dict, bars: Sequence[Bar] | None = None) -> None:
+        """Append one losing-trade event + render its lifetime snapshot.
+        Never raises."""
+        try:
+            record = self._normalise(event)
+            self._append_jsonl(self.loss_dir / "events.jsonl", record)
+            self._render(self.loss_dir, record, bars, tag="loss",
+                         entry_time=_parse_ts(record.get("entry_time")))
+        except Exception as e:
+            log.warning("loss vault write failed: %s", e)
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+    def _normalise(self, event: dict) -> dict:
+        record = dict(event)
+        record.setdefault("ts", datetime.now(tz=timezone.utc).isoformat())
+        if isinstance(record["ts"], datetime):
+            record["ts"] = record["ts"].isoformat()
+        record["symbol"] = self.symbol
+        return record
+
+    @staticmethod
+    def _append_jsonl(path: Path, record: dict) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+
+    def _render(
+        self,
+        folder: Path,
+        record: dict,
+        bars: Sequence[Bar] | None,
+        *,
+        tag: str,
+        entry_time: datetime | None = None,
+    ) -> None:
+        if not bars:
+            return
+        ts = _parse_ts(record.get("ts"))
+        zone = record.get("zone") or {}
+        title = (f"{self.symbol} {record.get('tf', '')} — {tag} "
+                 f"@ {record.get('ts', '')}")
+        render_snapshot(
+            bars,
+            folder / _png_name(ts, tag),
+            title=title,
+            event_time=ts,
+            entry=record.get("entry"),
+            stop=record.get("stop"),
+            take_profit=record.get("take_profit"),
+            zone_top=zone.get("top"),
+            zone_bottom=zone.get("bottom"),
+            entry_time=entry_time,
+        )

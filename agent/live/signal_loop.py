@@ -24,12 +24,13 @@ import asyncio
 import logging
 import traceback
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Sequence
 
 from agent.alphas.base import Alpha, AlphaContext, AlphaSignal
 from agent.config import Config, load_config
+from agent.journal.vault import VaultRecorder
 from agent.live.broker import BrokerConnection, MT5Broker, create_broker
 from agent.live.config import LiveConfig
 from agent.live.monitor import PositionMonitor
@@ -45,6 +46,13 @@ from agent.utils import kill_switch_active
 log = logging.getLogger(__name__)
 
 _HEARTBEAT_INTERVAL_SECONDS = 15 * 60
+
+
+def next_h4_close_utc(now: datetime) -> datetime:
+    """Next H4 candle boundary (00/04/08/12/16/20 UTC) strictly after ``now``."""
+    floor = now.replace(minute=0, second=0, microsecond=0)
+    floor -= timedelta(hours=now.hour % 4)
+    return floor + timedelta(hours=4)
 
 
 @dataclass
@@ -67,10 +75,14 @@ class SignalLoop:
         broker: BrokerConnection | None = None,
         risk_scales: dict[str, float] | None = None,
         verbose: bool = False,
+        vault: VaultRecorder | None = None,
     ) -> None:
         if not alphas:
             raise ValueError("SignalLoop requires at least one Alpha")
         self.alphas: list[Alpha] = list(alphas)
+        # Observation-only near-miss/loss vault (None = no recording). Pure
+        # logging: it is only ever consulted AFTER a gate has already decided.
+        self.vault = vault
         # Per-alpha risk multiplier (alpha name -> scale), e.g. the routing
         # table's risk_scale. Alphas not listed trade at 1.0.
         self.risk_scales: dict[str, float] = dict(risk_scales or {})
@@ -125,6 +137,9 @@ class SignalLoop:
         )
 
         self._last_bar_times: dict[str, datetime] = {}
+        # Latest closed-bar series per timeframe, kept so vault snapshots
+        # (rendered from a sync close callback) have chart data available.
+        self._last_bars: dict[str, list] = {}
         self._running = False
         self._consecutive_errors = 0
         self._max_consecutive_errors = 5
@@ -267,11 +282,13 @@ class SignalLoop:
         closed = bars[:-1]
         if len(closed) < 30:
             return
+        self._last_bars[timeframe] = closed
 
         ctx = precompute(closed, self.config)
         actx = AlphaContext(bars=closed, ctx=ctx, cfg=self.config)
         at_index = len(closed) - 1
 
+        any_signal = False
         for alpha in self.alphas:
             try:
                 signal = alpha.signal(actx, at_index)
@@ -280,13 +297,28 @@ class SignalLoop:
                 continue
             if signal is None:
                 continue
-            await self._route_signal(_RoutedSignal(alpha, signal, timeframe), last_closed)
+            any_signal = True
+            await self._route_signal(_RoutedSignal(alpha, signal, timeframe),
+                                     last_closed, bars=closed)
+        if not any_signal:
+            # One line per evaluated candle close so the log shows the agent
+            # IS working between trades (pure logging, no behaviour change).
+            try:
+                close_dt = last_closed.time + timedelta(
+                    minutes=Timeframe(timeframe).minutes)
+                close_label = close_dt.strftime("%H:%M")
+            except (ValueError, KeyError):
+                close_label = last_closed.time.strftime("%H:%M")
+            log.info("%s close %s UTC: evaluated, no setup (alphas checked: %s)",
+                     timeframe, close_label,
+                     ", ".join(a.name for a in self.alphas))
 
     # ------------------------------------------------------------------
     # Risk gates + execution
     # ------------------------------------------------------------------
 
-    async def _route_signal(self, routed: _RoutedSignal, last_closed) -> None:
+    async def _route_signal(self, routed: _RoutedSignal, last_closed,
+                            bars: list | None = None) -> None:
         symbol = self.live_config.symbol
         alpha, signal, timeframe = routed.alpha, routed.signal, routed.timeframe
 
@@ -307,6 +339,8 @@ class SignalLoop:
         if not guard.allowed:
             log.info("[%s] %s blocked by post-loss guard: %s",
                      timeframe, alpha.name, guard.reason)
+            self._record_near_miss("post_loss_guard", routed, last_closed,
+                                   bars, detail=str(guard.reason))
             return
 
         positions = await self.broker.get_open_positions(symbol)
@@ -319,6 +353,9 @@ class SignalLoop:
         if risk_result.decision != RiskDecision.APPROVED:
             log.info("[%s] %s blocked by RiskManager: %s (%s)",
                      timeframe, alpha.name, risk_result.decision, risk_result.reason)
+            self._record_near_miss(
+                "risk_manager", routed, last_closed, bars,
+                detail=f"{risk_result.decision}: {risk_result.reason}")
             return
 
         constraints = SymbolConstraints(
@@ -346,6 +383,8 @@ class SignalLoop:
         if sizing.lot <= 0:
             log.info("[%s] %s sized to zero lots: %s",
                      timeframe, alpha.name, sizing.summary())
+            self._record_near_miss("sizing_skip", routed, last_closed,
+                                   bars, detail=sizing.summary())
             return
 
         broker_stop = catastrophe_stop(
@@ -372,10 +411,12 @@ class SignalLoop:
             "timeframe": timeframe,
             "direction": signal.direction.value,
             "entry": result.fill_price or signal.entry,
+            "entry_time": now.isoformat(),
             "soft_stop": signal.stop,
             "stop": broker_stop,
             "take_profit": signal.take_profit,
             "conviction": signal.conviction,
+            "signal_reason": signal.reason,
         })
         self.notifier.notify_text(
             f"*Trade OPENED* `{alpha.name}` `{signal.direction.value.upper()}`\n"
@@ -421,6 +462,66 @@ class SignalLoop:
         )
 
     # ------------------------------------------------------------------
+    # Observation vaults (pure logging — gates have already decided)
+    # ------------------------------------------------------------------
+
+    def _record_near_miss(self, reason: str, routed: _RoutedSignal,
+                          last_closed, bars: list | None,
+                          detail: str = "") -> None:
+        """Vault a downstream-rejected alpha signal. Never raises."""
+        if self.vault is None:
+            return
+        try:
+            s = routed.signal
+            self.vault.record_near_miss({
+                "ts": last_closed.time.isoformat(),
+                "tf": routed.timeframe,
+                "reason": reason,
+                "direction": s.direction.value,
+                "entry": s.entry,
+                "stop": s.stop,
+                "take_profit": s.take_profit,
+                "conviction": s.conviction,
+                "signal_reason": s.reason,
+                "alpha": routed.alpha.name,
+                "detail": detail,
+            }, bars)
+        except Exception as e:
+            log.warning("near-miss vault record failed: %s", e)
+
+    def _record_loss(self, ticket: int, info: dict, ctx: dict,
+                     pnl: float, r: float) -> None:
+        """Vault a losing close (loss vault). Never raises."""
+        if self.vault is None:
+            return
+        try:
+            tf = str(ctx.get("timeframe") or (
+                self.live_config.timeframes[0] if self.live_config.timeframes else "H4"))
+            self.vault.record_loss({
+                "ts": datetime.now(tz=timezone.utc).isoformat(),
+                "tf": tf,
+                "ticket": ticket,
+                "direction": ctx.get("direction"),
+                "entry_time": ctx.get("entry_time"),
+                "entry": ctx.get("entry"),
+                "exit_time": datetime.now(tz=timezone.utc).isoformat(),
+                "exit_price": info.get("exit_price"),
+                "stop": ctx.get("soft_stop", ctx.get("stop")),
+                "take_profit": ctx.get("take_profit"),
+                "pnl": pnl,
+                "pnl_pips": info.get("pnl_pips", 0.0),
+                "r_multiple": r,
+                "mae_pips": info.get("mae_pips", 0.0),
+                "mfe_pips": info.get("mfe_pips", 0.0),
+                "exit_reason": info.get("exit_reason", ""),
+                "conviction": ctx.get("conviction"),
+                "alpha": ctx.get("alpha"),
+                "signal_reason": ctx.get("signal_reason"),
+            }, self._last_bars.get(tf))
+        except Exception as e:
+            log.warning("loss vault record failed: %s", e)
+
+    # ------------------------------------------------------------------
     # Close callback
     # ------------------------------------------------------------------
 
@@ -447,6 +548,8 @@ class SignalLoop:
                             gs.get("halt_reason"))
         except Exception as e:
             log.warning("post-loss guard register_close failed for %s: %s", ticket, e)
+        if pnl < 0:
+            self._record_loss(ticket, info, ctx, pnl, r)
         outcome = "WIN" if pnl > 0 else "LOSS"
         self.notifier.notify_text(
             f"*Trade CLOSED* `{outcome}` ticket=`{ticket}`\n"
@@ -459,12 +562,26 @@ class SignalLoop:
     # ------------------------------------------------------------------
 
     def _maybe_heartbeat(self) -> None:
+        """Periodic 'I am alive' INFO line (pure logging, no broker calls).
+
+        Balance/equity/position count come from the monitor's last 5s cycle
+        snapshot, so the heartbeat adds zero broker round-trips; if the
+        monitor has not completed a cycle yet, the account part is omitted.
+        """
         now = datetime.now(tz=timezone.utc)
         if self._last_heartbeat is None:
             self._last_heartbeat = now
             return
         if (now - self._last_heartbeat).total_seconds() < _HEARTBEAT_INTERVAL_SECONDS:
             return
-        log.info("heartbeat: running, balance=%s, alphas=%s",
-                 self._last_balance, [a.name for a in self.alphas])
         self._last_heartbeat = now
+        account = getattr(self.monitor, "last_account", None)
+        n_open = getattr(self.monitor, "last_open_position_count", None)
+        if account is not None:
+            status = (f"balance=${account.balance:.2f} "
+                      f"equity=${account.equity:.2f} "
+                      f"open_positions={n_open if n_open is not None else '?'}")
+        else:
+            status = "running (account snapshot pending)"
+        log.info("heartbeat: %s | next H4 close ~%s UTC",
+                 status, next_h4_close_utc(now).strftime("%H:%M"))

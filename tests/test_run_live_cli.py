@@ -51,7 +51,7 @@ def _run_main_capturing_routes(monkeypatch, argv: list[str]) -> dict:
 
     def fake_setup(symbol, log_dir=None):
         captured["log_dir"] = log_dir
-        return Path(f"/dev/null/{symbol}/2026-06-10.log")
+        return Path(f"/dev/null/{symbol}/{symbol}_2026-06-10.log")
 
     monkeypatch.setattr(run_live, "setup_live_logging", fake_setup)
     monkeypatch.setattr(sys, "argv", ["run_live.py", *argv])
@@ -127,7 +127,7 @@ def test_symbol_flag_flows_into_live_config(monkeypatch):
 
 
 # ----------------------------------------------------------------------
-# Per-symbol daily log files: {log_dir}/{SYMBOL}/{YYYY-MM-DD}.log
+# Per-symbol daily log files: {log_dir}/{SYMBOL}/{SYMBOL}_{YYYY-MM-DD}.log
 # ----------------------------------------------------------------------
 
 def _attach_logging(tmp_path):
@@ -149,7 +149,7 @@ def test_setup_live_logging_per_symbol_dated_file(tmp_path):
     path, new, cleanup = _attach_logging(tmp_path)
     try:
         today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
-        assert path == tmp_path / "EURUSD" / f"{today}.log"
+        assert path == tmp_path / "EURUSD" / f"EURUSD_{today}.log"
         assert path.parent.is_dir()
         assert len(new) == 1
         handler = new[0]
@@ -169,19 +169,20 @@ def test_setup_live_logging_per_symbol_dated_file(tmp_path):
 
 
 def test_rollover_switches_to_new_dated_file(tmp_path, monkeypatch):
-    """A process left running across UTC midnight starts a NEW dated file
-    (no rename of the old one)."""
+    """A process left running across UTC midnight starts a NEW
+    symbol-prefixed dated file (no rename of the old one)."""
     path, new, cleanup = _attach_logging(tmp_path)
     try:
         handler = new[0]
         logging.getLogger("agent.live.signal_loop").warning("day one line")
-        monkeypatch.setattr(run_live._DailyDateFileHandler, "_current_name",
-                            staticmethod(lambda: "2099-01-01.log"))
+        monkeypatch.setattr(
+            run_live._DailyDateFileHandler, "_current_name",
+            lambda self: f"{self._symbol}_2099-01-01.log")
         handler.doRollover()
         logging.getLogger("agent.live.signal_loop").warning("day two line")
         handler.flush()
 
-        next_day = tmp_path / "EURUSD" / "2099-01-01.log"
+        next_day = tmp_path / "EURUSD" / "EURUSD_2099-01-01.log"
         assert "day one line" in path.read_text(encoding="utf-8")
         assert "day one line" not in next_day.read_text(encoding="utf-8")
         assert "day two line" in next_day.read_text(encoding="utf-8")

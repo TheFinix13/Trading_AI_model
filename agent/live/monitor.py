@@ -74,6 +74,11 @@ class PositionMonitor:
         self._day_start_balance: float = 0.0
         self._current_day: str = ""
         self._kill_switch_handled: bool = False
+        # Last account/position snapshot from the 5s monitor cycle, exposed so
+        # the signal loop's heartbeat can log balance/equity/open-position
+        # count without an extra broker round-trip.
+        self.last_account = None
+        self.last_open_position_count: int | None = None
 
     def register_entry(self, ticket: int, context: dict) -> None:
         """Record entry context so an eventual close can be journaled richly."""
@@ -110,6 +115,8 @@ class PositionMonitor:
             symbol = self.live_config.symbol
             positions = await self.broker.get_open_positions(symbol)
             account = await self.broker.get_account_info()
+            self.last_account = account
+            self.last_open_position_count = len(positions)
 
             # Daily DD check
             await self._check_daily_dd(account.balance, account.equity, positions)

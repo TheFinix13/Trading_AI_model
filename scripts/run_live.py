@@ -53,6 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dotenv import load_dotenv
 
 from agent.config import PROJECT_ROOT, load_config
+from agent.journal.vault import VaultRecorder
 from agent.live.broker import create_broker
 from agent.live.config import LiveConfig
 from agent.live.router_wiring import UndeployedSymbolError, build_live_routes
@@ -77,25 +78,27 @@ log = logging.getLogger("run_live")
 
 
 class _DailyDateFileHandler(logging.handlers.TimedRotatingFileHandler):
-    """Daily file handler whose ACTIVE file is named for the current UTC day.
+    """Daily file handler whose ACTIVE file is named symbol + current UTC day.
 
     The stock TimedRotatingFileHandler writes to a fixed base name and only
-    appends the date when it rotates; here the ISO date IS the filename
-    (``2026-06-10.log``), so files sort chronologically in Explorer and a
-    process left running for days produces exactly one file per UTC day.
-    Rollover just switches to the new day's file — no renames.
+    appends the date when it rotates; here the symbol + ISO date IS the
+    filename (``EURUSD_2026-06-10.log``), so files sort chronologically in
+    Explorer, stay identifiable when downloaded/shared out of their folder,
+    and a process left running for days produces exactly one file per UTC
+    day. Rollover just switches to the new day's file — no renames.
     """
 
-    def __init__(self, directory: Path, backup_count: int = 30):
+    def __init__(self, directory: Path, symbol: str, backup_count: int = 30):
         self._directory = directory
+        self._symbol = symbol
         super().__init__(
             directory / self._current_name(), when="midnight", utc=True,
             backupCount=backup_count, encoding="utf-8", delay=False,
         )
 
-    @staticmethod
-    def _current_name() -> str:
-        return datetime.now(tz=timezone.utc).strftime("%Y-%m-%d") + ".log"
+    def _current_name(self) -> str:
+        date = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+        return f"{self._symbol}_{date}.log"
 
     def doRollover(self) -> None:  # noqa: N802 (logging API name)
         if self.stream:
@@ -106,8 +109,8 @@ class _DailyDateFileHandler(logging.handlers.TimedRotatingFileHandler):
 
         if self.backupCount > 0:
             dated = sorted(
-                p for p in self._directory.glob("????-??-??.log")
-                if p.stem.replace("-", "").isdigit()
+                p for p in self._directory.glob(f"{self._symbol}_????-??-??.log")
+                if p.stem[-10:].replace("-", "").isdigit()
             )
             for old in dated[:-self.backupCount]:
                 try:
@@ -126,10 +129,12 @@ class _DailyDateFileHandler(logging.handlers.TimedRotatingFileHandler):
 def setup_live_logging(symbol: str, log_dir: Path | None = None) -> Path:
     """Attach a per-symbol daily log file to the ROOT logger.
 
-    Layout: ``{log_dir}/{SYMBOL}/{YYYY-MM-DD}.log`` (directories are
-    created), one subfolder per symbol so three concurrent processes never
-    mix lines, one ISO-date-named file per UTC day (rolls over at UTC
-    midnight, 30 days kept). ``log_dir`` defaults to
+    Layout: ``{log_dir}/{SYMBOL}/{SYMBOL}_{YYYY-MM-DD}.log`` (directories
+    are created), one subfolder per symbol so three concurrent processes
+    never mix lines, one symbol+date-named file per UTC day (rolls over at
+    UTC midnight, 30 days kept). The symbol is in the FILENAME, not just the
+    folder, so an individual file stays identifiable when downloaded or
+    shared (WhatsApp etc.) without its folder. ``log_dir`` defaults to
     :data:`DEFAULT_LOG_ROOT` (~/Documents/TradingAgentLogs).
 
     The handler is attached to the root logger with no handler-level filter,
@@ -139,7 +144,7 @@ def setup_live_logging(symbol: str, log_dir: Path | None = None) -> Path:
     """
     symbol_dir = (log_dir or DEFAULT_LOG_ROOT) / symbol
     symbol_dir.mkdir(parents=True, exist_ok=True)
-    handler = _DailyDateFileHandler(symbol_dir, backup_count=30)
+    handler = _DailyDateFileHandler(symbol_dir, symbol, backup_count=30)
     handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=LOG_DATEFMT))
     logging.getLogger().addHandler(handler)
     return Path(handler.baseFilename)
@@ -164,7 +169,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Root folder for log files (default: ~/Documents/"
              "TradingAgentLogs). Each symbol gets its own subfolder with "
-             "one YYYY-MM-DD.log file per UTC day.",
+             "one SYMBOL_YYYY-MM-DD.log file per UTC day.",
     )
     parser.add_argument(
         "--broker", "-b",
@@ -281,8 +286,14 @@ def main() -> None:
     log_file = setup_live_logging(
         cfg.symbol, Path(args.log_dir) if args.log_dir else None)
     log.info("Logging to: %s", log_file)
-    log.info("(one YYYY-MM-DD.log file per UTC day in that folder; "
-             "30 days kept)")
+    log.info("(one %s_YYYY-MM-DD.log file per UTC day in that folder; "
+             "30 days kept)", cfg.symbol)
+
+    # Observation-only near-miss/loss vault, stored beside the daily logs
+    # ({log root}/{SYMBOL}/near_misses + /losses). Pure logging — never
+    # influences gates, sizing or routing.
+    vault = VaultRecorder(
+        cfg.symbol, Path(args.log_dir) if args.log_dir else DEFAULT_LOG_ROOT)
 
     risk_scales: dict[str, float] = {}
     if args.alpha == "router":
@@ -293,6 +304,9 @@ def main() -> None:
             sys.exit(1)
         alphas = [r.alpha for r in routes]
         risk_scales = {r.alpha.name: r.risk_scale for r in routes}
+        for r in routes:
+            # Records zone touches the HTF gate (alone) rejected.
+            r.alpha.near_miss_hook = vault.alpha_hook(r.timeframe)
         # The routing table fixes the timeframe(s) the validated cells were
         # proven on; a CLI override here would silently change the strategy.
         timeframes = sorted({r.timeframe for r in routes})
@@ -323,7 +337,8 @@ def main() -> None:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     signal_loop = SignalLoop(alphas, config=cfg, live_config=live,
-                             risk_scales=risk_scales, verbose=args.verbose)
+                             risk_scales=risk_scales, verbose=args.verbose,
+                             vault=vault)
 
     def _shutdown(sig: signal.Signals) -> None:
         log.info("Received %s, shutting down...", sig.name)

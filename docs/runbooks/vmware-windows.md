@@ -47,7 +47,7 @@ python scripts/run_live.py --broker exness --symbol USDCAD --verbose
 Each tab should print (among other lines):
 
 ```
-Logging to: C:\Users\<name>\Documents\TradingAgentLogs\EURUSD\2026-06-10.log
+Logging to: C:\Users\<name>\Documents\TradingAgentLogs\EURUSD\EURUSD_2026-06-10.log
 Routed cell: EURUSD/H4/all mode=htf_against risk_scale=1.00 alpha=zone_h4_all
 MT5 connected: login=... server=Exness-MT5Trial balance=...
 Broker OK: exness balance=$...
@@ -75,22 +75,53 @@ with a clear error listing the deployed symbols — that is by design.
   ```
   TradingAgentLogs/
     EURUSD/
-      2026-06-10.log
-      2026-06-11.log
+      EURUSD_2026-06-10.log
+      EURUSD_2026-06-11.log
     GBPUSD/
-      2026-06-10.log
+      GBPUSD_2026-06-10.log
     USDCAD/
-      2026-06-10.log
+      USDCAD_2026-06-10.log
   ```
 
-- **One file per UTC day**, named `YYYY-MM-DD.log` (sorts chronologically in
-  Explorer). A process left running for days rolls over at UTC midnight into
-  a fresh dated file automatically; the last 30 days are kept.
+- **One file per UTC day**, named `SYMBOL_YYYY-MM-DD.log` (sorts
+  chronologically in Explorer, and the symbol stays visible when a single
+  file is downloaded or shared — e.g. over WhatsApp — without its folder).
+  A process left running for days rolls over at UTC midnight into a fresh
+  dated file automatically; the last 30 days are kept.
 - The exact path is printed at startup (`Logging to: ...`).
 - Each day's file is plain text with the same lines as the console — you can
   open it and **copy-paste the whole file into chat for review**.
 - Override the root folder with `--log-dir`, e.g.
   `python scripts/run_live.py --broker exness --symbol EURUSD --log-dir D:\logs`.
+
+### Reading the logs
+
+The agent only **decides** at H4 candle closes — 00, 04, 08, 12, 16 and 20
+UTC. The loop polls every 30 seconds, but between closes there is nothing to
+decide, so the log is intentionally quiet. Two kinds of lines tell you it is
+alive and working:
+
+- **Heartbeat** (every 15 minutes):
+
+  ```
+  heartbeat: balance=$512.34 equity=$510.10 open_positions=1 | next H4 close ~16:00 UTC
+  ```
+
+  Balance/equity come from the position monitor's last broker snapshot; right
+  after startup (before the first monitor cycle) the heartbeat may briefly
+  say `running (account snapshot pending)` instead.
+
+- **Per-close evaluation** (one line at each H4 close, when no trade is taken):
+
+  ```
+  H4 close 16:00 UTC: evaluated, no setup (alphas checked: zone_h4_all)
+  ```
+
+  This is the proof the candle WAS evaluated and simply produced no setup.
+  If a signal fires instead, you will see the routing/sizing/order lines.
+
+**Silence between heartbeats is normal.** Only worry if heartbeats stop
+appearing for well over 15 minutes while the process is supposedly running.
 
 ## No charts needed
 
@@ -110,6 +141,48 @@ running and logged in.
   named `kill.txt` in the repo root. Every loop iteration checks it; the
   monitor closes open positions and the loops stand down. Delete the file
   before restarting.
+
+## Near-miss and loss vaults
+
+Each symbol process also keeps two **observation-only** evidence folders next
+to its daily logs (pure logging — they never change what the agent trades):
+
+```
+TradingAgentLogs/
+  EURUSD/
+    EURUSD_2026-06-10.log
+    near_misses/
+      events.jsonl                      ← one JSON line per near-miss
+      2026-06-10_0800_htf_gate.png      ← chart snapshot of the event
+    losses/
+      events.jsonl                      ← one JSON line per losing close
+      2026-06-12_1600_loss.png          ← chart with the trade's lifetime
+```
+
+- **Near-misses** are trades the agent almost took: zone touches rejected
+  only by the D1 HTF gate (`htf_gate`), plus signals dropped downstream by
+  the post-loss guard (`post_loss_guard`), the risk manager / max-positions
+  check (`risk_manager`), or a zero-lot sizing skip (`sizing_skip`).
+- **Losses** are live positions that closed in the red, with entry/exit
+  prices, pnl, R-multiple and the chart from entry to exit.
+- Both the PNGs and the `events.jsonl` files are plain files — **copy them
+  into chat for review** exactly like the daily logs.
+
+**Weekly routine** (any machine with the parquet cache, e.g. the Mac):
+
+```bash
+python scripts/resolve_near_misses.py --symbol EURUSD
+python scripts/resolve_near_misses.py --symbol GBPUSD
+python scripts/resolve_near_misses.py --symbol USDCAD
+```
+
+The resolver scores each unresolved near-miss (would the hypothetical trade
+have hit SL or TP first? both-in-one-bar counts as SL, conservative),
+rewrites the JSONL with the outcomes, re-renders charts with ~40 aftermath
+bars, and prints a per-reason summary (n / win rate / avg R). Review the
+table; if a reason tag looks systematically profitable, that is a
+**hypothesis** to pre-register through the validation pipeline — never a
+reason to loosen a gate directly.
 
 ## Expected behaviour / trade frequency
 
