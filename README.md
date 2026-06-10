@@ -1,593 +1,136 @@
-# EURUSD AI Trading Agent
+# EURUSD AI Agent — a validation-first FX zone-fade portfolio
 
-> ⚠️ **STATUS (2026-06-10): much of this README is HISTORICAL.** It describes
-> the v1 multi-concept system (strategy ensembles, ML scorers, reaction-engine
-> modes, dashboard) that was **burned in the 2026-06-09 reset** after its
-> results proved to be overfitting. What trades live today is a single
-> statistically-validated strategy — `zone_d1_against` (H4 supply/demand zone
-> faded against the D1 trend) — deployed through a multi-symbol router on
-> **EURUSD (risk 1.0), GBPUSD (0.5), USDCAD (0.5)**. `scripts/run_live.py`
-> trades the router by default; the old `ReactionAlpha` survives only as an
-> experimental `--alpha reaction` escape hatch. Read first:
-> **[docs/00-journey.md](docs/00-journey.md)** (how we got here) and
-> **[docs/CHECKPOINT.md](docs/CHECKPOINT.md)** (current state + evidence).
+A trading agent that runs **one statistically validated strategy** across three
+FX majors, instead of an ensemble of indicators. It began as a codified
+discretionary ICT system with seven stacked concepts; that version produced
+impressive in-sample numbers and noise out of sample, so it was burned and
+rebuilt around a strict rule: **every concept must earn its place alone, with
+bootstrap p-values and multiple-testing correction, before it touches live
+money**. One concept survived — supply/demand zones — and one configuration of
+it passed holdout, walk-forward, and frozen cross-pair validation. That is what
+trades today, on a demo account. This is a research-discipline project, not a
+"profitable bot" pitch.
 
-A trading agent for **FX majors on Exness MT5** that grew out of codifying a
-personal discretionary ICT style and matured — through a reset, single-concept
-ablation, and a walk-forward + frozen cross-pair validation gauntlet — into a
-small, evidence-gated zone-fade portfolio.
+## The validated strategy
 
----
+`zone_d1_against`: an H4 supply/demand zone touch **faded against the D1
+trend** (the zone edge is mean-reversion — trading it *with* the higher-TF
+trend destroys it). The same logic, byte-for-byte, is deployed on three
+symbols via a routing table (`agent/alphas/zone_routing.py`):
 
-## Documentation
+| Symbol | Cell | risk_scale | Evidence | Key numbers |
+|---|---|---|---|---|
+| EURUSD | H4 / all sessions | 1.0 | full pipeline + 7-window walk-forward | 7/7 OOS windows positive, median +11.34 pips/trade, ~66 trades/yr |
+| GBPUSD | H4 / all sessions | 0.5 | frozen cross-pair, zero re-tuning, costs ×1.5 | +10.24/trade, Sharpe 2.42, p=0.001, 11/11 positive years (n=1,161) |
+| USDCAD | H4 / all sessions | 0.5 | frozen cross-pair, zero re-tuning, costs ×1.8 | +4.63/trade, Sharpe 1.16, p=0.028, 10/11 positive years (n=858) |
 
-Start at **[docs/00-overview.md](docs/00-overview.md)** (the index with status
-flags per doc). The two living documents:
+AUDUSD and NZDUSD were tested the same frozen way and **excluded** (8/11 and
+6/11 positive years; below the deployment rubric). EURUSD D1 is a tracked
+candidate, not deployed. Half-risk slots are promoted only when live results
+confirm the backtest distribution.
 
-| Doc | What's inside |
+A sealed Jan–Jun 2026 first look on EURUSD showed 16 trades, +7.75/trade,
+p=0.29 — directionally consistent but statistically inconclusive, exactly what
+a small sample should look like. It is monitored, not celebrated.
+
+## How it was validated
+
+```
+7 concepts → ablation + BH-FDR → holdout → walk-forward → frozen cross-pair → 3 deployments
+```
+
+1. **Single-concept ablation** — each v1 concept (FVG, BOS, order blocks,
+   fibs, momentum, liquidity sweeps, zones) tested ALONE across 5 timeframes ×
+   5 sessions with bootstrap p-values and Benjamini-Hochberg FDR at 5% across
+   the whole grid. Six concepts died; zones survived.
+2. **Holdout (IS 2015–2022 / OOS 2023–2025)** — of 8 in-sample survivors, only
+   1 validated out of sample. The big D1 cells collapsed (+25 → +1/trade).
+3. **Walk-forward (7 rolling 4yr-IS / 1yr-OOS windows)** — exposed the
+   holdout's session restriction as selection bias; H4/all-sessions posted
+   positive OOS expectancy in 7/7 windows and became the deployed cell.
+4. **Frozen cross-pair tests** — the deployed config run byte-for-byte, zero
+   re-tuning, with costs scaled UP, on pairs the pipeline had never touched.
+   Nothing was fit to those pairs, so their entire 2015–2025 history is
+   out-of-sample: this evidence cannot be overfitting. GBPUSD and USDCAD
+   passed; AUDUSD and NZDUSD did not.
+
+The full narrative — including the two selection-bias lessons the project paid
+for — is in [docs/00-journey.md](docs/00-journey.md). Raw evidence lives in
+dated, never-edited write-ups under [docs/reviews/](docs/reviews/).
+
+## Quickstart
+
+Requires Python 3.11.
+
+```bash
+pip install -r requirements.txt
+
+# Paper trading (no broker, works on macOS):
+python scripts/run_live.py --broker paper
+
+# Live/demo (MT5/Exness, Windows): one process per deployed symbol
+python scripts/run_live.py --broker exness --symbol EURUSD --verbose
+python scripts/run_live.py --broker exness --symbol GBPUSD --verbose
+python scripts/run_live.py --broker exness --symbol USDCAD --verbose
+```
+
+The runner defaults to the routing table: it fixes the alpha, the H4
+timeframe, and the `risk_scale` fed into position sizing (conviction band
+0.5–2% of balance × the cell's risk_scale, margin-aware). Undeployed symbols
+refuse to start. The old `ReactionAlpha` survives only behind an explicit
+`--alpha reaction` experimental flag — unvalidated, never for funded accounts.
+
+Full Windows VM / MT5 setup (credentials, expected startup lines, trade
+frequency, stopping safely): [docs/runbooks/vmware-windows.md](docs/runbooks/vmware-windows.md).
+
+## Observability
+
+- **Per-symbol daily logs** — `{SYMBOL}_{YYYY-MM-DD}.log` under
+  `~/Documents/TradingAgentLogs/{SYMBOL}/`, one file per UTC day, 30 days kept.
+- **Heartbeats** every 15 minutes (balance, equity, open positions, next H4
+  close) and an explicit "evaluated, no setup" line at every H4 close — so a
+  quiet log is provably alive, not silently broken.
+- **Near-miss and loss vaults** — observation-only JSONL + chart-snapshot PNGs
+  beside the logs: zone touches rejected by the HTF gate, signals dropped by
+  guards/risk/sizing, and every losing close with its trade lifetime.
+- **Weekly resolver** — `scripts/resolve_near_misses.py --symbol <SYM>` scores
+  each hypothetical (SL-first tie-break, conservative) and prints a per-reason
+  summary. Vault output is hypothesis-generating only; gates change only
+  through the validation pipeline.
+
+## Repo map
+
+| Path | What's there |
 |---|---|
-| **[docs/00-journey.md](docs/00-journey.md)** | The full narrative: v1 era → reset → ablation funnel → zone-only → validation → multi-symbol deployment. With diagrams. |
-| **[docs/CHECKPOINT.md](docs/CHECKPOINT.md)** | Current-state snapshot: deployed cells, evidence, methodology gates, parked work, checkpoint routine. |
-
-Numbered docs 01–07 and 09 are **historical** (v1 world, banners at the top of
-each); [docs/08](docs/08-live-trading-and-deployment.md) is current (router-based
-live trading and deployment).
-
----
-
-## Table of contents
-
-1. [Trading philosophy](#trading-philosophy)
-2. [System architecture](#system-architecture)
-3. [Installation](#installation)
-4. [Quick start](#quick-start)
-5. [Data sources](#data-sources)
-6. [Running backtests](#running-backtests)
-7. [Trade journal & explainability](#trade-journal--explainability)
-8. [The ML layer](#the-ml-layer)
-9. [Anti-hallucination defenses](#anti-hallucination-defenses)
-10. [Web dashboard](#web-dashboard)
-11. [Going live (paper → demo → live)](#going-live)
-12. [Project structure](#project-structure)
-13. [Risk management](#risk-management)
-14. [FAQ / common errors](#faq)
-
----
-
-## Trading philosophy
-
-Every entry must satisfy **at least one supply/demand zone** plus an additional
-confluence (break of structure, FVG, fib level, trendline, or liquidity wick). The
-system is designed to wait for the kind of multi-signal area that a human top-down
-trader would identify, and only then commit risk.
-
-
-| Confluence         | What it means                                                                   | Where it's detected             |
-| ------------------ | ------------------------------------------------------------------------------- | ------------------------------- |
-| **Zone (S/D)**     | Fresh demand/supply zone formed by a strong impulse leg, retested by price      | `agent/detectors/zones.py`      |
-| **BOS**            | Break of recent swing high/low confirming directional bias                      | `agent/detectors/bos.py`        |
-| **FVG**            | Fair Value Gap — three-bar imbalance unfilled by price                          | `agent/detectors/fvg.py`        |
-| **Fib**            | Price tagging the 38.2 / 50 / 61.8 / 78.6% retracement of the most recent swing | `agent/detectors/fib.py`        |
-| **Trendline**      | Diagonal line connecting recent swings, currently being tested                  | `agent/detectors/trendlines.py` |
-| **Liquidity wick** | Long-wick candle that grabbed liquidity beyond a recent swing                   | `agent/detectors/liquidity.py`  |
-
-
-On top of this, the system supports **higher-timeframe (HTF) bias filtering** — when
-trading M15/H1 setups, it can require alignment with D1 EMA20 trend direction, exactly
-how top-down analysis works in practice.
-
----
-
-## System architecture
-
-```
-                ┌──────────────────────────────────────────────────────┐
-                │                  Bar data feed                        │
-                │   (MT5 / Dukascopy / yfinance / CSV import)           │
-                └────────────────────┬─────────────────────────────────┘
-                                     │
-                                     ▼
-   ┌──────────────────────────────────────────────────────────────────┐
-   │                         Detectors                                  │
-   │   zones · BOS · FVG · fib · trendlines · liquidity wicks · ATR    │
-   └────────────────────┬───────────────────────────────────────────┬─┘
-                        │                                           │
-                        ▼                                           ▼
-                ┌────────────────┐                      ┌──────────────────────┐
-                │   Rule engine  │                      │ HTF bias computer    │
-                │   (confluence) │◄─────────────────────┤ (D1/H4 trend+zones)  │
-                └────────┬───────┘                      └──────────────────────┘
-                         │ Setup
-                         ▼
-                ┌────────────────┐    ┌───────────────────────────────────┐
-                │   ML scorer    │    │ Pattern discoverer (alternative)  │
-                │ (rule features │    │  XGBoost/sklearn on raw bar       │
-                │  → win prob)   │    │  features. Calibrated.            │
-                └────────┬───────┘    └───────────────────────────────────┘
-                         │ score
-                         ▼
-                ┌────────────────┐
-                │  Risk manager  │  pct_target/pct_floor sizing, daily DD halt,
-                │                │  no-trade days/windows, max-positions
-                └────────┬───────┘
-                         │ approved order
-                         ▼
-                ┌────────────────────────────────────────┐
-                │  Backtester  /  Live executor (MT5)    │
-                │  → Journal (SQLite) every signal/trade │
-                └────────────────────────────────────────┘
-                         │
-                         ▼
-                ┌────────────────────────────────────────┐
-                │ FastAPI dashboard + journal CLI        │
-                │  /trade/{id} narrative · explain.py    │
-                └────────────────────────────────────────┘
-```
-
-**Two ML paths:**
-
-- **Setup scorer** (`agent/model/scorer.py`) — ranks rule-engine setups by win
-probability. Trained on labeled (features, win/loss) pairs from a no-scorer
-backtest. The reliable layer.
-- **Pattern discoverer** (`agent/model/discoverer.py`) — learns its own patterns
-from raw bar features (returns, ATR, RSI, EMAs, candle morphology, time-of-day).
-Independent signal generator. The exploratory layer.
-
-Both wrap gradient-boosted classifiers with **isotonic probability calibration**
-so predicted probabilities actually match observed win rates.
-
----
-
-## Reaction engine, adaptive sizing & live learning
-
-On top of the anticipation stack above, the live agent now also **reacts to
-committed moves in present time**, **sizes by risk**, and **learns from its own
-results day by day**. Full details:
-**[04 — Reaction Engine](docs/04-reaction-engine.md)**,
-**[05 — Position Sizing & Risk](docs/05-position-sizing-and-risk.md)**, and
-**[06 — Learning Journal](docs/06-learning-journal.md)**.
-
-- **Reaction engine** (`agent/reaction/`) — measures displacement, range
-  expansion, momentum and order-flow imbalance on the just-closed bar(s), blends
-  them into a conviction score, and fires when price commits at a marked level.
-  Uses a *lighter* gate set than anticipation, so it actually trades.
-- **Anticipation → reaction flip** — abandons an anticipated setup when momentum
-  commits hard the other way.
-- **Modes** — `--mode anticipation | reaction | hybrid` (default `hybrid`:
-  anticipation marks levels, reaction pulls the trigger).
-- **Adaptive sizing** (`agent/live/position_sizer.py`) — risks a conviction-scaled
-  % of live equity (band `--risk-min`…`--risk-max`), respecting lot step, min/max
-  lot and free margin. `--lot` becomes an optional upper cap.
-- **Learning** — a fresh per-day journal (`data/journal/live/`, markdown + JSONL
-  feature snapshots) plus an online performance memory keyed by setup signature
-  that feeds expectancy back into conviction.
-
-```bash
-# Live (Exness MT5), hybrid engine, risk-based sizing, fresh journal, verbose logs
-PYTHONPATH=. .venv/bin/python scripts/run_live.py \
-    --broker exness --timeframe H1 --mode hybrid \
-    --risk-min 0.005 --risk-max 0.02 --reset-journal --verbose
-
-# Learning backtest: reaction + risk sizing + online memory, day by day
-PYTHONPATH=. .venv/bin/python scripts/run_learning_backtest.py \
-    --years 2 --start-balance 100 --leverage 1000 --reset
-```
-
-In `--verbose` you'll see a **REACTION ENGINE** step (the four component scores +
-conviction vs threshold), a **SIZING** line (balance, risk%, stop pips, lot,
-margin), and a **LEARN** line on every close (signature win-rate, expectancy, next
-conviction adjustment).
-
----
-
-## Installation
-
-Requires **Python 3.11**.
-
-```bash
-# Clone and enter the project
-git clone <your-repo-url> eurusd-ai-agent
-cd eurusd-ai-agent
-
-# Set up the virtual environment
-python3.11 -m venv .venv
-source .venv/bin/activate            # Windows: .venv\Scripts\activate
-
-# Install in editable mode with dev tools
-pip install -e ".[dev]"
-
-# Optional: enable MetaTrader5 (Windows only)
-pip install -e ".[mt5]"
-```
-
-The default ML backend is scikit-learn (no native dependencies). If you want
-XGBoost on macOS, install libomp first:
-
-```bash
-# macOS (one-time)
-brew install libomp
-```
-
----
-
-## Quick start
-
-```bash
-# 1. Download 5 years of EURUSD history (multiple TFs) from Dukascopy
-python scripts/download_data.py --symbol EURUSD --years 5 \
-    --source dukascopy --timeframes M5 M15 H1 H4 D1
-
-# 2. Run a multi-timeframe backtest with journaling
-python scripts/run_multitf.py --use-cache-only --journal --reset-journal \
-    --tfs M15 H1 H4 D1 --analyze-losses
-
-# 3. Train the ML scorer on D1 (where the rules-based edge actually lives)
-python scripts/train_scorer.py --tf D1 --use-cache-only --threshold 0.55
-
-# 4. Re-run the backtest WITH the scorer
-python scripts/run_multitf.py --use-cache-only --tfs D1 \
-    --scorer-path models/scorer_EURUSD_D1.joblib --journal --reset-journal
-
-# 5. Open the dashboard to inspect every trade
-uvicorn agent.dashboard.app:app --reload
-# → http://localhost:8000
-```
-
----
-
-## Data sources
-
-
-| Source          | Pros                                                  | Cons                                          | When to use                       |
-| --------------- | ----------------------------------------------------- | --------------------------------------------- | --------------------------------- |
-| **Dukascopy**   | Broker-grade, free, deep history (10+ years), all TFs | Slower download                               | Primary source for backtesting    |
-| **MetaTrader5** | Matches what the live agent will see                  | Windows-only, requires terminal running       | Match live execution conditions   |
-| **yfinance**    | Easy, no setup                                        | 730-day cap on intraday TFs, FX feed is rough | Quick experiments only            |
-| **CSV import**  | Use any broker's exported history                     | Manual export step                            | When MT5 history isn't accessible |
-
-
-```bash
-# Dukascopy (recommended)
-python scripts/download_data.py --source dukascopy --years 5 --timeframes M5 M15 H1 H4 D1
-
-# MT5 CSV export
-python scripts/import_csv.py --file MyExport.csv --symbol EURUSD --timeframe H1
-
-# yfinance (only D1 reliably gives 5+ years)
-python scripts/download_data.py --source yfinance --years 5 --timeframes D1
-```
-
----
-
-## Running backtests
-
-### Single-TF gate check
-
-```bash
-python scripts/check_gate.py --timeframe D1 --use-cache-only
-```
-
-Pass criteria are configured under `backtest_gate` in `config/default.yaml`:
-profit factor ≥ 1.3, max drawdown ≤ 20%, ≥ 100 trades.
-
-### Multi-TF (recommended)
-
-Runs each TF independently and merges trades into a single one-position-at-a-time
-portfolio.
-
-```bash
-python scripts/run_multitf.py --use-cache-only --tfs M15 H1 H4 D1 --analyze-losses
-```
-
-Useful flags:
-
-- `--journal` writes every signal/trade/skip to SQLite for inspection
-- `--start-date YYYY-MM-DD` runs only on bars from that date onward — **critical for
-out-of-sample validation** when a scorer was trained on earlier data
-- `--htf-bias strict` rejects LTF setups against D1 trend
-- `--block-days Wed Fri` blocks specific weekdays the journal flagged as bad
-- `--scorer-path PATH --score-threshold 0.55` plugs in a trained ML scorer
-- `--bias-only-tfs H4 D1` marks higher TFs as bias-providing only (no entries)
-
-### Recommended OOS validation
-
-After training the scorer on data ending 2024-10-27, run a leakage-free check:
-
-```bash
-python scripts/run_multitf.py --use-cache-only \
-  --tfs M15 H1 H4 D1 \
-  --htf-bias advisory \
-  --journal --reset-journal \
-  --start-date 2024-10-28 \
-  --scorer-path models/scorer_EURUSD_D1.joblib
-```
-
-The `--start-date` flag ensures the scorer is only applied to bars it has never seen
-during training. Numbers reported by this run are the honest performance you can expect
-on fresh data — typically lower than in-sample numbers. **The H4 timeframe is bias-only
-by default** (entries come from M15/H1, with H4 supplying top-down trend context),
-matching the workflow most discretionary traders actually use.
-
-### Loss diagnostics
-
-```bash
-python scripts/analyze_losses.py --timeframe D1 --use-cache-only
-```
-
-Categorises every loser into one of:
-
-- `spike_out` — went strongly favorable, then reversed same-bar to hit stop
-- `reversal` — went mildly favorable, then reversed
-- `stopped_on_retrace` — barely moved up, stopped on the way down
-- `never_worked` — never moved in our favor at all
-
----
-
-## Trade journal & explainability
-
-Every backtest run with `--journal` writes a queryable SQLite database
-(`journal.db` by default).
-
-### Query CLI
-
-```bash
-# Last 20 trades
-python scripts/journal_query.py --last 20
-
-# Group losses by hour-of-day
-python scripts/journal_query.py --losers --by hour
-
-# Group all trades by day-of-week (this is how Wed was identified as a problem)
-python scripts/journal_query.py --last 1000 --by day
-
-# Full narrative for a specific trade
-python scripts/journal_query.py --explain 14
-
-# Why was this signal rejected?
-python scripts/journal_query.py --skipped --reason skip_risk_too_high
-```
-
-### Explainer CLI
-
-```bash
-# Explain by journal id
-python scripts/explain.py --trade-id 14
-
-# Re-run rule engine at a specific timestamp to see what fired
-python scripts/explain.py --replay --time 2025-04-05T14:00 --tf H1
-```
-
-### Web dashboard
-
-Each trade row on the dashboard is clickable → `/trade/{id}` shows the full plain-English
-narrative, confluences highlighted, top features at entry, MAE/MFE, and outcome.
-
----
-
-## The ML layer
-
-### Setup scorer (recommended)
-
-```bash
-python scripts/train_scorer.py --tf D1 --use-cache-only --threshold 0.55
-```
-
-The scorer trains a calibrated XGBoost/sklearn classifier on rule-engine setups
-labeled by their actual outcome. It does NOT generate signals; it RANKS them.
-
-In testing on D1, the scorer flipped strategy performance from PF 0.92 (losing) to
-PF 1.16 (winning) by filtering out the bottom-quality rule setups.
-
-### Pattern discoverer (exploratory)
-
-```bash
-python scripts/iterate.py --tfs H1 --use-cache-only --max-iters 15
-```
-
-Walk-forward training loop:
-
-1. Train on a sliding window
-2. Evaluate on out-of-sample validation
-3. **Reject champion if calibration check flags overconfidence**
-4. Save winning models to `models/discoverer_*/`
-
-In testing, the discoverer with raw-bar features alone consistently failed the
-calibration check. **This is the framework working correctly** — most "AI trading
-bots" never check calibration and ship overfit models confidently.
-
----
-
-## Anti-hallucination defenses
-
-The system has multiple layers preventing it from "trusting itself" wrongly:
-
-
-| Defense                          | Where                                      | What it does                                 |
-| -------------------------------- | ------------------------------------------ | -------------------------------------------- |
-| Walk-forward validation          | `agent/model/walkforward.py`, `iterate.py` | Trained on past, tested on never-seen future |
-| Out-of-sample year holdout       | `scripts/check_gate.py`                    | A whole year set aside, never trained on     |
-| Limited model capacity           | `discoverer.py`, `scorer.py`               | Max depth 4, 300 trees max — can't memorise  |
-| Isotonic probability calibration | Both ML modules                            | Predicted prob → observed win rate alignment |
-| Brier score / ECE check          | `agent/analysis/calibration.py`            | Refuses to crown overconfident champions     |
-| Hard risk caps                   | `agent/risk/manager.py`                    | Daily DD halt, max positions, lot caps       |
-| Kill switch                      | dashboard + `agent/risk/manager.py`        | Instant stop file at any time                |
-
-
-Run `scripts/iterate.py` and watch the `calibration LONG/SHORT` lines — if the
-"hallucinating" flag is true, the model is rejected automatically.
-
----
-
-## Web dashboard
-
-```bash
-uvicorn agent.dashboard.app:app --reload
-```
-
-Routes:
-
-- `/` — overview, balance, recent trades (clickable rows), kill switch
-- `/trade/{id}` — full reasoning narrative
-- `/api/equity`, `/api/trades`, `/api/health` — JSON API
-- `POST /api/kill`, `POST /api/resume` — kill switch toggle
-
----
-
-## Going live
-
-### Phase 1: Mac paper trading (now)
-
-You can paper-trade on Mac using yfinance/Dukascopy as the bar feed:
-
-```bash
-python scripts/run_paper.py --tf H1 --scorer-path models/scorer_EURUSD_D1.joblib
-```
-
-This is a simulation — no real broker connection. Useful for sanity-checking the
-system end-to-end.
-
-### Phase 2: Demo account on Windows VPS
-
-Live MT5 integration needs Windows because the `MetaTrader5` Python package only runs
-on Windows. Recommended setup:
-
-1. Get a Windows VPS (Vultr/Linode/Contabo, $10–20/mo).
-2. Install Exness MT5 + open a demo account.
-3. Clone the project on the VPS and `pip install -e ".[mt5]"`.
-4. Set `.env`:
-  ```
-   MT5_ACCOUNT=...your demo number...
-   MT5_PASSWORD=...
-   MT5_SERVER=...your server name from MT5...
-   AGENT_MODE=paper
-  ```
-5. Run:
-  ```bash
-   python scripts/run_live.py
-  ```
-
-The agent will connect, watch the configured TFs, take rule-engine setups (filtered
-by the scorer if loaded), and write everything to the journal for nightly review.
-
-**Goal**: grow the demo from $100 → $1,000 before any live capital.
-
-### Phase 3: Live $100 account
-
-Same setup, change `AGENT_MODE=live` and supply live MT5 credentials. The risk
-manager is calibrated for $100 (3% pct_floor, lot=0.01) so the bot will size
-appropriately. Daily DD halt at 3% will protect against runaway losses.
-
-See [08 — Live Trading & Deployment](docs/08-live-trading-and-deployment.md) for the
-full step-by-step guide (Windows/VM, Exness/MT5, and the chart overlay EA).
-
----
-
-## Project structure
-
-```
-eurusd-ai-agent/
-├── agent/                          # core package
-│   ├── analysis/                   # explainability + diagnostics
-│   │   ├── explain.py              # plain-English trade narratives + SHAP
-│   │   ├── losses.py               # MAE/MFE-based loss categorisation
-│   │   └── calibration.py          # Brier/ECE anti-hallucination check
-│   ├── backtest/                   # event-driven backtester
-│   │   ├── engine.py               # core simulator + journal hook
-│   │   ├── multi_tf.py             # multi-TF aggregator
-│   │   └── discoverer_runner.py    # backtest using discoverer signals
-│   ├── data/                       # data loading
-│   │   ├── source.py               # MT5/yfinance/Dukascopy abstraction
-│   │   ├── dukascopy.py            # Dukascopy fetcher
-│   │   ├── csv_import.py           # MT5 CSV → parquet cache
-│   │   └── loader.py               # parquet cache + range queries
-│   ├── dashboard/                  # FastAPI dashboard
-│   │   ├── app.py                  # routes
-│   │   └── templates/              # index.html + trade.html
-│   ├── detectors/                  # one file per technical concept
-│   │   ├── zones.py, bos.py, fvg.py, fib.py, trendlines.py, liquidity.py
-│   │   └── atr.py, swings.py
-│   ├── features/                   # feature extraction for ML
-│   ├── journal/                    # SQLite audit log
-│   │   └── db.py                   # signals, trades, equity, model_versions
-│   ├── live/                       # MT5 broker bridge (Windows)
-│   ├── model/                      # ML
-│   │   ├── scorer.py               # rule-setup scorer (recommended)
-│   │   ├── discoverer.py           # raw-bar pattern discoverer
-│   │   └── walkforward.py          # walk-forward training utilities
-│   ├── risk/                       # risk manager
-│   ├── rules/                      # confluence rule engine + filters
-│   │   ├── engine.py               # the brain
-│   │   ├── htf_bias.py             # higher-TF trend/zone filter
-│   │   └── filters.py              # session, day-of-week, no-trade windows
-│   ├── config.py                   # pydantic config models
-│   └── types.py                    # core domain types
-├── config/
-│   └── default.yaml                # tunable parameters
-├── data/                           # parquet cache (gitignored)
-├── docs/                           # numbered docs (00–09) + archive/
-│   ├── 00-overview.md              # index
-│   └── 01..09-*.md                 # architecture, strategies, reaction, ...
-├── models/                         # trained scorers/discoverers (gitignored)
-├── scripts/                        # CLIs
-│   ├── download_data.py            # fetch bars
-│   ├── import_csv.py               # import MT5 CSV
-│   ├── run_multitf.py              # multi-TF backtest
-│   ├── check_gate.py               # gate check on a single TF
-│   ├── train_scorer.py             # train ML scorer
-│   ├── iterate.py                  # walk-forward train discoverer
-│   ├── analyze_losses.py           # loss diagnostics
-│   ├── journal_query.py            # query SQLite trade journal
-│   ├── explain.py                  # plain-English trade explainer
-│   ├── run_live.py                 # live MT5 agent
-│   └── run_paper.py                # paper agent (no broker)
-├── tests/                          # 50+ unit tests
-├── pyproject.toml
-└── README.md
-```
-
----
-
-## Risk management
-
-- **Per-trade risk**: 1% of equity by default. Floors to 3% on accounts < $300 so the
-minimum 0.01 lot is still tradable.
-- **Daily DD halt**: stops trading when balance drops 3% below day's open.
-- **Max positions**: 1 (no martingale, no scaling in).
-- **Lot scaling**: $100 → 0.01 lot. $300 → 0.10 lot cap. $1000+ → 1.0 lot cap.
-- **Max stop**: ATR-aware bound, optional `enforce_live_stop_cap` for tiny accounts.
-- **Kill switch**: any user can write to `kill.txt` (or click in the dashboard) to
-immediately halt new trades.
-
-All of these are configurable in `config/default.yaml`.
-
----
-
-## FAQ
-
-**Q: I get `xgboost can't load on this system` on Mac.**
-A: Install libomp: `brew install libomp`. Or just don't — the system uses sklearn
-by default which has no native dependencies.
-
-**Q: My yfinance H1 download fails with a "730 days" error.**
-A: Yahoo enforces a 730-day cap on intraday data. Use Dukascopy instead:
-`--source dukascopy`.
-
-**Q: The backtest finds 0 trades.**
-A: Check `--use-cache-only` is pointing at actual cached data
-(`ls data/parquet/`). If empty, run `download_data.py` first. The default
-`rules.min_confluences` is **2** (zone + at least one other) — to be more permissive
-for testing, lower it to 1 in `config/default.yaml`.
-
-**Q: Profit factor is below 1 — strategy is losing money?**
-A: Yes, the rules-only strategy without ML filtering has positive expectancy on
-some TFs (D1) and negative on others (H4). The ML scorer is what tips it positive
-across the board. Train one with `train_scorer.py`.
-
-**Q: Can I trade other pairs?**
-A: Yes, change `symbol: EURUSD` in `config/default.yaml`. Detector thresholds may
-need re-tuning per pair (different volatility ranges).
-
----
+| `agent/alphas/` | the zone strategy, the deployment router, the ablation grid harness |
+| `agent/live/` | broker bridge, signal loop, position sizer, router wiring |
+| `agent/detectors/` | zones, BOS, FVG, swings, ATR, liquidity primitives |
+| `scripts/` | research pipeline (ablation, holdout, walk-forward, cross-pair) + `run_live.py` + the vault resolver |
+| `docs/` | [journey](docs/00-journey.md), [checkpoint](docs/CHECKPOINT.md), [reviews](docs/reviews/) (evidence record), [runbooks](docs/runbooks/) |
+| `tests/` | 259 tests, including routing-table contract tests |
+
+## Project principles
+
+- **Observation before adaptation.** Vaults and live monitoring record what
+  the agent *didn't* do; nothing acts on those observations until they
+  graduate through the full statistical pipeline.
+- **Every gate must earn its keep.** A filter, session restriction, or
+  threshold exists only if removing it measurably hurts validated results.
+- **Peeked data is burned data.** Looking at a sealed window spends it; each
+  look is recorded in a dated review. The v1 reset deleted everything the old
+  process had implicitly trained on.
+- **The strongest evidence is the test you couldn't have rigged.** Frozen
+  cross-pair runs with zero re-tuning and scaled-up costs cannot overfit —
+  nothing was fit.
+- **Consistency over significance at small n.** Positive OOS expectancy across
+  every walk-forward window is the robustness signal; per-window p-values at
+  ~15 trades/yr are underpowered.
+
+## Status
+
+Checkpoint **2026-06-10** — 3 deployed cells, demo stage, **259 tests
+passing**. Current deployed table, evidence summary, methodology gates, and
+parked work: [docs/CHECKPOINT.md](docs/CHECKPOINT.md).
 
 ## License
 

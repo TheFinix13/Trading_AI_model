@@ -151,7 +151,7 @@ EURUSD D1 candidate was NOT promoted. Write-ups:
   account).
 - **Adaptive sizing**: conviction band 0.5–2% of live balance × the cell's
   `risk_scale`, margin/leverage aware.
-- **220 tests pass.**
+- **259 tests pass.**
 
 ## 8. Parked / future work
 
@@ -204,7 +204,7 @@ flowchart TD
     CROSS["◆ CROSS-PAIR EXPANSION<br/>frozen tests, zero re-tuning, costs UP:<br/>GBPUSD 11/11 yrs p=0.001 - deploy 0.5x<br/>USDCAD 10/11 yrs p=0.028 - deploy 0.5x<br/>AUDUSD MODERATE / NZDUSD WEAK - excluded<br/>D1 weak cross-pair - candidate NOT promoted"]
     CROSS --> NOW
 
-    NOW["TODAY (2026-06-10)<br/>multi-symbol router + live wiring<br/>3 deployed cells, 220 tests green"]
+    NOW["TODAY (2026-06-10)<br/>multi-symbol router + live wiring<br/>3 deployed cells, 259 tests green"]
 ```
 
 ## The elimination funnel

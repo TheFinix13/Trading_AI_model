@@ -64,7 +64,7 @@ the dated write-ups in [`reviews/`](reviews/).
 - **$100-account caveat:** H4 structural stops at the broker minimum lot can
   exceed the risk band; the sizer then skips trades. Recommend **$500+ demo
   balance** so min-lot trades fit inside the band.
-- Test suite: **220 passing** (`.venv/bin/python -m pytest tests/`).
+- Test suite: **259 passing** (`.venv/bin/python -m pytest tests/`).
 
 ### Parked
 
