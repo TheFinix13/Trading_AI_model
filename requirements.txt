@@ -1,0 +1,26 @@
+# Live-deployment requirements (Windows VM / demo account).
+# Mirrors the runtime dependencies in pyproject.toml plus the Windows-only
+# MT5 connector. For development installs prefer: pip install -e .
+pandas>=2.2
+numpy>=1.26
+pyarrow>=15.0
+pydantic>=2.6
+python-dotenv>=1.0
+PyYAML>=6.0
+scikit-learn>=1.4
+joblib>=1.3
+xgboost>=2.0
+matplotlib>=3.8
+mplfinance>=0.12
+fastapi>=0.110
+uvicorn[standard]>=0.27
+jinja2>=3.1
+python-multipart>=0.0.20
+rich>=13.7
+click>=8.1
+schedule>=1.2
+yfinance>=0.2.40
+dukascopy-python>=4.0
+httpx>=0.27
+shap>=0.45
+MetaTrader5>=5.0.45 ; sys_platform == 'win32'
