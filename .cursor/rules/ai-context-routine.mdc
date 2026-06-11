@@ -1,0 +1,53 @@
+---
+description: Keep ai_context.md current — the brain-dump routine for every agent session
+alwaysApply: true
+---
+
+# ai_context.md routine
+
+`ai_context.md` (project root) is the compact state summary used to start
+fresh chats cheaply. It must never go stale.
+
+## When starting a fresh session
+
+If the user references `@ai_context.md` (or asks "where did we leave off"),
+read it FIRST, then `docs/CHECKPOINT.md` if more depth is needed. Do not
+re-derive project history from the codebase or old chats.
+
+## When to UPDATE ai_context.md (do it proactively, don't wait to be asked)
+
+Update it immediately after any of:
+
+- A heavy feature lands (new module, router change, live-path change,
+  new validation result, deployment change).
+- A strategy/evidence decision is made (cell promoted/demoted, pair
+  added/excluded, parameter relocked).
+- The user signals the session is ending ("summarize", "brain dump",
+  "starting fresh", "closing this thread").
+
+## How to update it
+
+Keep the same three-section structure, strictly technical and short:
+
+1. **What is built and working** — append/edit only what changed; keep numbers exact.
+2. **Key file paths** — add new files, remove deleted ones.
+3. **Next immediate goal** — rewrite to the actual current goal; keep the
+   "Parked (do not start without discussion)" list accurate.
+
+Also bump the date in the header. Target < 80 lines total — compress old
+detail into `docs/00-journey.md` / `docs/CHECKPOINT.md` references instead
+of letting this file grow.
+
+## The full checkpoint routine
+
+After MAJOR divergences (new research direction, big architecture change),
+ai_context.md alone is not enough — also run "THE ROUTINE" checklist in
+`docs/CHECKPOINT.md` (journey doc, checkpoint snapshot, dated review,
+stale-doc sync, artifact prune, test verification).
+
+## Reminders
+
+- After updating, tell the user it was updated so they know the brain dump
+  is fresh before they close the thread.
+- Commit `ai_context.md` together with the work it describes (when the user
+  asks for a commit).
