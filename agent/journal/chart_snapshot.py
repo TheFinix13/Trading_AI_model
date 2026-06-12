@@ -63,6 +63,7 @@ def render_snapshot(
     zone_top: float | None = None,
     zone_bottom: float | None = None,
     entry_time: datetime | None = None,
+    extra_levels: Sequence[float] | None = None,
     lookback: int = 80,
     lookahead: int = 0,
 ) -> Path | None:
@@ -93,6 +94,11 @@ def render_snapshot(
             if level is not None and level > 0:
                 hlines.append(float(level))
                 hcolors.append(color)
+        # Extension-ladder rungs (observation-only structural targets).
+        for level in extra_levels or []:
+            if level is not None and level > 0:
+                hlines.append(float(level))
+                hcolors.append("purple")
 
         vlines = []
         for vt in (entry_time, event_time):

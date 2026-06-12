@@ -10,6 +10,9 @@ Two append-only evidence stores under the per-symbol live log folder
   (loop-level, via :class:`SignalLoop`).
 * ``losses/events.jsonl`` — live positions that closed at a loss, with the
   trade's lifetime rendered on the chart.
+* ``ladders/events.jsonl`` — extension-target ladders: the structural levels
+  beyond each live trade's mechanical TP (published at entry, scored against
+  realised MFE at close). See :mod:`agent.journal.target_ladder`.
 
 Each event appends ONE JSON line and renders a PNG snapshot beside it.
 
@@ -65,6 +68,7 @@ class VaultRecorder:
         self.root = Path(root) if root is not None else DEFAULT_VAULT_ROOT
         self.near_miss_dir = self.root / symbol / "near_misses"
         self.loss_dir = self.root / symbol / "losses"
+        self.ladder_dir = self.root / symbol / "ladders"
 
     # ------------------------------------------------------------------
     # Near misses
@@ -105,6 +109,29 @@ class VaultRecorder:
             log.warning("loss vault write failed: %s", e)
 
     # ------------------------------------------------------------------
+    # Extension-target ladders
+    # ------------------------------------------------------------------
+    def record_ladder(self, event: dict, bars: Sequence[Bar] | None = None) -> None:
+        """Append one extension-ladder event + render its snapshot with the
+        rung levels drawn. ``event["phase"]`` is "entry" (opinion published
+        at fill time) or "close" (rungs scored against realised MFE).
+        Never raises."""
+        try:
+            record = self._normalise(event)
+            record.setdefault("phase", "entry")
+            self._append_jsonl(self.ladder_dir / "events.jsonl", record)
+            rung_prices = [
+                r.get("price") for r in (record.get("rungs") or [])
+                if isinstance(r, dict)
+            ]
+            self._render(self.ladder_dir, record, bars,
+                         tag=f"ladder_{record['phase']}",
+                         entry_time=_parse_ts(record.get("entry_time")),
+                         extra_levels=rung_prices)
+        except Exception as e:
+            log.warning("ladder vault write failed: %s", e)
+
+    # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
     def _normalise(self, event: dict) -> dict:
@@ -129,6 +156,7 @@ class VaultRecorder:
         *,
         tag: str,
         entry_time: datetime | None = None,
+        extra_levels: Sequence[float] | None = None,
     ) -> None:
         if not bars:
             return
@@ -147,4 +175,5 @@ class VaultRecorder:
             zone_top=zone.get("top"),
             zone_bottom=zone.get("bottom"),
             entry_time=entry_time,
+            extra_levels=extra_levels,
         )

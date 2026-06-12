@@ -30,6 +30,12 @@ from typing import Sequence
 
 from agent.alphas.base import Alpha, AlphaContext, AlphaSignal
 from agent.config import Config, load_config
+from agent.journal.target_ladder import (
+    compute_target_ladder,
+    ladder_summary,
+    ladder_summary_from_dicts,
+    score_rungs,
+)
 from agent.journal.vault import VaultRecorder
 from agent.live.broker import BrokerConnection, MT5Broker, create_broker
 from agent.live.config import LiveConfig
@@ -299,7 +305,7 @@ class SignalLoop:
                 continue
             any_signal = True
             await self._route_signal(_RoutedSignal(alpha, signal, timeframe),
-                                     last_closed, bars=closed)
+                                     last_closed, bars=closed, ctx=ctx)
         if not any_signal:
             # One line per evaluated candle close so the log shows the agent
             # IS working between trades (pure logging, no behaviour change).
@@ -318,7 +324,7 @@ class SignalLoop:
     # ------------------------------------------------------------------
 
     async def _route_signal(self, routed: _RoutedSignal, last_closed,
-                            bars: list | None = None) -> None:
+                            bars: list | None = None, ctx=None) -> None:
         symbol = self.live_config.symbol
         alpha, signal, timeframe = routed.alpha, routed.signal, routed.timeframe
 
@@ -406,6 +412,12 @@ class SignalLoop:
                         timeframe, alpha.name, result.message)
             return
 
+        # Observation-only extension ladder: structural levels beyond the
+        # mechanical TP, journaled for later MFE scoring. Computed strictly
+        # AFTER the order is placed — it can never influence the trade.
+        ladder = self._compute_ladder(routed, ctx, bars,
+                                      fill_price=result.fill_price)
+
         self.monitor.register_entry(result.ticket, {
             "alpha": alpha.name,
             "timeframe": timeframe,
@@ -417,13 +429,20 @@ class SignalLoop:
             "take_profit": signal.take_profit,
             "conviction": signal.conviction,
             "signal_reason": signal.reason,
+            "target_ladder": ladder,
         })
+        ladder_note = ""
+        if ladder:
+            ladder_note = ("\nExtension ladder (opinion only): "
+                           f"`{ladder_summary_from_dicts(ladder)}`")
         self.notifier.notify_text(
             f"*Trade OPENED* `{alpha.name}` `{signal.direction.value.upper()}`\n"
             f"Entry: `{result.fill_price or signal.entry:.5f}` Lots: `{sizing.lot:.2f}`\n"
             f"Soft SL: `{signal.stop:.5f}` Catastrophe SL: `{broker_stop:.5f}` TP: `{signal.take_profit:.5f}`\n"
             f"Risk: `{sizing.actual_risk_pct * 100:.2f}%`"
+            f"{ladder_note}"
         )
+        self._record_ladder_entry(result.ticket, routed, ladder, now, bars)
 
     def _ensure_sl_tp(self, signal: AlphaSignal) -> str:
         """Mandatory SL/TP guarantee. Returns "" if tradeable, or a reason string."""
@@ -464,6 +483,93 @@ class SignalLoop:
     # ------------------------------------------------------------------
     # Observation vaults (pure logging — gates have already decided)
     # ------------------------------------------------------------------
+
+    def _compute_ladder(self, routed: _RoutedSignal, ctx, bars,
+                        fill_price: float | None = None) -> list[dict]:
+        """Compute the extension ladder for a just-filled trade. Pure
+        observation — never raises, returns [] on any failure."""
+        if ctx is None or bars is None:
+            return []
+        try:
+            s = routed.signal
+            rungs = compute_target_ladder(
+                ctx, len(bars) - 1,
+                direction=s.direction,
+                entry=fill_price or s.entry,
+                stop=s.stop,
+                take_profit=s.take_profit,
+            )
+            if rungs:
+                log.info("[%s] %s extension ladder (opinion only): %s",
+                         routed.timeframe, routed.alpha.name,
+                         ladder_summary(rungs))
+            return [r.to_dict() for r in rungs]
+        except Exception as e:
+            log.warning("target ladder computation failed: %s", e)
+            return []
+
+    def _record_ladder_entry(self, ticket, routed: _RoutedSignal,
+                             ladder: list[dict], now: datetime,
+                             bars: list | None) -> None:
+        """Vault the entry-time ladder opinion. Never raises."""
+        if self.vault is None or not ladder:
+            return
+        try:
+            s = routed.signal
+            self.vault.record_ladder({
+                "ts": now.isoformat(),
+                "tf": routed.timeframe,
+                "phase": "entry",
+                "ticket": ticket,
+                "alpha": routed.alpha.name,
+                "direction": s.direction.value,
+                "entry": s.entry,
+                "stop": s.stop,
+                "take_profit": s.take_profit,
+                "conviction": s.conviction,
+                "rungs": ladder,
+            }, bars)
+        except Exception as e:
+            log.warning("ladder vault record failed: %s", e)
+
+    def _record_ladder_close(self, ticket: int, info: dict, ctx: dict) -> None:
+        """Score the journaled rungs against realised MFE at close. Never
+        raises."""
+        if self.vault is None:
+            return
+        ladder = ctx.get("target_ladder") or []
+        if not ladder:
+            return
+        try:
+            entry = float(ctx.get("entry") or 0.0)
+            mfe_pips = float(info.get("mfe_pips", 0.0))
+            scored = score_rungs(ladder, entry=entry, mfe_pips=mfe_pips)
+            n_reached = sum(1 for r in scored if r.get("reached"))
+            log.info("ladder resolution ticket=%s: %d/%d rungs reached "
+                     "(mfe=%.1fp, exit=%s)",
+                     ticket, n_reached, len(scored), mfe_pips,
+                     info.get("exit_reason", "?"))
+            tf = str(ctx.get("timeframe") or (
+                self.live_config.timeframes[0] if self.live_config.timeframes else "H4"))
+            self.vault.record_ladder({
+                "ts": datetime.now(tz=timezone.utc).isoformat(),
+                "tf": tf,
+                "phase": "close",
+                "ticket": ticket,
+                "alpha": ctx.get("alpha"),
+                "direction": ctx.get("direction"),
+                "entry_time": ctx.get("entry_time"),
+                "entry": ctx.get("entry"),
+                "stop": ctx.get("soft_stop", ctx.get("stop")),
+                "take_profit": ctx.get("take_profit"),
+                "exit_price": info.get("exit_price"),
+                "exit_reason": info.get("exit_reason", ""),
+                "pnl_pips": info.get("pnl_pips", 0.0),
+                "mfe_pips": mfe_pips,
+                "rungs": scored,
+            }, self._last_bars.get(tf))
+        except Exception as e:
+            log.warning("ladder close record failed: %s", e)
 
     def _record_near_miss(self, reason: str, routed: _RoutedSignal,
                           last_closed, bars: list | None,
@@ -550,6 +656,7 @@ class SignalLoop:
             log.warning("post-loss guard register_close failed for %s: %s", ticket, e)
         if pnl < 0:
             self._record_loss(ticket, info, ctx, pnl, r)
+        self._record_ladder_close(ticket, info, ctx)
         outcome = "WIN" if pnl > 0 else "LOSS"
         self.notifier.notify_text(
             f"*Trade CLOSED* `{outcome}` ticket=`{ticket}`\n"
