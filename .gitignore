@@ -72,6 +72,15 @@ logs/
 # Notebooks
 .ipynb_checkpoints/
 
+# LaTeX build byproducts (keep .tex and .pdf, ignore the rest)
+*.aux
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
 # Temp / cache
 tmp/
 .cache/
