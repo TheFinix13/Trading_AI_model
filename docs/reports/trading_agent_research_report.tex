@@ -1,0 +1,148 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{amsmath}
+
+\title{Applying AI to Systematic FX Trading:\\
+Validation and Deployment of a Counter-Trend Zone Strategy}
+\author{Fiyin Akano}
+\date{June 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This report documents the design, statistical validation, and live deployment
+of an automated foreign-exchange trading agent built around a single
+counter-trend strategy: fading H4 supply/demand zone touches \emph{against}
+the prevailing daily trend (\texttt{zone\_d1\_against}). Artificial
+intelligence methods were applied not as a black-box predictor of price, but
+as a rigorous research pipeline---hypothesis generation, ablation screening,
+holdout testing, walk-forward validation, and cross-pair replication---to
+separate genuine edge from overfitting. After six of seven initial ICT-style
+concepts failed multiplicity-corrected significance tests, one cell survived
+a full validation chain and was deployed on a three-pair demo portfolio with
+strict risk constitution. Early live results (June 2026) are inconclusive
+but consistent with backtested expectancy. The system is observation-heavy:
+near-miss vaults, loss journals, and extension-target ladders collect data
+for future studies without altering validated trade logic.
+\end{abstract}
+
+\section{Introduction}
+
+Retail and systematic traders frequently deploy complex multi-indicator
+systems without pre-registered validation. The present work inverts that
+pattern: \textbf{one strategy, one locked parameter set, one validation
+chain}. The research question is operational, not philosophical:
+
+\begin{quote}
+\emph{Does fading H4 zone touches against the D1 trend produce positive
+expectancy after transaction costs, across time and currency pairs, under
+walk-forward and holdout discipline?}
+\end{quote}
+
+The agent implements this hypothesis mechanically. AI-assisted engineering
+built the backtest harness, ablation grid, and live runner; human judgment
+locked parameters and governs any future promotion.
+
+\section{Related Work and Design Rationale}
+
+The strategy belongs to the ICT (Inner Circle Trader) family of
+supply/demand and higher-timeframe alignment concepts. Rather than
+deploying the full ICT vocabulary, we tested seven concepts individually
+(BOS, CHoCH, FVG, liquidity sweeps, order blocks, premium/discount, zone
+alignment) and retained only what survived statistical gates. Counter-trend
+zone fading against D1 bias emerged as the sole robust cell---with-trend
+variants of the same logic failed, confirming that the edge is mean-reversion
+specific, not generic ``zone trading.''
+
+\section{Methodology}
+
+\subsection{Strategy definition}
+Locked parameters (frozen before out-of-sample tests):
+\begin{itemize}
+  \item Higher-timeframe alignment: D1, mode \texttt{against}
+  \item HTF lookback: 10 bars; minimum D1 move: 60 pips
+  \item Entry: H4 zone touch; fixed take-profit at 1.5R (never grid-swept)
+  \item Soft stop at strategy level; broker catastrophe stop at 2.5$\times$ soft
+\end{itemize}
+
+\subsection{Validation pipeline}
+\begin{enumerate}
+  \item \textbf{Concept ablation} (7 ICT concepts): bootstrap $p$-values,
+        Benjamini--Hochberg FDR at 5\%; six concepts rejected.
+  \item \textbf{Holdout split}: in-sample 2015--2022, out-of-sample 2023--2025.
+  \item \textbf{Walk-forward}: seven windows, 4-year IS / 1-year OOS;
+        EURUSD H4/all: 7/7 positive OOS windows, median +11.34 pips/trade.
+  \item \textbf{Cross-pair replication} (frozen parameters, scaled costs):
+        GBPUSD +10.24 pips/trade ($p=0.001$, 11/11 years);
+        USDCAD +4.63 pips/trade ($p=0.028$, 10/11 years);
+        AUDUSD and NZDUSD excluded.
+  \item \textbf{Sealed look} (2026 YTD): 16 trades, +7.75 pips/trade,
+        $p=0.29$ --- inconclusive, monitoring continues.
+\end{enumerate}
+
+\subsection{Live architecture}
+One process per symbol; deployment router maps
+(symbol, timeframe, session) $\rightarrow$ risk scale. Deployed cells:
+EURUSD H4 @ 1.0, GBPUSD H4 @ 0.5, USDCAD H4 @ 0.5. Adaptive position sizing
+uses conviction band 0.5--2\% of balance $\times$ route scale. Unknown cells
+fail-safe to skip.
+
+\section{Results}
+
+\begin{table}[h]
+\centering
+\caption{Validation summary (EURUSD anchor pair)}
+\begin{tabular}{lrr}
+\toprule
+Metric & Value & Notes \\
+\midrule
+Walk-forward OOS windows positive & 7/7 & H4/all cell \\
+Median OOS pips/trade & +11.34 & EURUSD \\
+GBPUSD replication & +10.24 & $p=0.001$ \\
+USDCAD replication & +4.63 & $p=0.028$ \\
+Sealed 2026 (partial) & +7.75 & $p=0.29$, $n=16$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Live deployment (June 2026)}
+Demo account (\$1000, Exness MT5) runs three symbol tabs. First confirmed
+manual demo fill: EURUSD long, TP hit (+28.10 USD). Automated orders require
+MT5 ``Algo Trading'' enabled; retcode 10027 rejections are logged when disabled.
+
+\section{Limitations}
+
+\begin{itemize}
+  \item \texttt{target\_rr=1.5} was never grid-swept; all validation is
+        conditional on this default.
+  \item Sealed-period sample is small ($n=16$); no claim of live superiority
+        yet.
+  \item Single strategy family; portfolio diversification is across pairs,
+        not alphas.
+  \item Extension-target ladder and near-miss vaults are hypothesis-generating
+        only---they do not alter live orders.
+\end{itemize}
+
+\section{Conclusion}
+
+Applying AI to FX trading here meant building a \emph{validation apparatus},
+not a neural network that ``learns'' from logs. One counter-trend zone cell
+survived a pre-registered gauntlet and is deployed under strict risk limits.
+The honest outcome is positive but modest: robust in backtest and walk-forward,
+promising in early demo, not yet proven live at scale. Future work (parked
+until trigger conditions): target\_rr study, partial take-profit policies,
+USD-exposure manager, and autonomy-ladder research runners---all gated by
+human approval and the same validation pipeline.
+
+\section*{References}
+\begin{itemize}
+  \item Project documentation: \texttt{docs/00-journey.md}, \texttt{docs/CHECKPOINT.md}
+  \item Evidence artifacts: \texttt{docs/reviews/} (immutable snapshots)
+  \item Live runbook: \texttt{docs/runbooks/vmware-windows.md}
+\end{itemize}
+
+\end{document}
