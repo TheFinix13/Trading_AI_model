@@ -253,6 +253,55 @@ class PostLossGuard:
         """Current risk multiplier (1.0 normally, < 1.0 after a loss)."""
         return self.size_multiplier if self.cfg.enabled else 1.0
 
+    # ------------------------------------------------------------------
+    # Crash-resilient persistence
+    # ------------------------------------------------------------------
+
+    def get_persist_state(self) -> dict:
+        """Return a JSON-serialisable snapshot of the guard's mutable state."""
+        return {
+            "day": self._day.isoformat() if self._day else None,
+            "consecutive_losses": self.consecutive_losses,
+            "session_halted": self.session_halted,
+            "halt_reason": self.halt_reason,
+            "cooldown_until_iso": (
+                self.cooldown_until.isoformat() if self.cooldown_until else None
+            ),
+            "size_multiplier": self.size_multiplier,
+            "last_loss_direction": self.last_loss_direction,
+        }
+
+    def restore_from_persist_state(self, data: dict) -> None:
+        """Restore mutable guard state from a persisted dict.
+
+        The caller is responsible for the same-UTC-day check before
+        calling this method; if today != the persisted day, do not call.
+        """
+        self.consecutive_losses = int(data.get("consecutive_losses", 0))
+        self.session_halted = bool(data.get("session_halted", False))
+        self.halt_reason = str(data.get("halt_reason", ""))
+        self.size_multiplier = float(data.get("size_multiplier", 1.0))
+        self.last_loss_direction = data.get("last_loss_direction") or None
+        day_str = data.get("day")
+        try:
+            self._day = date.fromisoformat(day_str) if day_str else None
+        except (ValueError, TypeError):
+            self._day = None
+        iso = data.get("cooldown_until_iso")
+        if iso:
+            try:
+                self.cooldown_until = datetime.fromisoformat(iso)
+            except (ValueError, TypeError):
+                self.cooldown_until = None
+        else:
+            self.cooldown_until = None
+        log.info(
+            "[STATE LOADED] post_loss_guard restored: consecutive_losses=%d "
+            "halted=%s size_multiplier=%.2f cooldown_until=%s",
+            self.consecutive_losses, self.session_halted, self.size_multiplier,
+            self.cooldown_until.isoformat() if self.cooldown_until else "none",
+        )
+
     def status(self) -> dict:
         return {
             "enabled": self.cfg.enabled,

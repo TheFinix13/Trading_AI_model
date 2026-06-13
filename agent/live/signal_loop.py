@@ -30,6 +30,7 @@ from typing import Sequence
 
 from agent.alphas.base import Alpha, AlphaContext, AlphaSignal
 from agent.config import Config, load_config
+from agent.live.state_store import StateStore
 from agent.journal.target_ladder import (
     compute_target_ladder,
     ladder_summary,
@@ -42,6 +43,12 @@ from agent.live.config import LiveConfig
 from agent.live.monitor import PositionMonitor
 from agent.live.position_sizer import PositionSizer, SymbolConstraints
 from agent.live.soft_stop import SoftStopConfig, catastrophe_stop
+from agent.live.trade_events import (
+    log_near_miss,
+    log_order_rejected,
+    log_signal_detected,
+    log_trade_opened,
+)
 from agent.notifications.telegram import TelegramConfig, TelegramNotifier
 from agent.risk.manager import RiskDecision, RiskManager
 from agent.risk.post_loss_guard import GuardConfig, PostLossGuard
@@ -82,6 +89,7 @@ class SignalLoop:
         risk_scales: dict[str, float] | None = None,
         verbose: bool = False,
         vault: VaultRecorder | None = None,
+        state_store_path: Path | None = None,
     ) -> None:
         if not alphas:
             raise ValueError("SignalLoop requires at least one Alpha")
@@ -95,6 +103,10 @@ class SignalLoop:
         self.config = config or load_config()
         self.live_config = live_config or LiveConfig()
         self.verbose = verbose
+        # Crash-resilient state sidecar (None = persistence disabled).
+        self._state_store: StateStore | None = (
+            StateStore(state_store_path) if state_store_path is not None else None
+        )
 
         self.broker = broker or create_broker(
             broker_type=self.live_config.broker_type,
@@ -140,6 +152,9 @@ class SignalLoop:
             notifier=self.notifier,
             soft_stop_cfg=self.soft_stop_cfg,
             trade_closed_cb=self._on_trade_closed,
+            on_state_change=(
+                self._persist_state if self._state_store is not None else None
+            ),
         )
 
         self._last_bar_times: dict[str, datetime] = {}
@@ -153,6 +168,119 @@ class SignalLoop:
         self._last_heartbeat: datetime | None = None
 
     # ------------------------------------------------------------------
+    # Crash-resilient state persistence
+    # ------------------------------------------------------------------
+
+    def _collect_state(self) -> dict:
+        """Build the full state dict from all components. Pure read — no I/O."""
+        now = datetime.now(tz=timezone.utc)
+        return {
+            "schema": 1,
+            "symbol": self.live_config.symbol,
+            "saved_at": now.isoformat(),
+            "position_monitor": self.monitor.get_persist_state(),
+            "post_loss_guard": self.post_loss_guard.get_persist_state(),
+            "risk_manager": self.risk_manager.get_persist_state(),
+            "signal_loop": {
+                "last_bar_times": {
+                    tf: t.isoformat()
+                    for tf, t in self._last_bar_times.items()
+                },
+            },
+        }
+
+    def _persist_state(self) -> None:
+        """Collect and atomically write the full state sidecar. Never raises."""
+        if self._state_store is None:
+            return
+        try:
+            self._state_store.save(self._collect_state())
+        except Exception as exc:
+            log.warning("[STATE SAVE FAILED] unexpected error: %s", exc)
+
+    def _restore_state(self) -> None:
+        """Load the state sidecar and restore each component.
+
+        Called once at startup before the monitor task starts.
+        PostLossGuard and RiskManager are only restored when the persisted
+        day matches today UTC (their circuit-breaker / daily-DD logic is
+        day-scoped).  PositionMonitor ctx is always restored and verified
+        against open positions on the first monitor cycle.
+        ``_last_bar_times`` timestamps are restored regardless of day but
+        discarded if older than 2 days (clearly stale).
+        """
+        if self._state_store is None:
+            return
+        state = self._state_store.load()
+        if state is None:
+            return
+        today = datetime.now(tz=timezone.utc).date().isoformat()
+
+        # ── PositionMonitor ─────────────────────────────────────────────
+        pm_data = state.get("position_monitor")
+        if pm_data and isinstance(pm_data, dict):
+            try:
+                self.monitor.restore_from_persist_state(pm_data)
+            except Exception as exc:
+                log.warning("[STATE LOADED] position_monitor restore failed: %s", exc)
+
+        # ── PostLossGuard (same-day only) ────────────────────────────────
+        plg_data = state.get("post_loss_guard")
+        if plg_data and isinstance(plg_data, dict):
+            plg_day = plg_data.get("day")
+            if plg_day == today:
+                try:
+                    self.post_loss_guard.restore_from_persist_state(plg_data)
+                except Exception as exc:
+                    log.warning(
+                        "[STATE LOADED] post_loss_guard restore failed: %s", exc
+                    )
+            else:
+                log.info(
+                    "[STATE LOADED] post_loss_guard state is from %s (today %s) — discarded",
+                    plg_day, today,
+                )
+
+        # ── RiskManager (same-day only) ──────────────────────────────────
+        rm_data = state.get("risk_manager")
+        if rm_data and isinstance(rm_data, dict):
+            rm_day = rm_data.get("day")
+            if rm_day == today:
+                try:
+                    self.risk_manager.restore_from_persist_state(rm_data)
+                except Exception as exc:
+                    log.warning(
+                        "[STATE LOADED] risk_manager restore failed: %s", exc
+                    )
+            else:
+                log.info(
+                    "[STATE LOADED] risk_manager state is from %s (today %s) — discarded",
+                    rm_day, today,
+                )
+
+        # ── SignalLoop._last_bar_times (up to 2 days old) ────────────────
+        sl_data = state.get("signal_loop", {})
+        if isinstance(sl_data, dict):
+            now = datetime.now(tz=timezone.utc)
+            cutoff = now - timedelta(days=2)
+            restored_tfs: list[str] = []
+            for tf, iso_str in sl_data.get("last_bar_times", {}).items():
+                try:
+                    ts = datetime.fromisoformat(iso_str)
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    if ts >= cutoff:
+                        self._last_bar_times[tf] = ts
+                        restored_tfs.append(f"{tf}={ts.isoformat()}")
+                except (ValueError, TypeError):
+                    pass
+            if restored_tfs:
+                log.info(
+                    "[STATE LOADED] signal_loop last_bar_times: %s",
+                    ", ".join(restored_tfs),
+                )
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
@@ -160,6 +288,7 @@ class SignalLoop:
         """Main loop — runs until ``stop()`` is called or fatal error."""
         self._running = True
         self._last_heartbeat = datetime.now(tz=timezone.utc)
+        self._restore_state()
 
         log.info("=" * 60)
         log.info("Signal loop starting (v2 scaffold)")
@@ -284,6 +413,7 @@ class SignalLoop:
         if self._last_bar_times.get(timeframe) == last_closed.time:
             return
         self._last_bar_times[timeframe] = last_closed.time
+        self._persist_state()
 
         closed = bars[:-1]
         if len(closed) < 30:
@@ -345,6 +475,9 @@ class SignalLoop:
         if not guard.allowed:
             log.info("[%s] %s blocked by post-loss guard: %s",
                      timeframe, alpha.name, guard.reason)
+            log_near_miss(log, symbol=symbol, timeframe=timeframe,
+                          alpha=alpha.name, reason="post_loss_guard",
+                          detail=str(guard.reason))
             self._record_near_miss("post_loss_guard", routed, last_closed,
                                    bars, detail=str(guard.reason))
             return
@@ -359,6 +492,9 @@ class SignalLoop:
         if risk_result.decision != RiskDecision.APPROVED:
             log.info("[%s] %s blocked by RiskManager: %s (%s)",
                      timeframe, alpha.name, risk_result.decision, risk_result.reason)
+            log_near_miss(log, symbol=symbol, timeframe=timeframe,
+                          alpha=alpha.name, reason="risk_manager",
+                          detail=f"{risk_result.decision}: {risk_result.reason}")
             self._record_near_miss(
                 "risk_manager", routed, last_closed, bars,
                 detail=f"{risk_result.decision}: {risk_result.reason}")
@@ -389,9 +525,19 @@ class SignalLoop:
         if sizing.lot <= 0:
             log.info("[%s] %s sized to zero lots: %s",
                      timeframe, alpha.name, sizing.summary())
+            log_near_miss(log, symbol=symbol, timeframe=timeframe,
+                          alpha=alpha.name, reason="sizing_skip",
+                          detail=sizing.summary())
             self._record_near_miss("sizing_skip", routed, last_closed,
                                    bars, detail=sizing.summary())
             return
+
+        log_signal_detected(
+            log, symbol=symbol, timeframe=timeframe, alpha=alpha.name,
+            direction=signal.direction.value, entry=signal.entry,
+            soft_sl=signal.stop, tp=signal.take_profit,
+            conviction=signal.conviction,
+        )
 
         broker_stop = catastrophe_stop(
             direction_is_long=signal.direction == Direction.LONG,
@@ -408,9 +554,18 @@ class SignalLoop:
             comment=f"v2/{alpha.name}",
         )
         if not result.success:
-            log.warning("[%s] %s order REJECTED: %s",
-                        timeframe, alpha.name, result.message)
+            log_order_rejected(log, symbol=symbol, timeframe=timeframe,
+                               alpha=alpha.name, message=result.message)
             return
+
+        fill = result.fill_price or signal.entry
+        log_trade_opened(
+            log, symbol=symbol, timeframe=timeframe, alpha=alpha.name,
+            direction=signal.direction.value, ticket=result.ticket,
+            entry=fill, lots=sizing.lot, soft_sl=signal.stop,
+            catastrophe_sl=broker_stop, tp=signal.take_profit,
+            risk_pct=sizing.actual_risk_pct,
+        )
 
         # Observation-only extension ladder: structural levels beyond the
         # mechanical TP, journaled for later MFE scoring. Computed strictly
@@ -431,6 +586,7 @@ class SignalLoop:
             "signal_reason": signal.reason,
             "target_ladder": ladder,
         })
+        self._persist_state()
         ladder_note = ""
         if ladder:
             ladder_note = ("\nExtension ladder (opinion only): "
@@ -654,6 +810,9 @@ class SignalLoop:
                             gs.get("halt_reason"))
         except Exception as e:
             log.warning("post-loss guard register_close failed for %s: %s", ticket, e)
+        # Persist the updated PLG / RM state (plus the now-closed position
+        # ctx already removed from the monitor) as a single atomic write.
+        self._persist_state()
         if pnl < 0:
             self._record_loss(ticket, info, ctx, pnl, r)
         self._record_ladder_close(ticket, info, ctx)

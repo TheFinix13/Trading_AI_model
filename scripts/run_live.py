@@ -289,11 +289,18 @@ def main() -> None:
     log.info("(one %s_YYYY-MM-DD.log file per UTC day in that folder; "
              "30 days kept)", cfg.symbol)
 
+    log_root = Path(args.log_dir) if args.log_dir else DEFAULT_LOG_ROOT
+
     # Observation-only near-miss/loss vault, stored beside the daily logs
     # ({log root}/{SYMBOL}/near_misses + /losses). Pure logging — never
     # influences gates, sizing or routing.
-    vault = VaultRecorder(
-        cfg.symbol, Path(args.log_dir) if args.log_dir else DEFAULT_LOG_ROOT)
+    vault = VaultRecorder(cfg.symbol, log_root)
+
+    # Crash-resilient state sidecar: {log_root}/{SYMBOL}/state.json.
+    # Lives next to the daily log files so it travels with the logs on
+    # copy/download. One file per symbol; one process per symbol always.
+    state_store_path = log_root / cfg.symbol / "state.json"
+    log.info("State sidecar: %s", state_store_path)
 
     risk_scales: dict[str, float] = {}
     if args.alpha == "router":
@@ -338,7 +345,7 @@ def main() -> None:
     asyncio.set_event_loop(loop)
     signal_loop = SignalLoop(alphas, config=cfg, live_config=live,
                              risk_scales=risk_scales, verbose=args.verbose,
-                             vault=vault)
+                             vault=vault, state_store_path=state_store_path)
 
     def _shutdown(sig: signal.Signals) -> None:
         log.info("Received %s, shutting down...", sig.name)

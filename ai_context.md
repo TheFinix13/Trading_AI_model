@@ -1,4 +1,4 @@
-# AI Context — brain dump (updated 2026-06-12)
+# AI Context — brain dump (updated 2026-06-13)
 
 Read this first in a fresh chat. Strictly technical state summary.
 Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
@@ -45,7 +45,16 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
 - **Deployed:** Windows VMware, Exness demo ($1000), 3 PowerShell tabs.
   VM update ritual: `git fetch origin && git reset --hard origin/main &&
   pip install -r requirements.txt` (never pull/push from VM).
-- **Tests:** 274 passing. Git history rewritten 2026-06-10 to strip
+- **Crash-resilient state persistence:** `agent/live/state_store.py`
+  (atomic JSON sidecar). On abrupt VM shutdown/restart: `PositionMonitor`
+  `_entry_ctx`/`_breakeven_applied`/`_partial_applied`/`_excursion` restored
+  (broker-verified on first monitor cycle → `[POSITION RESTORED]` log);
+  `PostLossGuard` consecutive_losses/halt/cooldown restored if same UTC day;
+  `RiskManager` day_pnl/halted_today restored if same UTC day; `SignalLoop
+  ._last_bar_times` restored if <2 days old. File:
+  `{log_root}/{SYMBOL}/state.json`. Writes are atomic (tmp + os.replace).
+  Save errors are caught — never crash the loop. 29 new tests.
+- **Tests:** 308 passing. Git history rewritten 2026-06-10 to strip
   Co-authored-by Cursor trailers (force-pushed; VM must hard-reset).
 
 ## 2) Key file paths
@@ -55,17 +64,19 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
 | Strategy | `agent/alphas/concepts/zone_alpha.py`, `agent/alphas/concepts/_htf.py` |
 | Router | `agent/alphas/zone_routing.py` (+ `tests/test_zone_routing.py`) |
 | Research harness | `agent/alphas/grid.py`, `agent/alphas/backtest.py`, `agent/backtest/metrics.py` |
-| Live | `scripts/run_live.py`, `agent/live/router_wiring.py`, `agent/live/signal_loop.py`, `agent/live/position_sizer.py`, `agent/live/monitor.py`, `agent/live/broker.py` |
+| Live | `scripts/run_live.py`, `agent/live/router_wiring.py`, `agent/live/signal_loop.py`, `agent/live/position_sizer.py`, `agent/live/monitor.py`, `agent/live/broker.py`, `agent/live/state_store.py` |
 | Vaults | `agent/journal/vault.py`, `agent/journal/chart_snapshot.py`, `agent/journal/resolver.py`, `scripts/resolve_near_misses.py` |
 | Target ladder | `agent/journal/target_ladder.py`, `scripts/report_target_ladders.py` (+ `tests/test_target_ladder.py`) |
 | Validation scripts | `scripts/run_zone_all_tfs.py`, `scripts/run_holdout_validation.py`, `scripts/run_walk_forward.py`, `scripts/analyze_walk_forward.py`, `scripts/run_cross_pair_frozen.py` |
 | Config | `agent/config.py` (EvalConfig: dev 2015→2025-12-01, sealed 2025-12-01→2026-06-09) |
 | Docs | `docs/00-journey.md`, `docs/CHECKPOINT.md`, `docs/ROADMAP.md` (parked/future work), `docs/reviews/` (evidence, never edit), `docs/runbooks/vmware-windows.md` |
-| Live tests | `tests/test_live_router_wiring.py`, `tests/test_run_live_cli.py`, `tests/test_vaults.py`, `tests/test_heartbeat_logging.py` |
+| Live tests | `tests/test_live_router_wiring.py`, `tests/test_run_live_cli.py`, `tests/test_vaults.py`, `tests/test_heartbeat_logging.py`, `tests/test_state_store.py` |
 
 ## 3) Next immediate goal
 
-**Monitor the demo deployment and accumulate live evidence.** Concretely:
+**Monitor the demo deployment and accumulate live evidence.** (Crash-resilience
+feature landed — deploy on next VM session; vm must `git fetch origin && git
+reset --hard origin/main`.) Concretely:
 
 1. User pastes daily log files / vault PNGs into chat for review; check
    heartbeats present, routed cells correct, trades match backtest behavior.

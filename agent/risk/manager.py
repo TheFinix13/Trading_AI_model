@@ -101,3 +101,37 @@ class RiskManager:
             return RiskResult(RiskDecision.SKIP_LOT_TOO_SMALL, reason="computed lot <= 0")
 
         return RiskResult(RiskDecision.APPROVED, lot_size=lot, actual_risk_pct=actual_risk)
+
+    # ------------------------------------------------------------------
+    # Crash-resilient persistence
+    # ------------------------------------------------------------------
+
+    def get_persist_state(self) -> dict:
+        """Return a JSON-serialisable snapshot of the day-level risk state."""
+        return {
+            "day": self.state.day.isoformat() if self.state.day else None,
+            "day_pnl": self.state.day_pnl,
+            "halted_today": self.state.halted_today,
+            "day_open_balance": self.state.day_open_balance,
+        }
+
+    def restore_from_persist_state(self, data: dict) -> None:
+        """Restore day-level state from a persisted dict.
+
+        The caller is responsible for the same-UTC-day check before
+        calling this method; if today != the persisted day, do not call.
+        """
+        day_str = data.get("day")
+        try:
+            self.state.day = date.fromisoformat(day_str) if day_str else None
+        except (ValueError, TypeError):
+            self.state.day = None
+        self.state.day_pnl = float(data.get("day_pnl", 0.0))
+        self.state.halted_today = bool(data.get("halted_today", False))
+        self.state.day_open_balance = float(data.get("day_open_balance", 0.0))
+        log.info(
+            "[STATE LOADED] risk_manager restored: day=%s day_pnl=%.2f "
+            "halted=%s day_open_balance=%.2f",
+            self.state.day, self.state.day_pnl,
+            self.state.halted_today, self.state.day_open_balance,
+        )
