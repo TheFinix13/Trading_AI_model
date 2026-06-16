@@ -1,4 +1,4 @@
-# AI Context — brain dump (updated 2026-06-16)
+# AI Context — brain dump (updated 2026-06-16, v0.11)
 
 Read this first in a fresh chat. Strictly technical state summary.
 Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
@@ -76,6 +76,13 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
   for over-time review.
 - **Tests:** 344 passing. (Git history rewritten 2026-06-10 to strip
   Co-authored-by Cursor trailers — VM must hard-reset on update.)
+- **[2026-06-16 v0.11] Brain Box restructure** — this repo's primary
+  brain-box node now lives under the new `Finance & Research Hub`
+  (`life/finance-research/_index.md`) alongside Global Portfolio
+  Assistant, Dividend Agent, Portfolio Risk DRL, Finance Research Experiments, the
+  three Budget Management nodes and the moved `Fraud XAI Research`.
+  No paths in this repo changed; brain-box display-title references
+  continue to resolve.
 
 ## 2) Key file paths
 
