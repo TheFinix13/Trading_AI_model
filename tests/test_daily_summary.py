@@ -168,13 +168,10 @@ def test_log_path_discovers_broker_suffixed_file(tmp_path: Path) -> None:
     assert found == target
 
 
-def test_main_runs_and_prints_summary(
-    tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def _setup_eurusd_tree(tmp_path: Path) -> Path:
     sym_dir = tmp_path / "EURUSDm"
     (sym_dir / "ladders").mkdir(parents=True)
-    log = sym_dir / "EURUSDm_2026-06-16.log"
-    log.write_text(SAMPLE_LOG, encoding="utf-8")
+    (sym_dir / "EURUSDm_2026-06-16.log").write_text(SAMPLE_LOG, encoding="utf-8")
     (sym_dir / "state.json").write_text(json.dumps({
         "symbol": "EURUSDm",
         "saved_at": "2026-06-16T00:00:00+00:00",
@@ -185,7 +182,13 @@ def test_main_runs_and_prints_summary(
         "position_monitor": {"entry_ctx": {}, "excursion": {}},
         "signal_loop": {"last_bar_times": {}},
     }), encoding="utf-8")
+    return sym_dir
 
+
+def test_main_runs_and_prints_summary(
+    tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _setup_eurusd_tree(tmp_path)
     monkeypatch.setattr(sys, "argv", [
         "daily_summary.py", "--symbol", "EURUSD",
         "--log-dir", str(tmp_path), "--end-date", "2026-06-16",
@@ -198,3 +201,83 @@ def test_main_runs_and_prints_summary(
     assert "TP HIT" not in captured  # cause is lowercase in the close line
     assert "tp" in captured  # cause=tp is shown in the per-cause list
     assert "day_pnl=$28.10" in captured
+    assert "Saved to:" in captured
+
+
+def test_main_saves_report_to_default_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _setup_eurusd_tree(tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "daily_summary.py", "--symbol", "EURUSD",
+        "--log-dir", str(tmp_path), "--end-date", "2026-06-16",
+    ])
+    ds.main()
+    expected = tmp_path / "summaries" / "summary_2026-06-16.txt"
+    assert expected.exists()
+    body = expected.read_text(encoding="utf-8")
+    assert "EURUSD" in body
+    assert "Trades opened        : 1" in body
+    # The "Saved to:" footer must not be inside the file itself — only on stdout.
+    assert "Saved to:" not in body
+
+
+def test_main_multi_day_default_filename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _setup_eurusd_tree(tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "daily_summary.py", "--symbol", "EURUSD",
+        "--log-dir", str(tmp_path), "--end-date", "2026-06-16", "--days", "3",
+    ])
+    ds.main()
+    expected = tmp_path / "summaries" / "summary_2026-06-14_to_2026-06-16.txt"
+    assert expected.exists()
+
+
+def test_main_out_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _setup_eurusd_tree(tmp_path)
+    target = tmp_path / "custom.txt"
+    monkeypatch.setattr(sys, "argv", [
+        "daily_summary.py", "--symbol", "EURUSD",
+        "--log-dir", str(tmp_path), "--end-date", "2026-06-16",
+        "--out", str(target),
+    ])
+    ds.main()
+    assert target.exists()
+    # The default location must NOT also be written when --out is supplied.
+    assert not (tmp_path / "summaries" / "summary_2026-06-16.txt").exists()
+
+
+def test_main_no_save_skips_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _setup_eurusd_tree(tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "daily_summary.py", "--symbol", "EURUSD",
+        "--log-dir", str(tmp_path), "--end-date", "2026-06-16", "--no-save",
+    ])
+    ds.main()
+    assert not (tmp_path / "summaries").exists()
+    captured = capsys.readouterr().out
+    assert "Saved to:" not in captured
+
+
+def test_main_no_stdout_still_writes_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _setup_eurusd_tree(tmp_path)
+    monkeypatch.setattr(sys, "argv", [
+        "daily_summary.py", "--symbol", "EURUSD",
+        "--log-dir", str(tmp_path), "--end-date", "2026-06-16", "--no-stdout",
+    ])
+    ds.main()
+    expected = tmp_path / "summaries" / "summary_2026-06-16.txt"
+    assert expected.exists()
+    captured = capsys.readouterr().out
+    # --no-stdout means we print only the saved file path (one line),
+    # not the whole report.
+    assert "Trades opened" not in captured
+    assert str(expected) in captured

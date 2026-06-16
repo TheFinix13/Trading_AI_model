@@ -22,6 +22,12 @@ Usage:
     python scripts/daily_summary.py --days 7
     python scripts/daily_summary.py --symbol EURUSD GBPUSD USDCAD --days 1
     python scripts/daily_summary.py --log-dir D:\\TradingAgentLogs
+    python scripts/daily_summary.py --out summary.txt --no-stdout
+
+Each run also writes its output to a file under ``{log-dir}/summaries/`` (the
+exact path is printed at the end) so you can attach it instead of copying
+the whole report into chat. Override the destination with ``--out`` or
+disable file output with ``--no-save``.
 """
 from __future__ import annotations
 
@@ -526,7 +532,31 @@ def parse_args() -> argparse.Namespace:
         "--end-date", default=None,
         help="Anchor day (YYYY-MM-DD UTC). Default: today UTC.",
     )
+    p.add_argument(
+        "--out", default=None,
+        help="Override the output file path. Default: "
+             "<log-dir>/summaries/summary_<window>.txt",
+    )
+    p.add_argument(
+        "--no-save", action="store_true",
+        help="Do not write the report to a file (stdout only).",
+    )
+    p.add_argument(
+        "--no-stdout", action="store_true",
+        help="Suppress stdout (still writes the file unless --no-save).",
+    )
     return p.parse_args()
+
+
+def _default_out_path(root: Path, days: list[date]) -> Path:
+    """File destination when ``--out`` is not given.
+
+    Lives next to the per-symbol vault folders so it's easy to find later
+    and easy to attach.
+    """
+    stamp = (days[0].isoformat() if len(days) == 1
+             else f"{days[0].isoformat()}_to_{days[-1].isoformat()}")
+    return root / "summaries" / f"summary_{stamp}.txt"
 
 
 def _resolve_days(end: date, n: int) -> list[date]:
@@ -559,7 +589,25 @@ def main() -> int:
     out.append("still go through the full validation pipeline (grid → holdout →")
     out.append("walk-forward → cross-pair → sealed). Nothing here moves a gate.")
     out.append(_hr("="))
-    print("\n".join(out))
+    report = "\n".join(out)
+
+    saved_to: Path | None = None
+    if not args.no_save:
+        target = Path(args.out) if args.out else _default_out_path(root, days)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(report + "\n", encoding="utf-8")
+            saved_to = target
+        except OSError as e:
+            print(f"WARN: could not write {target}: {e}", file=sys.stderr)
+
+    if not args.no_stdout:
+        print(report)
+        if saved_to is not None:
+            print(f"\nSaved to: {saved_to}")
+    elif saved_to is not None:
+        print(saved_to)
+
     return 0
 
 
