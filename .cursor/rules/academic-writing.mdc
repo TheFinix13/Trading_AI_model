@@ -1,0 +1,139 @@
+---
+description: When writing reports, README sections, technical docs, or research write-ups for the eurusd agent, follow Brain Box academic standards.
+globs:
+  - "**/REPORT.md"
+  - "**/docs/**/*.md"
+  - "**/docs/**/*.tex"
+  - "**/report/**"
+  - "**/paper/**"
+  - "**/*.tex"
+alwaysApply: false
+---
+
+# Academic-grade writing rule (multi-pair-trading-agent)
+
+When writing any report, methodology doc, or research-style README for this trading agent, follow Brain Box academic standards.
+
+## Always read first
+
+1. `/Users/the1finix/Documents/GitHub/brain-box/school/methodology/_index.md`
+2. `/Users/the1finix/Documents/GitHub/brain-box/school/methodology/personal-project-report-template.md` — use this as the scaffold for `docs/REPORT.md`.
+3. `/Users/the1finix/Documents/GitHub/brain-box/school/methodology/grading-criteria-rubric.md` — self-mark before publishing.
+
+## Visual stack — external builders only
+
+**Source of truth:** `/Users/the1finix/Documents/GitHub/brain-box/school/methodology/visual-stack-policy.md`. Read it the first time you produce any chart / diagram / figure for this trading agent.
+
+The three universal rules apply verbatim:
+
+1. **The agent emits the source. An external builder emits the render.** Same principle as LaTeX. Cursor never owns the final pixel.
+2. **A house style lives in `brain-box/templates/`.** One matplotlib `.mplstyle`, one Mermaid theme, one pandoc `reference.docx`, one Graphviz attribute defaults file, one Excalidraw library. Every render pulls from there.
+3. **No raw screenshots of agent-generated visuals into reports.** Always re-render from the source so the figure is editable, vectorised, and consistent with the house style.
+
+**Forbidden in every report-grade deliverable in this repo:**
+
+- Matplotlib defaults (no `plt.plot(...)` without `plt.style.use("brain-box/templates/brain-box.mplstyle")` first). Equity-curve, drawdown, and Sharpe charts all use the house style.
+- Word equation editor (equations are LaTeX; pandoc converts).
+- Hand-drawn architecture diagrams shipped as PNG — use Mermaid fenced blocks inside the Markdown, or Excalidraw with the `.excalidraw.json` source committed.
+- Raw screenshots of the MT5 terminal or any dashboard pasted into a report (re-render as static SVG or describe in prose).
+- Force-directed-only graph layouts (always offer a hierarchy layout as default).
+
+## Related Work — mandatory literature search
+
+When the user requests a report (`docs/REPORT.md`, recruiter pitch, conference workshop, internal stakeholder review), the Related Work / Background section is non-negotiable — perform a real literature search using `/Users/the1finix/Documents/GitHub/brain-box/school/methodology/literature-review-protocol.md` before drafting; no fabricated citations; if internet access is unavailable, state this in the draft and list candidate keywords for a manual search instead.
+
+## Why this matters here
+
+This is a **personal project**, not a paper. But following academic structure means:
+
+- Your `docs/REPORT.md` will survive a Surrey-grade rubric.
+- It converts to a conference/workshop paper with minimal rework.
+- Recruiters/academics reviewing your portfolio see structured rigor.
+
+## Mandatory sections (`docs/REPORT.md`)
+
+```
+Abstract (4 sentences: problem · approach · result · impact)
+1. Introduction (motivation, contributions, outline)
+2. Background (forex retail trading + zone-based strategies + prior systems)
+3. Methodology (zones strategy, data sources, evaluation protocol)
+4. Implementation (MT5 demo setup, repo structure, reproducibility)
+5. Experiments + Results (backtest period, mean ± std, drawdown, Sharpe)
+6. Discussion (limitations, threats to validity, comparison to baselines)
+7. Conclusion + Future Work
+References (IEEE if going to publication, Harvard otherwise)
+```
+
+## Hard rules — keep separation
+
+- **Demo MT5 only.** Never include live broker keys or production-only code.
+- **Forex zones strategy only.** Stocks / portfolio aggregator belongs in `global-portfolio-assistant`.
+- **Don't claim dissertation evaluation results** here.
+- **Validate any pattern through `finance-research-experiments`** before relying on it in writeups.
+
+## Readability — non-negotiable
+
+**Source of truth:** `/Users/the1finix/Documents/GitHub/brain-box/school/methodology/readability-and-clarity.md`.
+
+**Why this rule applies to the trading agent.** Reports here will be read by recruiters, academics, and other engineers — none of whom are guaranteed to be quants. The "smart non-technical friend" test is mandatory: if a smart non-AI friend cannot follow `docs/REPORT.md` Section 1 and the abstract, the document is not shippable.
+
+### Six rules (apply on every report)
+
+1. **Lead with the intuition, follow with the formalism.** Open with the trader's pain ("range-bound EUR/USD with session-open spikes blowing out stop-losses"); defer "PPO / Stable-Baselines3 / GluonTS" to sentence three at the earliest.
+2. **One idea per sentence, ≤30 words for ≥4 of every 5 sentences.**
+3. **Define every acronym on first use; alternate with plain nouns afterwards** ("the agent", "the strategy", "the broker") so the page is not alphabet soup.
+4. **Signpost every section.** Open with one sentence stating scope. Close with one sentence linking forward.
+5. **Number-first results.** Headline number + units first, mechanism second, decision third. Always state win-rate and drawdown together — never one without the other.
+6. **Concrete worked example before abstract claim.** A specific session, a specific zone, a specific fill price — make the mechanism visible.
+
+### Pre-publish checklist
+
+Run [`readability-and-clarity`](file:///Users/the1finix/Documents/GitHub/brain-box/school/methodology/readability-and-clarity.md) Section "Self-check" before tagging any release of `docs/REPORT.md`.
+
+## Document format: LaTeX-canonical · DOCX-editable
+
+**Source of truth:** `/Users/the1finix/Documents/GitHub/brain-box/school/methodology/latex-docx-workflow.md`.
+
+When the report is being prepared for an external audience (recruiter portfolio, conference workshop, public blog, internal stakeholder review), promote `docs/REPORT.md` into the LaTeX-canonical pair:
+
+```
+report/main.tex          # canonical source — agent edits this
+report/main.docx         # editable mirror — user edits this
+report/main.pdf          # compiled deliverable
+refs.bib                 # bibliography
+```
+
+Build commands:
+
+```bash
+cd report
+latexmk -pdf -interaction=nonstopmode main.tex
+pandoc main.tex --citeproc --bibliography=refs.bib -o main.docx
+```
+
+The edit loop:
+
+1. Agent writes / updates `main.tex`. Regenerates DOCX + PDF.
+2. User opens `main.docx`, marks it up.
+3. User hands the marked-up DOCX back: *"incorporate these changes"*.
+4. Agent reads the DOCX (`pandoc marked.docx -t latex -o marked.tex`), lists every change, applies each to `main.tex`, regenerates DOCX + PDF, and confirms in chat.
+
+**Rules.**
+
+- The agent **never edits the DOCX directly.** LaTeX wins on conflict.
+- Equations are always LaTeX (inline `$x$`, display `\[ \dots \]`). Number every equation referenced later.
+- Cross-references use `\Cref{sec:foo}` (`cleveref` package) — never hand-typed numbers.
+
+For internal `docs/REPORT.md` notes that aren't yet ship-grade, plain Markdown is fine; LaTeX kicks in once the document goes external.
+
+## Writing conventions
+
+- **Never use the `§` glyph.** Write "Section 3" or "Sec. 3" in prose. In LaTeX use `\Cref{sec:foo}`. The user has explicitly flagged `§` as visually noisy.
+- **One em-dash per sentence maximum.**
+- **Smart quotes off in code blocks** so copy-paste works.
+- **Numbered sections** use `1.`, `1.1`, `1.1.1` — not Roman numerals.
+
+## Cross-pollination
+
+If a finding here would benefit the dissertation or portfolio app, log it in:
+`/Users/the1finix/Documents/GitHub/brain-box/meta/shared-findings.md`

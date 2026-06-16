@@ -1,4 +1,4 @@
-# EURUSD AI Agent -- single-service compose file.
+# Multi-Pair Trading Agent -- single-service compose file.
 #
 #   docker compose up           # start dashboard on http://localhost:8000
 #   docker compose up --build   # rebuild after a code change
@@ -15,8 +15,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: eurusd-ai-agent:latest
-    container_name: eurusd-dashboard
+    image: multi-pair-trading-agent:latest
+    container_name: trading-agent-dashboard
     restart: unless-stopped
     ports:
       - "8000:8000"

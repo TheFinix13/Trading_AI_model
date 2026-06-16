@@ -1,4 +1,4 @@
-# AI Context — brain dump (updated 2026-06-16, v0.11)
+# AI Context — brain dump (updated 2026-06-16, v0.14)
 
 Read this first in a fresh chat. Strictly technical state summary.
 Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
@@ -83,6 +83,41 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
   three Budget Management nodes and the moved `Fraud XAI Research`.
   No paths in this repo changed; brain-box display-title references
   continue to resolve.
+- **[2026-06-16 v0.12] Brain Box v0.12 — Background branch landed.**
+  Brain-box now has FOUR top-level branches (Life / School / Work /
+  **Background**). Finance & Research Hub trimmed to six active
+  children — this agent still lives there. `Home Agent Legacy` (the
+  early `~/agent` scaffold this repo replaced) moved to
+  `background/old-personal-projects/` as the predecessor lineage of
+  this agent. No paths in this repo changed; brain-box references
+  continue to resolve.
+- **[2026-06-16 v0.13] Brain Box v0.13 — smart consolidation pass.**
+  **Trading AI Model folder is no longer a standalone brain-box node**
+  — its content was folded into this agent's primary node under a new
+  `## Trading AI Model Archive` section. Repoint any
+  `trading_ai_model_folder` references to `multi_pair_trading_agent`
+  (see v0.14 below). The catch-all `Personal Projects` compound under
+  Life Hub was retired entirely; Sub-Agent Recycling Map moved to
+  Agents Hub; Shared ML Patterns moved to Finance & Research Hub
+  (these are the architecture + cross-finance pattern catalogues this
+  agent reuses). AUN BSc surfaced as a visible sub-compound under
+  Background. No paths in this repo changed; brain-box graph: 98
+  nodes, 493 edges.
+- **[2026-06-16 v0.14] Local folder renamed: `eurusd-ai-agent` →
+  `multi-pair-trading-agent`.** The repo now lives at
+  `/Users/the1finix/Documents/GitHub/multi-pair-trading-agent/`. The
+  GitHub remote (`TheFinix13/Trading_AI_model.git`) is deliberately
+  unchanged — only the local folder and the brain-box node moved.
+  Brain-box node: `life/personal-projects/multi-pair-trading-agent.md`
+  with `aliases: [eurusd-ai-agent, EURUSD Agent, ...]`. Updated inside
+  this repo: `.cursor/rules/*.mdc`, `pyproject.toml` (`name`),
+  `Dockerfile`, `docker-compose.yml`, `agent/news/calendar.py`
+  (User-Agent). Untouched: `docs/archive/*` (historical), `agent/`
+  import root (still `agent`). All research reports also rewritten
+  under the Readability-and-Clarity six rules
+  (`docs/reports/trading_agent_research_report.tex` rebuilt to 6
+  pages; E001–E007 + template + confluence LaTeX rewritten in
+  `finance-research-experiments`).
 
 ## 2) Key file paths
 

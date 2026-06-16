@@ -1,10 +1,10 @@
 # syntax=docker/dockerfile:1.6
 #
-# Image for the EURUSD AI agent dashboard. Single service: FastAPI app
+# Image for the multi-pair trading agent dashboard. Single service: FastAPI app
 # (`agent.dashboard.app:app`) on port 8000. Backtests + scorer training
 # are out of scope -- run those on the host or in a different image.
 #
-#   docker build -t eurusd-ai-agent .
+#   docker build -t multi-pair-trading-agent .
 #   docker compose up
 #
 FROM python:3.11-slim AS base

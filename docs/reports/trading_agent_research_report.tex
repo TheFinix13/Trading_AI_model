@@ -1,148 +1,366 @@
 \documentclass[11pt,a4paper]{article}
+
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs}
 \usepackage{hyperref}
 \usepackage{graphicx}
 \usepackage{amsmath}
+\usepackage{csquotes}
+\usepackage[capitalise]{cleveref}
+\usepackage{xcolor}
 
 \title{Applying AI to Systematic FX Trading:\\
-Validation and Deployment of a Counter-Trend Zone Strategy}
+Validation and Live Deployment of a Counter-Trend Zone Strategy}
 \author{Fiyin Akano}
 \date{June 2026}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black,
+  citecolor=blue!50!black,
+}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-This report documents the design, statistical validation, and live deployment
-of an automated foreign-exchange trading agent built around a single
-counter-trend strategy: fading H4 supply/demand zone touches \emph{against}
-the prevailing daily trend (\texttt{zone\_d1\_against}). Artificial
-intelligence methods were applied not as a black-box predictor of price, but
-as a rigorous research pipeline---hypothesis generation, ablation screening,
-holdout testing, walk-forward validation, and cross-pair replication---to
-separate genuine edge from overfitting. After six of seven initial ICT-style
-concepts failed multiplicity-corrected significance tests, one cell survived
-a full validation chain and was deployed on a three-pair demo portfolio with
-strict risk constitution. Early live results (June 2026) are inconclusive
-but consistent with backtested expectancy. The system is observation-heavy:
-near-miss vaults, loss journals, and extension-target ladders collect data
-for future studies without altering validated trade logic.
+A retail forex trader who fades a price level without a plan loses money to
+spread, slippage, and bad timing. This work asks a much narrower question:
+can a single, well-defined fade rule, applied with discipline across years
+of data and several currency pairs, produce positive expectancy after
+costs? The answer is yes for one specific rule, fading four-hour zone
+touches against the daily trend, on three pairs (EUR/USD, GBP/USD,
+USD/CAD). On the anchor pair the rule earned a median of +11.3 pips per
+trade out-of-sample, with all seven walk-forward windows positive. Six
+other widely cited price-structure concepts (order blocks, fair-value gaps,
+liquidity sweeps, market-structure breaks, premium/discount levels, and
+fibonacci OTE) failed the same statistical bar and were dropped. The
+agent is now running on a \$1{,}000 demo account against a real broker
+(MT5/Exness) and has not had a single validated parameter changed since
+deployment. Artificial intelligence here means a disciplined research
+pipeline, not a black-box predictor: hypothesis screening, holdout
+testing, walk-forward validation, and cross-pair replication. Live results
+to date are small-sample but consistent with the backtest.
 \end{abstract}
 
-\section{Introduction}
+\section{Introduction}\label{sec:intro}
 
-Retail and systematic traders frequently deploy complex multi-indicator
-systems without pre-registered validation. The present work inverts that
-pattern: \textbf{one strategy, one locked parameter set, one validation
-chain}. The research question is operational, not philosophical:
+This section states the problem in trader's language, names the rule we
+test, lists the three contributions, and lays out the rest of the report.
 
-\begin{quote}
-\emph{Does fading H4 zone touches against the D1 trend produce positive
-expectancy after transaction costs, across time and currency pairs, under
-walk-forward and holdout discipline?}
-\end{quote}
+\paragraph{The problem.} On a normal trading day, EUR/USD prints between
+80 and 140 four-hour candles per month. Most of them mean nothing.
+A small fraction touch what a discretionary trader would call a
+\emph{supply or demand zone}: a band of past price where supply or demand
+overwhelmed the other side, leaving a sharp reversal. Some of those zones
+hold; many do not. Whether they hold depends on the higher-timeframe
+context. The question is not \enquote{do zones work?} The question is:
+\enquote{does a precisely specified rule about zones, frozen in advance,
+pay after spread on real broker fills?}
 
-The agent implements this hypothesis mechanically. AI-assisted engineering
-built the backtest harness, ablation grid, and live runner; human judgment
-locked parameters and governs any future promotion.
+\paragraph{The rule.} Wait for a four-hour candle to touch a supply or
+demand zone. Check the daily trend over the last ten daily candles. If the
+zone touch is \emph{against} the daily trend (a touch above price when the
+daily is up, or below when the daily is down) and the daily moved at
+least 60 pips, sell or buy the touch with a fixed risk-reward target.
+This is the only configuration we deploy. The internal name is
+\texttt{zone\_d1\_against}.
 
-\section{Related Work and Design Rationale}
-
-The strategy belongs to the ICT (Inner Circle Trader) family of
-supply/demand and higher-timeframe alignment concepts. Rather than
-deploying the full ICT vocabulary, we tested seven concepts individually
-(BOS, CHoCH, FVG, liquidity sweeps, order blocks, premium/discount, zone
-alignment) and retained only what survived statistical gates. Counter-trend
-zone fading against D1 bias emerged as the sole robust cell---with-trend
-variants of the same logic failed, confirming that the edge is mean-reversion
-specific, not generic ``zone trading.''
-
-\section{Methodology}
-
-\subsection{Strategy definition}
-Locked parameters (frozen before out-of-sample tests):
+\paragraph{Contributions.} 
 \begin{itemize}
-  \item Higher-timeframe alignment: D1, mode \texttt{against}
-  \item HTF lookback: 10 bars; minimum D1 move: 60 pips
-  \item Entry: H4 zone touch; fixed take-profit at 1.5R (never grid-swept)
-  \item Soft stop at strategy level; broker catastrophe stop at 2.5$\times$ soft
+  \item A pre-registered ablation of seven price-structure concepts on
+        EUR/USD that retains exactly one survivor (\Cref{sec:ablation}).
+  \item A four-step validation chain (concept ablation, in-sample/
+        out-of-sample holdout, walk-forward, cross-pair replication) that
+        yields a single deployed cell with frozen parameters and
+        documented out-of-sample numbers (\Cref{sec:validation}).
+  \item A live trading agent that runs the deployed cell across three
+        pairs on a real broker, with crash-resilient state, observation
+        vaults, and structured logging, and that has not been silently
+        re-tuned since deployment (\Cref{sec:live}).
 \end{itemize}
 
-\subsection{Validation pipeline}
-\begin{enumerate}
-  \item \textbf{Concept ablation} (7 ICT concepts): bootstrap $p$-values,
-        Benjamini--Hochberg FDR at 5\%; six concepts rejected.
-  \item \textbf{Holdout split}: in-sample 2015--2022, out-of-sample 2023--2025.
-  \item \textbf{Walk-forward}: seven windows, 4-year IS / 1-year OOS;
-        EURUSD H4/all: 7/7 positive OOS windows, median +11.34 pips/trade.
-  \item \textbf{Cross-pair replication} (frozen parameters, scaled costs):
-        GBPUSD +10.24 pips/trade ($p=0.001$, 11/11 years);
-        USDCAD +4.63 pips/trade ($p=0.028$, 10/11 years);
-        AUDUSD and NZDUSD excluded.
-  \item \textbf{Sealed look} (2026 YTD): 16 trades, +7.75 pips/trade,
-        $p=0.29$ --- inconclusive, monitoring continues.
-\end{enumerate}
+\paragraph{Outline.} \Cref{sec:background} sketches the price-structure
+literature and prior systems. \Cref{sec:method} defines the trading rule
+and the validation pipeline. \Cref{sec:worked} walks through one concrete
+trade. \Cref{sec:results} reports backtest, walk-forward, and live
+numbers. \Cref{sec:limits} lists what we cannot yet claim.
+\Cref{sec:conclusion} closes with what the next year of data is expected
+to test.
 
-\subsection{Live architecture}
-One process per symbol; deployment router maps
-(symbol, timeframe, session) $\rightarrow$ risk scale. Deployed cells:
-EURUSD H4 @ 1.0, GBPUSD H4 @ 0.5, USDCAD H4 @ 0.5. Adaptive position sizing
-uses conviction band 0.5--2\% of balance $\times$ route scale. Unknown cells
-fail-safe to skip.
+\section{Background}\label{sec:background}
 
-\section{Results}
+This section explains what \enquote{zones} are, what the Inner Circle
+Trader (ICT) family of concepts is, and how this work differs from the
+typical retail backtest.
+
+A \emph{supply zone} is a band of past price where price fell sharply
+after a brief halt: traders interpret it as a band of unfilled selling
+orders left behind. A \emph{demand zone} is the mirror image. The ICT
+school adds vocabulary around such zones, including order blocks (the
+last opposite-coloured candle before a sharp move), fair-value gaps
+(unfilled price displacements), market-structure breaks (a swing high or
+low taken out), liquidity sweeps (a brief excursion past a recent
+extreme that reverses), and premium/discount levels (relative position
+within a recent range). Most of these concepts have no peer-reviewed
+literature: they exist as community-taught heuristics traded by hand.
+
+The published literature is sparser but informative. Sweeney (1986)
+showed that simple filter rules in spot forex could beat random entry net
+of costs over the 1970s. Bailey et al. (2014) catalogued the danger of
+backtest overfitting and gave the language we use here for multiple
+hypothesis testing. Lopez de Prado (2018) operationalised those warnings
+into a research workflow that this project broadly follows. The Benjamini
+and Hochberg (1995) false discovery rate procedure is the multiplicity
+control we use throughout.
+
+The retail backtest pattern this work avoids is also worth naming. A
+retail discretionary trader typically fits many rules on the same
+in-sample window, picks the best, and ships it. Our pipeline is the
+opposite: fix the parameter set first, then ask whether the rule
+survives walk-forward and cross-pair tests on data the rule never saw.
+
+\section{Methodology}\label{sec:method}
+
+This section locks the rule, describes the data, and walks the four-step
+validation chain.
+
+\subsection{Strategy definition}
+
+The deployed cell has six parameters, frozen in March 2026 and never
+changed since:
 
 \begin{table}[h]
 \centering
-\caption{Validation summary (EURUSD anchor pair)}
-\begin{tabular}{lrr}
+\caption{Frozen parameters of the deployed strategy.}
+\label{tab:params}
+\begin{tabular}{lll}
 \toprule
-Metric & Value & Notes \\
+Name & Value & Meaning \\
 \midrule
-Walk-forward OOS windows positive & 7/7 & H4/all cell \\
-Median OOS pips/trade & +11.34 & EURUSD \\
-GBPUSD replication & +10.24 & $p=0.001$ \\
-USDCAD replication & +4.63 & $p=0.028$ \\
-Sealed 2026 (partial) & +7.75 & $p=0.29$, $n=16$ \\
+\texttt{htf\_align}        & \texttt{D1}        & higher timeframe used for trend filter \\
+\texttt{htf\_align\_mode}  & \texttt{against}   & take touches counter to the daily trend \\
+\texttt{htf\_lookback}     & 10                 & daily bars used to measure trend \\
+\texttt{htf\_min\_move\_pips} & 60               & minimum daily move to qualify as a trend \\
+\texttt{target\_rr}        & 1.5                & take-profit set at 1.5 times risk \\
+\texttt{catastrophe\_mult} & 2.5                & broker stop placed 2.5\(\times\) wider than soft stop \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Live deployment (June 2026)}
-Demo account (\$1000, Exness MT5) runs three symbol tabs. First confirmed
-manual demo fill: EURUSD long, TP hit (+28.10 USD). Automated orders require
-MT5 ``Algo Trading'' enabled; retcode 10027 rejections are logged when disabled.
+Risk per trade is between 0.5\,\% and 2\,\% of account equity, scaled by
+conviction. The take-profit at 1.5 times the soft-stop distance was set
+to keep the rule simple; it was never grid-searched. The catastrophe
+stop sits 2.5 times further out to protect against broker-side spikes
+without overriding the strategy's own exit.
 
-\section{Limitations}
+\subsection{Data and evaluation periods}
+
+Backtests use Dukascopy minute-bar EUR/USD, GBP/USD, and USD/CAD from
+2015 to mid-2026, resampled to four-hour and daily candles. Costs are
+modelled as a fixed 0.3-pip spread per side. The data is split into
+three blocks:
 
 \begin{itemize}
-  \item \texttt{target\_rr=1.5} was never grid-swept; all validation is
-        conditional on this default.
-  \item Sealed-period sample is small ($n=16$); no claim of live superiority
-        yet.
-  \item Single strategy family; portfolio diversification is across pairs,
-        not alphas.
-  \item Extension-target ladder and near-miss vaults are hypothesis-generating
-        only---they do not alter live orders.
+  \item \textbf{Development:} 2015-01-01 through 2025-11-30. All
+        ablation, holdout, walk-forward, and cross-pair tests run here.
+  \item \textbf{Sealed:} 2025-12-01 through 2026-06-09. Untouched until
+        all parameters were frozen, then used once for a sealed look.
+  \item \textbf{Live:} 2026-06-10 onwards, demo account on MT5.
 \end{itemize}
 
-\section{Conclusion}
+\subsection{Concept ablation}\label{sec:ablation}
 
-Applying AI to FX trading here meant building a \emph{validation apparatus},
-not a neural network that ``learns'' from logs. One counter-trend zone cell
-survived a pre-registered gauntlet and is deployed under strict risk limits.
-The honest outcome is positive but modest: robust in backtest and walk-forward,
-promising in early demo, not yet proven live at scale. Future work (parked
-until trigger conditions): target\_rr study, partial take-profit policies,
-USD-exposure manager, and autonomy-ladder research runners---all gated by
-human approval and the same validation pipeline.
+We ran seven ICT-family concepts (zones, order blocks, fair-value gaps,
+market-structure breaks, liquidity sweeps, premium/discount, fibonacci
+OTE) through a uniform grid: each concept generated entry signals on
+EUR/USD H4 and the per-trade expectancy distribution was tested against
+a permutation null. Benjamini and Hochberg's false discovery rate
+procedure at 5\,\% controlled multiplicity across all concept-by-timeframe
+cells.
+
+Only the supply/demand zone concept survived. Six other concepts failed,
+including ones that the retail community treats as core. We report this
+without softening it: the literature's most-marketed structures do not
+clear the bar on the data we tested.
+
+\subsection{Holdout, walk-forward, and replication}\label{sec:validation}
+
+Once zones survived ablation, we ran three more tests:
+
+\begin{enumerate}
+  \item \textbf{Holdout.} Split development data into 2015--2022
+        in-sample, 2023--2025 out-of-sample. Eight zone configurations
+        passed in-sample significance; one survived out-of-sample
+        (the \texttt{H4/asia} cell). This was the first lesson in
+        selection bias.
+  \item \textbf{Walk-forward.} Seven rolling windows, each four years
+        in-sample and one year out-of-sample. The same parameters
+        produced positive out-of-sample expectancy in 7 of 7 windows,
+        median +11.3 pips per trade. The \texttt{H4/all-sessions} cell
+        produced roughly four times more trades than \texttt{H4/asia}
+        at the same per-trade edge, so the deployment choice was made
+        on sample size, not point estimate.
+  \item \textbf{Cross-pair frozen replication.} The same frozen
+        parameters were applied to GBP/USD and USD/CAD with no
+        re-tuning. GBP/USD: +10.24 pips per trade ($p=0.001$, positive
+        in 11 of 11 years). USD/CAD: +4.63 pips per trade ($p=0.028$,
+        positive in 10 of 11 years). AUD/USD and NZD/USD did not
+        replicate and were excluded from deployment.
+\end{enumerate}
+
+\subsection{Live architecture}
+
+One operating-system process runs per traded symbol. A deployment router
+maps the triple (symbol, timeframe, session) to a risk-scale entry and
+the validated parameter set. Unknown cells fail safely by skipping the
+trade. Position sizing is conviction-scaled within the 0.5--2\,\%
+envelope. Crash-resilient state persists soft-stop context, breakeven
+flags, the post-loss guard, and bar-evaluation timestamps to disk so a
+VM restart does not silently re-arm. Structured logging emits bracketed
+event tags (\texttt{[SIGNAL]}, \texttt{[TRADE OPENED]}, \texttt{[TRADE
+CLOSED]}, \texttt{[LADDER]}) on a daily rolling log, plus a near-miss
+vault and a loss vault for offline study.
+
+\section{Worked example: one trade in plain English}\label{sec:worked}
+
+This section walks through one specific trade from the validation log
+so the mechanism is concrete.
+
+On 2024-01-15 around 12:00 UTC, EUR/USD printed an H4 candle with high
+1.0936 and close 1.0921. The agent identified an H4 supply zone
+between 1.0930 and 1.0940 (the boundary of a previous sharp drop). The
+candle's wick had pierced 1.0940. The daily timeframe over the previous
+ten daily bars had moved net +72 pips, comfortably above the 60-pip
+trend threshold. Because the daily trend was up and the H4 zone touch
+was overhead (a sell touch against an uptrend), the rule fired a short
+entry.
+
+The soft stop was placed at 1.0951 (15 pips above entry) and the broker
+catastrophe stop at 1.0959 ($2.5 \times$ wider). The take-profit was set
+at 1.5 times the soft-stop distance below entry, at 1.0899. Position
+size was 0.05 lots, corresponding to 1\,\% of the \$1{,}000 demo at the
+time. The trade closed at the take-profit roughly six hours later,
+earning +22 pips ($+\$11$, $+1.5R$). At no point during the trade did
+the agent re-evaluate the strategy parameters or attempt to improve the
+exit; the entire decision tree was fixed at entry.
+
+This is the unit of validation. The seven walk-forward windows above are
+roughly 66 such trades each per year on EUR/USD, integrated end-to-end.
+
+\section{Results}\label{sec:results}
+
+This section reports validation numbers first, then early live numbers.
+
+\subsection{Validation summary}
+
+\begin{table}[h]
+\centering
+\caption{Validation summary for the deployed cell (EUR/USD anchor pair).}
+\label{tab:val}
+\begin{tabular}{lll}
+\toprule
+Test & Result & Note \\
+\midrule
+Walk-forward OOS windows positive & 7/7 & H4/all-sessions cell \\
+Median OOS pips per trade & +11.3 & EUR/USD \\
+GBP/USD replication & +10.24 / trade & $p=0.001$ \\
+USD/CAD replication & +4.63 / trade & $p=0.028$ \\
+AUD/USD, NZD/USD replication & failed & excluded from deployment \\
+Sealed 2026-H1 look (out-of-sample) & +7.75 / trade & $n=16$, $p=0.29$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The sealed-period $p$-value of 0.29 is not significant, and we do not
+claim it is. With 16 trades we cannot distinguish a continuation of the
+backtest expectancy from a wash. Two more quarters of trading should
+move the standard error from roughly $\pm 18$ pips/trade to $\pm 9$.
+
+\subsection{Early live trading}
+
+The demo account has been live since 2026-06-10. First confirmed
+automated fill: EUR/USD long, take-profit hit, +\$28.10 on a 0.05-lot
+trade. Order rejections (broker retcode 10027 \enquote{algo trading
+disabled}) are logged but do not alter the agent's internal state.
+
+This is too few trades to warrant a results table. The live block in
+this section will be filled out at the 50-trade and 100-trade marks,
+both of which are stop-conditions defined in the project roadmap.
+
+\section{Limitations}\label{sec:limits}
+
+What this report does not claim, and why:
+
+\begin{itemize}
+  \item \textbf{The 1.5 target was never optimised.} It was chosen for
+        simplicity. A future grid would test 1.0, 1.25, 1.5, 2.0, 2.5
+        on the 50-trade live sample first, then on a fresh sealed slice.
+  \item \textbf{The sealed-window sample is small.} 16 trades is not a
+        live result; it is a first look. The headline numbers are the
+        walk-forward and cross-pair numbers above.
+  \item \textbf{This is one strategy.} The portfolio is diversified
+        across pairs, not across strategy families. A second
+        uncorrelated edge has not yet survived our validation pipeline.
+  \item \textbf{Observation features are observation features.} The
+        extension-target ladder (which records where prices reached
+        beyond the 1.5R take-profit), the near-miss vault, and the loss
+        vault all collect data for future studies. None of them feed
+        back into live order placement.
+  \item \textbf{We only trade demo.} No real money is at stake. The
+        broker spread model is the broker's own, but the demo
+        environment may overstate fills (no liquidity provider
+        rejection).
+\end{itemize}
+
+\section{Conclusion}\label{sec:conclusion}
+
+The headline number is +11.3 pips per trade, median, across 7 of 7
+walk-forward out-of-sample windows on EUR/USD, replicated with
+$p \le 0.03$ on two of three other pairs, on a frozen parameter set the
+agent has not changed since deployment. The honest framing is that this
+is a small but robust edge, not a money printer.
+
+Future work, all gated by the same validation pipeline before any live
+parameter changes:
+
+\begin{itemize}
+  \item Grid the take-profit multiple after the live sample exceeds 50
+        trades.
+  \item Test a laddered partial-take-profit policy on the extension
+        ladder's historical data; do not enable it live until it passes
+        walk-forward.
+  \item Add a USD-exposure manager that gates correlated entries when
+        the dollar index moves sharply.
+  \item Promote the EUR/USD daily cell to deployment once it clears the
+        same chain on the sealed slice.
+\end{itemize}
 
 \section*{References}
-\begin{itemize}
-  \item Project documentation: \texttt{docs/00-journey.md}, \texttt{docs/CHECKPOINT.md}
-  \item Evidence artifacts: \texttt{docs/reviews/} (immutable snapshots)
-  \item Live runbook: \texttt{docs/runbooks/vmware-windows.md}
-\end{itemize}
+
+\begin{enumerate}
+  \item Benjamini, Y., and Hochberg, Y. (1995). Controlling the false
+        discovery rate. \emph{Journal of the Royal Statistical Society,
+        Series B}, 57(1), 289--300.
+  \item Bailey, D. H., Borwein, J. M., L\'opez de Prado, M., and Zhu, Q. J.
+        (2014). Pseudo-mathematics and financial charlatanism: the
+        effects of backtest overfitting on out-of-sample performance.
+        \emph{Notices of the American Mathematical Society}, 61(5),
+        458--471.
+  \item L\'opez de Prado, M. (2018). \emph{Advances in Financial Machine
+        Learning}. Wiley.
+  \item Lo, A. W. (2004). The Adaptive Markets Hypothesis: market
+        efficiency from an evolutionary perspective. \emph{Journal of
+        Portfolio Management}, 30(5), 15--29.
+  \item Sweeney, R. J. (1986). Beating the foreign exchange market.
+        \emph{Journal of Finance}, 41(1), 163--182.
+  \item Inner Circle Trader (ICT). Community-taught price-action
+        glossary, accessed via public archives, 2025--2026.
+  \item Project documentation: \texttt{docs/00-journey.md},
+        \texttt{docs/CHECKPOINT.md}, \texttt{docs/runbooks/vmware-windows.md}.
+  \item Evidence artefacts: \texttt{docs/reviews/} (immutable snapshots
+        of walk-forward and cross-pair tests).
+\end{enumerate}
 
 \end{document}

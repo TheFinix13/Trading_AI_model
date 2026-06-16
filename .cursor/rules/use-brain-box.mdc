@@ -1,0 +1,47 @@
+---
+description: Always read the Brain Box first. This repo's primary node is life/finance-research/multi-pair-trading-agent.md.
+alwaysApply: true
+---
+
+# Use Brain Box (multi-pair-trading-agent workspace)
+
+This repo (`multi-pair-trading-agent`, formerly `eurusd-ai-agent`) is **one branch of a larger context system** maintained in the Brain Box at `/Users/the1finix/Documents/GitHub/brain-box/`.
+
+## Always do this first
+
+1. Read `/Users/the1finix/Documents/GitHub/brain-box/index.md`.
+2. Read `/Users/the1finix/Documents/GitHub/brain-box/life/_index.md`.
+3. Read `/Users/the1finix/Documents/GitHub/brain-box/life/finance-research/multi-pair-trading-agent.md` — the primary node for this repo.
+4. Read `/Users/the1finix/Documents/GitHub/brain-box/agents/trading_agent.md` for separation rules.
+
+You can reference these via Cursor `@` once you add brain-box as a folder to your workspace, or you can read them by absolute path.
+
+## Auto-trigger: academic-writing
+
+> **Auto-trigger.** If the user's message contains any of `report`, `writeup`, `write up`, `documentation`, `paper`, `draft`, `progress note`, `progress update` AND the implied output is longer than ~30 lines of prose, also load and apply `academic-writing.mdc` from this same workspace. Treat the output as report-grade IMRaD (Abstract → Introduction → Related Work → Methodology → Implementation → Results → Discussion → Conclusion → References) with the LaTeX-canonical / DOCX-editable workflow per `latex-docx-workflow.md`. The Related Work section requires a real literature search step (see `literature-review-protocol.md`) — no hand-waving with fabricated citations. The Methodology and Results follow `readability-and-clarity.md`. Do NOT substitute a vanilla Markdown summary unless the user explicitly says "quick note" or "summary only" or "TL;DR".
+
+## Hard separation rules
+
+- **Demo MT5 only.** Never wire live broker keys here.
+- **Forex zones strategy** lives here. **Stock portfolio** lives in `global-portfolio-assistant`.
+- **Dissertation evaluation claims** belong in `portfolio-risk-drl`, not here.
+- Any pattern from `finance-research-experiments` must be **validated** before it lands here.
+
+## Session end ritual
+
+Before ending a meaningful session, **write back** to the Brain Box:
+
+1. Open `/Users/the1finix/Documents/GitHub/brain-box/life/finance-research/multi-pair-trading-agent.md`.
+2. Append a `## Session log` bullet for today:
+   ```
+   - YYYY-MM-DD — <one-line summary of what was decided / shipped>
+   ```
+3. Update `last_updated:` in front-matter.
+4. Run `python3 viewer/build_graph.py` from inside brain-box if structure changed.
+5. Commit brain-box separately.
+
+This is what keeps the Brain Box graph in sync with work done across all workspaces. See `agents/cross-workspace-protocol.md` in brain-box for the full model.
+
+## When in doubt
+
+If a question crosses workspaces (e.g. "should this finding go in dissertation or live agent?") — read brain-box `index.md` separation rules first. If still unclear, **ask** rather than guess.

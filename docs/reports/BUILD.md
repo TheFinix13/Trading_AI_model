@@ -10,4 +10,5 @@ pdflatex trading_agent_research_report.tex
 
 Output: `trading_agent_research_report.pdf`
 
-Requires a LaTeX distribution with `booktabs` and `hyperref` (e.g. TinyTeX, MacTeX).
+Requires a LaTeX distribution with `booktabs`, `hyperref`, `csquotes`,
+`cleveref`, and `xcolor` (e.g. TinyTeX, MacTeX, TeX Live).

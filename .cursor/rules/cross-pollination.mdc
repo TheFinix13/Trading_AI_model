@@ -1,0 +1,32 @@
+---
+description: When a live-agent observation would affect the dissertation's evaluation or the portfolio app, write to the shared-findings ledger.
+alwaysApply: false
+---
+
+# Cross-pollination rule (multi-pair-trading-agent)
+
+Apply this rule when the trading agent produces an observation that would change a decision in the dissertation or portfolio app.
+
+## What to do
+
+1. Open `/Users/the1finix/Documents/GitHub/brain-box/meta/shared-findings.md`.
+2. Append a row:
+
+   ```
+   | YYYY-MM-DD | life/finance-research/multi-pair-trading-agent | <affected node(s)> | <finding> | <action> |
+   ```
+
+3. Append a `## Session log` bullet to:
+   - `/Users/the1finix/Documents/GitHub/brain-box/school/surrey-msc-ai/dissertation-eeem004.md` (if dissertation affected)
+   - `/Users/the1finix/Documents/GitHub/brain-box/life/finance-research/global-portfolio-assistant.md` (if portfolio app affected)
+
+## Examples of cross-affecting findings
+
+- Broker fills show >100ms slippage on session opens → dissertation backtest fill model needs Beta-distributed slippage.
+- Asian session false breakouts on EURUSD → flag pattern for finance-research-experiments validation, possibly demote in dissertation feature set.
+- Demo MT5 connection drops 0.3% of orders → real-world reliability claim in dissertation must be tempered.
+- New zone-detection heuristic outperforms baseline → propose adoption in DRL state encoder.
+
+## Hard rule
+
+Do not log to the ledger findings that don't cross pillars. Keep eurusd-only tweaks inside this repo.

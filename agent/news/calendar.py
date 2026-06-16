@@ -280,7 +280,7 @@ def _default_fetcher(url: str) -> str:
     import httpx  # type: ignore
 
     with httpx.Client(timeout=10.0, follow_redirects=True) as client:
-        resp = client.get(url, headers={"User-Agent": "eurusd-ai-agent/0.1"})
+        resp = client.get(url, headers={"User-Agent": "multi-pair-trading-agent/0.1"})
         resp.raise_for_status()
         return resp.text
 

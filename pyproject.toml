@@ -1,7 +1,7 @@
 [project]
-name = "eurusd-ai-agent"
+name = "multi-pair-trading-agent"
 version = "0.1.0"
-description = "Personal AI trading agent for EURUSD on Exness MT5 using supply/demand + FVG + fib + trendline confluence"
+description = "Personal multi-pair FX trading agent (EUR/USD, GBP/USD, USD/CAD) on Exness MT5 using a validated zone-fade strategy"
 requires-python = ">=3.11"
 authors = [{ name = "the1finix" }]
 license = { text = "MIT" }
