@@ -474,7 +474,9 @@ class TestPositionMonitorPersistence:
         first monitor cycle adopts, warns BREACHED and fires the overshoot
         close in the same pass. The next cycle (broker no longer reports
         the position) records the closed-trade log with cause
-        ``soft_sl_inferred_overshoot`` for grep."""
+        ``soft_sl_inferred_overshoot`` for grep, and — critically — uses the
+        BROKER's actual fill price + pnl, not entry/$0.
+        """
         import asyncio
         from agent.live.broker import Position, OrderResult
         from agent.live.soft_stop import SoftStopConfig
@@ -494,6 +496,7 @@ class TestPositionMonitorPersistence:
         )
         # Inferred soft = 1.39715 + (1.40215 - 1.39715) / 2.5 = 1.39915
         # current_price 1.39936 → past soft by ~2p → breached.
+        # Broker's actual close fill (set below) is 1.39979 — 26.4p adverse.
         fake_pos = Position(
             ticket=2842973741, symbol="USDCAD", direction=Direction.SHORT,
             volume=0.01, open_price=1.39715, open_time=_utc_now(),
@@ -505,8 +508,10 @@ class TestPositionMonitorPersistence:
             balance=1000.0, equity=995.26
         ))
         mon.broker.get_latest_bars = AsyncMock(return_value=[])
+        # Broker fills the close at 1.39979 (not at entry, not at last tick).
         mon.broker.close_position = AsyncMock(return_value=OrderResult(
-            success=True, ticket=2842973741, message="ok",
+            success=True, ticket=2842973741, fill_price=1.39979,
+            message="ok",
         ))
 
         with caplog.at_level(logging.INFO, logger="agent.live.monitor"):
@@ -518,6 +523,9 @@ class TestPositionMonitorPersistence:
             mon.broker.close_position.assert_awaited()
             # The forced-reason has been stamped so _handle_close picks it up.
             assert mon._forced_exit_reason[2842973741] == "soft_sl_inferred_overshoot"
+            # The broker's actual fill must have been stashed for _handle_close.
+            assert 2842973741 in mon._close_results
+            assert mon._close_results[2842973741]["exit_price"] == pytest.approx(1.39979)
 
             # Second cycle: broker reports no open positions → close handler
             # fires the trade-closed log with the new cause tag.
@@ -525,9 +533,83 @@ class TestPositionMonitorPersistence:
             closes: list[tuple[int, dict]] = []
             mon.trade_closed_cb = lambda t, i: closes.append((t, i))
             asyncio.run(mon._check_positions())
+
             assert closes, "trade_closed callback never fired"
-            assert closes[0][1]["exit_reason"] == "soft_sl_inferred_overshoot"
+            info = closes[0][1]
+            assert info["exit_reason"] == "soft_sl_inferred_overshoot"
+            # Exit price must be the broker's fill, NOT the entry price.
+            assert info["exit_price"] == pytest.approx(1.39979)
+            assert info["exit_price"] != pytest.approx(1.39715)
+            # SHORT entry 1.39715 → fill 1.39979 = -26.4 pips adverse.
+            assert info["pnl_pips"] == pytest.approx(-26.4, abs=0.5)
+            # PnL: prefers broker floating profit (-4.74) when non-zero, falls
+            # back to pip-math estimate if not. Either way, NOT $0.
+            assert info["pnl"] < 0.0
+            # R-mult: soft_stop = 1.39915 → stop_pips = 20 → r = -26.4 / 20.
+            # The sign matters more than the exact value (overshoot ≈ -1R or worse).
+            assert info["r_multiple"] < -1.0
+
+            # The on-screen log line must show the broker's fill, not entry.
+            assert "exit=1.39979" in caplog.text
             assert "cause=soft_sl_inferred_overshoot" in caplog.text
+            # The $0/$0p/$0R bug regressed nothing — log shows real pnl/pips/R.
+            assert "pnl=+0.00 (+0p, +0.00R)" not in caplog.text
+
+    def test_overshoot_close_falls_back_to_last_tick_when_no_fill_price(
+        self, tmp_path, caplog,
+    ):
+        """If the broker omits ``fill_price`` on a successful close, the
+        exit price must fall back to the latest tick (``pos.current_price``)
+        — never to the entry price (which would mask the loss as $0).
+        """
+        import asyncio
+        from agent.live.broker import Position, OrderResult
+        from agent.live.soft_stop import SoftStopConfig
+        from agent.live.monitor import PositionMonitor
+        from agent.live.config import LiveConfig
+        from agent.config import load_config
+        from agent.types import Direction
+
+        broker = MagicMock()
+        cfg = load_config()
+        live = LiveConfig(symbol="USDCAD")
+        notifier = MagicMock()
+        notifier.notify_text = MagicMock()
+        mon = PositionMonitor(
+            broker=broker, config=cfg, live_config=live, notifier=notifier,
+            soft_stop_cfg=SoftStopConfig(enabled=True),
+        )
+        fake_pos = Position(
+            ticket=12345, symbol="USDCAD", direction=Direction.SHORT,
+            volume=0.01, open_price=1.39715, open_time=_utc_now(),
+            stop_loss=1.40215, take_profit=1.39415,
+            profit=-4.74, current_price=1.39936,
+        )
+        mon.broker.get_open_positions = AsyncMock(return_value=[fake_pos])
+        mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+            balance=1000.0, equity=995.26
+        ))
+        mon.broker.get_latest_bars = AsyncMock(return_value=[])
+        # NO fill_price returned (e.g. paper broker that forgot to set it).
+        mon.broker.close_position = AsyncMock(return_value=OrderResult(
+            success=True, ticket=12345, fill_price=None, message="ok",
+        ))
+
+        with caplog.at_level(logging.INFO, logger="agent.live.monitor"):
+            asyncio.run(mon._check_positions())
+            mon.broker.get_open_positions = AsyncMock(return_value=[])
+            closes: list[tuple[int, dict]] = []
+            mon.trade_closed_cb = lambda t, i: closes.append((t, i))
+            asyncio.run(mon._check_positions())
+
+        assert closes
+        info = closes[0][1]
+        # Fallback path: exit_price = latest tick (1.39936), NOT entry (1.39715).
+        assert info["exit_price"] == pytest.approx(1.39936)
+        assert info["exit_price"] != pytest.approx(1.39715)
+        assert info["pnl_pips"] < 0.0
+        assert info["pnl"] < 0.0
+        assert "exit=1.39936" in caplog.text
 
     def test_inferred_entry_ctx_persists_across_restart(self, tmp_path):
         """A synthetic entry_ctx built at adoption time must survive a save

@@ -60,7 +60,14 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
   price labels; zone rectangle coloured by side (long=green, short=red);
   title carries reason + direction; bottom-right caption shows the
   rejection detail (HTF bias / risk-manager message).
-- **Tests:** 333 passing. (Git history rewritten 2026-06-10 to strip
+- **Overshoot close emits real fill / pnl (2026-06-16):** the
+  `soft_sl_inferred_overshoot` path now stashes the broker's actual
+  `OrderResult.fill_price` (or, as a fallback, the latest tick — never
+  the entry) into `monitor._close_results`, and `_handle_close` prefers
+  it over the stale excursion. Fixes the bug where the close log showed
+  `exit=entry pnl=+0.00 (+0p, +0.00R)`. Applies to the regular
+  soft-stop close path too.
+- **Tests:** 334 passing. (Git history rewritten 2026-06-10 to strip
   Co-authored-by Cursor trailers — VM must hard-reset on update.)
 
 ## 2) Key file paths

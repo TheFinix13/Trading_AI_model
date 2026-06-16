@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Callable
 
 from agent.config import Config
-from agent.live.broker import BrokerConnection, Position
+from agent.live.broker import BrokerConnection, OrderResult, Position
 from agent.live.config import LiveConfig
 from agent.live.soft_stop import SoftStopConfig, evaluate_soft_stop
 from agent.live.trade_events import (
@@ -78,6 +78,11 @@ class PositionMonitor:
         # Exit reason recorded when WE close a position (soft stop / breakeven)
         # so the close handler journals the true cause, not an inferred one.
         self._forced_exit_reason: dict[int, str] = {}
+        # When WE issue a market close we stash the broker's actual fill +
+        # derived pnl here so the *next* monitor cycle's _handle_close emits
+        # the real exit, not a 5s-stale tick (or worse, the entry price when
+        # excursion has been clobbered for an adopted ticket).
+        self._close_results: dict[int, dict[str, float]] = {}
         # Per-cycle cache of the latest closed bar by timeframe (soft-stop eval).
         self._last_closed_bar_cache: dict[str, object] = {}
         # Track known open tickets to detect closes
@@ -109,6 +114,32 @@ class PositionMonitor:
             "mfe_pips": 0.0,
             "last_price": context.get("entry", 0.0),
             "last_profit": 0.0,
+        }
+
+    def _record_close_result(
+        self, pos: Position, ctx: dict, result: OrderResult,
+    ) -> None:
+        """Stash the broker's actual fill so _handle_close emits real numbers.
+
+        Falls back to the last live tick price (``pos.current_price``) when
+        the broker did not return a fill — but NEVER to the entry price,
+        because that would silently mask a real loss as a $0 close.
+        """
+        fill_price = result.fill_price
+        if not fill_price or fill_price <= 0:
+            fill_price = pos.current_price or pos.open_price
+        entry = ctx.get("entry", pos.open_price) or pos.open_price
+        if pos.direction == Direction.LONG:
+            pnl_pips = (fill_price - entry) * 10000
+        else:
+            pnl_pips = (entry - fill_price) * 10000
+        pip_value = float(self.config.backtest.pip_value_per_lot)
+        pnl_estimate = pnl_pips * pip_value * float(pos.volume)
+        self._close_results[pos.ticket] = {
+            "exit_price": float(fill_price),
+            "pnl_pips": float(pnl_pips),
+            "pnl_estimate": float(pnl_estimate),
+            "lots": float(pos.volume),
         }
 
     # ------------------------------------------------------------------
@@ -196,6 +227,10 @@ class PositionMonitor:
             "pending_overshoot_close": breached,
         }
         self.register_entry(pos.ticket, ctx)
+        # register_entry zeroes the excursion — refill from the live snapshot
+        # so a subsequent close emits the real exit price / floating profit,
+        # not the entry price / $0 (see `soft_sl_inferred_overshoot` bugfix).
+        self._track_excursion(pos)
         log_position_adopted(
             log, symbol=pos.symbol, ticket=pos.ticket,
             direction=pos.direction.value, lots=pos.volume,
@@ -375,6 +410,7 @@ class PositionMonitor:
                                     detail=detail)
                 result = await self.broker.close_position(pos.ticket, pos.symbol)
                 if result.success:
+                    self._record_close_result(pos, ctx, result)
                     self._forced_exit_reason[pos.ticket] = "soft_sl_inferred_overshoot"
                     ctx["pending_overshoot_close"] = False
                     self.notifier.notify_text(
@@ -409,6 +445,7 @@ class PositionMonitor:
                             detail=decision.detail)
         result = await self.broker.close_position(pos.ticket, pos.symbol)
         if result.success:
+            self._record_close_result(pos, ctx, result)
             self._forced_exit_reason[pos.ticket] = decision.reason
             self.notifier.notify_text(
                 f"*Soft stop exit* ticket=`{pos.ticket}`\n`{decision.detail}`"
@@ -445,25 +482,42 @@ class PositionMonitor:
         exc = self._excursion.pop(ticket, None)
         ctx = self._entry_ctx.pop(ticket, None)
         forced_reason = self._forced_exit_reason.pop(ticket, None)
+        close_result = self._close_results.pop(ticket, None)
         if self.trade_closed_cb is None:
             return
         exc = exc or {}
         ctx = ctx or {}
-        exit_price = exc.get("last_price", ctx.get("entry", 0.0))
-        entry_price = ctx.get("entry", exc.get("open_price", exit_price))
+        close_result = close_result or {}
+        entry_price = ctx.get("entry", exc.get("open_price", 0.0))
+        direction = ctx.get("direction", exc.get("direction", "long"))
         # Risk is defined by the SOFT stop (the agent's real exit), not the wide
         # broker catastrophe stop, so R-multiples reflect the intended risk.
         stop = ctx.get("soft_stop", ctx.get("stop"))
         broker_stop = ctx.get("stop")
         tp = ctx.get("take_profit")
-        direction = ctx.get("direction", exc.get("direction", "long"))
-        if direction == "long":
-            pnl_pips = (exit_price - entry_price) * 10000
+        # Prefer the broker's actual fill captured at the close site — that's
+        # the authoritative exit. Fall back to the last tracked tick price
+        # (close to fill within one cycle) and, only as a final resort, the
+        # entry price. The last branch is suspicious: it means we missed BOTH
+        # the close-result capture AND the excursion update.
+        if close_result:
+            exit_price = close_result["exit_price"]
+            pnl_pips = close_result["pnl_pips"]
         else:
-            pnl_pips = (entry_price - exit_price) * 10000
+            exit_price = exc.get("last_price", entry_price)
+            if direction == "long":
+                pnl_pips = (exit_price - entry_price) * 10000
+            else:
+                pnl_pips = (entry_price - exit_price) * 10000
         stop_pips = abs(entry_price - stop) * 10000 if stop else 0.0
         r_multiple = (pnl_pips / stop_pips) if stop_pips > 0 else 0.0
+        # Prefer the broker's reported floating profit at the most recent
+        # tick (it's in account currency and handles non-USD quotes), but
+        # never let a stale $0 mask a real loss — fall back to our pip-math
+        # estimate from the actual fill_price in that case.
         pnl = exc.get("last_profit", 0.0)
+        if (not pnl) and close_result:
+            pnl = close_result.get("pnl_estimate", 0.0)
 
         # Prefer the true reason if WE closed it (soft stop / breakeven); else
         # infer from proximity to TP/SL.
