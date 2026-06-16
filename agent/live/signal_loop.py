@@ -44,6 +44,7 @@ from agent.live.monitor import PositionMonitor
 from agent.live.position_sizer import PositionSizer, SymbolConstraints
 from agent.live.soft_stop import SoftStopConfig, catastrophe_stop
 from agent.live.trade_events import (
+    log_ladder,
     log_near_miss,
     log_order_rejected,
     log_signal_detected,
@@ -572,6 +573,8 @@ class SignalLoop:
         # AFTER the order is placed — it can never influence the trade.
         ladder = self._compute_ladder(routed, ctx, bars,
                                       fill_price=result.fill_price)
+        log_ladder(log, symbol=symbol, ticket=result.ticket,
+                   rungs=ladder, entry=fill)
 
         self.monitor.register_entry(result.ticket, {
             "alpha": alpha.name,

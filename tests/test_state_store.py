@@ -370,6 +370,193 @@ class TestPositionMonitorPersistence:
 
         assert "[POSITION RESTORED]" in caplog.text
         assert "[POSITION ADOPTED]" not in caplog.text
+        # New: a follow-up [LADDER] line mirrors what the entry-ctx stored.
+        assert "[LADDER]" in caplog.text
+        assert "ticket=999" in caplog.text
+        # Soft SL distance must show (entry=1.08234, soft_stop=1.07900 → 33p).
+        assert "soft_sl=1.07900 (33p)" in caplog.text
+
+    def test_adopted_ticket_without_broker_sl_stays_unknown(
+        self, tmp_path, caplog
+    ):
+        """Adopted ticket with no broker SL → no inference is possible, so
+        the log must keep saying ``soft_sl=unknown (adopted)``."""
+        import asyncio
+        from agent.live.broker import Position
+        from agent.types import Direction
+
+        mon = _make_monitor(tmp_path)
+        fake_pos = Position(
+            ticket=1, symbol="USDCAD", direction=Direction.SHORT,
+            volume=0.01, open_price=1.39715, open_time=_utc_now(),
+            stop_loss=0.0, take_profit=0.0,
+            profit=-4.74, current_price=1.39936,
+        )
+        mon.broker.get_open_positions = AsyncMock(return_value=[fake_pos])
+        mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+            balance=1000.0, equity=995.26
+        ))
+
+        with caplog.at_level(logging.INFO, logger="agent.live.monitor"):
+            asyncio.run(mon._check_positions())
+
+        assert "[POSITION ADOPTED]" in caplog.text
+        assert "soft_sl=unknown (adopted)" in caplog.text
+        assert "[LADDER] USDCAD ticket=1 status=unknown (adopted)" in caplog.text
+        # No entry_ctx synthesised when inference fails.
+        assert 1 not in mon._entry_ctx
+
+    def test_adopted_short_infers_soft_stop_from_broker_sl(
+        self, tmp_path, caplog
+    ):
+        """Adopted short with valid broker SL → soft_stop = entry + dist/2.5,
+        ctx flagged ``inferred=True``, [SOFT SL ARMED] follows."""
+        import asyncio
+        from agent.live.broker import Position
+        from agent.types import Direction
+
+        mon = _make_monitor(tmp_path)
+        # entry=1.39715, broker_sl=1.40215 → dist=50p, soft = 1.39715 + 20p
+        fake_pos = Position(
+            ticket=2842973741, symbol="USDCAD", direction=Direction.SHORT,
+            volume=0.01, open_price=1.39715, open_time=_utc_now(),
+            stop_loss=1.40215, take_profit=1.39415,
+            profit=-4.74, current_price=1.39800,
+        )
+        mon.broker.get_open_positions = AsyncMock(return_value=[fake_pos])
+        mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+            balance=1000.0, equity=995.26
+        ))
+
+        with caplog.at_level(logging.INFO, logger="agent.live.monitor"):
+            asyncio.run(mon._check_positions())
+
+        assert "[POSITION ADOPTED]" in caplog.text
+        assert "soft_sl=1.39915 (20p, inferred)" in caplog.text
+        assert "broker_sl=1.40215 (50p)" in caplog.text
+        assert "[SOFT SL ARMED] USDCAD ticket=2842973741" in caplog.text
+        assert 2842973741 in mon._entry_ctx
+        ctx = mon._entry_ctx[2842973741]
+        assert ctx["inferred"] is True
+        assert ctx["soft_stop"] == pytest.approx(1.39915, abs=1e-5)
+        assert ctx["stop"] == pytest.approx(1.40215)
+        assert ctx["pending_overshoot_close"] is False
+
+    def test_adopted_long_infers_soft_stop_mirror(self, tmp_path, caplog):
+        """Adopted long: soft = entry - broker_dist/2.5."""
+        import asyncio
+        from agent.live.broker import Position
+        from agent.types import Direction
+
+        mon = _make_monitor(tmp_path)
+        # entry=1.08234, broker_sl=1.07734 → dist=50p, soft = 1.08234 - 20p
+        fake_pos = Position(
+            ticket=42, symbol="EURUSD", direction=Direction.LONG,
+            volume=0.05, open_price=1.08234, open_time=_utc_now(),
+            stop_loss=1.07734, take_profit=1.09000,
+            profit=3.0, current_price=1.08300,
+        )
+        mon.broker.get_open_positions = AsyncMock(return_value=[fake_pos])
+        mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+            balance=1000.0, equity=1003.0
+        ))
+
+        with caplog.at_level(logging.INFO, logger="agent.live.monitor"):
+            asyncio.run(mon._check_positions())
+
+        assert "soft_sl=1.08034 (20p, inferred)" in caplog.text
+        ctx = mon._entry_ctx[42]
+        assert ctx["soft_stop"] == pytest.approx(1.08034, abs=1e-5)
+        assert ctx["inferred"] is True
+
+    def test_adopted_breach_closes_with_overshoot_cause(self, tmp_path, caplog):
+        """Adopted short where current_price already past inferred soft → the
+        first monitor cycle adopts, warns BREACHED and fires the overshoot
+        close in the same pass. The next cycle (broker no longer reports
+        the position) records the closed-trade log with cause
+        ``soft_sl_inferred_overshoot`` for grep."""
+        import asyncio
+        from agent.live.broker import Position, OrderResult
+        from agent.live.soft_stop import SoftStopConfig
+        from agent.live.monitor import PositionMonitor
+        from agent.live.config import LiveConfig
+        from agent.config import load_config
+        from agent.types import Direction
+
+        broker = MagicMock()
+        cfg = load_config()
+        live = LiveConfig(symbol="USDCAD")
+        notifier = MagicMock()
+        notifier.notify_text = MagicMock()
+        mon = PositionMonitor(
+            broker=broker, config=cfg, live_config=live, notifier=notifier,
+            soft_stop_cfg=SoftStopConfig(enabled=True),
+        )
+        # Inferred soft = 1.39715 + (1.40215 - 1.39715) / 2.5 = 1.39915
+        # current_price 1.39936 → past soft by ~2p → breached.
+        fake_pos = Position(
+            ticket=2842973741, symbol="USDCAD", direction=Direction.SHORT,
+            volume=0.01, open_price=1.39715, open_time=_utc_now(),
+            stop_loss=1.40215, take_profit=1.39415,
+            profit=-4.74, current_price=1.39936,
+        )
+        mon.broker.get_open_positions = AsyncMock(return_value=[fake_pos])
+        mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+            balance=1000.0, equity=995.26
+        ))
+        mon.broker.get_latest_bars = AsyncMock(return_value=[])
+        mon.broker.close_position = AsyncMock(return_value=OrderResult(
+            success=True, ticket=2842973741, message="ok",
+        ))
+
+        with caplog.at_level(logging.INFO, logger="agent.live.monitor"):
+            # First cycle: adopt + breach warn + immediate overshoot close.
+            asyncio.run(mon._check_positions())
+            assert "[ADOPTED — SOFT SL ALREADY BREACHED]" in caplog.text
+            assert "[SOFT SL] USDCAD ticket=2842973741" in caplog.text
+            assert "already past inferred soft" in caplog.text
+            mon.broker.close_position.assert_awaited()
+            # The forced-reason has been stamped so _handle_close picks it up.
+            assert mon._forced_exit_reason[2842973741] == "soft_sl_inferred_overshoot"
+
+            # Second cycle: broker reports no open positions → close handler
+            # fires the trade-closed log with the new cause tag.
+            mon.broker.get_open_positions = AsyncMock(return_value=[])
+            closes: list[tuple[int, dict]] = []
+            mon.trade_closed_cb = lambda t, i: closes.append((t, i))
+            asyncio.run(mon._check_positions())
+            assert closes, "trade_closed callback never fired"
+            assert closes[0][1]["exit_reason"] == "soft_sl_inferred_overshoot"
+            assert "cause=soft_sl_inferred_overshoot" in caplog.text
+
+    def test_inferred_entry_ctx_persists_across_restart(self, tmp_path):
+        """A synthetic entry_ctx built at adoption time must survive a save
+        round-trip — second start must NOT re-infer (the ctx is already on
+        disk and gets restored via the normal restored-ticket path)."""
+        import asyncio
+        from agent.live.broker import Position
+        from agent.types import Direction
+
+        cb_calls: list[int] = []
+        mon = _make_monitor(tmp_path, on_state_change=lambda: cb_calls.append(1))
+        fake_pos = Position(
+            ticket=42, symbol="EURUSD", direction=Direction.LONG,
+            volume=0.05, open_price=1.08234, open_time=_utc_now(),
+            stop_loss=1.07734, take_profit=1.09000,
+            profit=3.0, current_price=1.08300,
+        )
+        mon.broker.get_open_positions = AsyncMock(return_value=[fake_pos])
+        mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+            balance=1000.0, equity=1003.0
+        ))
+        asyncio.run(mon._check_positions())
+        assert cb_calls, "on_state_change must fire after adoption inference"
+        state = mon.get_persist_state()
+        assert "42" in state["entry_ctx"]
+        assert state["entry_ctx"]["42"]["inferred"] is True
+        assert state["entry_ctx"]["42"]["soft_stop"] == pytest.approx(
+            1.08034, abs=1e-5
+        )
 
     def test_stale_restored_ticket_discarded_on_first_cycle(
         self, tmp_path, caplog
@@ -502,13 +689,15 @@ class TestSignalLoopStatePersistence:
 
     def test_persist_then_restore_state_no_crash(self, tmp_path):
         loop = self._make_loop(tmp_path)
-        # Inject some state
-        from datetime import timezone
-        loop._last_bar_times["H4"] = _utc_now()
+        # _last_bar_times only restores entries newer than 2 days (see
+        # SignalLoop._restore_state); use a fresh wall-clock timestamp here
+        # so the test stays green regardless of the calendar date.
+        loop._last_bar_times["H4"] = (
+            datetime.now(tz=timezone.utc) - timedelta(hours=1)
+        )
         loop._persist_state()
 
         loop2 = self._make_loop(tmp_path)
-        # Should not raise; bar time is recent enough
         loop2._restore_state()
         assert "H4" in loop2._last_bar_times
 

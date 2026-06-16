@@ -17,8 +17,14 @@ from agent.live.config import LiveConfig
 from agent.live.soft_stop import SoftStopConfig, evaluate_soft_stop
 from agent.live.trade_events import (
     classify_exit_tag,
+    log_adopted_breach,
     log_breakeven_moved,
+    log_ladder,
+    log_ladder_unknown,
     log_partial_scaleout,
+    log_position_adopted,
+    log_position_restored,
+    log_soft_stop_armed,
     log_soft_stop_fired,
     log_trade_closed,
 )
@@ -105,6 +111,112 @@ class PositionMonitor:
             "last_profit": 0.0,
         }
 
+    # ------------------------------------------------------------------
+    # Adopted-position handling (soft-SL inference)
+    # ------------------------------------------------------------------
+
+    # Minimum broker-stop distance below which we won't trust an inferred
+    # soft level — anything tighter than this either is a degenerate
+    # config or risks placing a soft stop on top of entry.
+    _INFER_MIN_BROKER_PIPS: float = 4.0
+
+    def _infer_soft_stop_from_broker(
+        self, entry: float, broker_sl: float, is_long: bool,
+    ) -> float | None:
+        """Best-effort soft-stop reconstruction for an adopted ticket.
+
+        Inverts the catastrophe formula:
+            broker_sl ≈ entry ∓ catastrophe_mult × soft_dist
+        Returns None when the broker SL is missing / zero / degenerately
+        tight, so the caller can fall back to the legacy "unknown"
+        behaviour.
+        """
+        if not broker_sl or broker_sl <= 0:
+            return None
+        cata_dist = abs(entry - broker_sl)
+        if cata_dist < self._INFER_MIN_BROKER_PIPS * 0.0001:
+            return None
+        cata_mult = max(1.0, float(self.soft_stop_cfg.catastrophe_mult))
+        soft_dist = cata_dist / cata_mult
+        return entry - soft_dist if is_long else entry + soft_dist
+
+    @staticmethod
+    def _price_beyond_soft(
+        is_long: bool, soft_stop: float, current_price: float | None,
+    ) -> bool:
+        """Has the market already moved past the soft level we just armed?"""
+        if current_price is None or current_price <= 0:
+            return False
+        return (current_price <= soft_stop if is_long
+                else current_price >= soft_stop)
+
+    def _adopt_position(self, pos: Position) -> None:
+        """Log + register a broker position the agent did not open.
+
+        Tries to infer a soft stop from the broker SL so the soft-stop /
+        breakeven / trailing / R-math come back online; if the inference
+        fails (no broker SL, degenerate distance), the ticket stays in the
+        legacy ``soft_sl=unknown`` mode and the agent only manages the
+        catastrophe SL the broker is already holding.
+        """
+        is_long = pos.direction == Direction.LONG
+        soft = self._infer_soft_stop_from_broker(
+            pos.open_price, pos.stop_loss, is_long=is_long,
+        )
+        if soft is None:
+            log_position_adopted(
+                log, symbol=pos.symbol, ticket=pos.ticket,
+                direction=pos.direction.value, lots=pos.volume,
+                entry=pos.open_price, broker_sl=pos.stop_loss,
+                tp=pos.take_profit, profit=pos.profit, soft_sl=None,
+            )
+            log_ladder_unknown(log, symbol=pos.symbol, ticket=pos.ticket,
+                               reason="adopted")
+            return
+
+        breached = self._price_beyond_soft(
+            is_long=is_long, soft_stop=soft, current_price=pos.current_price,
+        )
+        timeframe = (self.live_config.timeframes[0]
+                     if self.live_config.timeframes else "H4")
+        ctx = {
+            "alpha": "adopted",
+            "timeframe": timeframe,
+            "direction": pos.direction.value,
+            "entry": pos.open_price,
+            "entry_time": (pos.open_time.isoformat()
+                           if pos.open_time is not None else None),
+            "soft_stop": soft,
+            "stop": pos.stop_loss,
+            "take_profit": pos.take_profit,
+            "conviction": None,
+            "signal_reason": "adopted",
+            "target_ladder": [],
+            "inferred": True,
+            "pending_overshoot_close": breached,
+        }
+        self.register_entry(pos.ticket, ctx)
+        log_position_adopted(
+            log, symbol=pos.symbol, ticket=pos.ticket,
+            direction=pos.direction.value, lots=pos.volume,
+            entry=pos.open_price, broker_sl=pos.stop_loss,
+            tp=pos.take_profit, profit=pos.profit, soft_sl=soft,
+        )
+        log_ladder_unknown(log, symbol=pos.symbol, ticket=pos.ticket,
+                           reason="adopted")
+        log_soft_stop_armed(log, symbol=pos.symbol, ticket=pos.ticket,
+                            soft_sl=soft, source="inferred")
+        if breached:
+            log_adopted_breach(
+                log, symbol=pos.symbol, ticket=pos.ticket,
+                current_price=pos.current_price, soft_sl=soft,
+            )
+        if self._on_state_change is not None:
+            try:
+                self._on_state_change()
+            except Exception as exc:
+                log.debug("on_state_change failed after adoption: %s", exc)
+
     async def run(self) -> None:
         """Background monitoring loop. Call as asyncio.create_task(monitor.run())."""
         log.info("Position monitor started (check every %.1fs)", self.check_interval)
@@ -159,24 +271,23 @@ class PositionMonitor:
                 for pos in positions:
                     if pos.ticket in self._restored_ctx_tickets:
                         ctx = self._entry_ctx.get(pos.ticket, {})
-                        log.info(
-                            "[POSITION RESTORED] %s ticket=%d %s entry=%.5f "
-                            "soft_stop=%s be_applied=%s",
-                            pos.symbol, pos.ticket, pos.direction.value,
-                            ctx.get("entry", pos.open_price),
-                            ("%.5f" % ctx["soft_stop"]
-                             if ctx.get("soft_stop") is not None else "n/a"),
-                            pos.ticket in self._breakeven_applied,
+                        entry_price = ctx.get("entry", pos.open_price)
+                        log_position_restored(
+                            log, symbol=pos.symbol, ticket=pos.ticket,
+                            direction=pos.direction.value,
+                            entry=entry_price,
+                            soft_sl=ctx.get("soft_stop"),
+                            broker_sl=ctx.get("stop", pos.stop_loss),
+                            tp=ctx.get("take_profit", pos.take_profit),
+                            be_applied=pos.ticket in self._breakeven_applied,
+                        )
+                        log_ladder(
+                            log, symbol=pos.symbol, ticket=pos.ticket,
+                            rungs=ctx.get("target_ladder") or [],
+                            entry=entry_price,
                         )
                     elif pos.ticket not in self._entry_ctx:
-                        log.info(
-                            "[POSITION ADOPTED] %s ticket=%d %s %.2f lots "
-                            "entry=%.5f sl=%.5f tp=%.5f profit=%+.2f "
-                            "(opened before this process started)",
-                            pos.symbol, pos.ticket, pos.direction.value,
-                            pos.volume, pos.open_price, pos.stop_loss,
-                            pos.take_profit, pos.profit,
-                        )
+                        self._adopt_position(pos)
                 self._restored_ctx_tickets.clear()
                 self._initial_scan_done = True
 
@@ -229,7 +340,14 @@ class PositionMonitor:
     async def _manage_soft_stop(self, pos: Position) -> bool:
         """Evaluate the agent-managed soft stop for a position. Closes via a
         market order when the soft level is confirmed broken (close beyond it)
-        or blown clean through intrabar (panic). Returns True if it closed."""
+        or blown clean through intrabar (panic). Returns True if it closed.
+
+        Adopted-position overshoot: if a ticket was adopted with an inferred
+        soft stop AND price was already past that level at adoption time, the
+        ctx carries ``pending_overshoot_close=True`` and we exit immediately
+        with reason ``soft_sl_inferred_overshoot`` — the user can grep that
+        cause tag later to find these one-shot exits.
+        """
         if not self.soft_stop_cfg.enabled:
             return False
         ctx = self._entry_ctx.get(pos.ticket)
@@ -240,6 +358,37 @@ class PositionMonitor:
             return False
         entry = ctx.get("entry", pos.open_price)
         is_long = pos.direction == Direction.LONG
+
+        # One-shot overshoot exit for an adopted ticket whose inferred soft
+        # level was already broken at restart. We bypass confirm-on-close
+        # because there's nothing to confirm — the breach predates us.
+        if ctx.get("pending_overshoot_close") and ctx.get("inferred"):
+            still_beyond = self._price_beyond_soft(
+                is_long=is_long, soft_stop=soft_stop,
+                current_price=pos.current_price,
+            )
+            if still_beyond:
+                detail = (f"adopted ticket: price {pos.current_price:.5f} "
+                          f"already past inferred soft {soft_stop:.5f} "
+                          f"at restart — exiting")
+                log_soft_stop_fired(log, symbol=pos.symbol, ticket=pos.ticket,
+                                    detail=detail)
+                result = await self.broker.close_position(pos.ticket, pos.symbol)
+                if result.success:
+                    self._forced_exit_reason[pos.ticket] = "soft_sl_inferred_overshoot"
+                    ctx["pending_overshoot_close"] = False
+                    self.notifier.notify_text(
+                        f"*Adopted soft-stop exit* ticket=`{pos.ticket}`\n"
+                        f"`{detail}`"
+                    )
+                    return True
+                log.error("Adopted overshoot close FAILED for ticket=%d: %s",
+                          pos.ticket, result.message)
+                return False
+            # Price snapped back inside the soft level before we could
+            # close — clear the flag, fall through to the normal layer.
+            ctx["pending_overshoot_close"] = False
+
         timeframe = ctx.get("timeframe") or (
             self.live_config.timeframes[0] if self.live_config.timeframes else "H1"
         )

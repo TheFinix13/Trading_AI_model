@@ -164,6 +164,7 @@ class VaultRecorder:
         zone = record.get("zone") or {}
         title = (f"{self.symbol} {record.get('tf', '')} — {tag} "
                  f"@ {record.get('ts', '')}")
+        detail = self._build_detail(record)
         render_snapshot(
             bars,
             folder / _png_name(ts, tag),
@@ -174,6 +175,46 @@ class VaultRecorder:
             take_profit=record.get("take_profit"),
             zone_top=zone.get("top"),
             zone_bottom=zone.get("bottom"),
+            zone_direction=zone.get("direction"),
             entry_time=entry_time,
             extra_levels=extra_levels,
+            reason=record.get("reason") or tag,
+            direction=record.get("direction"),
+            detail=detail,
         )
+
+    @staticmethod
+    def _build_detail(record: dict) -> str | None:
+        """Compose the bottom-right caption from whichever fields a given
+        event type carries. Returns None when nothing useful is present."""
+        # Per-reason captions read from the event dict the loop / alpha
+        # built, so a near-miss caused by the HTF gate shows the bias and
+        # mode while a risk-manager rejection shows the decision string.
+        reason = record.get("reason")
+        if reason == "htf_gate":
+            parts = []
+            bias = record.get("htf_bias")
+            if bias:
+                parts.append(f"htf_bias={bias}")
+            mode = record.get("htf_align_mode")
+            align = record.get("htf_align")
+            if align or mode:
+                parts.append(f"htf={align or '?'}({mode or '?'})")
+            conv = record.get("conviction")
+            if conv is not None:
+                parts.append(f"conviction={float(conv):.2f}")
+            return " · ".join(parts) if parts else None
+        # Generic fallback: prefer an explicit detail string, then a
+        # signal_reason fingerprint plus conviction so the operator still
+        # gets context for sizing_skip / post_loss_guard / risk_manager.
+        detail = record.get("detail")
+        if detail:
+            return str(detail)
+        bits = []
+        sig_reason = record.get("signal_reason")
+        if sig_reason:
+            bits.append(f"signal={sig_reason}")
+        conv = record.get("conviction")
+        if conv is not None:
+            bits.append(f"conviction={float(conv):.2f}")
+        return " · ".join(bits) if bits else None

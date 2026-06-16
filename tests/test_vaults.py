@@ -426,3 +426,121 @@ def test_render_snapshot_failure_returns_none(tmp_path):
     assert render_snapshot([], tmp_path / "x.png", title="empty") is None
     one = _bars(1)
     assert render_snapshot(one, tmp_path / "y.png", title="one bar") is None
+
+
+def test_render_snapshot_annotates_levels_reason_and_caption(tmp_path,
+                                                             monkeypatch):
+    """The new vault chart contract: every render must (a) carry the reason
+    + direction in the title, (b) draw a horizontal line per level, (c)
+    annotate each level's price next to the right edge, and (d) print the
+    rejection detail caption in the bottom-right.
+
+    We intercept ``mpf.plot`` to grab the figure before save, then assert on
+    the matplotlib objects directly — no PNG pixel-peeping required.
+    """
+    import agent.journal.chart_snapshot as cs
+    real_plot = cs.mpf.plot
+    captured: dict = {}
+
+    def spy(df, **kwargs):
+        fig, axes = real_plot(df, **kwargs)
+        captured["fig"] = fig
+        captured["axes"] = axes
+        captured["kwargs"] = kwargs
+        return fig, axes
+
+    monkeypatch.setattr(cs.mpf, "plot", spy)
+    bars = _bars(120)
+    out = cs.render_snapshot(
+        bars, tmp_path / "snap.png",
+        title="EURUSD H1 — htf_gate",
+        event_time=bars[100].time,
+        entry=1.1000, stop=1.0950, take_profit=1.1100,
+        zone_top=1.1010, zone_bottom=1.0990, zone_direction="short",
+        reason="htf_gate", direction="long",
+        detail="htf_bias=up · htf=D1(against) · conviction=0.65",
+    )
+    assert out is not None
+    fig = captured["fig"]
+    kwargs = captured["kwargs"]
+    # (a) title carries reason + direction
+    assert "htf_gate" in kwargs["title"]
+    assert "LONG" in kwargs["title"]
+    # (b) one horizontal line per supplied level
+    hlines_block = kwargs.get("hlines") or {}
+    levels = list(hlines_block.get("hlines", []))
+    assert pytest.approx(1.1000) in levels
+    assert pytest.approx(1.0950) in levels
+    assert pytest.approx(1.1100) in levels
+    # (c) right-edge annotations for entry / SL / TP
+    price_ax = captured["axes"][0]
+    label_texts = [t.get_text() for t in price_ax.texts]
+    assert any("entry" in t and "1.10000" in t for t in label_texts)
+    assert any("SL" in t and "1.09500" in t for t in label_texts)
+    assert any("TP" in t and "1.11000" in t for t in label_texts)
+    # (d) detail caption present
+    assert any("htf_bias=up" in t for t in label_texts)
+
+
+def test_render_snapshot_zone_colours_by_direction(tmp_path, monkeypatch):
+    """Demand zones (long) render green; supply zones (short) render red."""
+    import agent.journal.chart_snapshot as cs
+    real_plot = cs.mpf.plot
+    captured: dict = {}
+
+    def spy(df, **kwargs):
+        captured["kwargs"] = kwargs
+        return real_plot(df, **kwargs)
+
+    monkeypatch.setattr(cs.mpf, "plot", spy)
+    bars = _bars(120)
+    cs.render_snapshot(bars, tmp_path / "demand.png", title="t",
+                       zone_top=1.1010, zone_bottom=1.0990,
+                       zone_direction="long")
+    demand_color = captured["kwargs"]["fill_between"]["color"]
+    cs.render_snapshot(bars, tmp_path / "supply.png", title="t",
+                       zone_top=1.1010, zone_bottom=1.0990,
+                       zone_direction="short")
+    supply_color = captured["kwargs"]["fill_between"]["color"]
+    assert demand_color != supply_color
+    assert demand_color.lower().startswith("#43")  # green palette
+    assert supply_color.lower().startswith("#e5")  # red palette
+
+
+def test_vault_near_miss_render_includes_reason_and_detail(tmp_path,
+                                                          monkeypatch):
+    """End-to-end: vault.record_near_miss → chart_snapshot.render_snapshot
+    must propagate reason / direction / htf detail."""
+    import agent.journal.chart_snapshot as cs
+
+    seen: dict = {}
+
+    def spy(bars, out_path, **kwargs):
+        seen.update(kwargs)
+        # Still write a placeholder file so the vault path doesn't break
+        # downstream assertions on PNG existence.
+        from pathlib import Path
+        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(out_path).write_bytes(b"")
+        return Path(out_path)
+
+    # Patch the *bound name* used by VaultRecorder (it imported the symbol).
+    monkeypatch.setattr("agent.journal.vault.render_snapshot", spy)
+
+    vault = VaultRecorder("EURUSD", root=tmp_path)
+    bars = _bars(120)
+    vault.record_near_miss({
+        "ts": bars[100].time.isoformat(),
+        "tf": "H4",
+        "reason": "htf_gate",
+        "direction": "long",
+        "entry": 1.1000, "stop": 1.0950, "take_profit": 1.1100,
+        "conviction": 0.65,
+        "htf_bias": "up", "htf_align": "D1", "htf_align_mode": "against",
+        "zone": {"direction": "long", "top": 1.1010, "bottom": 1.0990},
+    }, bars)
+    assert seen["reason"] == "htf_gate"
+    assert seen["direction"] == "long"
+    assert seen["zone_direction"] == "long"
+    assert "htf_bias=up" in seen["detail"]
+    assert "D1" in seen["detail"]

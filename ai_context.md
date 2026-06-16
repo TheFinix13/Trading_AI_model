@@ -1,61 +1,67 @@
-# AI Context — brain dump (updated 2026-06-13)
+# AI Context — brain dump (updated 2026-06-16)
 
 Read this first in a fresh chat. Strictly technical state summary.
 Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
 
 ## 1) What is built and working
 
-- **Validated strategy (the only one):** `zone_d1_against` — SupplyDemandAlpha,
-  H4 supply/demand zone touch faded AGAINST the D1 trend.
-  Locked params: `htf_align="D1", htf_align_mode="against", htf_lookback=10,
+- **Validated strategy (the only one):** `zone_d1_against` —
+  SupplyDemandAlpha, H4 zone touch faded AGAINST the D1 trend. Locked:
+  `htf_align="D1", htf_align_mode="against", htf_lookback=10,
   htf_min_move_pips=60.0`. Mean-reversion edge; with-trend kills it.
-- **Validation chain:** 7 ICT concepts → single-concept ablation w/ bootstrap
-  p-values + BH-FDR 5% (6 died) → holdout IS 2015-22 / OOS 2023-25 →
-  walk-forward 7×(4yr IS/1yr OOS): H4/all 7/7 positive OOS windows, median
-  +11.34 pips/trade → frozen cross-pair (zero re-tuning, costs scaled up):
-  GBPUSD +10.24/trade p=0.001 11/11 yrs; USDCAD +4.63 p=0.028 10/11 yrs;
-  AUDUSD/NZDUSD tested and EXCLUDED. Sealed 2026 look (Jan–Jun): 16 trades,
-  +7.75/trade, p=0.29 — inconclusive, monitoring.
-- **Deployment router:** (symbol, TF, session) → RouteEntry(mode, risk_scale,
-  evidence w/ source tag). Deployed: EURUSD/H4/all @ 1.0, GBPUSD/H4/all @ 0.5,
-  USDCAD/H4/all @ 0.5. Candidate (not deployed): EURUSD/D1/all. Unknown cells
-  fail-safe to skip. Contract tests lock params + evidence gates.
-- **Live runner:** one process per symbol; router is default alpha source;
-  fixes TF=H4; risk_scale flows into adaptive sizing (conviction band 0.5–2%
-  of live balance × scale, margin/leverage aware, min-lot guards); refuses
-  undeployed symbols; old ReactionAlpha only via `--alpha reaction`
-  (experimental). Flags: `--symbol`, `--log-dir`, `--broker paper|mt5|exness`.
-- **Observability:** daily logs `~/Documents/TradingAgentLogs/{SYM}/{SYM}_{YYYY-MM-DD}.log`
-  (UTC rollover, 30 kept); heartbeat every 15 min (balance/equity/positions/
-  next H4 close); explicit "no setup" line each H4 close. Near-miss vault
-  (htf_gate / post_loss_guard / risk_manager / sizing_skip rejections) + loss
-  vault: JSONL + mplfinance PNG snapshots beside logs. Observation-only —
-  regression test proves trading output identical with recorders attached.
-  Resolver scores hypotheticals (SL-first tie-break) per reason tag.
-- **Extension-target ladder (observation-only):** on each live fill, structural
-  levels beyond the mechanical 1.5R TP (swing / zone_edge / trendline /
-  fib_ext / daily_level) journaled to `ladders/events.jsonl` + snapshot +
-  Telegram line; rungs scored vs realised MFE at close. Per-source reach-rate
-  report: `python scripts/report_target_ladders.py --symbol <SYM>`. Evidence
-  for a future target_rr/structural-TP study — TP never moved from this data.
-  NOTE: `target_rr=1.5` was never grid-swept; all validation is conditional
-  on it. First live demo trades 2026-06-11: EURUSD long +28.10 (TP, demo,
-  manual 0.1 lots vs sized 0.07 — AutoTrading was off); GBPUSD signal
-  rejected retcode=10027 (Algo Trading button off on VM — must be green).
+  Validation evidence (full chain in docs/00-journey.md): walk-forward
+  H4/all 7/7 positive OOS median +11.34p; frozen cross-pair GBPUSD
+  +10.24 p=0.001, USDCAD +4.63 p=0.028; AUDUSD/NZDUSD EXCLUDED. Sealed
+  2026 H1: 16 trades +7.75/trade p=0.29 — monitoring.
+- **Deployment router:** (symbol, TF, session) → RouteEntry(mode,
+  risk_scale, evidence). Deployed: EURUSD/H4/all @1.0, GBPUSD/H4/all @0.5,
+  USDCAD/H4/all @0.5. Candidate: EURUSD/D1/all. Unknown cells fail-safe
+  skip; contract tests lock params + evidence gates.
+- **Live runner:** one process per symbol; router is default alpha;
+  TF=H4; conviction-scaled risk 0.5–2% × risk_scale, margin/leverage
+  aware, min-lot guards. Flags: `--symbol`, `--log-dir`, `--broker`.
+- **Observability:** daily logs `~/Documents/TradingAgentLogs/{SYM}/`
+  (UTC rollover, 30 kept); 15-min heartbeat; "no setup" per H4 close;
+  bracketed event tags (`[SIGNAL]`, `[TRADE OPENED]`, `[LADDER]`,
+  `[POSITION ADOPTED|RESTORED]`, `[SOFT SL ARMED|SL]`, `[TRADE CLOSED]`).
+  Near-miss + loss vaults: JSONL + PNG beside logs; observation-only
+  (regression test guards byte-identical trading output).
+- **Extension-target ladder (observation-only):** structural levels
+  beyond the 1.5R TP (swing / zone_edge / trendline / fib_ext /
+  daily_level) journaled to `ladders/events.jsonl` AND mirrored on the
+  daily log as `[LADDER]`; rungs scored vs realised MFE at close. Report:
+  `scripts/report_target_ladders.py --symbol <SYM>`. NOTE: `target_rr=1.5`
+  was never grid-swept; validation is conditional on it.
 - **Deployed:** Windows VMware, Exness demo ($1000), 3 PowerShell tabs.
-  VM update ritual: `git fetch origin && git reset --hard origin/main &&
-  pip install -r requirements.txt` (never pull/push from VM).
-- **Crash-resilient state persistence:** `agent/live/state_store.py`
-  (atomic JSON sidecar). On abrupt VM shutdown/restart: `PositionMonitor`
-  `_entry_ctx`/`_breakeven_applied`/`_partial_applied`/`_excursion` restored
-  (broker-verified on first monitor cycle → `[POSITION RESTORED]` log);
-  `PostLossGuard` consecutive_losses/halt/cooldown restored if same UTC day;
-  `RiskManager` day_pnl/halted_today restored if same UTC day; `SignalLoop
-  ._last_bar_times` restored if <2 days old. File:
-  `{log_root}/{SYMBOL}/state.json`. Writes are atomic (tmp + os.replace).
-  Save errors are caught — never crash the loop. 29 new tests.
-- **Tests:** 308 passing. Git history rewritten 2026-06-10 to strip
-  Co-authored-by Cursor trailers (force-pushed; VM must hard-reset).
+  VM update: `git fetch && git reset --hard origin/main && pip install
+  -r requirements.txt` (never push from VM).
+- **Crash-resilient state persistence:** `agent/live/state_store.py` —
+  atomic JSON sidecar `{log_root}/{SYMBOL}/state.json`. On restart:
+  `PositionMonitor` ctx/BE/partial/excursion restored; `PostLossGuard`
+  and `RiskManager` restored only when persisted day == today UTC;
+  `SignalLoop._last_bar_times` restored if < 2 days old. Writes via
+  tmp + os.replace; save errors swallowed.
+- **Daily-log enrichment + adopted soft-SL inference (2026-06-16):**
+  `[TRADE OPENED]` now prints pip distances + TP R-multiple inline
+  (`soft_sl=P (Np) catastrophe_sl=P (Np) tp_mech=P (X.XR, +Np)`); every
+  fill emits a follow-up `[LADDER]` line mirroring `ladders/events.jsonl`.
+  `[POSITION ADOPTED]` / `[POSITION RESTORED]` use the same shape. On
+  restart, an open position with no persisted ctx gets a synthetic one
+  built from the broker SL — `soft_stop = entry ± broker_dist /
+  catastrophe_mult` (default 2.5 from `LiveConfig`). Soft-stop / BE /
+  trailing / R-math come back online; degenerate inputs (no broker SL,
+  distance < 4p) preserve the honest `soft_sl=unknown (adopted)` path. An
+  already-breached soft level at adoption emits `[ADOPTED — SOFT SL
+  ALREADY BREACHED]` and closes immediately with cause
+  `soft_sl_inferred_overshoot`. Synthetic ctx is persisted on the first
+  cycle so subsequent restarts reuse it.
+- **Near-miss chart upgrade (2026-06-16):** `chart_snapshot.render_snapshot`
+  draws solid blue entry, dashed red SL, dashed green TP with right-edge
+  price labels; zone rectangle coloured by side (long=green, short=red);
+  title carries reason + direction; bottom-right caption shows the
+  rejection detail (HTF bias / risk-manager message).
+- **Tests:** 333 passing. (Git history rewritten 2026-06-10 to strip
+  Co-authored-by Cursor trailers — VM must hard-reset on update.)
 
 ## 2) Key file paths
 
@@ -74,23 +80,20 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
 
 ## 3) Next immediate goal
 
-**Monitor the demo deployment and accumulate live evidence.** (Crash-resilience
-feature landed — deploy on next VM session; vm must `git fetch origin && git
-reset --hard origin/main`.) Concretely:
+**Monitor the demo + verify the new log format.** VM must `git fetch &&
+git reset --hard origin/main`. On the next live fill, confirm
+`[TRADE OPENED] … soft_sl=P (Np) catastrophe_sl=P (Np) tp_mech=P (X.XR,
++Np)` and a follow-up `[LADDER]` line. On the next restart, confirm any
+adopted ticket emits `[SOFT SL ARMED]` and (if mid-trade) responds to
+the soft level.
 
-1. User pastes daily log files / vault PNGs into chat for review; check
-   heartbeats present, routed cells correct, trades match backtest behavior.
-2. Weekly: `python scripts/resolve_near_misses.py --symbol <SYM>` per pair;
-   review per-gate would-have-won rates. Vault output is hypothesis-only;
-   gates change ONLY via the full validation pipeline (grid → holdout →
-   walk-forward).
-3. As live n grows, compare live trade distribution vs backtest expectancy
-   (EURUSD ~+11/trade, ~50% WR, ~66 trades/yr full portfolio ~250/yr).
+1. Weekly: `python scripts/resolve_near_misses.py --symbol <SYM>` per
+   pair; review per-gate would-have-won rates. Gates change ONLY via the
+   full validation pipeline (grid → holdout → walk-forward).
+2. As live n grows, compare live trade distribution vs backtest
+   expectancy (EURUSD ~+11/trade, ~50% WR, ~66 trades/yr; full portfolio
+   ~250/yr).
 
-Parked (do not start without discussion): see **docs/ROADMAP.md** — full
-list with trigger conditions. Highlights: target_rr/structural-TP study
-(after ~50 ladder trades); laddered partial-TP (`partial_exit_enabled`
-stays OFF); USD-exposure manager; EURUSD D1 promotion; autonomy ladder
-(decay monitor → shadow policies → research runner; constitution stays
-human-locked). Checkpoint routine: docs/CHECKPOINT.md "THE ROUTINE" —
-run it at every major divergence.
+Parked (see **docs/ROADMAP.md**): target_rr/structural-TP study (after
+~50 ladder trades); laddered partial-TP (`partial_exit_enabled` stays
+OFF); USD-exposure manager; EURUSD D1 promotion; autonomy ladder.

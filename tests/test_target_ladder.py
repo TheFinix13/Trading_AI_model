@@ -373,3 +373,51 @@ def test_close_without_ladder_or_vault_is_silent():
             "mfe_pips": 110.0, "exit_reason": "tp",
             "entry_ctx": {"direction": "long", "entry": ENTRY}}
     loop._on_trade_closed(777, info)  # must not raise
+
+
+def test_filled_order_emits_ladder_log_line(caplog, tmp_path):
+    """The [LADDER] daily-log line must mirror the journaled ladder.
+
+    Regression guard for the operability requirement: when a fill computes
+    structural rungs, those same rungs land on a single grep-able log line
+    so an operator tailing the daily log sees what the JSONL records.
+    """
+    import logging as _logging
+    broker = _FakeBroker()
+    loop = _make_loop(broker, VaultRecorder("EURUSD", root=tmp_path))
+    bars = _bars(120)
+    ctx = _ctx(swings=[_swing(1.1100, 70), _swing(1.1150, 60)])
+
+    with caplog.at_level(_logging.INFO, logger="agent.live.signal_loop"):
+        asyncio.run(loop._route_signal(_routed(loop), _LAST_CLOSED,
+                                       bars=bars, ctx=ctx))
+
+    ladder_lines = [r.message for r in caplog.records
+                    if r.message.startswith("[LADDER]")]
+    assert len(ladder_lines) == 1, ladder_lines
+    msg = ladder_lines[0]
+    assert "ticket=777" in msg
+    assert "n=2" in msg
+    assert "swing=1.11000" in msg
+    assert "swing=1.11500" in msg
+
+
+def test_filled_order_emits_ladder_line_even_when_empty(monkeypatch, tmp_path,
+                                                       caplog):
+    """No rungs → still log a [LADDER] n=0 line so every fill has a marker."""
+    import logging as _logging
+    import agent.live.signal_loop as sl
+
+    monkeypatch.setattr(sl, "compute_target_ladder", lambda *a, **kw: [])
+    loop = _make_loop(_FakeBroker(), VaultRecorder("EURUSD", root=tmp_path))
+    bars = _bars(120)
+    ctx = _ctx()
+
+    with caplog.at_level(_logging.INFO, logger="agent.live.signal_loop"):
+        asyncio.run(loop._route_signal(_routed(loop), _LAST_CLOSED,
+                                       bars=bars, ctx=ctx))
+    ladder_lines = [r.message for r in caplog.records
+                    if r.message.startswith("[LADDER]")]
+    assert len(ladder_lines) == 1
+    assert "n=0" in ladder_lines[0]
+    assert "no structural rungs" in ladder_lines[0]
