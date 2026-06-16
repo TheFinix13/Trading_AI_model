@@ -1,4 +1,8 @@
-# AI Context — brain dump (updated 2026-06-16, v0.14)
+# AI Context — brain dump (updated 2026-06-16, v0.17)
+
+> v0.17 — brain-box + ai_context synced to June observability pass (349 tests);
+> daily_summary auto-saves to `{log-dir}/summaries/`. Brain-box node:
+> `brain-box/life/finance-research/multi-pair-trading-agent.md`.
 
 Read this first in a fresh chat. Strictly technical state summary.
 Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
@@ -71,10 +75,10 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
   [--days N] [--symbol …] [--log-dir …]` walks the daily log lines + vault
   JSONLs + state.json sidecar for every deployed symbol and prints one
   paste-friendly block (window activity + cumulative all-time vault stats
-  including ladder reach rates and near-miss resolution counts). Pure
-  observation — never moves a gate. Pasted output is the evidence stream
-  for over-time review.
-- **Tests:** 344 passing. (Git history rewritten 2026-06-10 to strip
+  including ladder reach rates and near-miss resolution counts). Auto-saves
+  to `{log-dir}/summaries/summary_<range>.txt` (`--out` override,
+  `--no-save` to disable). Pure observation — never moves a gate.
+- **Tests:** 349 passing. (Git history rewritten 2026-06-10 to strip
   Co-authored-by Cursor trailers — VM must hard-reset on update.)
 - **[2026-06-16 v0.11] Brain Box restructure** — this repo's primary
   brain-box node now lives under the new `Finance & Research Hub`
@@ -108,8 +112,9 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
   `/Users/the1finix/Documents/GitHub/multi-pair-trading-agent/`. The
   GitHub remote (`TheFinix13/Trading_AI_model.git`) is deliberately
   unchanged — only the local folder and the brain-box node moved.
-  Brain-box node: `life/personal-projects/multi-pair-trading-agent.md`
-  with `aliases: [eurusd-ai-agent, EURUSD Agent, ...]`. Updated inside
+  Brain-box node: `life/finance-research/multi-pair-trading-agent.md`
+  (v0.16 physical refactor; was `life/personal-projects/…`) with
+  `aliases: [eurusd-ai-agent, EURUSD Agent, ...]`. Updated inside
   this repo: `.cursor/rules/*.mdc`, `pyproject.toml` (`name`),
   `Dockerfile`, `docker-compose.yml`, `agent/news/calendar.py`
   (User-Agent). Untouched: `docs/archive/*` (historical), `agent/`
@@ -136,12 +141,20 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
 
 ## 3) Next immediate goal
 
-**Monitor the demo + verify the new log format.** VM must `git fetch &&
-git reset --hard origin/main`. On the next live fill, confirm
-`[TRADE OPENED] … soft_sl=P (Np) catastrophe_sl=P (Np) tp_mech=P (X.XR,
-+Np)` and a follow-up `[LADDER]` line. On the next restart, confirm any
-adopted ticket emits `[SOFT SL ARMED]` and (if mid-trade) responds to
-the soft level.
+**Monitor the demo + verify the new log format.**
+
+VM steps (do first):
+```powershell
+git fetch && git reset --hard origin/main && pip install -r requirements.txt
+# restart all 3 symbol tabs
+python scripts/daily_summary.py --days 7 --log-dir D:\TradingAgentLogs
+```
+
+Verify on next live fill: `[TRADE OPENED] … soft_sl=P (Np) catastrophe_sl=P
+(Np) tp_mech=P (X.XR, +Np)` plus a follow-up `[LADDER]` line. On next
+restart with an open ticket: `[POSITION ADOPTED|RESTORED]` same shape →
+`[SOFT SL ARMED]`; mid-trade soft level must respond. Paste the
+auto-saved summary file (or stdout) here for drift review.
 
 1. Weekly: `python scripts/resolve_near_misses.py --symbol <SYM>` per
    pair; review per-gate would-have-won rates. Gates change ONLY via the

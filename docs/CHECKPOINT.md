@@ -6,6 +6,33 @@ evidence lives in [`reviews/`](reviews/). Newest checkpoint on top.
 
 ---
 
+## Checkpoint 2026-06-16
+
+### Shipped since 2026-06-10 (observability — no strategy change)
+
+| Item | Where |
+|---|---|
+| Enriched `[TRADE OPENED]` (pip distances + TP R-multiple) + `[LADDER]` mirror on every fill | `agent/live/signal_loop.py`, daily logs |
+| Adopted-position soft-SL inference on restart (synthetic ctx from broker SL) | `agent/live/monitor.py`, `state_store.py` |
+| Real fill/pnl on `soft_sl_inferred_overshoot` close | `agent/live/monitor.py` |
+| Near-miss chart upgrade (entry/SL/TP lines, zone colour, rejection caption) | `agent/journal/chart_snapshot.py` |
+| Daily summary report (auto-saves to `{log-dir}/summaries/`) | `scripts/daily_summary.py` |
+| Target ladder journaling (observation-only) | `agent/journal/target_ladder.py` |
+
+Deployed strategy table unchanged (EURUSD/GBPUSD/USDCAD H4 `zone_d1_against`).
+Test suite: **349 passing**.
+
+### What's next
+
+1. **VM verify new log format** — hard-reset to `origin/main`; confirm enriched
+   `[TRADE OPENED]` + `[LADDER]` on next fill; confirm `[SOFT SL ARMED]` on
+   adopted restart. Run `python scripts/daily_summary.py --days 7`.
+2. Weekly near-miss resolution per symbol (`scripts/resolve_near_misses.py`).
+3. Live-vs-backtest distribution monitor as n grows (parked items unchanged —
+   see 2026-06-10 checkpoint below).
+
+---
+
 ## Checkpoint 2026-06-10
 
 ### Deployed strategy table
