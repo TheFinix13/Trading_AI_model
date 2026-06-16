@@ -67,7 +67,14 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
   it over the stale excursion. Fixes the bug where the close log showed
   `exit=entry pnl=+0.00 (+0p, +0.00R)`. Applies to the regular
   soft-stop close path too.
-- **Tests:** 334 passing. (Git history rewritten 2026-06-10 to strip
+- **Daily summary report (2026-06-16):** `python scripts/daily_summary.py
+  [--days N] [--symbol …] [--log-dir …]` walks the daily log lines + vault
+  JSONLs + state.json sidecar for every deployed symbol and prints one
+  paste-friendly block (window activity + cumulative all-time vault stats
+  including ladder reach rates and near-miss resolution counts). Pure
+  observation — never moves a gate. Pasted output is the evidence stream
+  for over-time review.
+- **Tests:** 344 passing. (Git history rewritten 2026-06-10 to strip
   Co-authored-by Cursor trailers — VM must hard-reset on update.)
 
 ## 2) Key file paths
@@ -78,7 +85,7 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
 | Router | `agent/alphas/zone_routing.py` (+ `tests/test_zone_routing.py`) |
 | Research harness | `agent/alphas/grid.py`, `agent/alphas/backtest.py`, `agent/backtest/metrics.py` |
 | Live | `scripts/run_live.py`, `agent/live/router_wiring.py`, `agent/live/signal_loop.py`, `agent/live/position_sizer.py`, `agent/live/monitor.py`, `agent/live/broker.py`, `agent/live/state_store.py` |
-| Vaults | `agent/journal/vault.py`, `agent/journal/chart_snapshot.py`, `agent/journal/resolver.py`, `scripts/resolve_near_misses.py` |
+| Vaults | `agent/journal/vault.py`, `agent/journal/chart_snapshot.py`, `agent/journal/resolver.py`, `scripts/resolve_near_misses.py`, `scripts/daily_summary.py` |
 | Target ladder | `agent/journal/target_ladder.py`, `scripts/report_target_ladders.py` (+ `tests/test_target_ladder.py`) |
 | Validation scripts | `scripts/run_zone_all_tfs.py`, `scripts/run_holdout_validation.py`, `scripts/run_walk_forward.py`, `scripts/analyze_walk_forward.py`, `scripts/run_cross_pair_frozen.py` |
 | Config | `agent/config.py` (EvalConfig: dev 2015→2025-12-01, sealed 2025-12-01→2026-06-09) |
