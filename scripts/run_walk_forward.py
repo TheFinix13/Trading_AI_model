@@ -42,9 +42,12 @@ import json
 import logging
 import pickle
 import statistics
+import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.alphas.concepts import SupplyDemandAlpha
 from agent.alphas.grid import ALL_SESSIONS, AblationCell

@@ -27,8 +27,12 @@ This script does an honest split:
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import datetime, timezone
 from dataclasses import dataclass
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.alphas.backtest import run_alpha
 from agent.alphas.concepts import SupplyDemandAlpha

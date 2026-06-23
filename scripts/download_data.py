@@ -5,7 +5,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.config import load_config
 from agent.data.loader import BarLoader

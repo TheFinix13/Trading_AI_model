@@ -18,7 +18,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent.alphas.allocator import allocate
 from agent.alphas.backtest import run_alphas_chunked
