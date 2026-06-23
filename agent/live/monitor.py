@@ -124,8 +124,33 @@ class PositionMonitor:
         Falls back to the last live tick price (``pos.current_price``) when
         the broker did not return a fill — but NEVER to the entry price,
         because that would silently mask a real loss as a $0 close.
+
+        Defensively detects a degenerate broker response: some MT5 servers
+        (observed on Exness demo for closes of adopted positions) return
+        ``result.price = pos.open_price`` even on a successful market close.
+        Naively trusting that value reports the trade as exit_price=entry,
+        pnl=$0, r=0R — i.e. a phantom scratch where the broker realised a
+        real loss. When the reported fill matches the open price within
+        one tick AND the last broker tick disagrees, we treat the response
+        as degenerate and use ``pos.current_price``. We also stash the
+        broker's floating profit and protective stop, which are the most
+        reliable pnl / stop_pips inputs and don't depend on the excursion
+        dict surviving subsequent monitor cycles intact.
         """
         fill_price = result.fill_price
+        # Degenerate-broker fix: trust the live tick when the close
+        # response collapses onto the open price.
+        TICK = 0.00001
+        if (fill_price is not None and fill_price > 0
+                and abs(fill_price - pos.open_price) <= TICK
+                and pos.current_price is not None
+                and abs(pos.current_price - pos.open_price) > TICK):
+            log.warning(
+                "Broker returned degenerate close fill (=open_price=%.5f) for "
+                "ticket=%d; using current tick %.5f instead",
+                pos.open_price, pos.ticket, pos.current_price,
+            )
+            fill_price = pos.current_price
         if not fill_price or fill_price <= 0:
             fill_price = pos.current_price or pos.open_price
         entry = ctx.get("entry", pos.open_price) or pos.open_price
@@ -140,6 +165,15 @@ class PositionMonitor:
             "pnl_pips": float(pnl_pips),
             "pnl_estimate": float(pnl_estimate),
             "lots": float(pos.volume),
+            # Broker-authoritative snapshots at close request time.
+            # ``broker_profit`` is the floating P&L the broker is showing
+            # right before our close lands; ``broker_stop`` is the wide
+            # catastrophe stop (used as a last-resort R-multiple denominator
+            # when entry_ctx is empty for pre-observability adoptions).
+            "broker_profit": float(pos.profit) if pos.profit else 0.0,
+            "broker_stop": float(pos.stop_loss) if pos.stop_loss else 0.0,
+            "broker_tp": float(pos.take_profit) if pos.take_profit else 0.0,
+            "direction": pos.direction.value,
         }
 
     # ------------------------------------------------------------------
@@ -476,6 +510,15 @@ class PositionMonitor:
         exc["last_profit"] = pos.profit
         exc["open_price"] = pos.open_price
         exc["direction"] = pos.direction.value
+        # Remember the broker-side protective levels too: when the broker
+        # itself closes the position (TP / SL fill) we don't get a close_result
+        # of our own, so the only way `_handle_close` can produce a real
+        # R-multiple for a pre-observability adoption is to fall back to
+        # these last-seen broker levels.
+        if pos.stop_loss is not None and pos.stop_loss > 0:
+            exc["broker_stop"] = float(pos.stop_loss)
+        if pos.take_profit is not None and pos.take_profit > 0:
+            exc["broker_tp"] = float(pos.take_profit)
 
     def _handle_close(self, ticket: int) -> None:
         """Reconstruct exit info for a closed ticket and fire the callback."""
@@ -488,6 +531,39 @@ class PositionMonitor:
         exc = exc or {}
         ctx = ctx or {}
         close_result = close_result or {}
+
+        # When entry_ctx is empty (pre-observability adoption, or a state
+        # sidecar that lost the ticket between cycles), synthesise a minimal
+        # ctx from the broker-derived excursion + close_result snapshots so
+        # downstream consumers (loss vault, telegram, post-loss guard) see
+        # entry / direction / stop / tp instead of silent Nones. The synth
+        # ctx is also returned in info["entry_ctx"], so the loss vault
+        # journals a real trade rather than a skeleton record.
+        if not ctx:
+            ctx = {
+                "alpha": "adopted",
+                "direction": close_result.get("direction")
+                              or exc.get("direction"),
+                "entry": exc.get("open_price"),
+                "signal_reason": "adopted",
+                "synthesised": True,
+            }
+            # Broker catastrophe SL is the only known protective stop —
+            # use it as both soft + broker stop so R-multiples don't
+            # silently report 0. Prefer the close_result snapshot (taken
+            # at the close moment); fall back to the last-seen excursion
+            # snapshot (used when the broker itself closed via TP / SL
+            # and we never issued our own close).
+            broker_stop = (close_result.get("broker_stop")
+                           or exc.get("broker_stop"))
+            if broker_stop:
+                ctx["stop"] = broker_stop
+                ctx["soft_stop"] = broker_stop
+            broker_tp = (close_result.get("broker_tp")
+                         or exc.get("broker_tp"))
+            if broker_tp:
+                ctx["take_profit"] = broker_tp
+
         entry_price = ctx.get("entry", exc.get("open_price", 0.0))
         direction = ctx.get("direction", exc.get("direction", "long"))
         # Risk is defined by the SOFT stop (the agent's real exit), not the wide
@@ -509,15 +585,31 @@ class PositionMonitor:
                 pnl_pips = (exit_price - entry_price) * 10000
             else:
                 pnl_pips = (entry_price - exit_price) * 10000
+        # R-multiple denominator: prefer the soft stop (intended risk).
+        # If neither soft nor broker stop is in ctx, fall back to the
+        # captured broker SL — preferring the close-time snapshot, then
+        # the last excursion snapshot. Better than silently reporting
+        # +0.00R for a real TP / SL hit on a position the agent didn't
+        # fully own (pre-observability adoption case).
+        if not stop:
+            stop = (close_result.get("broker_stop")
+                    or exc.get("broker_stop"))
         stop_pips = abs(entry_price - stop) * 10000 if stop else 0.0
         r_multiple = (pnl_pips / stop_pips) if stop_pips > 0 else 0.0
-        # Prefer the broker's reported floating profit at the most recent
-        # tick (it's in account currency and handles non-USD quotes), but
-        # never let a stale $0 mask a real loss — fall back to our pip-math
-        # estimate from the actual fill_price in that case.
-        pnl = exc.get("last_profit", 0.0)
+        # Pnl preference order:
+        #   1) Broker's floating profit at close request time (close_result.broker_profit)
+        #      — this is what the account currency settled at and is robust to
+        #        degenerate broker close responses.
+        #   2) Last-tick floating profit from the excursion dict.
+        #   3) Our own pip-math estimate from the captured fill_price.
+        # Never let a stale $0 mask a real loss.
+        pnl = 0.0
+        if close_result.get("broker_profit"):
+            pnl = float(close_result["broker_profit"])
+        if not pnl:
+            pnl = float(exc.get("last_profit", 0.0))
         if (not pnl) and close_result:
-            pnl = close_result.get("pnl_estimate", 0.0)
+            pnl = float(close_result.get("pnl_estimate", 0.0))
 
         # Prefer the true reason if WE closed it (soft stop / breakeven); else
         # infer from proximity to TP/SL.

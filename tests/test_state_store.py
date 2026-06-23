@@ -611,6 +611,159 @@ class TestPositionMonitorPersistence:
         assert info["pnl"] < 0.0
         assert "exit=1.39936" in caplog.text
 
+    def test_degenerate_broker_fill_falls_back_to_current_price(
+        self, tmp_path, caplog,
+    ):
+        """Reproduces the live VM bug (2026-06-16, USDCAD ticket 2842973741):
+        Exness demo returned ``OrderResult.fill_price = pos.open_price`` for
+        a successful close of an adopted position. Result: exit_price logged
+        as entry, pnl_pips=0, pnl=$0, r=0R — a phantom scratch that masked a
+        real −$5.66 loss and kept the loss vault empty. The monitor must
+        treat that response as degenerate and use the live tick instead.
+        """
+        import asyncio
+        from agent.live.broker import Position, OrderResult
+        from agent.live.soft_stop import SoftStopConfig
+        from agent.live.monitor import PositionMonitor
+        from agent.live.config import LiveConfig
+        from agent.config import load_config
+        from agent.types import Direction
+
+        broker = MagicMock()
+        cfg = load_config()
+        live = LiveConfig(symbol="USDCAD")
+        notifier = MagicMock()
+        notifier.notify_text = MagicMock()
+        mon = PositionMonitor(
+            broker=broker, config=cfg, live_config=live, notifier=notifier,
+            soft_stop_cfg=SoftStopConfig(enabled=True),
+        )
+        # Exact VM values: SHORT 0.03 @ 1.39715, broker SL 1.40292, soft
+        # inferred 1.39946; current_price 1.39979 (past soft), profit −5.66.
+        fake_pos = Position(
+            ticket=2842973741, symbol="USDCAD", direction=Direction.SHORT,
+            volume=0.03, open_price=1.39715, open_time=_utc_now(),
+            stop_loss=1.40292, take_profit=1.39382,
+            profit=-5.66, current_price=1.39979,
+        )
+        mon.broker.get_open_positions = AsyncMock(return_value=[fake_pos])
+        mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+            balance=1005.78, equity=1000.12
+        ))
+        mon.broker.get_latest_bars = AsyncMock(return_value=[])
+        # The degenerate broker response: fill_price = open_price.
+        mon.broker.close_position = AsyncMock(return_value=OrderResult(
+            success=True, ticket=2842973741, fill_price=1.39715,
+            message="ok",
+        ))
+
+        with caplog.at_level(logging.INFO, logger="agent.live.monitor"):
+            asyncio.run(mon._check_positions())
+            mon.broker.get_open_positions = AsyncMock(return_value=[])
+            closes: list[tuple[int, dict]] = []
+            mon.trade_closed_cb = lambda t, i: closes.append((t, i))
+            asyncio.run(mon._check_positions())
+
+        assert closes
+        info = closes[0][1]
+        # Bug regression guards: exit must NOT collapse to entry, pnl must
+        # reflect the broker's realised loss, R must be < -1 (overshoot).
+        assert info["exit_price"] == pytest.approx(1.39979)
+        assert info["exit_price"] != pytest.approx(1.39715)
+        assert info["pnl"] == pytest.approx(-5.66)
+        assert info["pnl_pips"] == pytest.approx(-26.4, abs=0.5)
+        assert info["r_multiple"] < -1.0
+        # Operator log must show the real numbers, not the phantom 0s.
+        assert "pnl=+0.00 (+0p, +0.00R)" not in caplog.text
+        assert "exit=1.39979" in caplog.text
+        # And the audit trail: warning that we ignored the degenerate fill.
+        assert any("degenerate close fill" in r.message for r in caplog.records)
+
+
+    def test_close_falls_back_to_broker_stop_when_ctx_missing(
+        self, tmp_path, caplog,
+    ):
+        """Reproduces the GBPUSD #1 bug (2026-06-15, ticket 2843893443):
+        a position adopted by the pre-observability agent had no entry_ctx
+        registered. When TP hit, the close log showed pnl=+5.69 ✓ but
+        r_multiple=+0.00R — because both ``ctx.soft_stop`` and ``ctx.stop``
+        were ``None``. The monitor must fall back to the broker SL captured
+        in close_result for the R-multiple denominator, and synthesise a
+        minimal ctx so the loss vault / post-loss guard see real fields.
+        """
+        import asyncio
+        from agent.live.broker import Position, OrderResult
+        from agent.live.soft_stop import SoftStopConfig
+        from agent.live.monitor import PositionMonitor
+        from agent.live.config import LiveConfig
+        from agent.config import load_config
+        from agent.types import Direction
+
+        broker = MagicMock()
+        cfg = load_config()
+        live = LiveConfig(symbol="GBPUSD")
+        notifier = MagicMock()
+        notifier.notify_text = MagicMock()
+        mon = PositionMonitor(
+            broker=broker, config=cfg, live_config=live, notifier=notifier,
+            soft_stop_cfg=SoftStopConfig(enabled=False),
+        )
+        # GBPUSD #1: LONG 0.01 @ 1.33981, broker SL 1.32995, TP 1.34559.
+        # Position closes by hitting TP at 1.34550.
+        fake_pos = Position(
+            ticket=2843893443, symbol="GBPUSD", direction=Direction.LONG,
+            volume=0.01, open_price=1.33981, open_time=_utc_now(),
+            stop_loss=1.32995, take_profit=1.34559,
+            profit=5.69, current_price=1.34550,
+        )
+        mon.broker.get_open_positions = AsyncMock(return_value=[fake_pos])
+        mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+            balance=1000.0, equity=1005.69
+        ))
+        mon.broker.get_latest_bars = AsyncMock(return_value=[])
+        # Bypass the inference path entirely by simulating the pre-observability
+        # adoption: clear entry_ctx after adoption so _handle_close sees ctx={}.
+        asyncio.run(mon._check_positions())
+        mon._entry_ctx.clear()
+
+        # TP fill comes back from the broker on the next cycle's monitor close.
+        mon.broker.close_position = AsyncMock(return_value=OrderResult(
+            success=True, ticket=2843893443, fill_price=1.34550,
+            message="ok",
+        ))
+        # Simulate a TP-driven close on the broker (position vanishes).
+        mon.broker.get_open_positions = AsyncMock(return_value=[])
+        # Pre-stash a close_result the way a TP-driven broker exit would —
+        # the monitor doesn't issue the close itself for TP/SL, the broker
+        # does, so close_result is empty when _handle_close runs. We instead
+        # rely on excursion.last_profit and broker-side info; assert the
+        # synthesised ctx path produces sensible numbers.
+        closes: list[tuple[int, dict]] = []
+        mon.trade_closed_cb = lambda t, i: closes.append((t, i))
+
+        with caplog.at_level(logging.INFO, logger="agent.live.monitor"):
+            asyncio.run(mon._check_positions())
+
+        assert closes, "trade_closed callback never fired"
+        info = closes[0][1]
+        # Pre-observability ctx was wiped; the synthesised one must fill in
+        # entry / direction / stop / tp so the loss vault has something to
+        # journal even though the agent never registered this trade.
+        synth = info["entry_ctx"]
+        assert synth.get("synthesised") is True
+        assert synth["alpha"] == "adopted"
+        assert synth["direction"] == "long"
+        assert synth["entry"] == pytest.approx(1.33981)
+        # Pnl: excursion tracked +5.69 floating profit from the broker.
+        assert info["pnl"] == pytest.approx(5.69)
+        # The crucial regression: r_multiple must NOT collapse to 0.00.
+        # stop_pips ≈ 98.6 (entry - broker_sl), pnl_pips ≈ +57.
+        # R ≈ +0.59. Sign and magnitude both matter.
+        assert info["r_multiple"] > 0.4
+        assert info["r_multiple"] < 1.0
+        assert "+0.00R" not in caplog.text
+
+
     def test_inferred_entry_ctx_persists_across_restart(self, tmp_path):
         """A synthetic entry_ctx built at adoption time must survive a save
         round-trip — second start must NOT re-infer (the ctx is already on
