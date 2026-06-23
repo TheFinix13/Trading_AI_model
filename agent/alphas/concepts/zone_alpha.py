@@ -184,6 +184,17 @@ class SupplyDemandAlpha(Alpha):
             if htf_blocked:
                 self._emit_near_miss(sig, zone, bar, bias, bars)
                 continue
+            # Tag the signal with the gate inputs that produced it so the
+            # daily log + journal can show "why did this fire?" without
+            # grepping JSON. Trading path ignores ``meta``.
+            if self.htf_align is not None:
+                sig.meta = {
+                    "htf_bias": bias.value if bias is not None else None,
+                    "htf_align": self.htf_align,
+                    "htf_align_mode": self.htf_align_mode,
+                    "htf_lookback": self.htf_lookback,
+                    "htf_min_move_pips": self.htf_min_move_pips,
+                }
             return sig
         return None
 

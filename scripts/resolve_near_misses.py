@@ -85,6 +85,59 @@ def _load_bars(symbol: str, tf: str, events: list[dict]) -> list[Bar]:
     return df_to_bars(df, timeframe)
 
 
+def _stale_cache_warning(symbol: str, by_tf: dict[str, list[Bar]],
+                         events: list[dict]) -> str | None:
+    """Return a printable warning when the cache horizon ends before some
+    event timestamps, else None. The warning includes the exact command to
+    refresh from MT5 so the operator can fix it in one paste."""
+    issues: list[str] = []
+    for tf, bars in by_tf.items():
+        tf_events = [e for e in events
+                     if str(e.get("tf") or "H4") == tf
+                     and not e.get("resolved")]
+        if not tf_events:
+            continue
+        latest_event_ts: datetime | None = None
+        for e in tf_events:
+            try:
+                ts = datetime.fromisoformat(str(e.get("ts")))
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                continue
+            if latest_event_ts is None or ts > latest_event_ts:
+                latest_event_ts = ts
+        if latest_event_ts is None:
+            continue
+        last_bar_ts = bars[-1].time if bars else None
+        if last_bar_ts is None:
+            issues.append(
+                f"  {tf}: parquet cache is EMPTY for {symbol} "
+                f"(latest event {latest_event_ts.isoformat()})"
+            )
+            continue
+        if last_bar_ts.tzinfo is None:
+            last_bar_ts = last_bar_ts.replace(tzinfo=timezone.utc)
+        gap = (latest_event_ts - last_bar_ts).total_seconds() / 86400.0
+        if gap > -0.25:  # cache ends within 6h after the last event or earlier
+            issues.append(
+                f"  {tf}: cache ends {last_bar_ts.isoformat()}, "
+                f"latest event {latest_event_ts.isoformat()} "
+                f"({gap:+.1f} days of forward window)"
+            )
+    if not issues:
+        return None
+    return (
+        "WARNING: parquet cache horizon is too short to resolve some events.\n"
+        + "\n".join(issues)
+        + "\n\nFix:\n"
+        f"  python scripts/download_data.py --symbol {symbol} "
+        "--timeframes H4 --refresh --source mt5 --years 1\n"
+        "Then re-run this resolver. Until then, the 'open' column below\n"
+        "includes events that simply have no forward bars in the cache."
+    )
+
+
 def main() -> None:
     args = parse_args()
     symbol = args.symbol.strip().upper()
@@ -137,14 +190,20 @@ def main() -> None:
 
     write_events(events_path, out_events)
 
+    warning = _stale_cache_warning(symbol, by_tf, out_events)
+    if warning:
+        print()
+        print(warning)
+
     print(f"\n{symbol} near-miss vault — {len(out_events)} events, "
           f"{resolved_now} newly resolved")
     print(f"{'reason':<18} {'n':>4} {'wins':>5} {'losses':>7} {'open':>5} "
-          f"{'win%':>6} {'avg R':>7}")
-    print("-" * 58)
+          f"{'stale':>6} {'win%':>6} {'avg R':>7}")
+    print("-" * 65)
     for row in summarize_by_reason(out_events):
         print(f"{row['reason']:<18} {row['n']:>4} {row['wins']:>5} "
               f"{row['losses']:>7} {row['open']:>5} "
+              f"{row['stale']:>6} "
               f"{row['win_rate'] * 100:>5.0f}% {row['avg_r']:>+7.2f}")
     print()
     print(CAVEAT)

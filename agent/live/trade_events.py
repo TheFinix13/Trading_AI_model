@@ -34,11 +34,41 @@ def log_signal_detected(
     soft_sl: float,
     tp: float,
     conviction: float,
+    meta: dict | None = None,
 ) -> None:
+    """Log a freshly fired alpha signal.
+
+    ``meta`` is the optional decision-time metadata bag the alpha attaches
+    (currently the HTF gate inputs: ``htf_bias``, ``htf_align``,
+    ``htf_align_mode``). When present, it is rendered as a compact suffix
+    so a grep on ``[SIGNAL]`` shows why the gate let the trade through.
+    """
+    suffix = _format_signal_meta(meta)
     log.info(
-        "[SIGNAL] %s %s %s %s entry=%.5f soft_sl=%.5f tp=%.5f conviction=%.2f",
-        symbol, timeframe, alpha, direction.upper(), entry, soft_sl, tp, conviction,
+        "[SIGNAL] %s %s %s %s entry=%.5f soft_sl=%.5f tp=%.5f conviction=%.2f%s",
+        symbol, timeframe, alpha, direction.upper(),
+        entry, soft_sl, tp, conviction, suffix,
     )
+
+
+def _format_signal_meta(meta: dict | None) -> str:
+    """Render the optional HTF/decision metadata as a single-space suffix.
+
+    Returns the empty string when ``meta`` is falsy or carries no
+    recognised keys. Unknown keys are silently ignored so adding new gate
+    inputs upstream never breaks the daily-log contract.
+    """
+    if not meta:
+        return ""
+    parts: list[str] = []
+    bias = meta.get("htf_bias")
+    align = meta.get("htf_align")
+    mode = meta.get("htf_align_mode")
+    if bias:
+        parts.append(f"htf_bias={bias}")
+    if align or mode:
+        parts.append(f"htf={align or '?'}({mode or '?'})")
+    return (" " + " ".join(parts)) if parts else ""
 
 
 def log_order_rejected(

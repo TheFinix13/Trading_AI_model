@@ -538,6 +538,7 @@ class SignalLoop:
             direction=signal.direction.value, entry=signal.entry,
             soft_sl=signal.stop, tp=signal.take_profit,
             conviction=signal.conviction,
+            meta=getattr(signal, "meta", None),
         )
 
         broker_stop = catastrophe_stop(
@@ -557,6 +558,15 @@ class SignalLoop:
         if not result.success:
             log_order_rejected(log, symbol=symbol, timeframe=timeframe,
                                alpha=alpha.name, message=result.message)
+            # Vault the rejection. From the strategy's point of view this
+            # was a valid setup; broker plumbing (AutoTrading off,
+            # retcode=10027, no margin, no connection, …) erased it. We
+            # don't want these silently dropped from the evidence stream.
+            log_near_miss(log, symbol=symbol, timeframe=timeframe,
+                          alpha=alpha.name, reason="broker_reject",
+                          detail=str(result.message))
+            self._record_near_miss("broker_reject", routed, last_closed,
+                                   bars, detail=str(result.message))
             return
 
         fill = result.fill_price or signal.entry
@@ -738,7 +748,7 @@ class SignalLoop:
             return
         try:
             s = routed.signal
-            self.vault.record_near_miss({
+            event = {
                 "ts": last_closed.time.isoformat(),
                 "tf": routed.timeframe,
                 "reason": reason,
@@ -750,7 +760,16 @@ class SignalLoop:
                 "signal_reason": s.reason,
                 "alpha": routed.alpha.name,
                 "detail": detail,
-            }, bars)
+            }
+            # Surface decision metadata (HTF gate inputs) the alpha
+            # attached. Same shape the alpha's own htf_gate near-miss
+            # hook uses, so the resolver / chart caption code stays
+            # uniform across reason tags.
+            meta = getattr(s, "meta", None) or {}
+            for k in ("htf_bias", "htf_align", "htf_align_mode"):
+                if meta.get(k) is not None:
+                    event[k] = meta[k]
+            self.vault.record_near_miss(event, bars)
         except Exception as e:
             log.warning("near-miss vault record failed: %s", e)
 

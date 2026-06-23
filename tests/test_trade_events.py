@@ -109,6 +109,47 @@ def test_signal_detected_before_order(caplog):
     assert caplog.records[0].message.startswith("[SIGNAL]")
 
 
+def test_signal_log_line_includes_htf_meta(caplog):
+    """When the alpha attached HTF gate metadata, the [SIGNAL] line must
+    surface it so an operator can grep ``htf_bias=`` without opening the
+    JSON vault."""
+    log = logging.getLogger("test.trade.htf")
+    with caplog.at_level(logging.INFO, logger="test.trade.htf"):
+        log_signal_detected(
+            log, symbol="USDCAD", timeframe="H4", alpha="zone_h4_all",
+            direction="short", entry=1.39824, soft_sl=1.40223, tp=1.39225,
+            conviction=0.65,
+            meta={"htf_bias": "up", "htf_align": "D1",
+                  "htf_align_mode": "against",
+                  "htf_lookback": 10, "htf_min_move_pips": 60.0},
+        )
+    msg = caplog.records[0].message
+    assert msg.startswith("[SIGNAL]")
+    assert "htf_bias=up" in msg
+    assert "htf=D1(against)" in msg
+
+
+def test_signal_log_line_omits_meta_suffix_when_empty(caplog):
+    """An alpha without an HTF gate (meta={}/None) keeps the legacy line
+    shape — no trailing whitespace, no orphan ``htf_=?`` fragments."""
+    log = logging.getLogger("test.trade.no_htf")
+    with caplog.at_level(logging.INFO, logger="test.trade.no_htf"):
+        log_signal_detected(
+            log, symbol="EURUSD", timeframe="H4", alpha="zone_h4_all",
+            direction="long", entry=1.10, soft_sl=1.0950, tp=1.1100,
+            conviction=0.65, meta=None,
+        )
+        log_signal_detected(
+            log, symbol="EURUSD", timeframe="H4", alpha="zone_h4_all",
+            direction="long", entry=1.10, soft_sl=1.0950, tp=1.1100,
+            conviction=0.65, meta={},
+        )
+    for rec in caplog.records:
+        assert rec.message.startswith("[SIGNAL]")
+        assert "htf" not in rec.message
+        assert not rec.message.endswith(" ")
+
+
 def test_log_ladder_renders_each_rung_with_pips_and_r(caplog):
     log = logging.getLogger("test.ladder.full")
     rungs = [

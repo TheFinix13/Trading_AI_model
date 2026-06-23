@@ -9,7 +9,7 @@ decides how to combine the survivors.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from agent.config import Config
@@ -27,6 +27,10 @@ class AlphaSignal:
     take_profit: float
     reason: str = ""
     conviction: float = 1.0   # 0..1; used by the portfolio manager's flip gate
+    # Optional decision metadata (gate inputs, e.g. HTF bias/align/mode). The
+    # trading path ignores this; logging and vault recorders surface it so
+    # operators can grep "why did this fire?" without opening the JSON vault.
+    meta: dict = field(default_factory=dict)
 
     @property
     def stop_pips(self) -> float:

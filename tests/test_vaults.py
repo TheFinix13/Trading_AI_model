@@ -299,6 +299,63 @@ def test_signal_loop_records_post_loss_guard_near_miss(tmp_path):
     assert rec["detail"] == "cooldown"
 
 
+class _RejectingBroker:
+    """FakeBroker whose place_order always reports failure — models the
+    Jun 11 retcode=10027 / 'AutoTrading disabled by client' incident."""
+
+    def __init__(self, message: str = "retcode=10027 'AutoTrading disabled by client'"):
+        self.message = message
+
+    async def get_account_info(self):
+        return SimpleNamespace(balance=10_000.0, leverage=500,
+                               free_margin=10_000.0)
+
+    async def get_open_positions(self, symbol):
+        return []
+
+    async def place_order(self, **kwargs):
+        from agent.live.broker import OrderResult
+        return OrderResult(success=False, message=self.message)
+
+
+def test_signal_loop_records_broker_reject_near_miss(tmp_path):
+    """A broker rejection (autotrading-off, no margin, retcode 10027, …)
+    must vault a ``reason=broker_reject`` event so the rejected setup is
+    visible to the near-miss resolver instead of silently disappearing."""
+    cfg = load_config()
+    live = LiveConfig(symbol="USDCAD", timeframes=["H4"],
+                      telegram_enabled=False, revenge_guard_enabled=False)
+    vault = VaultRecorder("USDCAD", root=tmp_path)
+    loop = SignalLoop(
+        [SupplyDemandAlpha(cfg, name="zone_h4_all")],
+        config=cfg, live_config=live, broker=_RejectingBroker(), vault=vault,
+    )
+
+    signal = AlphaSignal(
+        direction=Direction.SHORT, entry=1.39585,
+        stop=1.39977, take_profit=1.39020, conviction=0.65,
+        meta={"htf_bias": "up", "htf_align": "D1",
+              "htf_align_mode": "against"},
+    )
+    last_closed = SimpleNamespace(
+        time=datetime(2026, 6, 11, 20, 0, tzinfo=timezone.utc))
+    routed = _RoutedSignal(loop.alphas[0], signal, "H4")
+    asyncio.run(loop._route_signal(routed, last_closed, bars=None))
+
+    jsonl = tmp_path / "USDCAD" / "near_misses" / "events.jsonl"
+    assert jsonl.exists()
+    rec = json.loads(jsonl.read_text().strip())
+    assert rec["reason"] == "broker_reject"
+    assert rec["alpha"] == "zone_h4_all"
+    assert rec["direction"] == "short"
+    assert "retcode=10027" in rec["detail"]
+    # Decision metadata carries through so the resolver can group rejects
+    # by HTF regime later.
+    assert rec["htf_bias"] == "up"
+    assert rec["htf_align"] == "D1"
+    assert rec["htf_align_mode"] == "against"
+
+
 def test_signal_loop_without_vault_unchanged(tmp_path):
     """vault=None (every existing caller/test) leaves the seam dormant."""
     cfg = load_config()
@@ -383,6 +440,40 @@ def test_resolver_leaves_unhit_event_open():
     assert out["outcome"] == "open"
     assert out["resolved"] is False
     assert out["outcome_r"] == 0.0
+    # Forward window was real (7 bars after event); not a stale-cache miss.
+    assert out["forward_bars_available"] == 6
+
+
+def test_resolver_reports_forward_bars_available_when_cache_too_short():
+    """An event at the very end of the cache leaves zero forward bars —
+    that's a stale-cache signal, distinct from 'still pending'."""
+    bars = [_flat_bar(i, 1.1000) for i in range(6)]  # event at idx 5 = last
+    out = resolve_event(_near_miss(event_idx=5), bars)
+    assert out["outcome"] == "open"
+    assert out["forward_bars_available"] == 0
+
+
+def test_summary_counts_stale_separately_from_open():
+    """Stale = unresolved with < 6 forward H4 bars (~1 day). The summary
+    row exposes it so the script can warn the operator about a stale
+    parquet cache before they read 'all open' as 'edge absent'."""
+    stale = _near_miss()
+    stale.update({"outcome": "open", "resolved": False,
+                  "forward_bars_available": 1})
+    pending = _near_miss()
+    pending.update({"outcome": "open", "resolved": False,
+                    "forward_bars_available": 50})
+    win = _near_miss()
+    win.update({"outcome": "win", "outcome_r": 2.0, "resolved": True,
+                "forward_bars_available": 8})
+
+    rows = summarize_by_reason([stale, pending, win])
+    row = next(r for r in rows if r["reason"] == "htf_gate")
+    assert row["n"] == 3
+    assert row["wins"] == 1
+    assert row["losses"] == 0
+    assert row["open"] == 2
+    assert row["stale"] == 1  # only the 1-forward-bar event counts as stale
 
 
 def test_resolver_roundtrip_and_summary(tmp_path):

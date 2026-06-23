@@ -97,7 +97,11 @@ def resolve_event(event: dict, bars: Sequence[Bar]) -> dict:
       * ``"open"``  — neither level reached by the end of the series
 
     Adds: ``outcome``, ``outcome_pips``, ``outcome_r``, ``outcome_time``,
-    ``bars_to_outcome``, ``resolved``, ``resolved_at``.
+    ``bars_to_outcome``, ``resolved``, ``resolved_at``,
+    ``forward_bars_available``. ``forward_bars_available`` is the count of
+    bars strictly after the event bar that were in the supplied series —
+    callers use it to tell "open because the trade is still pending" apart
+    from "open because the cache horizon ends before the event".
     """
     out = dict(event)
     entry = float(event.get("entry") or 0.0)
@@ -113,6 +117,7 @@ def resolve_event(event: dict, bars: Sequence[Bar]) -> dict:
     outcome_pips = 0.0
     outcome_time: str | None = None
     bars_to_outcome: int | None = None
+    forward_bars = max(0, len(bars) - (idx + 1)) if idx is not None else 0
 
     if idx is not None and entry > 0 and stop > 0 and tp > 0 and stop_pips > 0:
         for j in range(idx + 1, len(bars)):
@@ -141,6 +146,7 @@ def resolve_event(event: dict, bars: Sequence[Bar]) -> dict:
     out["outcome_r"] = round(outcome_pips / stop_pips, 3) if stop_pips > 0 else 0.0
     out["outcome_time"] = outcome_time
     out["bars_to_outcome"] = bars_to_outcome
+    out["forward_bars_available"] = forward_bars
     out["resolved"] = outcome in ("win", "loss")
     out["resolved_at"] = datetime.now(tz=timezone.utc).isoformat()
     return out
@@ -149,8 +155,12 @@ def resolve_event(event: dict, bars: Sequence[Bar]) -> dict:
 def summarize_by_reason(events: Sequence[dict]) -> list[dict]:
     """Aggregate resolved outcomes per reason tag.
 
-    Returns rows: reason, n, wins, losses, open, win_rate, avg_r (win rate
-    and avg R over RESOLVED events only).
+    Returns rows: reason, n, wins, losses, open, stale, win_rate, avg_r.
+    Win rate and avg R are computed over RESOLVED events only. ``stale``
+    is the subset of ``open`` whose forward-bar window was too short to
+    decide either way — typically because the parquet cache hadn't been
+    refreshed past the event timestamp. The script renders ``stale``
+    visibly so "all open" results aren't mistaken for "edge absent".
     """
     groups: dict[str, list[dict]] = {}
     for evt in events:
@@ -162,6 +172,14 @@ def summarize_by_reason(events: Sequence[dict]) -> list[dict]:
         wins = sum(1 for e in evts if e.get("outcome") == "win")
         losses = sum(1 for e in evts if e.get("outcome") == "loss")
         resolved = wins + losses
+        # Stale = unresolved events with effectively no forward window.
+        # 6 H4 bars (~24h) is the minimum window where a 1.5R move is
+        # plausible; anything shorter is almost certainly cache, not edge.
+        stale = sum(
+            1 for e in evts
+            if e.get("outcome") not in ("win", "loss")
+            and (e.get("forward_bars_available") or 0) < 6
+        )
         sum_r = sum(float(e.get("outcome_r") or 0.0) for e in evts
                     if e.get("outcome") in ("win", "loss"))
         rows.append({
@@ -170,6 +188,7 @@ def summarize_by_reason(events: Sequence[dict]) -> list[dict]:
             "wins": wins,
             "losses": losses,
             "open": len(evts) - resolved,
+            "stale": stale,
             "win_rate": round(wins / resolved, 3) if resolved else 0.0,
             "avg_r": round(sum_r / resolved, 3) if resolved else 0.0,
         })
