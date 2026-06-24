@@ -111,6 +111,8 @@ cd "$HOME\Documents\GitHub\multi-pair-trading-agent"
 
 ### Running 24/5 as Windows services (NSSM) — one service per symbol
 
+> NSSM service names below are *per-symbol instances* (one Windows service per pair); they're independent of the renamed `multi-pair-agent` CLI binary.
+
 ```powershell
 nssm install eurusd-agent
 # Path:        ...\.venv\Scripts\python.exe
