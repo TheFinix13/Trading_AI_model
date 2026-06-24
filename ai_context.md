@@ -1,11 +1,33 @@
-# AI Context — brain dump (updated 2026-06-16, v0.17)
+# AI Context — brain dump (updated 2026-06-24, v0.19)
 
+> v0.19 — Blue Lock doctrine landed. Multi-agent R&D now has a
+> philosophical spine (`06-blue-lock-doctrine.md`) + a 10-striker cast
+> (`05-agent-roster-v0.md` v0.2: Isagi / Bachira / Rin / Chigiri / Reo /
+> Nagi / Barou / Yukimiya / Aoshi / Kunigami + Ego coach + Kaiser /
+> Loki / Sae as opponents). Foundations extended with F11 (confluence-OR
+> conviction) / F12 (Trade Quality Score) / F13 (coordinate overlap) /
+> F14 (adversarial validation). Lit plan §1.6 adds Population-Based
+> Training, AlphaStar leagues, intrinsic motivation, DIAYN, COMA,
+> asymmetric self-play. New account profile: **$100 starting equity at
+> 1:1000 leverage** (replaces $1000 demo). New charter gate **C6:
+> beat the human user on TQS over a rolling 12-week window**
+> (Coverage ≥ 0.6, PnL_HH ≥ 0).
+>
+> v0.18 — production agent is now in *monitor-only* posture; active R&D track
+> has pivoted to a multi-agent ensemble architecture (late-fusion roster of
+> specialists). Foundation docs live under
+> `docs/research/multi-agent-ensemble/` (charter, archive, lit plan, arch
+> sketch, quant foundations, agent roster v0). Live demo blew on
+> 2026-06-19 (Exness real $72.41 → −$144.30, full archive in
+> `docs/research/multi-agent-ensemble/01-week-2026-06-15-archive.md`).
+>
 > v0.17 — brain-box + ai_context synced to June observability pass (349 tests);
 > daily_summary auto-saves to `{log-dir}/summaries/`. Brain-box node:
 > `brain-box/life/finance-research/multi-pair-trading-agent.md`.
 
 Read this first in a fresh chat. Strictly technical state summary.
 Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
+**Active R&D:** `docs/research/multi-agent-ensemble/README.md`.
 
 ## 1) What is built and working
 
@@ -141,7 +163,44 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
 
 ## 3) Next immediate goal
 
-**Monitor the demo + verify the new log format.**
+**Active track: multi-agent ensemble R&D (Φ0 → Φ1).**
+
+Foundation laid 2026-06-23 in `docs/research/multi-agent-ensemble/`:
+
+| Doc | What it is |
+|---|---|
+| `README.md` | Entry point, doc index, kill conditions |
+| `00-charter.md` | Mandate, scope, success criteria (C1–C5), kill conditions (K1–K4), phases (Φ0–Φ6) |
+| `01-week-2026-06-15-archive.md` | Trade record + post-mortem of the live blowup that triggered the pivot |
+| `02-literature-survey-plan.md` | Reading list (5 lineages × ~25 references), formulas to extract (F1–F10) |
+| `03-architecture-v0-sketch.md` | Specialist pool → Allocator → Aggregator → Risk Conductor → Execution; AgentProposal contract |
+| `04-quant-foundations.md` | F1 Bates-Granger, F2 risk parity, F3 HRP, F4 Kelly, F5 PBO, F6 DSR, F7 VPIN, F8 gated MoE, F9 stacking, F10 Sharpe-weight |
+| `05-agent-roster-v0.md` | **v0.2 — Blue Lock cast.** A1 Isagi (liquidity/structure, seeded by zone_d1_against), A2 Bachira (pattern), A3 Rin (Fib/harmonic), A4 Chigiri (breakout), A5 Reo (regime adapter), A6 Nagi (confluence-only), A7 Barou (single-pair specialist), A8 Yukimiya (execution timing), A9 Aoshi (vol-event), A10 Kunigami (anti-tilt). Coach = Ego = Allocator + Risk Conductor. Opponents = Kaiser / Loki / Sae = the user's discretionary trades + synthetic baseline. |
+| `06-blue-lock-doctrine.md` | **The doctrine.** Translates ego, weapon, metavision, **Coordinate** (4-D bounding box: price × time × σ × regime), **chemical reaction** (confluence with independent-OR conviction lift), **devour** (competitive capital reweighting), **awakening** (PBT), **TQS** (per-trade fitness), assertion / coexistence / devour-rate KPIs, and the human-as-opponent benchmark into operational primitives. Read before `05`. |
+
+**Next concrete deliverable (Φ1):** `02b-literature-survey.md` — for
+each numbered reference, 2–4 sentence summary + the one formula we
+borrow + the failure mode + a page-level pointer. No formula enters
+`04` without a source-cited entry in `02b`. Reading order in `02 §6`.
+
+**Parallel side-goal (monitor only):** the production
+`zone_d1_against` agent stays running on the existing demo — now
+re-instantiated on the **$100 / 1:1000 Exness demo** that is the
+official pitch for the multi-agent R&D (the prior $1000 demo is
+retired). No parameter changes, no new gates — purely to keep
+collecting realised-PnL data that will feed the agent-eligibility
+gate (DSR / F6) when A1 Isagi is wrapped as the first roster member.
+VM update command and verification steps stay as documented in v0.17
+below.
+
+**Adversarial benchmark (per F14, charter gate C6).** The user
+submits weekly chart analysis + actual trades; they are journalled
+as `opponents/kaiser_proposals.jsonl` (high-conviction) and
+`opponents/loki_proposals.jsonl` (mid-week revisions). The squad's
+TQS distribution is compared head-to-head against the user's TQS
+over a rolling 12-week window. Promotion to live capital requires
+PnL_HH ≥ 0 *and* Coverage ≥ 0.6 *and* beating the Sae synthetic
+baseline.
 
 VM steps (do first):
 ```powershell
