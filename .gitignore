@@ -62,6 +62,7 @@ kill.txt
 # Secrets — never commit
 .env
 .env.*
+!.env.example
 *.key
 *.pem
 credentials.json
