@@ -1,5 +1,31 @@
-# AI Context — brain dump (updated 2026-06-24, v0.19)
+# AI Context — brain dump (updated 2026-06-24, v0.20)
 
+> v0.20 — **Repo split.** M001 multi-agent ensemble R&D migrated to
+> the separate `finance-research-experiments` repo (branch
+> `multi-agent-ensemble`, folder `programs/M001_multi_agent_ensemble/`,
+> commit `11cdde4`). This `multi-pair-trading-agent` repo now keeps:
+> (a) the v2 `zone_d1_against` strategy in monitor-only posture,
+> (b) production code that M001 will graduate into later (on a future
+> `m001-development` branch), and (c) a single-file pointer at
+> `docs/research/multi-agent-ensemble/README.md`. Stable v2 state
+> tagged here as `v2-zone-d1-against-stable-2026-06-24`
+> (HEAD `18546af`). Pre-migration M001 docs were untracked when the
+> tag was cut and survive only in the research repo at `11cdde4`. New
+> `07-research-standards.md` (461 lines) defines branching, evaluation
+> hygiene (five-baseline cohort: Kaiser/Loki/Median/Random/Frozen-Sae),
+> reproducibility, the Thought Ledger schema (forward-declared:
+> `schema_version`, `decision_horizon`, `ttl_ticks`), and acknowledged
+> research debt (June 2026 contaminated by post-hoc design;
+> blood-test discipline deferred to Φ4). Legacy-artifact audit at
+> `docs/audits/2026-06-24_production_repo_audit.md`. New
+> `.cursor/workspace-tips.md` documents the recommended multi-root
+> Cursor setup (this repo + research repo + brain-box). Doctrine v0.2
+> (Thought Ledger as first-class object, observe/intend split, F17
+> ΔInfo for empirical Tier-2/3 assignment, F18 regime-conditional
+> KPIs, canon-role vs information-tier separation, Sentinel rules for
+> the $100/1:1000 account, Streamlit dashboard scaffold) queued as
+> the next research-repo deliverable, blocked on this v0.1 landing.
+>
 > v0.19 — Blue Lock doctrine landed. Multi-agent R&D now has a
 > philosophical spine (`06-blue-lock-doctrine.md`) + a 10-striker cast
 > (`05-agent-roster-v0.md` v0.2: Isagi / Bachira / Rin / Chigiri / Reo /
@@ -27,7 +53,10 @@
 
 Read this first in a fresh chat. Strictly technical state summary.
 Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
-**Active R&D:** `docs/research/multi-agent-ensemble/README.md`.
+**Active R&D:** `finance-research-experiments` /
+`programs/M001_multi_agent_ensemble/` (branch `multi-agent-ensemble`,
+commit `11cdde4`). Pointer in this repo:
+`docs/research/multi-agent-ensemble/README.md`.
 
 ## 1) What is built and working
 
@@ -165,18 +194,21 @@ Deeper history: docs/00-journey.md. Current-state snapshot: docs/CHECKPOINT.md.
 
 **Active track: multi-agent ensemble R&D (Φ0 → Φ1).**
 
-Foundation laid 2026-06-23 in `docs/research/multi-agent-ensemble/`:
+Foundation now lives at `finance-research-experiments` /
+`programs/M001_multi_agent_ensemble/` (branch `multi-agent-ensemble`,
+v0.1 committed 2026-06-24 at `11cdde4`):
 
 | Doc | What it is |
 |---|---|
 | `README.md` | Entry point, doc index, kill conditions |
-| `00-charter.md` | Mandate, scope, success criteria (C1–C5), kill conditions (K1–K4), phases (Φ0–Φ6) |
+| `00-charter.md` | Mandate, scope, success criteria (C1–C6 incl. C6 human-benchmark gate), kill conditions (K1–K4), phases (Φ0–Φ6), $100/1:1000 account profile (§7) |
 | `01-week-2026-06-15-archive.md` | Trade record + post-mortem of the live blowup that triggered the pivot |
-| `02-literature-survey-plan.md` | Reading list (5 lineages × ~25 references), formulas to extract (F1–F10) |
+| `02-literature-survey-plan.md` | Reading list (6 lineages incl. PBT/AlphaStar/COMA/intrinsic-motivation), formulas to extract (F1–F16) |
 | `03-architecture-v0-sketch.md` | Specialist pool → Allocator → Aggregator → Risk Conductor → Execution; AgentProposal contract |
-| `04-quant-foundations.md` | F1 Bates-Granger, F2 risk parity, F3 HRP, F4 Kelly, F5 PBO, F6 DSR, F7 VPIN, F8 gated MoE, F9 stacking, F10 Sharpe-weight |
-| `05-agent-roster-v0.md` | **v0.2 — Blue Lock cast.** A1 Isagi (liquidity/structure, seeded by zone_d1_against), A2 Bachira (pattern), A3 Rin (Fib/harmonic), A4 Chigiri (breakout), A5 Reo (regime adapter), A6 Nagi (confluence-only), A7 Barou (single-pair specialist), A8 Yukimiya (execution timing), A9 Aoshi (vol-event), A10 Kunigami (anti-tilt). Coach = Ego = Allocator + Risk Conductor. Opponents = Kaiser / Loki / Sae = the user's discretionary trades + synthetic baseline. |
+| `04-quant-foundations.md` | F1–F10 baseline (Bates-Granger / risk parity / HRP / Kelly / PBO / DSR / VPIN / gated MoE / stacking / Sharpe-weight); F11 confluence-OR, F12 TQS, F13 coordinate overlap, F14 adversarial validation, F15 devour bonus, F16 Sae composite |
+| `05-agent-roster-v0.md` | **Blue Lock cast.** A1 Isagi (liquidity/structure, seeded by zone_d1_against), A2 Bachira (pattern), A3 Rin (Fib/harmonic), A4 Chigiri (breakout), A5 Reo (regime adapter), A6 Nagi (confluence-only), A7 Barou (single-pair specialist), A8 Yukimiya (execution timing), A9 Aoshi (vol-event), A10 Kunigami (anti-tilt). Coach = Ego = Allocator + Risk Conductor. Opponents = Kaiser / Loki / Sae = the user's discretionary trades + synthetic baseline. |
 | `06-blue-lock-doctrine.md` | **The doctrine.** Translates ego, weapon, metavision, **Coordinate** (4-D bounding box: price × time × σ × regime), **chemical reaction** (confluence with independent-OR conviction lift), **devour** (competitive capital reweighting), **awakening** (PBT), **TQS** (per-trade fitness), assertion / coexistence / devour-rate KPIs, and the human-as-opponent benchmark into operational primitives. Read before `05`. |
+| `07-research-standards.md` | Branching strategy, naming conventions, evaluation hygiene (named windows, five-baseline adversarial cohort, regime-conditional KPIs), reproducibility (seed pinning, manifest, env lock, data ledger), Thought Ledger schema forward-declaration, acknowledged research debt (blood-test deferred, canon ≠ tier), data-plane trajectory (Φ2.5 JSONL+Streamlit → Φ4 +SQLite shadow → Φ6+ WebSocket/Grafana) |
 
 **Next concrete deliverable (Φ1):** `02b-literature-survey.md` — for
 each numbered reference, 2–4 sentence summary + the one formula we
