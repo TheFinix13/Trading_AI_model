@@ -112,7 +112,7 @@ try {
         if (-not (Test-Path $parent)) {
             New-Item -ItemType Directory -Path $parent -Force | Out-Null
         }
-        git clone https://github.com/TheFinix13/multi-pair-trading-agent.git $defaultClone
+        git clone https://github.com/TheFinix13/Trading_AI_model.git $defaultClone
         if ($LASTEXITCODE -ne 0) {
             throw "git clone failed (exit $LASTEXITCODE)"
         }

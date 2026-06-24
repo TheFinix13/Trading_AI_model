@@ -104,8 +104,8 @@ step / min / max and free margin (see
 irm https://raw.githubusercontent.com/TheFinix13/Trading_AI_model/main/scripts/deploy_windows.ps1 | iex
 
 # Option B — manual clone then run
-git clone https://github.com/TheFinix13/Trading_AI_model.git "$HOME\Documents\Trading_AI_model"
-cd "$HOME\Documents\Trading_AI_model"
+git clone https://github.com/TheFinix13/Trading_AI_model.git "$HOME\Documents\GitHub\multi-pair-trading-agent"
+cd "$HOME\Documents\GitHub\multi-pair-trading-agent"
 .\scripts\deploy_windows.ps1
 ```
 
