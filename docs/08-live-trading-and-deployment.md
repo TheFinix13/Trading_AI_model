@@ -115,7 +115,7 @@ cd "$HOME\Documents\Trading_AI_model"
 nssm install eurusd-agent
 # Path:        ...\.venv\Scripts\python.exe
 # Arguments:   scripts\run_live.py --broker mt5
-# Startup dir: ...\Trading_AI_model
+# Startup dir: ...\multi-pair-trading-agent
 # Environment: SYMBOL=EURUSD
 nssm set eurusd-agent AppEnvironmentExtra SYMBOL=EURUSD
 
