@@ -28,7 +28,7 @@ COMMANDS = {
 
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
-        print("Usage: eurusd-agent <command> [args...]")
+        print("Usage: multi-pair-agent <command> [args...]")
         print("Commands:")
         for k in COMMANDS:
             print(f"  {k}")

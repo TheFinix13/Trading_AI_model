@@ -54,7 +54,7 @@ dev = [
 ]
 
 [project.scripts]
-eurusd-agent = "agent.cli:main"
+multi-pair-agent = "agent.cli:main"
 
 [build-system]
 requires = ["hatchling"]
