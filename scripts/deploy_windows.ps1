@@ -1,7 +1,7 @@
-# EURUSD AI Agent — Windows setup
+# Multi-Pair Trading Agent — Windows setup
 # Run from an OPEN PowerShell window (do not double-click — the window will close on error).
 #
-#   cd C:\Users\Fiyin\Documents\GitHub\Trading_AI_model
+#   cd C:\Users\Fiyin\Documents\GitHub\multi-pair-trading-agent
 #   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 #   .\scripts\deploy_windows.ps1
 #
@@ -29,8 +29,8 @@ function Resolve-RepoDir {
 
     $candidates = @(
         (Join-Path $PSScriptRoot ".."),
-        "$HOME\Documents\GitHub\Trading_AI_model",
-        "$HOME\Documents\Trading_AI_model",
+        "$HOME\Documents\GitHub\multi-pair-trading-agent",
+        "$HOME\Documents\multi-pair-trading-agent",
         (Get-Location).Path
     )
 
@@ -77,7 +77,7 @@ function Install-Dependencies {
 try {
     Write-Host ""
     Write-Host "===========================================================" -ForegroundColor Cyan
-    Write-Host "  EURUSD AI Trading Agent - Windows Setup" -ForegroundColor Cyan
+    Write-Host "  Multi-Pair Trading Agent - Windows Setup" -ForegroundColor Cyan
     Write-Host "===========================================================" -ForegroundColor Cyan
     Write-Host ""
 
@@ -100,10 +100,10 @@ try {
 
     $repoDir = Resolve-RepoDir -Requested $RepoPath
     if (-not $repoDir) {
-        $defaultClone = "$HOME\Documents\GitHub\Trading_AI_model"
+        $defaultClone = "$HOME\Documents\GitHub\multi-pair-trading-agent"
         if (-not $git) {
             Write-Step "X Cannot find repo (no pyproject.toml) and Git is missing." "Red"
-            Write-Step "  Clone manually or pass: .\scripts\deploy_windows.ps1 -RepoPath 'C:\path\to\Trading_AI_model'" "White"
+            Write-Step "  Clone manually or pass: .\scripts\deploy_windows.ps1 -RepoPath 'C:\path\to\multi-pair-trading-agent'" "White"
             Pause-ForUser
             exit 1
         }
@@ -112,7 +112,7 @@ try {
         if (-not (Test-Path $parent)) {
             New-Item -ItemType Directory -Path $parent -Force | Out-Null
         }
-        git clone https://github.com/TheFinix13/Trading_AI_model.git $defaultClone
+        git clone https://github.com/TheFinix13/multi-pair-trading-agent.git $defaultClone
         if ($LASTEXITCODE -ne 0) {
             throw "git clone failed (exit $LASTEXITCODE)"
         }
@@ -157,7 +157,7 @@ try {
         $server = Read-Host "  MT5 Server (e.g. Exness-MT5Trial9)"
 
         @"
-# EURUSD AI Agent
+# Multi-Pair Trading Agent
 MT5_LOGIN=$login
 MT5_PASSWORD=$password
 MT5_SERVER=$server
@@ -255,7 +255,7 @@ catch {
     }
     Write-Host ""
     Write-Step "Manual setup (same folder):" "Yellow"
-    Write-Host "  cd C:\Users\Fiyin\Documents\GitHub\Trading_AI_model" -ForegroundColor Gray
+    Write-Host "  cd C:\Users\Fiyin\Documents\GitHub\multi-pair-trading-agent" -ForegroundColor Gray
     Write-Host "  python -m venv .venv" -ForegroundColor Gray
     Write-Host "  .\.venv\Scripts\Activate.ps1" -ForegroundColor Gray
     Write-Host "  pip install -e `".[mt5]`"" -ForegroundColor Gray
