@@ -1,174 +1,85 @@
-# 06 — Learning Journal & Performance Memory
+# 06 — Learning Journal & Observability
 
-> ⚠️ **PARTLY HISTORICAL.** The per-day live journal (`agent/journal/live_journal.py`,
-> markdown + JSONL) survives in v2. The **online performance memory** (06.6) was
-> **burned in the 2026-06-09 reset** (`agent/journal/performance_memory.py` no
-> longer exists): feeding realised results back into conviction mid-flight is
-> exactly the kind of in-sample adaptation the validated pipeline forbids —
-> strategy changes now only happen through the ablation/walk-forward gates. The
-> learning *backtest* referenced below was also burned. A live trade journal +
-> live-vs-backtest distribution monitor is the planned v2 replacement — see
-> [CHECKPOINT.md](CHECKPOINT.md).
+> ⚠️ **PARTLY HISTORICAL.** The v1 `LiveJournal` + online performance memory
+> (`agent/journal/live_journal.py`, `performance_memory.py`) were **burned in the
+> 2026-06-09 reset**. The v2 stack below is what runs live today. Strategy
+> changes happen only through the ablation / walk-forward gates — not from
+> mid-flight conviction adaptation. See [CHECKPOINT.md](CHECKPOINT.md).
 
-> Part of the numbered docs — start at [00 — Overview](00-overview.md). The trades
-> recorded here come from [04 — Reaction Engine](04-reaction-engine.md) /
-> [02 — Strategies](02-strategies.md) and are sized per
-> [05 — Position Sizing & Risk](05-position-sizing-and-risk.md). The history-replay
-> version that writes the same records day-by-day is the
-> [learning backtest (07.2)](07-backtesting.md#072-learning-backtest).
-
-The agent keeps a **present-time** journal — it learns from when it runs *now* — and
-a lightweight **online performance memory** that feeds results back into conviction.
+> Part of the numbered docs — start at [00 — Overview](00-overview.md).
+> Trades are sized per [05 — Position Sizing & Risk](05-position-sizing-and-risk.md).
 
 ---
 
-## 06.1 Fresh present-time journal
+## What's live today (2026-06-24)
 
-**Code:** `agent/journal/live_journal.py` (`LiveJournal`).
+| Layer | Code / path | Purpose |
+|---|---|---|
+| Daily rolling log | `{log_root}/{SYMBOL}/YYYY-MM-DD.log` | Bracketed events: `[SIGNAL]`, `[TRADE OPENED]`, `[LADDER]`, `[TRADE CLOSED]`, etc. UTC rollover, 30 days kept |
+| Near-miss vault | `{log_root}/{SYMBOL}/vaults/near_misses.jsonl` + PNG | Setups rejected by gates — observation only |
+| Loss vault | `{log_root}/{SYMBOL}/vaults/losses.jsonl` + PNG | Closed losers with chart snapshot |
+| Target ladder | `{log_root}/{SYMBOL}/ladders/events.jsonl` | Structural rungs beyond 1.5R TP — observation only |
+| State sidecar | `{log_root}/{SYMBOL}/state.json` | Crash-resilient monitor / guard / bar-time persistence |
+| Daily summary | `scripts/daily_summary.py` | Walks logs + vaults + state; auto-saves to `{log-dir}/summaries/` |
+| Near-miss resolver | `scripts/resolve_near_misses.py` | Hypothetical outcome scoring for vault entries |
 
-On startup with `--reset-journal`, any existing live-journal files are moved aside
-into `data/journal/archive/` (history is never deleted) and a fresh store is started
-under `data/journal/live/`.
-
-Every record is **dual-layer**: a human-readable prose narrative in the markdown
-**and** structured machine fields in the JSONL sidecar — readable by a person,
-aggregable by the agent. One file per calendar day
-(`data/journal/live/YYYY-MM-DD.md` + `.jsonl`):
-
-- **Market read at the open** — HTF bias, anticipated vs reactive view, active zones.
-- **Intraday notes** — moves, levels taken, flips.
-- **Every trade** — entry/stop/TP, R:R, lot, conviction (+ band), setup signature,
-  the full sizing math, and the rationale.
-- **Every exit** — win/loss, P&L, pips, R-multiple, MAE/MFE, **attribution**,
-  **counterfactual**, and a loss-focused reflection.
-- **Declined setups** — detected-but-not-taken signals (light).
-- **Daily roll-up** — conviction calibration + anticipated-vs-reactive scorecard.
-- A **full feature snapshot at entry** is written to the JSONL sidecar for later
-  scorer retraining.
+Vault and ladder stats **never move a gate**. Gate changes require the full
+validation pipeline (grid → holdout → walk-forward).
 
 ---
 
-## 06.2 Win/loss attribution (per closed trade)
+## 06.1 Daily log format
 
-Every exit is attributed to one of four categories, derived from conviction at
-entry vs the outcome — because the two failure types need *opposite* fixes:
+Every fill logs pip distances and TP R-multiple inline:
 
-| Attribution | Meaning | Fix |
-| --- | --- | --- |
-| `good_setup_won` | High conviction, won | repeat the signature |
-| `marginal_win` | Low/med conviction, won | fine, but don't over-weight |
-| `good_setup_failed` | High conviction, lost to variance | accept it — process was right |
-| `bad_setup` | Low/med conviction, lost | tighten the filter — shouldn't have fired |
+```
+[TRADE OPENED] … soft_sl=P (Np) catastrophe_sl=P (Np) tp_mech=P (X.XR, +Np)
+[LADDER] … mirror of ladders/events.jsonl
+```
 
-Thresholds (`agent/journal/live_journal.py`): high conviction ≥ `HIGH_CONVICTION`
-(0.66); calibration bands split low/med/high at `BAND_LOW` (0.55) / `BAND_HIGH`
-(0.70). Attribution is stored as a JSONL field **and** surfaced in the prose
-reflection (`[good_setup_failed] …`).
+On restart, `[POSITION ADOPTED|RESTORED]` uses the same shape; soft-stop inference
+rebuilds ctx from broker SL when none was persisted.
 
 ---
 
-## 06.3 Counterfactual (from MAE/MFE)
+## 06.2 Vault chart snapshots
 
-Each exit computes whether a different stop/target would have changed the result,
-stored as `mae_r`, `mfe_r`, `gave_back_r`, `alt_tp_would_have_helped`,
-`alt_stop_would_have_helped`, plus a one-line note, e.g.:
+**Code:** `agent/journal/chart_snapshot.py`, written by `agent/journal/vault.py`.
 
-- loss: *"stopped out but MFE was +1.4R — TP too far / exit too late"*
-- win: *"winner but MAE was −0.9R — entry early / stop nearly hit"*
-- win: *"gave back 2.0R after peak — consider a trailing stop / partial"*
-
-A closed-trade block reads like this (note attribution + counterfactual):
-
-```
-- **Closed #1:** 2025-11-05 23:00 @ 1.14964 (sl) — **LOSS ❌** -2.50 (-24p, -1.07R)
-- **Attribution:** `good_setup_failed` | conviction 0.73
-- **Excursion:** MAE 23p (-1.0R) / MFE 5p (+0.2R)
-- **Counterfactual:** never worked (MFE only +0.2R) — entry likely against true momentum
-- **Lesson:** [good_setup_failed] never worked ... wait for stronger commitment.
-```
+Near-miss and loss vaults store JSONL records plus PNG snapshots: solid entry,
+dashed SL/TP, zone rectangle coloured by side, rejection detail in caption.
 
 ---
 
-## 06.4 Declined setups (the over-strict-filter detector)
+## 06.3 Target ladder (observation-only)
 
-When a setup is detected but **not** taken (gate failed, conviction below
-threshold), it is logged lightly: signature, why declined, conviction. In **live**
-mode that's all (cheap). In the **backtest**, a `would_have_won` verdict is computed
-by walking the next N bars (`--decline-lookahead`, default 24) against a nominal ATR
-stop and the fallback-R:R target — so an over-strict filter shows up directly. Detail
-lines are capped per day (`max_decline_detail_per_day`); every decline is still in
-the JSONL.
+**Code:** `agent/journal/target_ladder.py`.
 
-```
-- `declined` (reaction) `Reaction|long|london|htfNA|reaction` conv=0.37: conviction 0.37 < 0.58 — would-have: win next 24b (+2.06R/-0.07R)
-```
+Structural rungs (swing, zone edge, trendline, fib ext, daily level) beyond the
+1.5R TP are journaled and scored against realised MFE at close. Report:
+`scripts/report_target_ladders.py --symbol <SYM>`.
 
 ---
 
-## 06.5 Daily roll-up: conviction calibration + scorecard
+## 06.4 Daily summary report
 
-At each day rollover the journal writes a roll-up:
+**Code:** `scripts/daily_summary.py`.
 
-- **Conviction calibration** — the day's (and rolling) trades bucketed by conviction
-  band with realised win-rate + expectancy per band. If high-conviction trades don't
-  actually win more than low-conviction ones it prints `⚠️ MISCALIBRATED` — the key
-  "is it really learning like a quant" diagnostic.
-- **Anticipated-vs-reactive scorecard** — per perspective: how many were *marked*
-  (detected) vs *acted* (taken), the win-rate/expectancy of those acted, declined
-  count, and (backtest) how many declined would have won — plus which perspective
-  paid the most.
-- **Directional-bias sanity check** — splits closed trades by whether they traded
-  **with** or **against** the HTF bias (`htf_aligned`), reports each side's win-rate
-  + expectancy, and flags `⚠️ FIGHTING THE TREND` when a meaningful share of trades
-  went counter-trend and lost. This is the journal-side guard against the
-  post-mortem's most expensive habit — being net-long a bearish week.
-  (`directional_bias_check` in `agent/journal/live_journal.py`.)
-
-```
-## Daily Roll-up
-- **Trades:** 2 | wins 1 | expectancy +0.47R
-- **Attribution:** bad_setup=1, good_setup_won=1
-- **Conviction calibration (today):**
-  | band | n | win% | expectancy R |
-  | --- | --- | --- | --- |
-  | high | 2 | 50% | +0.47 |
-- **Calibration verdict (rolling, n=37):** ⚠️ MISCALIBRATED — high-conviction trades are NOT outperforming ...
-- **Anticipated vs reactive scorecard:**
-  - **reaction:** marked 11 / acted 2 / declined 9 | win 50% | exp +0.47R | declined-would-have-won 3
-  - **Paid the most:** reaction
-- **Directional-bias sanity check (rolling):**
-  - with-bias: 3 trades, win 67%, exp +0.55R | against-bias: 4 trades, win 25%, exp -0.50R
-  - ⚠️ FIGHTING THE TREND — 4/7 trades went against the HTF bias at -0.50R vs +0.55R with-trend. Favour with-bias setups.
-- **Declined setups:** 9 (of which 3 would have won — filter may be too strict)
-```
+One paste-friendly block per run: window activity + cumulative vault stats
+(ladder reach rates, near-miss resolution counts). Pure observation.
 
 ---
 
-## 06.6 Online performance memory (the learning loop)
+## v1 historical — LiveJournal & performance memory (burned)
 
-**Code:** `agent/journal/performance_memory.py` (`PerformanceMemory`,
-`make_signature`).
+> The sections below described `agent/journal/live_journal.py` and
+> `agent/journal/performance_memory.py`. Neither module is imported by the live
+> loop. Preserved in [`archive/06-learning-journal-v1-body.md`](archive/reaction_and_learning.md)
+> via the old combined doc; do not wire these patterns back without explicit
+> validation.
 
-Each trade is keyed by a **setup signature**:
-
-```
-strategy | direction | session | htf_aligned | source(reaction|anticipation)
-```
-
-The memory tracks realised **win-rate** and **expectancy (R)** per signature and
-returns a bounded **conviction adjustment** (±`max_adjustment`, ramped by sample
-size, requires ≥ `min_samples` trades). That adjustment is added to a setup's
-conviction *before* sizing — so the agent leans into the signatures that have been
-working and de-weights the ones that haven't, without waiting for a heavy offline
-retrain. State persists to JSON and survives restarts.
-
-The feedback prints on every close:
-
-```
-LEARN: Reaction|short|london|htfNA|reaction -> -1.07R | signature n=4 wr=0% exp=-0.33R next-adj=-0.013
-```
-
-> The heavier follow-on — periodic full ML-scorer retraining on the captured
-> feature snapshots — is intentionally separate. The journal captures exactly the
-> data that retrain needs; this online memory is the always-on, day-to-day
-> adaptation.
+The v1 journal wrote dual-layer markdown + JSONL per day with win/loss
+attribution, counterfactual MAE/MFE analysis, declined-setup tracking, daily
+roll-up calibration, and an online performance memory that adjusted conviction
+from realised signature stats. That mid-flight adaptation path was eliminated
+because it violates the validated pipeline's no post-hoc tuning rule.

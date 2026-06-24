@@ -32,6 +32,7 @@ ENV/
 .idea/
 .cursor/*
 !.cursor/rules/
+!.cursor/workspace-tips.md
 *.swp
 .DS_Store
 Thumbs.db

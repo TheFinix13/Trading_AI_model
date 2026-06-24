@@ -8,16 +8,16 @@ to `finance-research-experiments`:
 - Folder: `programs/M001_multi_agent_ensemble/`
 
 Pre-migration v0 doctrine docs are **not** in this repo's git history
-(they were untracked when the v2 stable tag was cut). They are
-preserved only in the research repo at commit `11cdde4` on the
-`multi-agent-ensemble` branch.
+(they were untracked when the v2 stable tag was cut). Current M001 doctrine
+(v0.3) is in the research repo at commit `1548b23` on the
+`multi-agent-ensemble` branch (v0.1 baseline was `11cdde4`).
 
 The v2 stable tag in this repo
-(`v2-zone-d1-against-stable-2026-06-24`, HEAD `18546af`) captures the
+(`v2-zone-d1-against-stable-2026-06-24`, commit `6f1cc75`) captures the
 pre-M001 single-agent state for rollback — not the doctrine docs.
 
-Production-side code for M001 (when it graduates from R&D) will land
-on this repo's future `m001-development` branch.
+Production-side code for M001 (when it graduates from R&D) lands on the
+`m001-development` branch in this repo.
 
 See also:
 - `docs/audits/2026-06-24_production_repo_audit.md` — pre-migration audit
