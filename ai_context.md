@@ -1,5 +1,16 @@
-# AI Context — brain dump (updated 2026-06-24, v0.21)
+# AI Context — brain dump (updated 2026-06-24, v0.21.1)
 
+> v0.21.1 — **Wave 2 cleanup done.** Production repo stale-reference sweep
+> shipped: `scripts/deploy_windows.ps1` rewritten to `multi-pair-trading-agent`
+> (title + clone URL + candidate paths); `[project.scripts] eurusd-agent` →
+> `multi-pair-agent` (pyproject.toml + `agent/cli.py` usage string); `.env.example`
+> now tracked via explicit `!.env.example` gitignore exception; workspace rule
+> `.cursor/rules/git-no-cursor-attribution.mdc` committed. CLI subcommand drops
+> (`evaluate`/`alphas`/`smoke`) deferred to Wave 3 alongside their backing-script
+> archive. **VM impact:** next `pip install -e .` produces the `multi-pair-agent`
+> binary; if any operator script shells `eurusd-agent`, update it. Queued:
+> Wave 3 (dead-code delete + `_archive/` sweep + dep purge + Docker/MT5 archive).
+>
 > v0.21 — **Branching + Wave 1 cleanup.** Long-lived branch `m001-development`
 > created from main (M001 graduation target). Production repo Wave 1 docs-only
 > cleanup done (six HISTORICAL numbered docs → `docs/archive/`; 03/05/06
@@ -7,8 +18,7 @@
 > `finance-research-experiments` /
 > `programs/M001_multi_agent_ensemble/` (branch `multi-agent-ensemble`,
 > commit `1548b23`). Rollback tag: `v2-zone-d1-against-stable-2026-06-24`
-> (`6f1cc75`). Queued: Wave 2/3 cleanup (audit §5), Φ2 simulator on research
-> repo. UNCLEAR resolutions: `evaluate.py` → TRANSITION (archive Wave 3);
+> (`6f1cc75`). UNCLEAR resolutions: `evaluate.py` → TRANSITION (archive Wave 3);
 > `allocator.py` → KEEP-AND-INHERIT (M001 allocator seed).
 >
 > v0.20 — Repo split; M001 doctrine migrated to research repo; pointer at
@@ -61,9 +71,10 @@ commit `1548b23`, M001 v0.3). Pointer: `docs/research/multi-agent-ensemble/READM
 Next deliverable: `02b-literature-survey.md` (source-cited formula entries per
 `02-literature-survey-plan.md`). Parallel: Φ2 simulator scaffold on research repo.
 
-**Production repo (this):** Wave 2/3 cleanup queued per
-`docs/audits/2026-06-24_production_repo_audit.md` §5 — deploy URL, CLI rename
-(Wave 2); dead-code delete + `_archive/` sweep (Wave 3, apply
+**Production repo (this):** Wave 2 done (deploy URL + CLI rename +
+`.env.example` track + workspace rule). Wave 3 queued per
+`docs/audits/2026-06-24_production_repo_audit.md` §5 — dead-code delete +
+`_archive/` sweep + dep purge + Docker/MT5 archive (apply
 `docs/audits/2026-06-24_unclear_resolutions.md` for evaluate vs allocator).
 
 **Monitor-only:** `zone_d1_against` on $100/1:1000 demo — no param changes;
