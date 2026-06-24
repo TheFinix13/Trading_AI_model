@@ -1,0 +1,27 @@
+---
+description: Git commits and GitHub PRs must never show Cursor as a contributor or co-author.
+alwaysApply: true
+---
+
+# Git & GitHub — no Cursor contributor trails
+
+When you run `git commit`, `git push`, or `gh pr create` for the user:
+
+## Non-negotiables
+
+- **Never** add `Co-authored-by: Cursor`, `Made-with: Cursor`, `Made with Cursor`, or any `@cursor.com` / `cursoragent@cursor.com` trailer.
+- **Never** pass `--trailer` flags that attribute authorship to Cursor, Composer, or any AI tool.
+- **Never** set `--author` to a Cursor/AI identity. Use the repo's normal git author only.
+- **Commit messages and PR bodies** must not disclose that Cursor wrote the change unless the user explicitly asks for that wording.
+
+## How to commit
+
+Use plain commits without co-author or made-with trailers.
+
+## Safety nets (already configured on this machine)
+
+- User-level Cursor hook: `~/.cursor/hooks/strip-cursor-git-attribution.sh`
+- CLI config: `~/.cursor/cli-config.json` — attribution disabled
+- IDE: **Cursor Settings → Agent → Attribution** — Commit + PR attribution **OFF**
+
+See also: `/Users/the1finix/Documents/GitHub/brain-box/.cursor/rules/git-no-cursor-attribution.mdc`
