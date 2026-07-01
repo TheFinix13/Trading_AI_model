@@ -1,0 +1,50 @@
+---
+description: Wrap long-running compute jobs (>= 10 min wall-clock, silent stdout, background-launched) in the shared brain-box heartbeat monitor so stalls and crashes don't go unnoticed.
+alwaysApply: false
+---
+
+# Heartbeat monitor (shared)
+
+Full protocol + script live in brain-box:
+
+- Script: `/Users/the1finix/Documents/GitHub/brain-box/meta/tools/monitor_compute_jobs.py`
+- Doc: `/Users/the1finix/Documents/GitHub/brain-box/agents/heartbeat-monitor.md`
+- Canonical rule: `/Users/the1finix/Documents/GitHub/brain-box/.cursor/rules/heartbeat-monitor.mdc`
+
+## When to wire it in
+
+Any compute job that satisfies **any** of:
+
+- Wall-clock estimate ≥ **10 minutes**.
+- Emits **no stdout** for most of the run (per-bar replays, DRL rollouts,
+  training loops, batch dispatchers, LLM eval sweeps).
+- Runs in the **background** (`block_until_ms: 0` in Cursor `Shell`,
+  `nohup … &`, or a launched daemon).
+- Blocks a downstream verdict / gate / decision the user is waiting on.
+
+## Standard invocation
+
+```bash
+python3 /Users/the1finix/Documents/GitHub/brain-box/meta/tools/monitor_compute_jobs.py \
+    --pid $JOB_PID:$LABEL \
+    --output-artefact $JOB_PID:$OUTPUT_PATH \
+    --tail-on-exit $JOB_PID:$STDOUT_LOG_PATH:200 \
+    --notify \
+    --interval 30 --cpu-floor 20 --stall-samples 4 \
+    --jsonl ./reviews/compute_heartbeat.jsonl \
+    --log   ./reviews/compute_heartbeat.log
+```
+
+Background it (`block_until_ms: 0`) in the same shell-call batch as the
+compute job. Reserve `--notify` for cases where the user is likely to
+be away for > 15 min.
+
+## Why not maintain a local copy
+
+Two workspaces (`finance-research-experiments`, `multi-pair-trading-agent`)
+each lost 40+ minutes of compute to preventable stalls. Rather than
+teach every workspace agent this lesson separately, brain-box owns the
+canonical script and doc, and every workspace pulls the same protocol
+via this rule.
+
+If you patch behaviour, patch the brain-box version — do not fork.
