@@ -1,0 +1,28 @@
+---
+description: Guard against concurrent Cursor sessions clobbering shared state files (ai_context.md, config registries) in this repo
+alwaysApply: true
+---
+
+# Concurrent-session safety
+
+Canonical protocol: `/Users/the1finix/Documents/GitHub/brain-box/agents/concurrent-session-safety.md`.
+
+This repo, and its research sibling `finance-research-experiments`, can
+have more than one Cursor session open at once — this actually happened
+on 2026-07-01, when a research-pipeline-sweep session raced an unrelated
+M001 session on shared files in `finance-research-experiments`. Git does
+not protect you here: no branch divergence, just a race on one working
+tree, and `git commit` can silently discard the other session's edits.
+
+Before editing or committing `ai_context.md`, `docs/CHECKPOINT.md`, or
+any other file you didn't create earlier in this same session:
+
+1. Re-read it fresh immediately before editing.
+2. Prefer additive edits over full rewrites.
+3. Never `git add -A` / `git add .` — stage explicit paths only.
+4. Before committing, run `git diff --cached <file>` and confirm every
+   line is yours; unrecognized content means another session is active
+   — stop and reconcile by hand, don't overwrite.
+5. Commit in small units rather than one end-of-session batch.
+
+See also: `/Users/the1finix/Documents/GitHub/brain-box/.cursor/rules/concurrent-session-safety.mdc`
