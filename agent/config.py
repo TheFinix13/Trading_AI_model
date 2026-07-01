@@ -48,6 +48,15 @@ class RiskConfig(BaseModel):
     lot_hard_cap_under_300: float = 0.01
     lot_hard_cap_under_1000: float = 0.10
     lot_hard_cap: float = 1.0
+    # Portfolio-wide ceiling on the sum of ACTIVE risk across every ticket
+    # the broker is holding for this account (all symbols). Computed from
+    # per-ticket abs(open_price - stop_loss) * volume * pip_value_per_lot,
+    # divided by account balance. A new entry that would keep the sum
+    # under the cap is allowed; otherwise it is hard-blocked pre-sizer.
+    # 0 disables the cap (defensive default off would be surprising; the
+    # explicit 5% ceiling is the pre-registered default from Wave 2.2 of
+    # the 2026-07-01 research-pipeline plan).
+    portfolio_max_open_risk_pct: float = 0.05
 
 
 class NoTradeWindow(BaseModel):

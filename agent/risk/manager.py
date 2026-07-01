@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 
+from typing import Sequence
+
 from agent.config import Config
 from agent.risk.sizing import position_size
 from agent.types import Setup
@@ -33,6 +35,7 @@ class RiskDecision:
     SKIP_MAX_POSITIONS = "skip_max_positions"
     SKIP_RISK_TOO_HIGH = "skip_risk_too_high"
     SKIP_LOT_TOO_SMALL = "skip_lot_too_small"
+    SKIP_PORTFOLIO_RISK = "skip_portfolio_risk"
 
 
 @dataclass
@@ -63,6 +66,98 @@ class RiskManager:
             if dd >= self.cfg.risk.daily_dd_halt_pct:
                 self.state.halted_today = True
                 log.warning("Daily DD halt triggered: dd=%.4f >= %.4f", dd, self.cfg.risk.daily_dd_halt_pct)
+
+    # ------------------------------------------------------------------
+    # Portfolio-wide open-risk ceiling (Wave 2.2, 2026-07-01)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def portfolio_open_risk_pct(
+        positions: Sequence,
+        account_balance: float,
+        pip_value_per_lot: float,
+    ) -> float:
+        """Return the ACTIVE risk across every open ticket the broker holds,
+        as a fraction of ``account_balance``.
+
+        For each ticket, active risk is
+        ``abs(open_price - stop_loss) * volume * pip_value_per_lot``
+        (currency at risk if the broker's stop level fires). Tickets with a
+        missing or zero stop are treated as zero-risk (the broker's
+        catastrophe stop is the source of truth for the resting level; if
+        it is not set, the ticket's open risk is unbounded, so we count
+        it as zero here to avoid falsely blocking every entry - the
+        surrounding SIGNAL_LOOP validation guarantees a stop is set on
+        every ticket this agent opens).
+
+        ``account_balance <= 0`` returns +infinity so any downstream
+        comparison against a positive cap will reject.
+        """
+        if account_balance <= 0:
+            return float("inf")
+        total = 0.0
+        for pos in positions:
+            open_price = float(getattr(pos, "open_price", 0.0) or 0.0)
+            stop_loss = float(getattr(pos, "stop_loss", 0.0) or 0.0)
+            volume = float(getattr(pos, "volume", 0.0) or 0.0)
+            if open_price <= 0 or stop_loss <= 0 or volume <= 0:
+                continue
+            stop_dist_price = abs(open_price - stop_loss)
+            stop_pips = stop_dist_price * 10_000.0
+            total += stop_pips * volume * pip_value_per_lot
+        return total / account_balance
+
+    def evaluate_portfolio_ceiling(
+        self,
+        positions: Sequence,
+        account_balance: float,
+        prospective_stop_pips: float,
+        prospective_lot: float,
+    ) -> RiskResult:
+        """Return APPROVED iff opening the prospective (stop_pips, lot)
+        ticket would keep total portfolio open-risk under the configured
+        cap. Otherwise ``SKIP_PORTFOLIO_RISK``.
+
+        This is intentionally decoupled from :meth:`evaluate` so the loop
+        can call it AFTER lot sizing produces a viable lot, or (with
+        prospective_lot=0) BEFORE sizing as a defensive early-exit when
+        the account is already at the cap.
+        """
+        cap = float(self.cfg.risk.portfolio_max_open_risk_pct or 0.0)
+        if cap <= 0:
+            return RiskResult(RiskDecision.APPROVED)
+        pip_value_per_lot = self.cfg.backtest.pip_value_per_lot
+        current = self.portfolio_open_risk_pct(
+            positions, account_balance, pip_value_per_lot,
+        )
+        if account_balance <= 0:
+            return RiskResult(
+                RiskDecision.SKIP_PORTFOLIO_RISK,
+                actual_risk_pct=current,
+                reason=(
+                    f"account_balance <= 0; cannot evaluate portfolio cap"
+                ),
+            )
+        prospective_add = (
+            prospective_stop_pips * prospective_lot * pip_value_per_lot
+            / account_balance
+            if account_balance > 0 else 0.0
+        )
+        total = current + prospective_add
+        # 1e-6 tolerance = 0.0001 percentage points; well below any
+        # operator-meaningful threshold and safely above per-ticket
+        # floating-point noise from (open_price - stop_loss) * 10_000
+        # rounding on 4-decimal quotes.
+        if total > cap + 1e-6:
+            return RiskResult(
+                RiskDecision.SKIP_PORTFOLIO_RISK,
+                actual_risk_pct=total,
+                reason=(
+                    f"portfolio risk {total*100:.2f}% > cap {cap*100:.2f}% "
+                    f"(current {current*100:.2f}% + new {prospective_add*100:.2f}%)"
+                ),
+            )
+        return RiskResult(RiskDecision.APPROVED, actual_risk_pct=total)
 
     def evaluate(
         self,

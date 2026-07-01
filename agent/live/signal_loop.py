@@ -533,6 +533,31 @@ class SignalLoop:
                                    bars, detail=sizing.summary())
             return
 
+        # Portfolio-wide open-risk ceiling (Wave 2.2, 2026-07-01). Sum of
+        # active risk across every ticket the broker is holding (all symbols
+        # on this account) must not exceed cfg.risk.portfolio_max_open_risk_pct
+        # AFTER adding the freshly-sized ticket. Because the 3 pair processes
+        # are independent, the broker itself is the single source of truth
+        # for the aggregate exposure - no shared-state file is needed.
+        all_positions = await self.broker.get_open_positions(None)
+        portfolio_check = self.risk_manager.evaluate_portfolio_ceiling(
+            positions=all_positions,
+            account_balance=account.balance,
+            prospective_stop_pips=signal.stop_pips,
+            prospective_lot=sizing.lot,
+        )
+        if portfolio_check.decision != RiskDecision.APPROVED:
+            log.info("[%s] %s blocked by portfolio risk cap: %s",
+                     timeframe, alpha.name, portfolio_check.reason)
+            log_near_miss(log, symbol=symbol, timeframe=timeframe,
+                          alpha=alpha.name, reason="portfolio_risk_cap",
+                          detail=portfolio_check.reason)
+            self._record_near_miss(
+                "portfolio_risk_cap", routed, last_closed, bars,
+                detail=portfolio_check.reason,
+            )
+            return
+
         log_signal_detected(
             log, symbol=symbol, timeframe=timeframe, alpha=alpha.name,
             direction=signal.direction.value, entry=signal.entry,

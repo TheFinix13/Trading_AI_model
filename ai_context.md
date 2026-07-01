@@ -30,7 +30,8 @@
 > broker-open risk above 5 %). All 377 tests pass. Verdict summary: E011
 > `stopped_at_stage_1` (expectancy bucket-agnostic; kills E012); E013
 > `combined_alive` (Δ combined +0.80 Sharpe, wick +0.75, BE ~0), PLG
-> `plg_expensive` (blocks 64 % winners vs 33 % losers, +23.5 median would-be
+> `plg_earns_keep` (protocol's own label for "PLG is expensive"; blocks
+> 64 % winners vs 33 % losers, +23.5 median would-be
 > pips — follow-up study needed to retune); E014 `parked_low_yield` (real
 > edge at θ=70 but 12 % of baseline volume; kills E015 + E016). No strategy
 > change shipped this session; all changes require a fresh pre-reg study.
@@ -143,7 +144,7 @@ in `finance-research-experiments` (E011-E016). Verdicts registered in
 |---|---|---|
 | E011 small-stop subset expectancy | `stopped_at_stage_1` | none — kills E012 |
 | E012 pending-limit entry | `cancelled_dep_failed` | none |
-| E013 safety-layer contribution | `combined_alive` (Δ +0.80 Sharpe); wick `alive`; BE CI touches 0; PLG `plg_expensive` | validates existing posture; PLG follow-up study needed |
+| E013 safety-layer contribution | `combined_alive` (Δ +0.80 Sharpe); wick `alive`; BE CI touches 0; PLG `plg_earns_keep` (protocol's label for "PLG is expensive") | validates existing posture; PLG follow-up study needed |
 | E014 quality-score entry gate | `parked_low_yield` | none — kills E015 + E016 (12 % of baseline volume) |
 | E015 conviction-from-quality | `cancelled_dep_failed` | none |
 | E016 re-entry / flip | `cancelled_dep_failed` | none |
