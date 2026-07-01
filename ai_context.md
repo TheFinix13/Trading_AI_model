@@ -1,5 +1,40 @@
-# AI Context — brain dump (updated 2026-06-30, v0.22)
+# AI Context — brain dump (updated 2026-07-01, v0.24)
 
+> v0.24 — **M001 v1/v2 reframe day** (in `finance-research-experiments` on
+> `multi-agent-ensemble` branch). No production repo changes today; every
+> line of research below lives in the research repo. User directive drove
+> a squad-wide reclassification: v1 = squad-tested checkpoint (not
+> initial implementation); v2 = architectural upgrade that trumps v1.
+> Session delivered: doctrine v0.5 + roster v0.8; 6 evolution-ledger
+> RELABEL rows reclassifying prior "v2 mechanics" as v1 iterations;
+> **G7 pre-registered protocol** (squad-level v1-checkpoint gate); F19
+> `lot_intent` + F20 `risk_intent` + F21 `read_workspace` primitives on
+> BaseStriker with per-playstyle dispatch; all 8 v1 agents wired
+> (playstyle + tier); engine threads F21 workspace snapshot into
+> `intend()`; Bachira consumes Isagi peer confluence (+0.05 lift, 10
+> chemistry tests); G7 harness scaffolded (C1/C5/C6 live, C2/C3/C4
+> pending full 7-window batch); Sentinel Φ4.1 physical rerun landed
+> 5,236 trades / 28,830 proposals / 336,707 thoughts at
+> `sentinel_blocks=True` (side-by-side vs sealed 0.2922 audit report
+> pending F17-arm completion). 396 sim tests passing. **No production
+> code touched, no live-account impact, no strategy change.**
+>
+> v0.23 — **Research-pipeline sweep E011-E016 complete + two production adds
+> (rejection-review + portfolio 5 % risk cap).** Six pre-registered studies
+> fired in `finance-research-experiments`; only E013 has an `alive_*` verdict
+> and it validates the EXISTING production posture (all safety layers ON, no
+> change needed). Two non-strategy production-code adds shipped: weekly
+> rejection-review report (`agent/reports/rejection_review.py`) + portfolio-
+> wide 5 % open-risk ceiling (`RiskConfig.portfolio_max_open_risk_pct`
+> defaulting to `0.05`; hard-blocks any new ticket that would push aggregate
+> broker-open risk above 5 %). All 377 tests pass. Verdict summary: E011
+> `stopped_at_stage_1` (expectancy bucket-agnostic; kills E012); E013
+> `combined_alive` (Δ combined +0.80 Sharpe, wick +0.75, BE ~0), PLG
+> `plg_expensive` (blocks 64 % winners vs 33 % losers, +23.5 median would-be
+> pips — follow-up study needed to retune); E014 `parked_low_yield` (real
+> edge at θ=70 but 12 % of baseline volume; kills E015 + E016). No strategy
+> change shipped this session; all changes require a fresh pre-reg study.
+>
 > v0.22 — **M001 Φ4.1 expanded squad gate FAIL @ 0.92× + Isagi v2 arc FAIL +
 > methodology lock + regime redesign + round-1 + round-2 v2 backlog
 > resolutions.** Production repo untouched today (R&D lives in
@@ -45,10 +80,12 @@ Read this first in a fresh chat. Strictly technical state summary.
 Deeper history: `docs/00-journey.md`. Snapshot: `docs/CHECKPOINT.md`.
 **Active R&D:** `finance-research-experiments` /
 `programs/M001_multi_agent_ensemble/` (branch `multi-agent-ensemble`,
-commit `53628fc`, doctrine v0.4 / roster v0.7). Pointer:
+doctrine v0.5 / roster v0.8). Pointer:
 `docs/research/multi-agent-ensemble/README.md`. M001 latest verdicts:
 **Φ3 PASS · Φ4 FAIL @ 0.98× · Φ4.1 FAIL @ 0.92× · Isagi v2 arc FAIL**
-(v1 canonical). Live trading on demo only; production code untouched.
+(v1 canonical) · **G7 pre-registered 2026-07-01** (no verdict yet;
+full-panel batch pending). Live trading on demo only; production code
+untouched.
 
 ## 1) What is built and working
 
@@ -63,7 +100,18 @@ commit `53628fc`, doctrine v0.4 / roster v0.7). Pointer:
   risk 0.5–2% × risk_scale. `scripts/run_live.py --symbol --log-dir --broker`.
 - **Observability:** daily logs, 15-min heartbeat, bracketed tags, near-miss/loss
   vaults (JSONL+PNG), target ladder (observation-only), `daily_summary.py`,
-  `state.json` sidecar. 349 tests passing.
+  `state.json` sidecar, **weekly rejection-review digest**
+  (`python -m agent.reports.rejection_review --days 7` → markdown + CSV
+  grouped by symbol · rejection_reason · stop-bucket, with walk-forward-
+  resolved would-be outcomes; observation-only per `PROTOCOL_DISCIPLINE.md` §7).
+  377 tests passing.
+- **Portfolio risk ceiling (Wave 2.2, 2026-07-01):** `RiskConfig.portfolio_
+  max_open_risk_pct = 0.05` — sum of `abs(open_price - stop_loss) * volume *
+  pip_value_per_lot` across ALL open tickets (all symbols on this account,
+  queried via `broker.get_open_positions(None)`) must not exceed 5 % of
+  balance AFTER adding a freshly-sized ticket. Wired in
+  `SignalLoop._route_signal` after sizing / before order placement; rejection
+  emits `_record_near_miss("portfolio_risk_cap", ...)`.
 - **Deployed:** Windows VMware, Exness demo ($100 / 1:1000), 3 PowerShell tabs.
   VM update: `git fetch && git reset --hard origin/main && pip install -r requirements.txt`.
 - **Branches:** `main` = production; `m001-development` = pre-M001 baseline for
@@ -78,7 +126,8 @@ commit `53628fc`, doctrine v0.4 / roster v0.7). Pointer:
 | Router | `agent/alphas/zone_routing.py` |
 | M001 seed (keep) | `agent/alphas/allocator.py` — Ledoit-Wolf, long-only weights |
 | Live | `scripts/run_live.py`, `agent/live/signal_loop.py`, `agent/live/state_store.py` |
-| Vaults / ladder | `agent/journal/vault.py`, `agent/journal/target_ladder.py`, `scripts/daily_summary.py` |
+| Risk | `agent/risk/manager.py` (per-symbol + portfolio ceiling), `agent/risk/sizing.py`, `agent/risk/post_loss_guard.py`, `agent/config.py::RiskConfig` |
+| Vaults / ladder / reports | `agent/journal/vault.py`, `agent/journal/target_ladder.py`, `agent/reports/rejection_review.py`, `scripts/daily_summary.py` |
 | Validation | `scripts/run_zone_all_tfs.py`, `scripts/run_ablation.py`, `scripts/run_walk_forward.py` |
 | Docs | `docs/CHECKPOINT.md`, `docs/00-overview.md`, `docs/archive/`, `docs/audits/` |
 | M001 pointer | `docs/research/multi-agent-ensemble/README.md` |
@@ -86,21 +135,44 @@ commit `53628fc`, doctrine v0.4 / roster v0.7). Pointer:
 
 ## 3) Next immediate goal
 
-**Active track: M001 multi-agent ensemble (Φ4.1 closed → Φ4.2 + Φ5 in flight)
-in research repo.** Today's (2026-06-30) implementation sprint: Sentinel R1–R5
-wiring (un-blocks Kunigami v2 + Φ5 Arm 4); news calendar wiring (Dukascopy
-primary, multi-source fallback, 2007 backfill); Φ5 aggregator selection (5
-arms); v2 agent implementations (Barou hybrid A+B, Bachira/Rin/Chigiri/Reo
-refines). Sequenced per
-`finance-research-experiments/programs/M001_multi_agent_ensemble/prep/2026-06-25_session_kickoff.md`.
+**2026-07-01 research-pipeline sweep — closed.** Six pre-reg studies fired
+in `finance-research-experiments` (E011-E016). Verdicts registered in
+`finance-research-experiments/EXPERIMENTS.md`:
 
-**Production repo (this):** no changes pending. Wave 3 still queued per
-`docs/audits/2026-06-24_production_repo_audit.md` §5 (dead-code delete +
-`_archive/` sweep + dep purge + Docker/MT5 archive); waits on M001 verdict to
-avoid touching code paths that may need to inherit from M001 outputs.
+| Study | Verdict | Production impact |
+|---|---|---|
+| E011 small-stop subset expectancy | `stopped_at_stage_1` | none — kills E012 |
+| E012 pending-limit entry | `cancelled_dep_failed` | none |
+| E013 safety-layer contribution | `combined_alive` (Δ +0.80 Sharpe); wick `alive`; BE CI touches 0; PLG `plg_expensive` | validates existing posture; PLG follow-up study needed |
+| E014 quality-score entry gate | `parked_low_yield` | none — kills E015 + E016 (12 % of baseline volume) |
+| E015 conviction-from-quality | `cancelled_dep_failed` | none |
+| E016 re-entry / flip | `cancelled_dep_failed` | none |
+
+**Production adds shipped this session (Wave 2, non-strategy):**
+
+1. `agent/reports/rejection_review.py` — weekly digest of near-miss vault
+   events grouped by symbol · reason · stop-bucket, with walk-forward-
+   resolved would-be outcomes. CLI: `python -m agent.reports.rejection_review
+   --days 7`. Tests: `tests/test_rejection_review.py` (10 tests).
+2. `RiskConfig.portfolio_max_open_risk_pct = 0.05` + `RiskManager.
+   evaluate_portfolio_ceiling` + `RiskDecision.SKIP_PORTFOLIO_RISK` +
+   `SignalLoop._route_signal` wiring. Tests:
+   `tests/test_portfolio_risk_cap.py` (9 tests). All 377 tests pass.
+
+**Follow-up study candidate (2026-07 backlog):** PLG cooldown tuning. E013
+found PLG blocks 64 % future-winners vs 33 % future-losers on the deployed
+cell — median would-be pips per block is +23.5. This is a real production
+concern but requires a fresh pre-registered study (`PROTOCOL_DISCIPLINE.md`
+§5) before any PLG parameter is changed.
+
+**Active track: M001 multi-agent ensemble (Φ4.1 closed → Φ4.2 + Φ5 in flight)
+in research repo.** Phase 6e Φ5 re-sim (Arms 3/4/5) still pending in
+`finance-research-experiments` per that repo's `ai_context.md` §3. This
+production repo is untouched by M001 work until a graduation gate lands.
 
 **Monitor-only:** `zone_d1_against` on $100/1:1000 demo — no param changes;
 collecting live PnL for future DSR gate when A1 Isagi wraps the roster.
 
 Parked: see `docs/ROADMAP.md` (target_rr study, partial TP, USD exposure, D1
-promotion, autonomy ladder).
+promotion, autonomy ladder). Wave 3 production-repo cleanup still queued
+per `docs/audits/2026-06-24_production_repo_audit.md` §5; waits on M001.
