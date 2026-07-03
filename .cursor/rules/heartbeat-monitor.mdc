@@ -1,15 +1,22 @@
 ---
-description: Wrap long-running compute jobs (>= 10 min wall-clock, silent stdout, background-launched) in the shared brain-box heartbeat monitor so stalls and crashes don't go unnoticed.
-alwaysApply: false
+description: MUST wrap every heavy / background compute job in the shared brain-box heartbeat monitor. Standard rule, applies to every session. Default is "wire it"; skipping requires an inline justification.
+alwaysApply: true
 ---
 
-# Heartbeat monitor (shared)
+# Heartbeat monitor (shared, non-negotiable)
 
 Full protocol + script live in brain-box:
 
 - Script: `/Users/the1finix/Documents/GitHub/brain-box/meta/tools/monitor_compute_jobs.py`
 - Doc: `/Users/the1finix/Documents/GitHub/brain-box/agents/heartbeat-monitor.md`
 - Canonical rule: `/Users/the1finix/Documents/GitHub/brain-box/.cursor/rules/heartbeat-monitor.mdc`
+
+**Default: wire the monitor.** If you background a compute job in this
+repo (walk-forward eval, live signal loop soak, agent stress-test, etc.)
+and don't attach a monitor, state the justification inline in the
+assistant message. Silence is not acceptable. After wiring, wait one
+sampling interval (~30–60 s) and read the tail of the heartbeat log to
+confirm at least one healthy sample landed before ending your turn.
 
 ## When to wire it in
 
