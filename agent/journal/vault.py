@@ -176,6 +176,8 @@ class VaultRecorder:
             zone_top=zone.get("top"),
             zone_bottom=zone.get("bottom"),
             zone_direction=zone.get("direction"),
+            zone_created_at=_parse_ts(zone.get("created_at")),
+            zone_impulse_pips=zone.get("impulse_pips"),
             entry_time=entry_time,
             extra_levels=extra_levels,
             reason=record.get("reason") or tag,
