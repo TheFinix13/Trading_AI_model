@@ -44,6 +44,31 @@ Last updated: 2026-06-12.
 ### 1.5 FVG / liquidity-sweep confluence ideas
 - **Trigger:** fresh-pair data only; EURUSD dev span is exhausted.
 
+### 1.6 Multi-position scale-in per symbol (pyramiding)
+- **What:** allow the agent to intentionally hold >1 ticket on the same
+  symbol/direction (e.g. add on after price moves ≥0.5R in favor), instead
+  of today's hard `max_open_positions=1` per symbol. Mechanically the
+  monitor already tracks tickets independently (keyed by broker ticket:
+  entry context, MFE/MAE, breakeven/trailing, `get_closed_trade` per
+  ticket) — this is an execution-policy question, not a plumbing gap.
+- **Why parked (2026-07-06 discussion):** it's a strategy change, not a
+  config bump — today's `position_size()` sizes each ticket independently
+  off account balance, so two same-direction tickets silently run 2×
+  intended per-trade risk (the 5% portfolio cap is the only backstop, and
+  it wasn't built for this). Also untested how it interacts with
+  `PostLossGuard` (only watches revenge-adds after a loss, not size-ups
+  after a win). User decision: hold off until after the M001 multi-agent
+  ensemble track wraps (or pursue on a separate branch first) — "the
+  system is good as it is" for now.
+- **If revisited:** pre-register as an E-series study (E017 candidate) in
+  `finance-research-experiments` — hypothesis, add-on trigger, risk-split
+  mechanics (the add-on must take a *slice* of the existing per-trade risk
+  budget, not stack an additional full slice), same
+  ablation → holdout → walk-forward gate as E011-E016 before any
+  `max_open_positions` / sizing code changes land here.
+- **Trigger:** M001 graduation gate lands (or explicit decision to branch
+  off and run this in parallel).
+
 ## 2) Autonomy ladder (agent self-improvement without breaking guardrails)
 
 Framing: the validation pipeline IS the learning algorithm; autonomy means
