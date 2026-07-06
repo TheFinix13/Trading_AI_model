@@ -27,7 +27,8 @@ Usage:
 
 Environment variables (from .env):
     MT5_LOGIN, MT5_PASSWORD, MT5_SERVER, MT5_PATH
-    TG_BOT_TOKEN, TG_CHAT_ID
+    TG_BOT_TOKEN, TG_CHAT_ID (comma-separated to fan out to multiple chats,
+        e.g. a personal DM plus a Telegram group)
     HEALTHCHECK_URL_<SYMBOL> (or shared HEALTHCHECK_URL) -- optional
         external dead-man's-switch heartbeat (e.g. healthchecks.io); catches
         a genuine VM freeze that Telegram's "Agent OFFLINE" message cannot

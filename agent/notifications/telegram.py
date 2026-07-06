@@ -4,6 +4,11 @@ Reads `TG_BOT_TOKEN` and `TG_CHAT_ID` from the environment by default,
 or accepts an explicit `TelegramConfig`. All HTTP calls go through
 `httpx` (already a project dependency).
 
+`TG_CHAT_ID` may be a single chat id or a comma-separated list (e.g. your
+personal DM id plus a group id: "8851293239,-5204264219") to fan the same
+message out to multiple chats -- useful for keeping a personal copy while
+also posting into a shared group.
+
 The notifier deliberately fails *open* -- if the network is broken or
 the credentials are missing, it logs a warning but never raises. A
 failed Telegram push must not crash a live trade or a backtest.
@@ -34,7 +39,7 @@ TELEGRAM_API_TEMPLATE = "https://api.telegram.org/bot{token}/sendMessage"
 @dataclass
 class TelegramConfig:
     bot_token: str = ""
-    chat_id: str = ""
+    chat_id: str = ""  # single id, or comma-separated for multiple recipients
     dry_run: bool = False
     timeout_seconds: float = 8.0
     parse_mode: str = "Markdown"  # Markdown / MarkdownV2 / HTML
@@ -48,8 +53,15 @@ class TelegramConfig:
         )
 
     @property
+    def chat_ids(self) -> list[str]:
+        """Parsed, whitespace-trimmed recipient list (handles a plain
+        single id transparently -- splitting a string with no commas just
+        returns a one-element list)."""
+        return [c.strip() for c in self.chat_id.split(",") if c.strip()]
+
+    @property
     def configured(self) -> bool:
-        return bool(self.bot_token and self.chat_id) or self.dry_run
+        return bool(self.bot_token and self.chat_ids) or self.dry_run
 
 
 # ---------------------------------------------------------------------------
@@ -179,25 +191,29 @@ class TelegramNotifier:
             log.warning("Telegram not configured (TG_BOT_TOKEN / TG_CHAT_ID missing); skipping")
             return False
         url = TELEGRAM_API_TEMPLATE.format(token=self.config.bot_token)
-        payload = {
-            "chat_id": self.config.chat_id,
-            "text": text,
-            "parse_mode": self.config.parse_mode,
-            "disable_web_page_preview": True,
-        }
-        try:
-            client = self._client or self._default_client()
-            resp = client.post(url, json=payload, timeout=self.config.timeout_seconds)
-            ok = getattr(resp, "status_code", 0) // 100 == 2
-            if not ok:
-                log.warning("Telegram API returned %s: %s", getattr(resp, "status_code", "?"),
-                            getattr(resp, "text", ""))
-            return bool(ok)
-        except Exception as e:
-            # Never raise -- live trade flow must not be killed by a
-            # failed notification.
-            log.warning("Telegram send failed: %s", e)
-            return False
+        client = self._client or self._default_client()
+        all_ok = True
+        for chat_id in self.config.chat_ids:
+            payload = {
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": self.config.parse_mode,
+                "disable_web_page_preview": True,
+            }
+            try:
+                resp = client.post(url, json=payload, timeout=self.config.timeout_seconds)
+                ok = getattr(resp, "status_code", 0) // 100 == 2
+                if not ok:
+                    log.warning("Telegram API returned %s for chat_id=%s: %s",
+                                getattr(resp, "status_code", "?"), chat_id,
+                                getattr(resp, "text", ""))
+                all_ok = all_ok and ok
+            except Exception as e:
+                # Never raise -- live trade flow must not be killed by a
+                # failed notification.
+                log.warning("Telegram send failed for chat_id=%s: %s", chat_id, e)
+                all_ok = False
+        return all_ok
 
     @staticmethod
     def _default_client():
