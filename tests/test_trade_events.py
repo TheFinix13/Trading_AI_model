@@ -96,7 +96,16 @@ def test_classify_exit_tags():
     assert classify_exit_tag("soft_sl_close", -5.0) == "SOFT SL"
     assert classify_exit_tag("tp", 10.0) == "TP HIT"
     assert classify_exit_tag("catastrophe_sl", -20.0) == "CATASTROPHE SL"
-    assert classify_exit_tag("manual", 0.0) == "TRADE CLOSED"
+    assert classify_exit_tag("sl", -20.0) == "CATASTROPHE SL"
+    assert classify_exit_tag("stop_out", -50.0) == "MARGIN STOP-OUT"
+    assert classify_exit_tag("expert", 3.0) == "EA/EXPERT CLOSE"
+    # "manual" is the honest fallback for an unresolved close cause — it
+    # must NOT read as a stop-loss just because pnl happens to be negative
+    # (that mislabeled a real +$2.98 take-profit as "CATASTROPHE SL" on
+    # 2026-07-02; see agent/live/monitor.py::_handle_close).
+    assert classify_exit_tag("manual", 0.0) == "CLOSED (cause unconfirmed)"
+    assert classify_exit_tag("manual", -3.0) == "CLOSED (cause unconfirmed)"
+    assert classify_exit_tag("unknown", 2.0) == "CLOSED (cause unconfirmed)"
 
 
 def test_signal_detected_before_order(caplog):

@@ -58,6 +58,7 @@ from agent.live.broker import create_broker
 from agent.live.config import LiveConfig
 from agent.live.router_wiring import UndeployedSymbolError, build_live_routes
 from agent.live.signal_loop import SignalLoop
+from agent.utils import kill_switch_reason
 
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 
@@ -225,7 +226,18 @@ def parse_args() -> argparse.Namespace:
 
 
 def _build_live_config(cfg, args: argparse.Namespace,
-                       timeframes: list[str]) -> LiveConfig:
+                       timeframes: list[str], log_root: Path) -> LiveConfig:
+    # Kill file lives at {log_root}/{SYMBOL}/kill.txt — next to that symbol's
+    # state.json and logs — NOT a bare "kill.txt" relative to the process's
+    # CWD. Three symbol processes are normally launched from the same repo
+    # directory, so a bare relative path is a single shared file: one
+    # symbol's false-alarm auto-halt (e.g. a broker-maintenance disconnect
+    # misread as a 100% drawdown) silently halted the other two symbols as
+    # well, for days, with no indication why. Scoping it per symbol means a
+    # false alarm on one pair can no longer take the others down with it.
+    # (The separate, deliberately-global agent.config.kill_switch_file is
+    # unaffected — that one is the manual "stop everything" master switch.)
+    kill_file = str(log_root / cfg.symbol / "kill.txt")
     live = LiveConfig(
         symbol=cfg.symbol,
         timeframes=timeframes,
@@ -238,6 +250,7 @@ def _build_live_config(cfg, args: argparse.Namespace,
         revenge_guard_enabled=not args.no_revenge_guard,
         paper_initial_balance=args.balance if args.balance is not None else 10000.0,
         telegram_enabled=not args.no_telegram,
+        kill_file=kill_file,
     )
     return live
 
@@ -331,7 +344,25 @@ def main() -> None:
         alphas = [ReactionAlpha(cfg, name="reaction")]
         timeframes = args.timeframe or [cfg.primary_timeframe]
 
-    live = _build_live_config(cfg, args, timeframes)
+    live = _build_live_config(cfg, args, timeframes, log_root)
+    log.info("Kill file: %s", live.kill_file)
+
+    # Pre-flight: a kill file surviving a VM/script restart is exactly what
+    # silently halted the agent for days after the 2026-07-02 Exness
+    # maintenance window — restarting PowerShell never cleared it, and
+    # nothing printed WHY nothing was trading. Surface it loudly and refuse
+    # to proceed rather than spin up a loop that will just keep skipping.
+    for kill_path in (Path(live.kill_file), cfg.kill_switch_file):
+        reason = kill_switch_reason(kill_path)
+        if reason is not None:
+            log.error(
+                "REFUSING TO START: kill switch file already present at %s\n"
+                "Reason recorded when it was created:\n%s\n"
+                "Delete this file (after confirming it's safe to resume) "
+                "and restart, or pass --kill-switch off to ignore it.",
+                kill_path, reason,
+            )
+            sys.exit(1)
 
     health_loop = asyncio.new_event_loop()
     try:

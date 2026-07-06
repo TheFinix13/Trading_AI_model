@@ -384,7 +384,17 @@ def log_partial_scaleout(
 
 
 def classify_exit_tag(exit_reason: str, pnl: float) -> str:
-    """Map internal exit_reason to a log tag."""
+    """Map internal exit_reason to a log tag.
+
+    "sl"/"catastrophe_sl" here mean a CONFIRMED broker-side stop fill —
+    either read back from MT5's own trade history (authoritative) or
+    matched by price proximity to a known level. "manual" is the honest
+    fallback for a close the monitor could neither attribute to a broker
+    history record nor a known price level — it must NOT be dressed up as
+    a stop-loss just because the last-seen P&L happened to be negative
+    (that mislabeled a real +$2.98 take-profit as a "CATASTROPHE SL" loss
+    on 2026-07-02; see agent/live/monitor.py::_handle_close).
+    """
     if exit_reason in ("soft_sl_close", "soft_sl_panic"):
         return "SOFT SL"
     if exit_reason == "soft_sl_inferred_overshoot":
@@ -395,6 +405,12 @@ def classify_exit_tag(exit_reason: str, pnl: float) -> str:
         return "CATASTROPHE SL"
     if exit_reason == "sl":
         return "CATASTROPHE SL"
+    if exit_reason == "stop_out":
+        return "MARGIN STOP-OUT"
+    if exit_reason == "expert":
+        return "EA/EXPERT CLOSE"
+    if exit_reason in ("manual", "unknown"):
+        return "CLOSED (cause unconfirmed)"
     if pnl > 0:
         return "TRADE CLOSED"
     if pnl < 0:

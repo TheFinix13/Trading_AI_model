@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Callable
 
 from agent.config import Config
-from agent.live.broker import BrokerConnection, OrderResult, Position
+from agent.live.broker import BrokerConnection, BrokerReadError, ClosedTrade, OrderResult, Position
 from agent.live.config import LiveConfig
 from agent.live.soft_stop import SoftStopConfig, evaluate_soft_stop
 from agent.live.trade_events import (
@@ -30,7 +30,7 @@ from agent.live.trade_events import (
 )
 from agent.notifications.telegram import TelegramNotifier
 from agent.types import Direction
-from agent.utils import kill_switch_active
+from agent.utils import kill_switch_active, kill_switch_reason
 
 log = logging.getLogger(__name__)
 
@@ -301,16 +301,39 @@ class PositionMonitor:
         try:
             # Kill switch check — emergency close all
             kill_path = Path(self.live_config.kill_file)
-            if kill_switch_active(kill_path) or kill_switch_active(self.config.kill_switch_file):
+            active_path: Path | None = None
+            if kill_switch_active(kill_path):
+                active_path = kill_path
+            elif kill_switch_active(self.config.kill_switch_file):
+                active_path = self.config.kill_switch_file
+            if active_path is not None:
                 # Only react once to avoid repeated notifications/log spam.
                 if not self._kill_switch_handled:
                     self._kill_switch_handled = True
-                    await self._emergency_close_all("Kill switch activated", create_kill_file=False)
+                    reason = kill_switch_reason(active_path) or "(no reason recorded in file)"
+                    log.warning("Kill switch ACTIVE at %s. Reason recorded "
+                                "when it was created:\n%s", active_path, reason)
+                    await self._emergency_close_all(
+                        f"Kill switch activated ({active_path.name}): {reason}",
+                        create_kill_file=False,
+                    )
                 return
+            self._kill_switch_handled = False
 
             symbol = self.live_config.symbol
             positions = await self.broker.get_open_positions(symbol)
-            account = await self.broker.get_account_info()
+            try:
+                account = await self.broker.get_account_info()
+            except BrokerReadError as e:
+                # Terminal couldn't be read this cycle (e.g. a scheduled
+                # broker-maintenance disconnect) — NOT a real $0 balance.
+                # Skip this cycle only; the next poll (a few seconds away)
+                # almost always succeeds once the terminal reconnects. Log
+                # at WARNING (not swallowed at debug) so a sustained outage
+                # is actually visible instead of silent for days.
+                log.warning("Account read failed this cycle, skipping (will "
+                            "retry next poll): %s", e)
+                return
             self.last_account = account
             self.last_open_position_count = len(positions)
 
@@ -365,7 +388,7 @@ class PositionMonitor:
             closed_tickets = self._known_tickets - current_tickets
             if closed_tickets:
                 for ticket in closed_tickets:
-                    self._handle_close(ticket)
+                    await self._handle_close(ticket)
                 self._breakeven_applied -= closed_tickets
                 self._partial_applied -= closed_tickets
 
@@ -520,7 +543,7 @@ class PositionMonitor:
         if pos.take_profit is not None and pos.take_profit > 0:
             exc["broker_tp"] = float(pos.take_profit)
 
-    def _handle_close(self, ticket: int) -> None:
+    async def _handle_close(self, ticket: int) -> None:
         """Reconstruct exit info for a closed ticket and fire the callback."""
         exc = self._excursion.pop(ticket, None)
         ctx = self._entry_ctx.pop(ticket, None)
@@ -531,6 +554,27 @@ class PositionMonitor:
         exc = exc or {}
         ctx = ctx or {}
         close_result = close_result or {}
+
+        # If WE didn't close this ticket ourselves (no close_result), the
+        # broker closed it on its own — a TP/SL order filling, a margin
+        # stop-out, or a manual close in the terminal. Ask the broker's own
+        # trade history for the true fill: our last-polled tick can be up
+        # to one full poll cycle (a few seconds) stale, which is plenty of
+        # time during a fast news move for the position to have crossed
+        # from a small floating loss into a real take-profit (or vice
+        # versa). Confirmed on 2026-07-02: a real +$2.98 TP fill was logged
+        # as a -$0.87 loss purely because of this staleness. Broker history
+        # is ground truth when available; a broken/mocked broker or one
+        # with no history support just returns None and we fall back to
+        # the pre-existing best-effort estimate below.
+        broker_trade: ClosedTrade | None = None
+        if not close_result:
+            try:
+                broker_trade = await self.broker.get_closed_trade(
+                    ticket, self.live_config.symbol
+                )
+            except Exception as e:
+                log.debug("get_closed_trade(%d) unavailable: %s", ticket, e)
 
         # When entry_ctx is empty (pre-observability adoption, or a state
         # sidecar that lost the ticket between cycles), synthesise a minimal
@@ -571,20 +615,44 @@ class PositionMonitor:
         stop = ctx.get("soft_stop", ctx.get("stop"))
         broker_stop = ctx.get("stop")
         tp = ctx.get("take_profit")
-        # Prefer the broker's actual fill captured at the close site — that's
-        # the authoritative exit. Fall back to the last tracked tick price
-        # (close to fill within one cycle) and, only as a final resort, the
-        # entry price. The last branch is suspicious: it means we missed BOTH
-        # the close-result capture AND the excursion update.
-        if close_result:
+
+        def _pips_from(price: float) -> float:
+            return ((price - entry_price) if direction == "long"
+                     else (entry_price - price)) * 10000
+
+        # Exit price / P&L preference order:
+        #   1) Broker trade history (get_closed_trade) — ground truth for a
+        #      close WE did not initiate ourselves. See docstring above.
+        #   2) close_result — the fill WE captured when OUR software issued
+        #      the close (soft stop, breakeven, emergency close).
+        #   3) Last tracked tick price — a best-effort estimate for when we
+        #      have neither, e.g. a broker without history support.
+        if broker_trade is not None:
+            exit_price = broker_trade.exit_price
+            pnl = broker_trade.profit
+            pnl_pips = _pips_from(exit_price)
+        elif close_result:
             exit_price = close_result["exit_price"]
             pnl_pips = close_result["pnl_pips"]
+            # Pnl preference within the close_result branch:
+            #   a) Broker's floating profit at close request time — this is
+            #      what the account currency settled at and is robust to
+            #      degenerate broker close responses.
+            #   b) Last-tick floating profit from the excursion dict.
+            #   c) Our own pip-math estimate from the captured fill_price.
+            # Never let a stale $0 mask a real loss.
+            pnl = 0.0
+            if close_result.get("broker_profit"):
+                pnl = float(close_result["broker_profit"])
+            if not pnl:
+                pnl = float(exc.get("last_profit", 0.0))
+            if not pnl:
+                pnl = float(close_result.get("pnl_estimate", 0.0))
         else:
             exit_price = exc.get("last_price", entry_price)
-            if direction == "long":
-                pnl_pips = (exit_price - entry_price) * 10000
-            else:
-                pnl_pips = (entry_price - exit_price) * 10000
+            pnl_pips = _pips_from(exit_price)
+            pnl = float(exc.get("last_profit", 0.0))
+
         # R-multiple denominator: prefer the soft stop (intended risk).
         # If neither soft nor broker stop is in ctx, fall back to the
         # captured broker SL — preferring the close-time snapshot, then
@@ -596,25 +664,16 @@ class PositionMonitor:
                     or exc.get("broker_stop"))
         stop_pips = abs(entry_price - stop) * 10000 if stop else 0.0
         r_multiple = (pnl_pips / stop_pips) if stop_pips > 0 else 0.0
-        # Pnl preference order:
-        #   1) Broker's floating profit at close request time (close_result.broker_profit)
-        #      — this is what the account currency settled at and is robust to
-        #        degenerate broker close responses.
-        #   2) Last-tick floating profit from the excursion dict.
-        #   3) Our own pip-math estimate from the captured fill_price.
-        # Never let a stale $0 mask a real loss.
-        pnl = 0.0
-        if close_result.get("broker_profit"):
-            pnl = float(close_result["broker_profit"])
-        if not pnl:
-            pnl = float(exc.get("last_profit", 0.0))
-        if (not pnl) and close_result:
-            pnl = float(close_result.get("pnl_estimate", 0.0))
 
-        # Prefer the true reason if WE closed it (soft stop / breakeven); else
-        # infer from proximity to TP/SL.
+        # Reason preference: WE forced it (soft stop / breakeven) > broker
+        # history says what actually happened > price-proximity match as a
+        # last resort. Deliberately no pnl-sign guessing anymore — an
+        # unresolved cause stays honestly "manual" rather than being
+        # dressed up as a confirmed stop-loss (see docstring above).
         if forced_reason:
             reason = forced_reason
+        elif broker_trade is not None:
+            reason = broker_trade.reason
         else:
             tol_pips = 3.0
             reason = "manual"
@@ -624,10 +683,6 @@ class PositionMonitor:
                   and abs(exit_price - broker_stop) * 10000 <= tol_pips):
                 reason = "catastrophe_sl"
             elif (stop is not None and abs(exit_price - stop) * 10000 <= tol_pips):
-                reason = "sl"
-            elif pnl_pips > 0:
-                reason = "tp"
-            elif pnl_pips < 0:
                 reason = "sl"
 
         exit_tag = classify_exit_tag(reason, pnl)
@@ -798,11 +853,36 @@ class PositionMonitor:
         else:
             return new_stop < pos.stop_loss
 
+    # A daily-DD halt closing every position is a very disruptive action —
+    # require BOTH readings to look like a real account before trusting them.
+    # get_account_info() now raises rather than returning a fake $0 account
+    # (see broker.py), but this is a second, independent floor: any other
+    # future bug that produces a garbage balance/equity reading should also
+    # be unable to trigger a false emergency close.
+    _MIN_PLAUSIBLE_BALANCE = 1.0
+    # No single poll cycle should legitimately blow through this much
+    # equity — position sizing caps risk-per-trade far below this. A
+    # computed drawdown this large is almost certainly a bad reading
+    # (e.g. balance/equity of 0 or near-0), not a real loss.
+    _MAX_PLAUSIBLE_DD_PCT = 0.60
+
     async def _check_daily_dd(
         self, balance: float, equity: float, positions: list[Position]
     ) -> None:
         """Check if daily drawdown limit has been breached."""
         today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+
+        # Sanity floor: a zero/negative reading is never a real account
+        # state — it means the terminal gave us garbage this cycle. Skip
+        # (don't halt, don't even roll the day) rather than let it flow
+        # into a 100% "drawdown" that panic-closes every open position.
+        if balance <= self._MIN_PLAUSIBLE_BALANCE or equity <= self._MIN_PLAUSIBLE_BALANCE:
+            log.warning(
+                "Daily DD check skipped: implausible account reading "
+                "(balance=%.2f, equity=%.2f) — not halting on this.",
+                balance, equity,
+            )
+            return
 
         # Reset on new day
         if today != self._current_day:
@@ -810,13 +890,22 @@ class PositionMonitor:
             self._day_start_balance = balance
             return
 
-        if self._day_start_balance <= 0:
+        if self._day_start_balance <= self._MIN_PLAUSIBLE_BALANCE:
             self._day_start_balance = balance
             return
 
         # Calculate DD from day-start balance to current equity
         dd_pct = (self._day_start_balance - equity) / self._day_start_balance
         max_dd = self.live_config.max_daily_dd_pct / 100.0
+
+        if dd_pct >= self._MAX_PLAUSIBLE_DD_PCT:
+            log.warning(
+                "Daily DD check skipped: computed drawdown %.1f%% is "
+                "implausible for a single cycle (day_start=%.2f, equity=%.2f) "
+                "— treating as a bad reading, not a real loss.",
+                dd_pct * 100, self._day_start_balance, equity,
+            )
+            return
 
         if dd_pct >= max_dd:
             log.warning(

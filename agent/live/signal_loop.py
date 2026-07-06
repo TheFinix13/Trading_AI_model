@@ -55,7 +55,7 @@ from agent.risk.manager import RiskDecision, RiskManager
 from agent.risk.post_loss_guard import GuardConfig, PostLossGuard
 from agent.rules.engine import precompute
 from agent.types import Direction, Setup, Timeframe
-from agent.utils import kill_switch_active
+from agent.utils import kill_switch_active, kill_switch_reason
 
 log = logging.getLogger(__name__)
 
@@ -167,6 +167,10 @@ class SignalLoop:
         self._max_consecutive_errors = 5
         self._last_balance: float | None = None
         self._last_heartbeat: datetime | None = None
+        # Only blast the loud "why" banner once per activation; subsequent
+        # skipped iterations log at debug so a multi-day halt doesn't spam
+        # the file with an identical WARNING every poll cycle.
+        self._kill_switch_reason_logged: bool = False
 
     # ------------------------------------------------------------------
     # Crash-resilient state persistence
@@ -383,9 +387,24 @@ class SignalLoop:
     async def _iteration(self) -> None:
         try:
             kill_path = Path(self.live_config.kill_file)
-            if kill_switch_active(kill_path) or kill_switch_active(self.config.kill_switch_file):
-                log.warning("Kill switch active — skipping iteration")
+            active_path: Path | None = None
+            if kill_switch_active(kill_path):
+                active_path = kill_path
+            elif kill_switch_active(self.config.kill_switch_file):
+                active_path = self.config.kill_switch_file
+            if active_path is not None:
+                if not self._kill_switch_reason_logged:
+                    self._kill_switch_reason_logged = True
+                    reason = kill_switch_reason(active_path) or "(no reason recorded in file)"
+                    log.warning(
+                        "Kill switch ACTIVE at %s — skipping iterations until "
+                        "removed. Reason recorded when it was created:\n%s",
+                        active_path, reason,
+                    )
+                else:
+                    log.debug("Kill switch active — skipping iteration")
                 return
+            self._kill_switch_reason_logged = False
             for tf in self.live_config.timeframes:
                 await self._check_for_signals(tf)
             self._consecutive_errors = 0

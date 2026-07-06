@@ -91,6 +91,33 @@ class OrderResult:
     message: str = ""
 
 
+@dataclass
+class ClosedTrade:
+    """Authoritative closing fill for a ticket, sourced from broker history.
+
+    The position monitor polls open positions every few seconds; if the
+    BROKER closes a position on its own between two polls (a TP/SL order
+    filling, a margin stop-out, or the user closing manually in the
+    terminal) our own last-polled tick can be stale enough — during a fast
+    news move — to get not just the size but the SIGN of the P&L wrong.
+    ``get_closed_trade`` looks up what actually happened from the broker's
+    own trade history, which is ground truth. ``reason`` is one of "tp",
+    "sl" (a real protective-stop order filled), "stop_out" (margin call),
+    "manual" (closed in the terminal / by an EA), or "unknown".
+    """
+    exit_price: float
+    profit: float
+    reason: str
+    close_time: datetime | None = None
+
+
+class BrokerReadError(RuntimeError):
+    """Raised when the broker terminal can't currently be read (e.g. a
+    transient disconnect during broker-side maintenance). Distinct from a
+    real zero-balance account — callers must NOT treat this as "equity is
+    $0 right now"; they should skip the current cycle and retry."""
+
+
 # ---------------------------------------------------------------------------
 # Abstract base
 # ---------------------------------------------------------------------------
@@ -192,6 +219,14 @@ class BrokerConnection(ABC):
     async def get_current_price(self, symbol: str) -> tuple[float, float]:
         """Get current bid/ask for a symbol. Returns (bid, ask)."""
         ...
+
+    async def get_closed_trade(self, ticket: int, symbol: str) -> ClosedTrade | None:
+        """Look up the authoritative closing fill for ``ticket`` from broker
+        history. Returns ``None`` if the broker has no such record (e.g. the
+        paper broker, or the deal hasn't synced to history yet) — callers
+        must fall back to their own tracked estimate in that case. Default
+        no-op for brokers that don't support/need history lookups."""
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +571,17 @@ class MT5Broker(BrokerConnection):
         def _info():
             info = mt5.account_info()
             if info is None:
-                return AccountInfo(0, 0, 0, 0, 0)
+                # A None read means the terminal couldn't currently reach
+                # the broker (e.g. a scheduled-maintenance disconnect) — it
+                # is NOT the same thing as a real $0 balance. Fabricating a
+                # zero account here previously caused a false "100% daily
+                # drawdown" halt (equity read as 0 against a real ~$1000
+                # day-start balance) that panic-closed positions and wrote
+                # the kill switch. Raise instead so the caller skips this
+                # cycle and retries — the next poll a few seconds later
+                # almost always succeeds once the terminal reconnects.
+                err = mt5.last_error()
+                raise BrokerReadError(f"mt5.account_info() returned None (last_error={err})")
             return AccountInfo(
                 balance=info.balance,
                 equity=info.equity,
@@ -561,6 +606,53 @@ class MT5Broker(BrokerConnection):
             return (tick.bid, tick.ask)
 
         return await asyncio.to_thread(_price)
+
+    async def get_closed_trade(self, ticket: int, symbol: str) -> ClosedTrade | None:
+        """Fetch the authoritative closing deal(s) for ``ticket`` from MT5's
+        trade history. Needed because the position monitor polls every few
+        seconds; if the broker's own TP/SL order fills between two polls —
+        routine during a fast news move — our own last-seen snapshot can be
+        stale enough to report the wrong SIGN of P&L, not just the wrong
+        size (observed 2026-07-02: a real +$2.98 take-profit was logged as
+        a -$0.87 loss because the last poll before the fill still showed a
+        small floating loss)."""
+        mt5 = self._mt5
+
+        def _query():
+            deals = mt5.history_deals_get(position=ticket)
+            if not deals:
+                return None
+            # DEAL_ENTRY_OUT = the deal(s) that closed the position (as
+            # opposed to DEAL_ENTRY_IN, which opened it). A partial close
+            # can produce more than one OUT deal; aggregate them.
+            closers = [d for d in deals if d.entry == mt5.DEAL_ENTRY_OUT]
+            if not closers:
+                return None
+            total_volume = sum(d.volume for d in closers)
+            if total_volume <= 0:
+                return None
+            avg_price = sum(d.price * d.volume for d in closers) / total_volume
+            total_profit = sum(d.profit + d.swap + d.commission for d in closers)
+            reason_map = {
+                getattr(mt5, "DEAL_REASON_SL", -101): "sl",
+                getattr(mt5, "DEAL_REASON_TP", -102): "tp",
+                getattr(mt5, "DEAL_REASON_SO", -103): "stop_out",
+                getattr(mt5, "DEAL_REASON_CLIENT", -104): "manual",
+                getattr(mt5, "DEAL_REASON_MOBILE", -105): "manual",
+                getattr(mt5, "DEAL_REASON_WEB", -106): "manual",
+                getattr(mt5, "DEAL_REASON_EXPERT", -107): "expert",
+            }
+            last = closers[-1]
+            reason = reason_map.get(last.reason, "unknown")
+            close_time = datetime.fromtimestamp(last.time, tz=timezone.utc)
+            return ClosedTrade(exit_price=avg_price, profit=total_profit,
+                                reason=reason, close_time=close_time)
+
+        try:
+            return await asyncio.to_thread(_query)
+        except Exception as e:
+            log.warning("get_closed_trade(ticket=%d) failed: %s", ticket, e)
+            return None
 
 
 # ---------------------------------------------------------------------------

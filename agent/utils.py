@@ -54,3 +54,22 @@ def kill_switch_active(path: Path | str) -> bool:
     if str(os.getenv("SKIP_KILL_SWITCH", "")).strip().lower() in {"1", "true", "yes", "on"}:
         return False
     return Path(path).exists()
+
+
+def kill_switch_reason(path: Path | str) -> str | None:
+    """Return the kill file's own content (the reason it was created,
+    written by ``_emergency_close_all``) if the file exists, else ``None``.
+
+    The kill switch itself already carries this — previously callers only
+    ever logged "kill switch active", forcing the operator to go dig up the
+    file by hand (or, worse, never notice it and just keep restarting).
+    """
+    if str(os.getenv("SKIP_KILL_SWITCH", "")).strip().lower() in {"1", "true", "yes", "on"}:
+        return None
+    p = Path(path)
+    if not p.exists():
+        return None
+    try:
+        return p.read_text(encoding="utf-8").strip() or "(empty kill file)"
+    except OSError:
+        return "(kill file exists but could not be read)"
