@@ -344,7 +344,7 @@ class SignalLoop:
             except asyncio.CancelledError:
                 pass
             await self.broker.disconnect()
-            self.notifier.notify_text("*Agent OFFLINE*")
+            self.notifier.notify_text(f"*Agent OFFLINE*\nSymbol: `{self.live_config.symbol}`")
             log.info("Signal loop stopped")
 
     async def stop(self) -> None:
