@@ -201,7 +201,8 @@ untouched.
 | Router | `agent/alphas/zone_routing.py` |
 | M001 seed (keep) | `agent/alphas/allocator.py` — Ledoit-Wolf, long-only weights |
 | Live | `scripts/run_live.py`, `agent/live/signal_loop.py`, `agent/live/state_store.py`, `agent/live/monitor.py`, `agent/live/broker.py` (`ClosedTrade`, `BrokerReadError`) |
-| Deployment | `scripts/watchdog_agent.ps1` (per-symbol restart loop, Task Scheduler-launched), `scripts/deploy_windows.ps1`, `scripts/notify_telegram.py`, `docs/08-live-trading-and-deployment.md` |
+| Deployment | `scripts/watchdog_agent.ps1` (per-symbol restart loop, Task Scheduler-launched), `scripts/deploy_windows.ps1`, `docs/08-live-trading-and-deployment.md` |
+| Notifications | `agent/notifications/telegram.py`, `agent/notifications/healthcheck.py` (external dead-man's-switch), `scripts/notify_telegram.py`, `scripts/ping_healthcheck.py` |
 | Risk | `agent/risk/manager.py` (per-symbol + portfolio ceiling), `agent/risk/sizing.py`, `agent/risk/post_loss_guard.py`, `agent/config.py::RiskConfig` |
 | Vaults / ladder / reports | `agent/journal/vault.py`, `agent/journal/target_ladder.py`, `agent/reports/rejection_review.py`, `scripts/daily_summary.py` |
 | Validation | `scripts/run_zone_all_tfs.py`, `scripts/run_ablation.py`, `scripts/run_walk_forward.py` |
@@ -221,10 +222,20 @@ set in the VM's `.env`, `scripts/notify_telegram.py` smoke test sent
 successfully, and all 3 processes posted `Agent ONLINE` to the bot on
 restart (screenshotted by user). Notifier already covers trade open/close,
 ladder events (partial scale-out, BE move, soft-stop exit), emergency
-close, and consecutive-error halts — the one known gap is a genuine hard
-VM freeze/crash, which can't send its own "going offline" message (nothing
-is running to send it); a healthchecks.io-style external dead-man's-switch
-ping would close that gap but hasn't been asked for yet.
+close, and consecutive-error halts — the one known gap was a genuine hard
+VM freeze/crash, which can't send its own "going offline" message. Closed:
+added `agent/notifications/healthcheck.py` (`HealthcheckPinger`, mirrors
+`TelegramNotifier`'s fail-open contract) pinging an external
+healthchecks.io-compatible URL once per 15-min heartbeat
+(`SignalLoop._maybe_heartbeat`); `PositionMonitor._emergency_close_all`
+and the consecutive-error halt also fire an immediate `/fail` ping instead
+of waiting for the grace period. Reads `HEALTHCHECK_URL_<SYMBOL>` (falls
+back to shared `HEALTHCHECK_URL`) — unset is a harmless no-op. Smoke test:
+`scripts/ping_healthcheck.py` (same pass/fail-exit-code contract as
+`notify_telegram.py`). 13 new tests (`tests/test_healthcheck.py`).
+`docs/08-live-trading-and-deployment.md` has the healthchecks.io setup
+steps. Not yet configured on the VM (user must create the checks and set
+the env vars, then smoke-test).
 
 Item 7 (self-healing after reboot) turned out to need correcting: **NSSM /
 a Windows service will NOT work here** — `MetaTrader5`'s Python API needs

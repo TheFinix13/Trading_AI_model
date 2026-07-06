@@ -28,6 +28,7 @@ from agent.live.trade_events import (
     log_soft_stop_fired,
     log_trade_closed,
 )
+from agent.notifications.healthcheck import HealthcheckPinger
 from agent.notifications.telegram import TelegramNotifier
 from agent.types import Direction
 from agent.utils import kill_switch_active, kill_switch_reason
@@ -52,6 +53,7 @@ class PositionMonitor:
         config: Config,
         live_config: LiveConfig,
         notifier: TelegramNotifier | None = None,
+        healthcheck: HealthcheckPinger | None = None,
         check_interval: float = 5.0,
         trade_closed_cb: Callable[[int, dict], None] | None = None,
         soft_stop_cfg: SoftStopConfig | None = None,
@@ -61,6 +63,7 @@ class PositionMonitor:
         self.config = config
         self.live_config = live_config
         self.notifier = notifier or TelegramNotifier.from_env(dry_run=True)
+        self.healthcheck = healthcheck or HealthcheckPinger()
         self.check_interval = check_interval
         # Optional callback invoked when an open position closes, with
         # (ticket, exit_info dict). Used to journal exits + feed learning.
@@ -986,6 +989,7 @@ class PositionMonitor:
                 log.error("Failed to close ticket=%d: %s", pos.ticket, result.message)
 
         self.notifier.notify_text(f"*EMERGENCY CLOSE*\n`{reason}`\nClosed {len(positions)} positions")
+        self.healthcheck.ping_fail(reason)
 
         # Create kill switch to prevent re-entry (only once).
         if create_kill_file:

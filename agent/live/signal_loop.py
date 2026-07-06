@@ -50,6 +50,7 @@ from agent.live.trade_events import (
     log_signal_detected,
     log_trade_opened,
 )
+from agent.notifications.healthcheck import HealthcheckConfig, HealthcheckPinger
 from agent.notifications.telegram import TelegramConfig, TelegramNotifier
 from agent.risk.manager import RiskDecision, RiskManager
 from agent.risk.post_loss_guard import GuardConfig, PostLossGuard
@@ -139,6 +140,10 @@ class SignalLoop:
         tcfg = TelegramConfig.from_env() if self.live_config.telegram_enabled else TelegramConfig()
         self.notifier = TelegramNotifier(tcfg)
 
+        hcfg = (HealthcheckConfig.from_env(symbol=self.live_config.symbol)
+                if self.live_config.healthcheck_enabled else HealthcheckConfig())
+        self.healthcheck = HealthcheckPinger(hcfg)
+
         self.soft_stop_cfg = SoftStopConfig(
             enabled=self.live_config.soft_stop_enabled,
             confirm_on_close=self.live_config.soft_stop_confirm_on_close,
@@ -151,6 +156,7 @@ class SignalLoop:
             config=self.config,
             live_config=self.live_config,
             notifier=self.notifier,
+            healthcheck=self.healthcheck,
             soft_stop_cfg=self.soft_stop_cfg,
             trade_closed_cb=self._on_trade_closed,
             on_state_change=(
@@ -420,6 +426,7 @@ class SignalLoop:
                     f"{self._max_consecutive_errors} consecutive errors.\n"
                     f"Last: `{str(e)[:200]}`"
                 )
+                self.healthcheck.ping_fail(f"{self._max_consecutive_errors} consecutive errors: {e}")
                 self._running = False
 
     async def _check_for_signals(self, timeframe: str) -> None:
@@ -917,3 +924,4 @@ class SignalLoop:
             status = "running (account snapshot pending)"
         log.info("heartbeat: %s | next H4 close ~%s UTC",
                  status, next_h4_close_utc(now).strftime("%H:%M"))
+        self.healthcheck.ping()

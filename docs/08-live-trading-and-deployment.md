@@ -165,6 +165,44 @@ Verify by rebooting (or logging off/on): MT5 should reappear, and within
 ~1 minute you should get three `Agent ONLINE` messages on Telegram with no
 one touching a keyboard.
 
+### The one thing this still can't catch: a genuine VM freeze
+
+Every alert above (Telegram included) is sent *by the agent process*. If
+the whole VM hard-freezes, there's no code left running to send anything —
+it just goes silent, watchdog and all. The only way to catch that is an
+**external** dead-man's-switch: something outside the VM that expects a
+periodic ping and raises its own alarm when one goes missing.
+
+`agent/notifications/healthcheck.py` pings such a service (any provider
+compatible with [healthchecks.io](https://healthchecks.io)'s simple
+GET-to-URL contract; free tier is generous and has a built-in Telegram
+integration) once per heartbeat (every 15 min) — no code change needed,
+just set the URL:
+
+1. Create a free account at [healthchecks.io](https://healthchecks.io),
+   add one check per symbol (Period ≈ 20 min, Grace ≈ 15 min — tolerates
+   one missed ping before alerting, catches two in a row within ~35–50 min
+   of the freeze starting).
+2. Add each check's ping URL to the VM's `.env`:
+   ```env
+   HEALTHCHECK_URL_EURUSD=https://hc-ping.com/<eurusd-check-uuid>
+   HEALTHCHECK_URL_GBPUSD=https://hc-ping.com/<gbpusd-check-uuid>
+   HEALTHCHECK_URL_USDCAD=https://hc-ping.com/<usdcad-check-uuid>
+   ```
+3. Under each check's Integrations tab, add Telegram (or email) so a missed
+   heartbeat pages you the same way a halt already does.
+4. Smoke-test before trusting it: `python scripts/ping_healthcheck.py
+   --symbol EURUSD` (exit code doubles as pass/fail, same contract as
+   `notify_telegram.py`).
+
+An emergency close (daily-DD halt or kill switch) also fires an immediate
+`/fail` ping instead of waiting for the grace period, so a real risk event
+pages you at the same speed on both channels.
+
+Note: an *intentional* stop (e.g. Ctrl+C to pull new code) will also trip
+the check if you don't restart within the grace window — that's a correct,
+if slightly noisy, "yes it's actually down" alert, not a bug.
+
 ## 08.5 Exness / MT5 connection
 
 ### Get demo credentials
@@ -189,6 +227,9 @@ MT5_SERVER=Exness-MT5Trial7
 # Optional: Telegram alerts
 # TG_BOT_TOKEN=bot123456:ABC-DEF...
 # TG_CHAT_ID=123456789
+
+# Optional: external dead-man's-switch heartbeat (catches a VM freeze)
+# HEALTHCHECK_URL_EURUSD=https://hc-ping.com/<eurusd-check-uuid>
 ```
 
 ### Run
@@ -223,7 +264,7 @@ cell: `Routed cell: EURUSD/H4/all mode=htf_against risk_scale=1.00 ...`.
 - **Sizer skips every trade** — balance too small for H4 min-lot risk (see
   08.3). Increase the demo balance.
 - **"Connection lost"** — the agent auto-reconnects with backoff then exits
-  cleanly; NSSM restarts it.
+  cleanly; the Task Scheduler watchdog loop (§ above) restarts it.
 
 ### Monitoring & kill switch
 
@@ -233,7 +274,9 @@ echo halt > kill.txt
 ```
 
 Telegram alerts (trade open/close, DD halt, kill switch) activate when
-`TG_BOT_TOKEN` / `TG_CHAT_ID` are set in `.env`. The per-day journal
+`TG_BOT_TOKEN` / `TG_CHAT_ID` are set in `.env`. The external healthcheck
+heartbeat (catches a VM freeze that Telegram can't) activates when
+`HEALTHCHECK_URL_<SYMBOL>` is set — see 08.4 above. The per-day journal
 (markdown + JSONL) is the trade record; the v1 web dashboard was burned in the
 reset ([09](09-dashboard.md)).
 

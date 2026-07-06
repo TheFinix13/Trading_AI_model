@@ -70,6 +70,12 @@ class LiveConfig:
 
     # Notification
     telegram_enabled: bool = True
+    # External dead-man's-switch heartbeat (healthchecks.io or compatible).
+    # Only fires if HEALTHCHECK_URL / HEALTHCHECK_URL_<SYMBOL> is set in the
+    # environment; harmless no-op otherwise. Catches a genuine VM freeze,
+    # which Telegram's "Agent OFFLINE" message cannot (nothing is left
+    # running to send it).
+    healthcheck_enabled: bool = True
 
     # ML gate
     score_threshold: float = 0.55
