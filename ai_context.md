@@ -1,5 +1,30 @@
-# AI Context — brain dump (updated 2026-07-06, v0.26)
+# AI Context — brain dump (updated 2026-07-06, v0.27)
 
+> v0.27 — **`next-gen` branch split + progress dashboard + demo-launch
+> runbook (additive only — zero agent-behaviour change).** New branch
+> **`next-gen`** (forked from `main` @ `052515a`) is the next-generation
+> platform line: dashboards, runbooks, and future platform work land
+> here, fully separate from `main`, which the VM agent runs and which
+> stays uncontaminated; the intent is to graduate research-validated
+> strategies onto next-gen for heavier trading later. Shipped on it:
+> (1) `scripts/build_dashboard.py` — stdlib-only generator for a
+> self-contained dark-theme `reports/dashboard.html` (live-agent panel
+> from `zone_routing.survivors()` + `RiskConfig` defaults + ROADMAP +
+> test status; research panel parsing the M001 phi5-arm4 verdict JSONs +
+> `EXPERIMENTS.md` read-only from `../finance-research-experiments`, no
+> lab-code imports; a validated-vs-SIM-ONLY separation panel stating the
+> M001 ensemble is not trading). Regen:
+> `./.venv/bin/python scripts/build_dashboard.py && open reports/dashboard.html`.
+> Env handling: key NAMES only, never values. Missing research artifacts
+> degrade to "artifact not found" panels. (2)
+> `docs/RUNBOOK_demo_launch.md` — demo-MT5 launch/verify runbook
+> (entrypoint wiring, .env key names, VM Task-Scheduler/autologon
+> deployment, preflight checklist incl. both kill files + 5% portfolio
+> cap, aliveness table, paper dry-run, emergency stop; honest note that
+> `agent/news/` blackout exists but is NOT wired into the live loop).
+> Audit at branch time: 423/423 tests pass; `main` HEAD `052515a`
+> (TG multi-chat fan-out).
+>
 > v0.26 — **Near-miss vault chart redesign (observation tooling only, no
 > live-path change).** `agent/journal/chart_snapshot.py` rewritten: custom
 > TradingView-esque mplfinance style (was plain "yahoo"), auto-hiding
@@ -189,9 +214,11 @@ untouched.
   exit-reason resolution now queries MT5 trade history first
   (`get_closed_trade`) before ever guessing from a stale tick or pnl
   sign. 404 tests passing.
-- **Branches:** `main` = production; `m001-development` = pre-M001 baseline for
-  future M001 graduation; tag `v2-zone-d1-against-stable-2026-06-24` at
-  `6f1cc75` for rollback.
+- **Branches:** `main` = production (the VM agent — never contaminate);
+  `next-gen` = next-generation platform line (dashboard, runbooks, future
+  research-validated heavier trading; forked from `main` @ `052515a`);
+  `m001-development` = pre-M001 baseline for future M001 graduation; tag
+  `v2-zone-d1-against-stable-2026-06-24` at `6f1cc75` for rollback.
 
 ## 2) Key file paths
 
@@ -207,6 +234,7 @@ untouched.
 | Vaults / ladder / reports | `agent/journal/vault.py`, `agent/journal/target_ladder.py`, `agent/reports/rejection_review.py`, `scripts/daily_summary.py` |
 | Validation | `scripts/run_zone_all_tfs.py`, `scripts/run_ablation.py`, `scripts/run_walk_forward.py` |
 | Docs | `docs/CHECKPOINT.md`, `docs/00-overview.md`, `docs/archive/`, `docs/audits/` |
+| Platform (next-gen) | `scripts/build_dashboard.py` → `reports/dashboard.html`, `docs/RUNBOOK_demo_launch.md` |
 | M001 pointer | `docs/research/multi-agent-ensemble/README.md` |
 | Workspace setup | `.cursor/workspace-tips.md` (multi-root: this repo + research + brain-box) |
 
