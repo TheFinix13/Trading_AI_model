@@ -201,6 +201,7 @@ untouched.
 | Router | `agent/alphas/zone_routing.py` |
 | M001 seed (keep) | `agent/alphas/allocator.py` — Ledoit-Wolf, long-only weights |
 | Live | `scripts/run_live.py`, `agent/live/signal_loop.py`, `agent/live/state_store.py`, `agent/live/monitor.py`, `agent/live/broker.py` (`ClosedTrade`, `BrokerReadError`) |
+| Deployment | `scripts/watchdog_agent.ps1` (per-symbol restart loop, Task Scheduler-launched), `scripts/deploy_windows.ps1`, `scripts/notify_telegram.py`, `docs/08-live-trading-and-deployment.md` |
 | Risk | `agent/risk/manager.py` (per-symbol + portfolio ceiling), `agent/risk/sizing.py`, `agent/risk/post_loss_guard.py`, `agent/config.py::RiskConfig` |
 | Vaults / ladder / reports | `agent/journal/vault.py`, `agent/journal/target_ladder.py`, `agent/reports/rejection_review.py`, `scripts/daily_summary.py` |
 | Validation | `scripts/run_zone_all_tfs.py`, `scripts/run_ablation.py`, `scripts/run_walk_forward.py` |
@@ -210,21 +211,35 @@ untouched.
 
 ## 3) Next immediate goal
 
-**2026-07-06 live-agent reliability fixes — closed, VM update pending.**
-Five of seven items from the user's fix list are code changes, shipped
-(see v0.25 above). Remaining, NOT code (user must action on the VM):
-6) configure `TG_BOT_TOKEN`/`TG_CHAT_ID` in `.env` on the VM (currently
-unset — this is *why* the stuck kill switch went unnoticed for days).
-User confirmed going with Telegram (installing on phone). Added
-`scripts/notify_telegram.py` (was documented in `docs/archive/
-deployment.md` but never actually existed) so the token/chat-id pair can
-be smoke-tested (`python scripts/notify_telegram.py "test"`, exit code
-doubles as a pass/fail check) before trusting it live;
-7) optionally wrap the agent in an NSSM Windows service so a VM reboot
-self-heals instead of needing manual PowerShell restarts. Next VM deploy
-must pull `main` and note the kill file moved from a bare `kill.txt` to
-`{log_root}/{SYMBOL}/kill.txt` (any stale root-level `kill.txt` should be
-deleted once, then it's a non-issue going forward).
+**2026-07-06 live-agent reliability fixes — code shipped + verified live on
+VM.** All five code-fix items from the user's original list are live: VM
+pulled `main`, restarted all 3 symbol processes, logs confirm per-symbol
+kill files (`{log_root}/{SYMBOL}/kill.txt`, no shared-root bleed anymore),
+no stale kill-switch refusals, and daily state resets working. Item 6
+(Telegram) is also confirmed working end-to-end: `TG_BOT_TOKEN`/`TG_CHAT_ID`
+set in the VM's `.env`, `scripts/notify_telegram.py` smoke test sent
+successfully, and all 3 processes posted `Agent ONLINE` to the bot on
+restart (screenshotted by user). Notifier already covers trade open/close,
+ladder events (partial scale-out, BE move, soft-stop exit), emergency
+close, and consecutive-error halts — the one known gap is a genuine hard
+VM freeze/crash, which can't send its own "going offline" message (nothing
+is running to send it); a healthchecks.io-style external dead-man's-switch
+ping would close that gap but hasn't been asked for yet.
+
+Item 7 (self-healing after reboot) turned out to need correcting: **NSSM /
+a Windows service will NOT work here** — `MetaTrader5`'s Python API needs
+the same interactive desktop session the MT5 terminal runs in, and Windows
+services run isolated in Session 0 with no access to that desktop (a known
+MT5-automation limitation, confirmed via research, not repo-specific).
+Replaced with the standard pattern: Windows Autologon + MT5 in the Startup
+folder + one Task Scheduler task per symbol (`AtLogOn`, `LogonType
+Interactive`) running `scripts/watchdog_agent.ps1`, which loops
+`run_live.py` forever so a crash — not just a reboot — self-heals too.
+`docs/08-live-trading-and-deployment.md` rewritten accordingly (the old
+NSSM section was untested/aspirational). **Not yet executed on the VM** —
+user has the steps, pending: enable autologon, add MT5 to Startup, register
+the 3 scheduled tasks, then verify via reboot that all 3 `Agent ONLINE`
+messages arrive on Telegram unattended.
 
 **Multi-position-per-symbol question (2026-07-06):** confirmed the
 monitor already tracks every open ticket independently (`_entry_ctx`,

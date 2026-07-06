@@ -109,25 +109,61 @@ cd "$HOME\Documents\GitHub\multi-pair-trading-agent"
 .\scripts\deploy_windows.ps1
 ```
 
-### Running 24/5 as Windows services (NSSM) — one service per symbol
+### Running 24/5: Task Scheduler + autologon, NOT a Windows service
 
-> NSSM service names below are *per-symbol instances* (one Windows service per pair); they're independent of the renamed `multi-pair-agent` CLI binary.
+> **Do not use NSSM / a Windows service for this.** `MetaTrader5`'s Python
+> API talks to the MT5 terminal over local IPC that only works within the
+> terminal's own interactive desktop session. Windows Services (NSSM
+> included) run isolated in "Session 0" and cannot reach that desktop, so a
+> real service will likely fail to connect to MT5 at all, or connect to the
+> wrong/no terminal instance. This is a well-documented MT5 automation
+> gotcha, not specific to this repo. The reliable pattern is: Windows
+> Autologon (so an interactive desktop exists after a reboot with nobody
+> physically logging in) + MT5 in the Startup folder + a Task Scheduler task
+> per symbol running as that logged-on user, wrapped in a self-restarting
+> loop (`scripts\watchdog_agent.ps1`) so a process crash — not just a
+> reboot — also self-heals.
+
+**1. Enable autologon** (Microsoft [Sysinternals Autologon](https://learn.microsoft.com/en-us/sysinternals/downloads/autologon)) for the
+Windows account MT5 runs under. Without this, a reboot leaves the machine
+sitting at the lock screen with no desktop session for MT5 or the agent to
+run in.
+
+**2. Auto-start MT5**: put a shortcut to the MT5 terminal executable in the
+Startup folder (`Win+R` → `shell:startup`) so it launches and reconnects on
+logon, before the agent tries to attach to it.
+
+**3. Register one scheduled task per symbol**, running as the interactive
+user (adjust `$RepoDir` if your clone lives elsewhere):
 
 ```powershell
-nssm install eurusd-agent
-# Path:        ...\.venv\Scripts\python.exe
-# Arguments:   scripts\run_live.py --broker mt5
-# Startup dir: ...\multi-pair-trading-agent
-# Environment: SYMBOL=EURUSD
-nssm set eurusd-agent AppEnvironmentExtra SYMBOL=EURUSD
+$RepoDir = "$HOME\Documents\GitHub\multi-pair-trading-agent"
+$symbols = @("EURUSD", "GBPUSD", "USDCAD")
 
-nssm install gbpusd-agent   # same, with SYMBOL=GBPUSD
-nssm install usdcad-agent   # same, with SYMBOL=USDCAD
-
-nssm start eurusd-agent; nssm start gbpusd-agent; nssm start usdcad-agent
+foreach ($sym in $symbols) {
+    $action = New-ScheduledTaskAction -Execute "powershell.exe" `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$RepoDir\scripts\watchdog_agent.ps1`" -Symbol $sym" `
+        -WorkingDirectory $RepoDir
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    $trigger.Delay = "PT45S"   # give MT5 time to fully log in first
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries -StartWhenAvailable `
+        -ExecutionTimeLimit ([TimeSpan]::Zero)
+    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME `
+        -LogonType Interactive -RunLevel Limited
+    Register-ScheduledTask -TaskName "TradingAgent-$sym" -Action $action `
+        -Trigger $trigger -Settings $settings -Principal $principal -Force
+}
 ```
 
-Services auto-restart on crash and survive reboots.
+`watchdog_agent.ps1` runs `run_live.py` in an infinite loop, so a crash,
+kill-switch halt, or MT5 disconnect restarts that symbol's process on its
+own (15s backoff) without waiting for the next reboot. The Task Scheduler
+trigger only needs to fire once per logon session — the loop does the rest.
+
+Verify by rebooting (or logging off/on): MT5 should reappear, and within
+~1 minute you should get three `Agent ONLINE` messages on Telegram with no
+one touching a keyboard.
 
 ## 08.5 Exness / MT5 connection
 
