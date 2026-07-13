@@ -1,5 +1,27 @@
-# AI Context — brain dump (updated 2026-07-13, v0.30)
+# AI Context — brain dump (updated 2026-07-13, v0.31)
 
+> v0.31 — **Platform web UI (`scripts/serve_platform.py`) — hub + /v1
+> live view + /v2 squad pitch. Read-only; zero trading-logic change.**
+> One stdlib-only server, three pages. `/v1`: the running zones agent
+> per symbol — aliveness (log mtime vs the 15-min heartbeat contract),
+> open positions with excursion from `state.json`, day PnL / DD-halt /
+> post-loss-guard posture, kill switches, and a categorized decision
+> feed parsed from the daily logs; auto-refreshes every 10 s. `/v2`:
+> the M001 squad replayed as a football match on an SVG pitch — agents
+> in formation (`agent/platform/squad_events.py::ROSTER`), proposals as
+> passes, aggregator rejections as tackles, Sentinel blocks as the
+> wall, winning trades as goals — with playback speed control, match
+> ticker, and a per-match league table. Data plane reads the research
+> repo's `g7_replay_cache_*` artifact FILES read-only (never imports
+> lab code; path-traversal guarded); the cursor-paged event API is
+> designed so a future live paper-mode squad stream appending to the
+> same JSONL files needs zero client changes. Collectors extracted to
+> `agent/platform/{live_status,squad_events,pages}.py`;
+> `serve_live_dashboard.py` kept as the v1-only variant. VM usage
+> documented in RUNBOOK section 7b (second clone on `next-gen`, never
+> the trading clone; browse `http://<VM-IP>:8787` from the Mac).
+> 16 new tests in `tests/test_platform_server.py`. **479 tests pass.**
+>
 > v0.30 — **Telegram notification audit + healthcheck accuracy fixes
 > (observability layer only — zero trading-logic change).** Every live
 > Telegram message now leads with the symbol (`*SYMBOL | <event>*`) via

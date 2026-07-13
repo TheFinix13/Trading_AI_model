@@ -127,7 +127,7 @@ SYMBOL=EURUSD PYTHONPATH=. .venv/bin/python scripts/run_live.py --broker paper
 Paper mode uses the identical router/risk/monitor path as demo — it is the
 recommended first step after any code change.
 
-## 7. Progress dashboard
+## 7. Progress dashboard (static snapshot)
 
 One command regenerates the static progress dashboard (live-agent status,
 research-program headlines, validated-vs-sim-only separation):
@@ -138,6 +138,45 @@ research-program headlines, validated-vs-sim-only separation):
 
 Add `--skip-tests` to skip the embedded pytest run. The script is stdlib-only
 and reads the research repo's artifacts read-only (never imports lab code).
+
+## 7b. Live platform web UI (v1 live view + v2 squad pitch)
+
+`scripts/serve_platform.py` serves a real-time web UI — stdlib only, no
+new dependencies, strictly READ-ONLY (it cannot affect trading):
+
+* `/v1` — the running zones agent, per symbol: aliveness, open positions,
+  day PnL, guards, kill switches, and a decision feed of every signal
+  evaluated / blocked / traded. Auto-refreshes every 10 s.
+* `/v2` — the M001 squad replayed as a football match (passes =
+  proposals, tackles = aggregator rejections, Sentinel wall, goals =
+  winning trades). Sim-only evidence; reads the research repo's replay
+  artifact files, never its code.
+
+**On the VM** (run from a SECOND clone on `next-gen` — never the trading
+clone, which stays on `main`):
+
+```powershell
+# One-time: second clone next to the trading clone
+git clone https://github.com/TheFinix13/Trading_AI_model.git C:\TradingAgent-platform
+cd C:\TradingAgent-platform
+git checkout next-gen
+
+# Serve (reads the same log root the main agents write):
+python scripts\serve_platform.py --log-root $HOME\Documents\TradingAgentLogs --host 0.0.0.0 --port 8787
+```
+
+Then browse `http://<VM-IP>:8787` from the Mac (find the VM IP with
+`ipconfig`; VMware NAT/bridged both work). The v2 page needs the research
+repo cloned next to the platform clone (`--research-reviews` overrides the
+path); without it, v2 simply lists no matches — v1 is unaffected.
+
+**On the Mac** the defaults work as-is:
+
+```bash
+./.venv/bin/python scripts/serve_platform.py --port 8787
+```
+
+`scripts/serve_live_dashboard.py` remains as the v1-only variant.
 
 ## 8. Emergency stop
 
