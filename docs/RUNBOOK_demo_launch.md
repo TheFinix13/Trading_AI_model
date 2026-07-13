@@ -105,7 +105,7 @@ git fetch; git reset --hard origin/main; pip install -r requirements.txt
 | Signal | Where | Healthy looks like |
 |---|---|---|
 | Telegram `Agent ONLINE` | your TG chat | one message per symbol at startup; trade open/close, ladder events, halts also notify |
-| Heartbeat | healthchecks.io dashboard | one ping per symbol every 15 min; a freeze pages you in ~35–50 min; emergency halts fire an immediate `/fail` |
+| Heartbeat | healthchecks.io dashboard | one success ping per symbol every 15 min; intentional halts annotate the ping (check stays UP); a genuine freeze pages you in ~35 min if grace=15 min |
 | Daily logs | `~/Documents/TradingAgentLogs/{SYMBOL}/{SYMBOL}_YYYY-MM-DD.log` | `Routed cell: ...` at startup, heartbeat lines every 15 min |
 | State sidecar | `{log_root}/{SYMBOL}/state.json` | fresh timestamps |
 | Vaults | `{log_root}/{SYMBOL}/near_misses` + `/losses` | JSONL + PNG entries accumulating over time |
@@ -151,4 +151,6 @@ echo "manual halt: <reason>" > kill_switch
 
 Delete the file(s) to resume; startup logs the recorded reason either way.
 An emergency close (daily-DD breach) also closes open positions and pages
-both Telegram and the healthcheck immediately.
+Daily-DD halt / kill switch pages you on Telegram (`TRADING HALTED`);
+the healthcheck sends an annotated success ping (check stays UP). A
+genuine process crash still fires `/fail` on consecutive fatal errors.

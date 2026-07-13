@@ -51,7 +51,15 @@ from agent.live.trade_events import (
     log_trade_opened,
 )
 from agent.notifications.healthcheck import HealthcheckConfig, HealthcheckPinger
-from agent.notifications.telegram import TelegramConfig, TelegramNotifier
+from agent.notifications.telegram import (
+    TelegramConfig,
+    TelegramNotifier,
+    build_agent_offline,
+    build_agent_online,
+    build_critical_halt,
+    build_trade_closed,
+    build_trade_opened,
+)
 from agent.risk.manager import RiskDecision, RiskManager
 from agent.risk.post_loss_guard import GuardConfig, PostLossGuard
 from agent.rules.engine import precompute
@@ -319,11 +327,10 @@ class SignalLoop:
         if resolved:
             self.live_config.symbol = resolved
 
-        self.notifier.notify_text(
-            f"*Agent ONLINE*\nBroker: `{self.live_config.broker_type}`\n"
-            f"Symbol: `{self.live_config.symbol}`\n"
-            f"Alphas: `{', '.join(a.name for a in self.alphas)}`"
-        )
+        self.notifier.notify_text(build_agent_online(
+            self.live_config.symbol, self.live_config.broker_type,
+            [a.name for a in self.alphas],
+        ))
 
         monitor_task = asyncio.create_task(self.monitor.run())
 
@@ -344,7 +351,7 @@ class SignalLoop:
             except asyncio.CancelledError:
                 pass
             await self.broker.disconnect()
-            self.notifier.notify_text(f"*Agent OFFLINE*\nSymbol: `{self.live_config.symbol}`")
+            self.notifier.notify_text(build_agent_offline(self.live_config.symbol))
             log.info("Signal loop stopped")
 
     async def stop(self) -> None:
@@ -390,14 +397,18 @@ class SignalLoop:
     # Iteration
     # ------------------------------------------------------------------
 
+    def _active_kill_path(self) -> Path | None:
+        """Return the kill-switch file currently in force, or None."""
+        kill_path = Path(self.live_config.kill_file)
+        if kill_switch_active(kill_path):
+            return kill_path
+        if kill_switch_active(self.config.kill_switch_file):
+            return self.config.kill_switch_file
+        return None
+
     async def _iteration(self) -> None:
         try:
-            kill_path = Path(self.live_config.kill_file)
-            active_path: Path | None = None
-            if kill_switch_active(kill_path):
-                active_path = kill_path
-            elif kill_switch_active(self.config.kill_switch_file):
-                active_path = self.config.kill_switch_file
+            active_path = self._active_kill_path()
             if active_path is not None:
                 if not self._kill_switch_reason_logged:
                     self._kill_switch_reason_logged = True
@@ -421,11 +432,10 @@ class SignalLoop:
                       e, traceback.format_exc())
             if self._consecutive_errors >= self._max_consecutive_errors:
                 log.critical("Too many consecutive errors. Halting.")
-                self.notifier.notify_text(
-                    f"*CRITICAL: Agent halted*\n"
-                    f"{self._max_consecutive_errors} consecutive errors.\n"
-                    f"Last: `{str(e)[:200]}`"
-                )
+                self.notifier.notify_text(build_critical_halt(
+                    self.live_config.symbol,
+                    self._max_consecutive_errors, str(e),
+                ))
                 self.healthcheck.ping_fail(f"{self._max_consecutive_errors} consecutive errors: {e}")
                 self._running = False
 
@@ -655,13 +665,25 @@ class SignalLoop:
         if ladder:
             ladder_note = ("\nExtension ladder (opinion only): "
                            f"`{ladder_summary_from_dicts(ladder)}`")
-        self.notifier.notify_text(
-            f"*Trade OPENED* `{alpha.name}` `{signal.direction.value.upper()}`\n"
-            f"Entry: `{result.fill_price or signal.entry:.5f}` Lots: `{sizing.lot:.2f}`\n"
-            f"Soft SL: `{signal.stop:.5f}` Catastrophe SL: `{broker_stop:.5f}` TP: `{signal.take_profit:.5f}`\n"
-            f"Risk: `{sizing.actual_risk_pct * 100:.2f}%`"
-            f"{ladder_note}"
-        )
+        soft_dist = abs(fill - signal.stop)
+        tp_r = abs(signal.take_profit - fill) / soft_dist if soft_dist > 0 else None
+        self.notifier.notify_text(build_trade_opened(
+            symbol=symbol,
+            alpha=alpha.name,
+            direction=signal.direction.value,
+            ticket=result.ticket,
+            entry=fill,
+            lots=sizing.lot,
+            soft_sl=signal.stop,
+            catastrophe_sl=broker_stop,
+            tp=signal.take_profit,
+            tp_r=tp_r,
+            risk_pct=sizing.actual_risk_pct,
+            risk_amount=sizing.risk_amount,
+            balance=account.balance,
+            route_scale=route_scale,
+            ladder_note=ladder_note,
+        ))
         self._record_ladder_entry(result.ticket, routed, ladder, now, bars)
 
     def _ensure_sl_tp(self, signal: AlphaSignal) -> str:
@@ -889,12 +911,27 @@ class SignalLoop:
         if pnl < 0:
             self._record_loss(ticket, info, ctx, pnl, r)
         self._record_ladder_close(ticket, info, ctx)
-        outcome = "WIN" if pnl > 0 else "LOSS"
-        self.notifier.notify_text(
-            f"*Trade CLOSED* `{outcome}` ticket=`{ticket}`\n"
-            f"P&L: `{pnl:+.2f}` ({info.get('pnl_pips', 0):+.0f}p, {r:+.2f}R)\n"
-            f"Exit: `{info.get('exit_reason', '?')}`"
-        )
+        held_seconds: float | None = None
+        entry_time_iso = ctx.get("entry_time")
+        if entry_time_iso:
+            try:
+                entry_dt = datetime.fromisoformat(str(entry_time_iso))
+                if entry_dt.tzinfo is None:
+                    entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+                held_seconds = (datetime.now(tz=timezone.utc) - entry_dt).total_seconds()
+            except (ValueError, TypeError):
+                pass
+        self.notifier.notify_text(build_trade_closed(
+            symbol=self.live_config.symbol,
+            ticket=ticket,
+            pnl=pnl,
+            pnl_pips=float(info.get("pnl_pips", 0.0)),
+            r_multiple=r,
+            exit_reason=str(info.get("exit_reason", "?")),
+            be_moved=bool(info.get("be_moved", False)),
+            held_seconds=held_seconds,
+            balance_after=info.get("balance_after"),
+        ))
 
     # ------------------------------------------------------------------
     # Misc
@@ -906,6 +943,13 @@ class SignalLoop:
         Balance/equity/position count come from the monitor's last 5s cycle
         snapshot, so the heartbeat adds zero broker round-trips; if the
         monitor has not completed a cycle yet, the account part is omitted.
+
+        Runs at the top-level ``run()`` loop, AFTER ``_iteration`` returns —
+        so it fires even while the kill switch is active (``_iteration``'s
+        early return does not bypass it). Halted-but-alive must never look
+        like downtime to the external watchdog: the healthcheck ping is
+        always sent, annotated with a HALTED body while the kill switch is
+        in force so the dashboard shows why nothing is trading.
         """
         now = datetime.now(tz=timezone.utc)
         if self._last_heartbeat is None:
@@ -922,6 +966,15 @@ class SignalLoop:
                       f"open_positions={n_open if n_open is not None else '?'}")
         else:
             status = "running (account snapshot pending)"
-        log.info("heartbeat: %s | next H4 close ~%s UTC",
-                 status, next_h4_close_utc(now).strftime("%H:%M"))
-        self.healthcheck.ping()
+        kill_path = self._active_kill_path()
+        if kill_path is not None:
+            log.info("heartbeat: %s | HALTED (kill switch at %s) | next H4 close ~%s UTC",
+                     status, kill_path, next_h4_close_utc(now).strftime("%H:%M"))
+            self.healthcheck.ping(
+                f"{self.live_config.symbol} HALTED by kill switch "
+                f"({kill_path.name}) - process alive"
+            )
+        else:
+            log.info("heartbeat: %s | next H4 close ~%s UTC",
+                     status, next_h4_close_utc(now).strftime("%H:%M"))
+            self.healthcheck.ping()

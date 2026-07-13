@@ -23,7 +23,10 @@ Public API:
     pinger = HealthcheckPinger.from_env(symbol="EURUSD")
     pinger.ping()                  # "still alive" heartbeat
     pinger.ping_fail("OOM error")  # optional: signal a known failure now,
-                                    # instead of waiting for the grace period
+                                    # instead of waiting for the grace period.
+                                    # Reserved for genuine process death
+                                    # (consecutive fatal errors). Intentional
+                                    # risk halts use ping() with a halt body.
 
 Use `dry_run=True` to print instead of hitting the network (tests / local
 dev without a real check URL configured).
@@ -33,6 +36,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
@@ -43,6 +47,13 @@ class HealthcheckConfig:
     url: str = ""
     dry_run: bool = False
     timeout_seconds: float = 5.0
+    # Transient-failure retry: the Windows VM's DNS occasionally blips
+    # ("getaddrinfo failed", seen 2026-07-11 03:12 UTC in the EURUSD log).
+    # With a 15-min ping cadence against a 20-min check period, a single
+    # dropped ping is enough to flag the check DOWN, so each ping retries
+    # a couple of times with a short backoff before giving up (fail-open).
+    max_attempts: int = 3
+    retry_backoff_seconds: float = 2.0
 
     @classmethod
     def from_env(cls, *, symbol: str = "", dry_run: bool = False) -> "HealthcheckConfig":
@@ -80,17 +91,26 @@ class HealthcheckPinger:
 
     # ---- public ------------------------------------------------------
 
-    def ping(self) -> bool:
-        """Send a plain success heartbeat."""
-        return self._send()
+    def ping(self, message: str = "") -> bool:
+        """Send a success heartbeat. An optional ``message`` is POSTed as
+        the ping body so it shows up in the healthchecks.io event log --
+        used to annotate 'alive but HALTED by kill switch' heartbeats so a
+        halted agent is distinguishable from a dead one on the dashboard."""
+        return self._send(body=message)
 
     def ping_start(self) -> bool:
         """Optional: signal the start of a run (healthchecks.io `/start`)."""
         return self._send("start")
 
     def ping_fail(self, message: str = "") -> bool:
-        """Signal a known failure immediately (healthchecks.io `/fail`)
-        instead of waiting for the check's grace period to expire."""
+        """Signal a known failure immediately (healthchecks.io `/fail`).
+
+        Use only when the process is genuinely dead or about to stop
+        (e.g. consecutive fatal errors). Do NOT use for intentional risk
+        halts (daily-DD, kill switch) -- those should use ``ping()`` with
+        an annotated halt body so the check stays UP while the process
+        remains alive.
+        """
         return self._send("fail", body=message)
 
     # ---- internals -----------------------------------------------------
@@ -105,22 +125,29 @@ class HealthcheckPinger:
             log.debug("Healthcheck not configured (HEALTHCHECK_URL missing); skipping %s", label)
             return False
         url = self.config.url + (f"/{suffix}" if suffix else "")
-        try:
-            client = self._client or self._default_client()
-            if body:
-                resp = client.post(url, content=body.encode(), timeout=self.config.timeout_seconds)
-            else:
-                resp = client.get(url, timeout=self.config.timeout_seconds)
-            ok = getattr(resp, "status_code", 0) // 100 == 2
-            if not ok:
-                log.warning("Healthcheck %s returned %s: %s", label,
-                            getattr(resp, "status_code", "?"), getattr(resp, "text", ""))
-            return bool(ok)
-        except Exception as e:
-            # Never raise -- a watchdog ping failing must not take down the
-            # thing it's watching.
-            log.warning("Healthcheck %s failed: %s", label, e)
-            return False
+        attempts = max(1, int(self.config.max_attempts))
+        client = self._client or self._default_client()
+        for attempt in range(1, attempts + 1):
+            try:
+                if body:
+                    resp = client.post(url, content=body.encode(), timeout=self.config.timeout_seconds)
+                else:
+                    resp = client.get(url, timeout=self.config.timeout_seconds)
+                ok = getattr(resp, "status_code", 0) // 100 == 2
+                if ok:
+                    return True
+                log.warning("Healthcheck %s returned %s (attempt %d/%d): %s", label,
+                            getattr(resp, "status_code", "?"), attempt, attempts,
+                            getattr(resp, "text", ""))
+            except Exception as e:
+                # Never raise -- a watchdog ping failing must not take down
+                # the thing it's watching. Transient DNS/network blips are
+                # exactly what the retry loop is for.
+                log.warning("Healthcheck %s failed (attempt %d/%d): %s",
+                            label, attempt, attempts, e)
+            if attempt < attempts and self.config.retry_backoff_seconds > 0:
+                time.sleep(self.config.retry_backoff_seconds * attempt)
+        return False
 
     @staticmethod
     def _default_client():

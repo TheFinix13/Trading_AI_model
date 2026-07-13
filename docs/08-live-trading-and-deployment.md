@@ -195,13 +195,47 @@ just set the URL:
    --symbol EURUSD` (exit code doubles as pass/fail, same contract as
    `notify_telegram.py`).
 
-An emergency close (daily-DD halt or kill switch) also fires an immediate
-`/fail` ping instead of waiting for the grace period, so a real risk event
-pages you at the same speed on both channels.
+An emergency close (daily-DD halt or kill switch) sends an immediate
+**success** ping annotated with the halt reason (not a `/fail` ping), so
+healthchecks.io stays **UP** while the process is alive-but-halted. A
+`/fail` ping is reserved for genuine process death (consecutive fatal
+errors). Telegram still pages you on the halt via the `TRADING HALTED`
+message.
 
 Note: an *intentional* stop (e.g. Ctrl+C to pull new code) will also trip
 the check if you don't restart within the grace window — that's a correct,
 if slightly noisy, "yes it's actually down" alert, not a bug.
+
+### Healthcheck accuracy (2026-07-13 tuning)
+
+The July 11–12 false "DOWN" flaps (checks red for ~9–10 min while the
+agents were alive) were caused by the combination of: a 15-min ping
+cadence against a 20-min check period (only 5 min of slack), the VM's
+occasional DNS blips (`Healthcheck ping failed: getaddrinfo failed`,
+2026-07-11 03:12 UTC), and no retry — so a single dropped ping blew the
+window. Three behaviours now prevent that:
+
+1. **Retry on transient failure.** Each ping retries up to 3 attempts
+   with a short linear backoff (2s, 4s) before giving up; still
+   fail-open (a broken watchdog ping can never crash the loop). One
+   DNS blip no longer costs a whole 15-min heartbeat slot.
+2. **Halted ≠ dead.** The heartbeat ping fires even while the kill
+   switch is active (the process IS alive — `_maybe_heartbeat` runs at
+   the top-level loop, outside the kill-skip path), and while halted the
+   ping carries a body like `EURUSD HALTED by kill switch (kill.txt) -
+   process alive`, visible in the check's event log. Intentional risk
+   halts (daily-DD, kill switch) also send an immediate annotated
+   **success** ping — never `/fail` — so healthchecks.io does not mark
+   the check DOWN for a pause that is not a crash.
+3. **Settings to apply in the healthchecks.io web UI** (per check):
+   **Period = 20 min, Grace = 15 min.** With pings every 15 min, the
+   worst healthy gap after one fully-failed ping (all retries lost) is
+   30 min — inside the 35-min alert threshold (period + grace) — so a
+   single missed ping never pages, and a VM reboot's typical ~9-min gap
+   is absorbed too. Two consecutive missed pings (a real problem) still
+   alert within ~35 min. Don't go wider (e.g. period 30/grace 10 has a
+   40-min blind spot for a genuine freeze with no better false-alarm
+   behaviour).
 
 ## 08.5 Exness / MT5 connection
 
@@ -280,8 +314,71 @@ heartbeat (catches a VM freeze that Telegram can't) activates when
 (markdown + JSONL) is the trade record; the v1 web dashboard was burned in the
 reset ([09](09-dashboard.md)).
 
+### Telegram message format (2026-07-13 revision)
+
+All three symbol processes post into ONE shared group, so **every message
+now leads with the symbol**: first line is `SYMBOL | <event>` (bold), e.g.
+`GBPUSD | Trade OPENED`. Builders live in
+`agent/notifications/telegram.py` (`build_*` functions, pure and
+unit-tested in `tests/test_telegram_notifier.py`). Current formats:
+
+- **Trade OPENED** — side, alpha, ticket, entry, lots, soft/catastrophe
+  SL, TP annotated with its R multiple, risk as % *and* $ amount, live
+  balance, plus the extension-ladder note.
+- **Trade CLOSED** — WIN/LOSS, P&L $ and pips, **R vs the original
+  entry-time risk** (a breakeven move no longer collapses it to a
+  confusing `+0.00R`; instead the message appends "risk-free after BE"),
+  time held, exit cause in plain words (`take-profit hit`, `soft stop
+  (bar closed beyond level)`, …), balance after.
+- **BE Move / Soft stop exit / Partial scale-out** — symbol + ticket +
+  a one-line meaning.
+- **TRADING HALTED** (was "EMERGENCY CLOSE") — symbol of the *reporting
+  process*, plain-words halt reason, explicit note that the agent is still
+  running (delete `kill.txt` to resume), positions closed on that symbol,
+  balance/equity. Because all three processes share one account, an
+  account-level event (daily-DD halt → kill file) fires in each process;
+  the close action always runs, but each process rate-limits its halt
+  *notifications* (Telegram + annotated healthcheck ping) to one per
+  10 minutes, so the 2026-07-10 six-message burst is now at most one
+  message per process, each tagged with its symbol.
+
 **Daily review ritual:** check overnight trades in the journal, confirm no DD
 halt / kill fired, spot-check one trade's reasoning against the routed cell.
+
+### Weekly review bundle
+
+Once a week, run ONE command on the VM (from the repo root) and send the
+single zip it prints:
+
+```powershell
+python scripts\weekly_report.py --days 7
+```
+
+The zip lands in `C:\Users\Fiyin\Documents\TradingAgentLogs\reviews\`
+as `weekly_report_<start>_to_<end>.zip` and contains everything a reviewer
+needs — no more hand-collecting per-symbol files:
+
+- `REPORT.md` — executive summary (weekly P&L, trade count, win rate,
+  downtime %, incidents), per-symbol sections (trade table, signals vs
+  rejections with reason breakdown, near-miss vault metadata, H4 coverage,
+  downtime windows with kill.txt reasons, balance curve), a cross-symbol
+  account view (merged balance/equity timeline, external/manual equity
+  moves the agent's own trades don't explain, agent-vs-external P&L split,
+  kill-switch cascades), the active parameter snapshot (routed cells,
+  risk %, DD limit, post-loss-guard settings), and an auto-flagged review
+  checklist (oversized risk, downtime > 12 h, broker rejects, ...).
+- Raw daily `.log` files for the window, per symbol.
+- The window's near-miss / loss / ladder `events.jsonl` records and their
+  chart PNGs (date-filtered, not the whole vault history).
+- `state.json` and any `kill.txt`, per symbol.
+
+Useful variants: `--start 2026-07-01 --end 2026-07-07` for an exact window,
+`--symbols EURUSD,GBPUSD` to restrict pairs (default: every symbol found
+under the log root), `--log-root`/`--out` to override paths. The script is
+observation-only and never touches trading state; missing days/symbols/
+vault folders appear as MISSING notes instead of crashing.
+(`scripts/compile_review_bundle.py` remains for ad-hoc single-symbol
+deep-dives; `scripts/daily_summary.py` remains the daily ritual tool.)
 
 ---
 

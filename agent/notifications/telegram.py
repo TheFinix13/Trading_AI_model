@@ -141,6 +141,236 @@ def format_dd_halt(account: str, dd_pct: float) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Live-agent message builders (symbol-tagged). Pure -- no I/O.
+#
+# Three symbol processes (EURUSD / GBPUSD / USDCAD) post into ONE shared
+# Telegram group, so every message MUST lead with the symbol or the reader
+# cannot tell which pair it refers to (before 2026-07 they had to infer it
+# from the price magnitude). Every builder below puts `*SYMBOL | <event>*`
+# on the first line. Keep messages compact -- they are read on a phone.
+# ---------------------------------------------------------------------------
+
+
+def _header(symbol: str, event: str) -> str:
+    """First line of every live message: `*EURUSD | Trade OPENED*`."""
+    return f"*{symbol} | {event}*"
+
+
+def _fmt_money(amount: float) -> str:
+    sign = "-" if amount < 0 else ""
+    return f"{sign}${abs(amount):,.2f}"
+
+
+def _fmt_duration(seconds: float) -> str:
+    """Compact human duration: '42m', '3h 36m', '2d 4h'."""
+    seconds = max(0, int(seconds))
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    if seconds < 86400:
+        h, rem = divmod(seconds, 3600)
+        return f"{h}h {rem // 60}m"
+    d, rem = divmod(seconds, 86400)
+    return f"{d}d {rem // 3600}h"
+
+
+#: exit_reason -> plain-words description shown in the Trade CLOSED message.
+_EXIT_REASON_WORDS = {
+    "tp": "take-profit hit",
+    "soft_sl_close": "soft stop (bar closed beyond level)",
+    "soft_sl_panic": "soft stop (price blew through level)",
+    "soft_sl_inferred_overshoot": "soft stop (adopted position, level already breached)",
+    "sl": "broker stop-loss hit",
+    "catastrophe_sl": "catastrophe stop hit",
+    "stop_out": "margin stop-out",
+    "expert": "closed by EA/expert",
+    "manual": "closed (cause unconfirmed)",
+    "unknown": "closed (cause unconfirmed)",
+}
+
+
+def format_exit_reason(reason: str) -> str:
+    """Map an internal exit_reason tag to plain words for the phone."""
+    return _EXIT_REASON_WORDS.get(str(reason), str(reason) or "?")
+
+
+def format_halt_reason(reason: str) -> str:
+    """Turn internal halt/kill-switch reason strings into plain words."""
+    text = (reason or "").strip()
+    lower = text.lower()
+    if "daily dd" in lower or "drawdown" in lower:
+        return f"Daily drawdown limit hit ({text})"
+    if "kill switch" in lower or "auto-kill" in lower:
+        return f"Kill switch engaged ({text})"
+    if "autotrading disabled" in lower:
+        return "Broker AutoTrading is OFF — enable it in MT5"
+    if "consecutive error" in lower:
+        return f"Process halted after repeated errors ({text})"
+    return text or "Trading paused (reason unknown)"
+
+
+def _format_ladder_note(ladder_note: str) -> str:
+    """Break a long ladder string into short phone-friendly lines."""
+    if not ladder_note:
+        return ""
+    raw = ladder_note.strip()
+    if raw.startswith("Extension ladder"):
+        # Caller may pass the full prefix + backticked rungs; unwrap for layout.
+        prefix, _, rungs = raw.partition(":")
+        rungs = rungs.strip().strip("`")
+        if not rungs:
+            return f"\n{raw}"
+        lines = [f"\n{prefix.strip()} (opinion only):"]
+        for chunk in rungs.split(" · "):
+            chunk = chunk.strip()
+            if chunk:
+                lines.append(f"  - {chunk}")
+        return "\n".join(lines)
+    return f"\n{raw}"
+
+
+def build_agent_online(symbol: str, broker_type: str, alphas: list[str]) -> str:
+    return (
+        f"{_header(symbol, 'Agent ONLINE')}\n"
+        f"Broker: `{broker_type}` Alphas: `{', '.join(alphas)}`"
+    )
+
+
+def build_agent_offline(symbol: str) -> str:
+    return _header(symbol, "Agent OFFLINE")
+
+
+def build_critical_halt(symbol: str, n_errors: int, last_error: str) -> str:
+    return (
+        f"{_header(symbol, 'CRITICAL: Agent halted')}\n"
+        f"{n_errors} consecutive errors.\n"
+        f"Last: `{last_error[:200]}`"
+    )
+
+
+def build_trade_opened(
+    *,
+    symbol: str,
+    alpha: str,
+    direction: str,
+    ticket: int | None,
+    entry: float,
+    lots: float,
+    soft_sl: float,
+    catastrophe_sl: float,
+    tp: float,
+    tp_r: float | None = None,
+    risk_pct: float = 0.0,
+    risk_amount: float | None = None,
+    balance: float | None = None,
+    route_scale: float | None = None,
+    ladder_note: str = "",
+) -> str:
+    tp_part = f"TP `{tp:.5f}`"
+    if tp_r is not None and tp_r > 0:
+        tp_part += f" ({tp_r:.1f}R)"
+    risk_part = f"Risk `{risk_pct * 100:.2f}%`"
+    if risk_amount is not None:
+        risk_part += f" ({_fmt_money(risk_amount)} at risk)"
+    lines = [
+        f"{_header(symbol, 'Trade OPENED')} {direction.upper()} {alpha}",
+    ]
+    if ticket:
+        lines.append(f"Ticket `{ticket}`")
+    lines.append(f"Entry `{entry:.5f}` | Lots `{lots:.2f}`")
+    lines.append(
+        f"Soft SL `{soft_sl:.5f}` | Cat SL `{catastrophe_sl:.5f}` | {tp_part}"
+    )
+    ctx_bits = [risk_part]
+    if route_scale is not None:
+        ctx_bits.append(f"Route scale `{route_scale:.2f}x`")
+    if balance is not None:
+        ctx_bits.append(f"Balance `{_fmt_money(balance)}`")
+    lines.append(" | ".join(ctx_bits))
+    lines.append(_format_ladder_note(ladder_note).lstrip("\n") if ladder_note else "")
+    return "\n".join(line for line in lines if line)
+
+
+def build_trade_closed(
+    *,
+    symbol: str,
+    ticket: int,
+    pnl: float,
+    pnl_pips: float,
+    r_multiple: float | None,
+    exit_reason: str,
+    be_moved: bool = False,
+    held_seconds: float | None = None,
+    balance_after: float | None = None,
+) -> str:
+    outcome = "WIN" if pnl > 0 else "LOSS" if pnl < 0 else "FLAT"
+    # R is computed against the ORIGINAL soft-stop risk (see PositionMonitor.
+    # _handle_close); after a breakeven move the position is risk-free, so we
+    # say that in words instead of printing a confusing post-BE "+0.00R".
+    if r_multiple is not None:
+        r_part = f", {r_multiple:+.2f}R vs original risk"
+    else:
+        r_part = ""
+    be_part = " -- risk-free after BE" if be_moved else ""
+    lines = [
+        f"{_header(symbol, f'Trade CLOSED {outcome}')} ticket=`{ticket}`",
+        f"P&L: `{_fmt_money(pnl)}` ({_fmt_pips(pnl_pips)}{r_part}){be_part}",
+    ]
+    ctx_bits = []
+    if held_seconds is not None:
+        ctx_bits.append(f"Held: {_fmt_duration(held_seconds)}")
+    ctx_bits.append(f"Exit: {format_exit_reason(exit_reason)}")
+    lines.append(" | ".join(ctx_bits))
+    if balance_after is not None:
+        lines.append(f"Balance: `{_fmt_money(balance_after)}`")
+    return "\n".join(lines)
+
+
+def build_be_move(*, symbol: str, ticket: int, old_sl: float,
+                  new_sl: float, r_multiple: float) -> str:
+    return (
+        f"{_header(symbol, 'BE Move')} ticket=`{ticket}`\n"
+        f"SL `{old_sl:.5f}` -> `{new_sl:.5f}` at {r_multiple:.1f}R "
+        f"-- trade now risk-free"
+    )
+
+
+def build_soft_stop_exit(*, symbol: str, ticket: int, detail: str,
+                         adopted: bool = False) -> str:
+    event = "Adopted soft-stop exit" if adopted else "Soft stop exit"
+    return (
+        f"{_header(symbol, event)} ticket=`{ticket}`\n"
+        f"`{detail}`"
+    )
+
+
+def build_partial_scaleout(*, symbol: str, ticket: int, closed_lots: float,
+                           r_multiple: float) -> str:
+    return (
+        f"{_header(symbol, 'Partial scale-out')} ticket=`{ticket}`\n"
+        f"closed `{closed_lots:.2f}` lots at `{r_multiple:.1f}R`, runner chasing draw"
+    )
+
+
+def build_emergency_close(
+    *,
+    symbol: str,
+    reason: str,
+    positions_closed: int,
+    balance: float | None = None,
+    equity: float | None = None,
+) -> str:
+    lines = [
+        f"{_header(symbol, 'TRADING HALTED')}",
+        format_halt_reason(reason),
+        "Agent still running -- no new trades until kill.txt is removed.",
+        f"Closed {positions_closed} open position(s) on {symbol}",
+    ]
+    if balance is not None and equity is not None:
+        lines.append(f"Balance `{_fmt_money(balance)}` | Equity `{_fmt_money(equity)}`")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Notifier
 # ---------------------------------------------------------------------------
 
@@ -227,4 +457,15 @@ __all__ = [
     "format_trade_open",
     "format_trade_close",
     "format_dd_halt",
+    "format_exit_reason",
+    "format_halt_reason",
+    "build_agent_online",
+    "build_agent_offline",
+    "build_critical_halt",
+    "build_trade_opened",
+    "build_trade_closed",
+    "build_be_move",
+    "build_soft_stop_exit",
+    "build_partial_scaleout",
+    "build_emergency_close",
 ]

@@ -1,5 +1,123 @@
-# AI Context — brain dump (updated 2026-07-06, v0.27)
+# AI Context — brain dump (updated 2026-07-13, v0.30)
 
+> v0.30 — **Telegram notification audit + healthcheck accuracy fixes
+> (observability layer only — zero trading-logic change).** Every live
+> Telegram message now leads with the symbol (`*SYMBOL | <event>*`) via
+> pure `build_*` formatters in `agent/notifications/telegram.py` — with 3
+> processes in one group the user could previously only infer the pair
+> from price magnitude. Trade OPENED adds ticket, TP R-multiple, $ risk
+> amount and balance; Trade CLOSED reports R **vs the original entry-time
+> soft stop** (`original_soft_stop` snapshotted in
+> `PositionMonitor.register_entry`; the post-BE stop had been producing a
+> confusing `+0.00R` on winners — now says "risk-free after BE"), plus
+> time held, plain-words exit cause (`format_exit_reason`), and balance
+> after. **TRADING HALTED** (was EMERGENCY CLOSE) carries symbol +
+> plain-words reason + "agent still running" note; rate-limited to one
+> Telegram + one annotated healthcheck **success** ping per 10 min per
+> process (never `/fail` on intentional halts — that was causing
+> healthchecks.io false DOWN alerts). Trade OPENED also shows
+> `route_scale` and splits extension-ladder rungs across lines for
+> phone readability. Healthcheck: root-caused the July 11-12 false DOWN
+> slack, plus VM DNS blips `getaddrinfo failed` with no retry — one
+> dropped ping blew the window). `HealthcheckPinger` now retries 3
+> attempts with 2s/4s linear backoff (fail-open preserved); the heartbeat
+> ping was confirmed to fire during kill-switch halts (loop-level, not in
+> the skip path) and now annotates halted pings with a
+> `SYMBOL HALTED by kill switch - process alive` body so the dashboard
+> distinguishes halted from dead. Recommended healthchecks.io settings
+> (user must apply in web UI): **Period 20 min / Grace 15 min**. Docs/08
+> updated (message-format + healthcheck-accuracy sections). 23 new tests
+> across `test_telegram_notifier.py`, `test_healthcheck.py`,
+> `test_monitor_reliability.py`, `test_heartbeat_logging.py`.
+> **461 tests pass.**
+>
+> v0.29 — **`scripts/weekly_report.py` — the ONE-COMMAND weekly bundle
+> (observation-only, no live-path change).** Supersedes
+> `compile_review_bundle.py` as the weekly entry point (that script stays
+> for ad-hoc single-symbol deep-dives; a pointer note was added to its
+> docstring). Run on the VM: `python scripts\weekly_report.py --days 7`
+> (also `--start/--end`, `--symbols A,B,C`, `--log-root`, `--out`; symbols
+> default to auto-discovery under the log root, broker suffix stripped).
+> Emits `weekly_report_<start>_to_<end>.zip` under `<log-root>/reviews/`
+> containing a markdown `REPORT.md` (exec summary; per-symbol trade table
+> with ticket/side/lots/entry/exit/SLs/TP/risk%/pnl/R/exit-tag, signals-vs-
+> rejections breakdown with `risk_manager` re-bucketed to `max_positions`
+> when the detail says so, near-miss vault metadata table with computed
+> R:R + zone age, H4 coverage estimate, downtime windows incl. kill.txt
+> content, per-day balance curve, state.json snapshot; cross-symbol
+> account view: merged heartbeat timeline, EXTERNAL/manual equity-move
+> detection via balance-delta-vs-agent-closes residual > $0.50, agent-vs-
+> external P&L split, kill-switch cascades = halt starts on >=2 symbols
+> within 30 min; parameter snapshot from `zone_routing.survivors()` +
+> `load_config().risk` + `LiveConfig()` defaults; auto-flagged review
+> checklist: risk% > 2.0% abs or 1.5x week median, downtime > 12h, broker
+> rejects, DD halts, soft-SL panics, missing days/symbols, kill.txt
+> present) + raw daily logs + date-filtered near-miss/loss/ladder JSONLs
+> and PNGs + state.json + kill.txt per symbol. Missing anything degrades
+> to a MISSING note, never a crash; console output is plain ASCII
+> (Windows cp1252). Reuses `daily_summary.py` regexes + `compile_review_
+> bundle.py` downtime scanner; adds a fuller close regex covering ALL
+> `classify_exit_tag` tags (MARGIN STOP-OUT etc., which daily_summary's
+> misses). 13 new tests (`tests/test_weekly_report.py`: multi-symbol
+> aggregation, external-move flagging, downtime + reason, cascade
+> grouping, window filtering of vault evidence, empty-root graceful run);
+> docs/08 gained a "Weekly review bundle" section. **436 tests pass.**
+>
+> v0.28 — **GBPUSD weekly forensic review (2026-07-01→12) + new
+> `scripts/compile_review_bundle.py` tool. No code-behaviour change shipped
+> yet — one open design question flagged, not decided.** User supplied 12
+> daily GBPUSD logs + both vault `events.jsonl` files; root-caused why the
+> week was "terrible": **not the strategy — uptime.** GBPUSD was
+> kill-switch-halted for ~143.6h of the ~288h (12-day) window (**~50%
+> downtime**), in two episodes: (1) 2026-07-02 19:29 → 07-06 15:52 (92.4h) —
+> the OLD shared-root `kill.txt` bug from before the v0.25 per-symbol fix
+> landed, sitting un-cleared for 4 days; (2) 2026-07-10 03:15 → at least
+> 07-12 06:11 (50.9h, **still active** at the end of the provided logs) —
+> a legitimate 3.0% daily-DD auto-halt that, by design, requires a human to
+> delete `kill.txt` to resume, and nobody did for 2+ days. Only 2 real
+> GBPUSD trades fired all week (both SHORT, 07-08 13:00 entry 1.33361 →
+> soft-stop panic exit -14.38 USD/-72p/-2.04R at 18:20 same day when price
+> blew past the soft-stop by its full 1.0× panic margin before a candle
+> close confirmed it; 07-08 21:00 entry 1.34016 → force-closed at -4.76 USD
+> by the same 07-10 DD halt, likely triggered mainly by a much larger same-
+> day EURUSD loss on the shared account — EURUSD/USDCAD logs not supplied
+> this session, flagged as a follow-up). Also found: one 07-01 signal
+> rejected at the MT5 terminal itself (`AutoTrading disabled by client` —
+> not a code bug, the AutoTrading toggle was off in the terminal); 5
+> `risk_manager: skip_max_positions` near-misses (07-08/09, all the same
+> short-the-top idea repeated at ~1.3388-1.3404 while `max_open_positions=1`
+> already had a ticket open); 2 healthcheck DNS-resolution failures on
+> 07-11 (`getaddrinfo failed` — VM-side network blip, not addressed).
+> Independent read (no fresh OHLC cache — local parquet ends 07-01, flagged
+> honestly as a real limitation): D1 stayed bullish the whole window per
+> every `htf_gate` rejection; the two shorts were a legitimate fade-the-top
+> idea at a multi-week high, but the second short chasing the same zone
+> higher hours after the first got stopped (not blocked by PLG — its
+> 60-min cooldown had already expired) is the kind of same-idea re-entry a
+> discretionary process would want price-action confirmation for, not just
+> a repeat H4 zone touch.
+>
+> **New tool:** `scripts/compile_review_bundle.py` — run ON the VM, bundles
+> N days × M symbols (default all 3, default 7 days) into ONE zip: a
+> `REPORT.md` (reuses `daily_summary.py`'s per-symbol stats + a NEW
+> **uptime/downtime timeline** — every kill-switch halt's start, end,
+> reason, and cleared-or-still-active status, plus AutoTrading-rejects /
+> DD-halts / soft-SL-panics / healthcheck-fails / broker-disconnect tallies)
+> + the raw daily `.log` files + the near-miss/loss vault PNGs and JSONL
+> records that fall inside the window + `state.json`. Replaces "paste a
+> dozen individual files into chat" with one attachment. Tested end-to-end
+> against the supplied GBPUSD logs (staged into a scratch
+> `TradingAgentLogs/`-shaped folder) — correctly reconstructed both
+> downtime episodes above; not yet run against the real EURUSD/USDCAD VM
+> folders.
+>
+> **Open question, not decided:** should a *daily*-DD kill-switch halt
+> auto-clear at the next UTC day rollover (since the limit itself is
+> literally "3% **per day**") instead of requiring a human to delete
+> `kill.txt` indefinitely? Current behaviour let one bad day (07-10) erase
+> 2+ trading days afterward. Flagged to the user as a real reliability
+> question, not implemented.
+>
 > v0.27 — **`next-gen` branch split + progress dashboard + demo-launch
 > runbook (additive only — zero agent-behaviour change).** New branch
 > **`next-gen`** (forked from `main` @ `052515a`) is the next-generation
@@ -231,7 +349,7 @@ untouched.
 | Deployment | `scripts/watchdog_agent.ps1` (per-symbol restart loop, Task Scheduler-launched), `scripts/deploy_windows.ps1`, `docs/08-live-trading-and-deployment.md` |
 | Notifications | `agent/notifications/telegram.py`, `agent/notifications/healthcheck.py` (external dead-man's-switch), `scripts/notify_telegram.py`, `scripts/ping_healthcheck.py` |
 | Risk | `agent/risk/manager.py` (per-symbol + portfolio ceiling), `agent/risk/sizing.py`, `agent/risk/post_loss_guard.py`, `agent/config.py::RiskConfig` |
-| Vaults / ladder / reports | `agent/journal/vault.py`, `agent/journal/target_ladder.py`, `agent/reports/rejection_review.py`, `scripts/daily_summary.py` |
+| Vaults / ladder / reports | `agent/journal/vault.py`, `agent/journal/target_ladder.py`, `agent/reports/rejection_review.py`, `scripts/daily_summary.py`, `scripts/weekly_report.py` (THE weekly one-command zip: REPORT.md + logs + vault evidence + params + checklist), `scripts/compile_review_bundle.py` (ad-hoc deep-dives) |
 | Validation | `scripts/run_zone_all_tfs.py`, `scripts/run_ablation.py`, `scripts/run_walk_forward.py` |
 | Docs | `docs/CHECKPOINT.md`, `docs/00-overview.md`, `docs/archive/`, `docs/audits/` |
 | Platform (next-gen) | `scripts/build_dashboard.py` → `reports/dashboard.html`, `docs/RUNBOOK_demo_launch.md` |
@@ -239,6 +357,16 @@ untouched.
 | Workspace setup | `.cursor/workspace-tips.md` (multi-root: this repo + research + brain-box) |
 
 ## 3) Next immediate goal
+
+**2026-07-13 GBPUSD weekly review — pending user decisions:** (1) run
+`python scripts\weekly_report.py --days 7` on the VM (now the one-command
+multi-symbol bundle, v0.29) so the 07-10 DD-halt cascade can be attributed
+properly across all three symbols — its cross-symbol section detects
+exactly this (cascades + external equity moves); (2) decide whether the daily-DD
+kill-switch should auto-clear at UTC day rollover instead of needing a
+manual `kill.txt` delete (currently cost GBPUSD 50.9h+ and counting); (3)
+manually clear the still-active GBPUSD `kill.txt` on the VM if the user
+wants it trading again before that design question is settled.
 
 **2026-07-06 live-agent reliability fixes — code shipped + verified live on
 VM.** All five code-fix items from the user's original list are live: VM
