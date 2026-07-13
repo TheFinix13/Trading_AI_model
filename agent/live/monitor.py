@@ -29,7 +29,13 @@ from agent.live.trade_events import (
     log_trade_closed,
 )
 from agent.notifications.healthcheck import HealthcheckPinger
-from agent.notifications.telegram import TelegramNotifier
+from agent.notifications.telegram import (
+    TelegramNotifier,
+    build_be_move,
+    build_emergency_close,
+    build_partial_scaleout,
+    build_soft_stop_exit,
+)
 from agent.types import Direction
 from agent.utils import kill_switch_active, kill_switch_reason
 
@@ -99,6 +105,17 @@ class PositionMonitor:
         self._day_start_balance: float = 0.0
         self._current_day: str = ""
         self._kill_switch_handled: bool = False
+        # Emergency-close notification cooldown. The 3 symbol processes share
+        # one account, so an account-level event (daily-DD halt -> kill file)
+        # cascades: each process fires its own emergency close, and within
+        # one process the DD halt is immediately followed by a kill-switch
+        # detection of the very file the halt just created. The ACTIONS all
+        # still run (closing positions is idempotent and must never be
+        # skipped); only the Telegram message + annotated healthcheck ping are
+        # suppressed inside the cooldown window, per process. Cross-process
+        # dedupe is not possible (no IPC) -- the symbol tag in the message
+        # is what keeps the remaining per-process messages distinguishable.
+        self._last_emergency_notify: datetime | None = None
         self._initial_scan_done: bool = False
         # Tickets restored from the state sidecar (not yet broker-verified).
         # Cleared after the first _check_positions cycle confirms them.
@@ -111,6 +128,11 @@ class PositionMonitor:
 
     def register_entry(self, ticket: int, context: dict) -> None:
         """Record entry context so an eventual close can be journaled richly."""
+        # Snapshot the entry-time soft stop before any breakeven move
+        # overwrites ``soft_stop``: close-time R-multiples must be measured
+        # against the ORIGINAL risk, not the post-BE stop (which reads as a
+        # confusing "+0.00R" on a winning trade).
+        context.setdefault("original_soft_stop", context.get("soft_stop"))
         self._entry_ctx[ticket] = context
         self._excursion[ticket] = {
             "mae_pips": 0.0,
@@ -473,10 +495,10 @@ class PositionMonitor:
                     self._record_close_result(pos, ctx, result)
                     self._forced_exit_reason[pos.ticket] = "soft_sl_inferred_overshoot"
                     ctx["pending_overshoot_close"] = False
-                    self.notifier.notify_text(
-                        f"*Adopted soft-stop exit* ticket=`{pos.ticket}`\n"
-                        f"`{detail}`"
-                    )
+                    self.notifier.notify_text(build_soft_stop_exit(
+                        symbol=pos.symbol, ticket=pos.ticket,
+                        detail=detail, adopted=True,
+                    ))
                     return True
                 log.error("Adopted overshoot close FAILED for ticket=%d: %s",
                           pos.ticket, result.message)
@@ -507,9 +529,9 @@ class PositionMonitor:
         if result.success:
             self._record_close_result(pos, ctx, result)
             self._forced_exit_reason[pos.ticket] = decision.reason
-            self.notifier.notify_text(
-                f"*Soft stop exit* ticket=`{pos.ticket}`\n`{decision.detail}`"
-            )
+            self.notifier.notify_text(build_soft_stop_exit(
+                symbol=pos.symbol, ticket=pos.ticket, detail=decision.detail,
+            ))
             return True
         log.error("Soft stop close FAILED for ticket=%d: %s — broker catastrophe "
                   "stop remains as backstop", pos.ticket, result.message)
@@ -615,7 +637,11 @@ class PositionMonitor:
         direction = ctx.get("direction", exc.get("direction", "long"))
         # Risk is defined by the SOFT stop (the agent's real exit), not the wide
         # broker catastrophe stop, so R-multiples reflect the intended risk.
-        stop = ctx.get("soft_stop", ctx.get("stop"))
+        # Prefer the ORIGINAL entry-time soft stop over the live one: after a
+        # breakeven move ``soft_stop`` sits at entry, and measuring R against
+        # it produced the "+0.00R" confusion on winning trades.
+        stop = (ctx.get("original_soft_stop")
+                or ctx.get("soft_stop", ctx.get("stop")))
         broker_stop = ctx.get("stop")
         tp = ctx.get("take_profit")
 
@@ -707,6 +733,13 @@ class PositionMonitor:
             "mae_pips": exc.get("mae_pips", 0.0),
             "mfe_pips": exc.get("mfe_pips", 0.0),
             "entry_ctx": ctx,
+            # Notification context: was the trade risk-free (BE moved) when it
+            # closed, and the last-seen account balance for a "balance after"
+            # line. (_check_positions prunes _breakeven_applied AFTER calling
+            # _handle_close, so the membership test still sees this ticket.)
+            "be_moved": ticket in self._breakeven_applied,
+            "balance_after": (float(self.last_account.balance)
+                              if self.last_account is not None else None),
         }
         try:
             self.trade_closed_cb(ticket, info)
@@ -753,10 +786,10 @@ class PositionMonitor:
         log_partial_scaleout(log, symbol=pos.symbol, ticket=pos.ticket,
                              closed_lots=close_vol, total_lots=pos.volume,
                              r_multiple=r_multiple)
-        self.notifier.notify_text(
-            f"*Partial scale-out* ticket=`{pos.ticket}`\n"
-            f"closed `{close_vol:.2f}` lots at `{r_multiple:.1f}R`, runner chasing draw"
-        )
+        self.notifier.notify_text(build_partial_scaleout(
+            symbol=pos.symbol, ticket=pos.ticket,
+            closed_lots=close_vol, r_multiple=r_multiple,
+        ))
 
         # Push the runner to break-even so the banked move can't turn into a loss.
         if self.live_config.partial_move_to_be and pos.ticket not in self._breakeven_applied:
@@ -819,10 +852,11 @@ class PositionMonitor:
                     log_breakeven_moved(log, symbol=pos.symbol, ticket=pos.ticket,
                                         old_sl=pos.stop_loss, new_sl=new_stop,
                                         r_multiple=r_multiple)
-                    self.notifier.notify_text(
-                        f"*BE Move* ticket=`{pos.ticket}`\n"
-                        f"SL: `{pos.stop_loss:.5f}` → `{new_stop:.5f}` ({r_multiple:.1f}R)"
-                    )
+                    self.notifier.notify_text(build_be_move(
+                        symbol=pos.symbol, ticket=pos.ticket,
+                        old_sl=pos.stop_loss, new_sl=new_stop,
+                        r_multiple=r_multiple,
+                    ))
                     if self._on_state_change is not None:
                         self._on_state_change()
 
@@ -975,8 +1009,28 @@ class PositionMonitor:
             ", ".join(str(t) for t in sorted(self._restored_ctx_tickets)) or "none",
         )
 
+    # Suppress repeat emergency-close notifications (Telegram +
+    # healthcheck halt annotation) within this window. 2026-07-10 02:15 UTC
+    # produced 6+ near-identical messages in seconds: the daily-DD halt
+    # notified, created kill.txt, and the kill-switch handler then notified
+    # again about the file the halt itself had just written.
+    _EMERGENCY_NOTIFY_COOLDOWN_SECONDS: float = 600.0
+
     async def _emergency_close_all(self, reason: str, *, create_kill_file: bool = True) -> None:
-        """Close all open positions immediately."""
+        """Close all open positions immediately.
+
+        The close ACTION always runs. Only the notification side (Telegram
+        message + healthcheck success ping annotated with the halt reason)
+        is rate-limited: at most one per
+        ``_EMERGENCY_NOTIFY_COOLDOWN_SECONDS`` per process, so the DD-halt ->
+        kill-switch cascade doesn't page the user twice for one event.
+
+        Intentional risk halts must NOT send a healthcheck ``/fail`` ping --
+        that marks the check DOWN and looks like a crash/freeze on
+        healthchecks.io. The process keeps running and heartbeats continue;
+        we annotate the immediate success ping so the dashboard shows
+        "halted but alive" instead of "down".
+        """
         log.warning("EMERGENCY CLOSE ALL: %s", reason)
         symbol = self.live_config.symbol
         positions = await self.broker.get_open_positions(symbol)
@@ -988,8 +1042,30 @@ class PositionMonitor:
             else:
                 log.error("Failed to close ticket=%d: %s", pos.ticket, result.message)
 
-        self.notifier.notify_text(f"*EMERGENCY CLOSE*\n`{reason}`\nClosed {len(positions)} positions")
-        self.healthcheck.ping_fail(reason)
+        now = datetime.now(tz=timezone.utc)
+        in_cooldown = (
+            self._last_emergency_notify is not None
+            and (now - self._last_emergency_notify).total_seconds()
+                < self._EMERGENCY_NOTIFY_COOLDOWN_SECONDS
+        )
+        if in_cooldown:
+            log.info(
+                "Emergency-close notification suppressed (cooldown, last sent "
+                "%s): %s", self._last_emergency_notify.isoformat(), reason,
+            )
+        else:
+            self._last_emergency_notify = now
+            account = self.last_account
+            self.notifier.notify_text(build_emergency_close(
+                symbol=symbol, reason=reason, positions_closed=len(positions),
+                balance=(float(account.balance) if account is not None else None),
+                equity=(float(account.equity) if account is not None else None),
+            ))
+            # Success ping (not /fail): intentional halts are not downtime.
+            self.healthcheck.ping(
+                f"{symbol} TRADING HALTED: {reason} - process alive, "
+                f"awaiting kill.txt removal"
+            )
 
         # Create kill switch to prevent re-entry (only once).
         if create_kill_file:

@@ -11,6 +11,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from agent.alphas.base import Alpha
 from agent.config import load_config
@@ -136,6 +137,46 @@ def test_heartbeat_respects_interval(caplog):
     with caplog.at_level(logging.INFO, logger="agent.live.signal_loop"):
         loop._maybe_heartbeat()
     assert not [r for r in caplog.records if r.message.startswith("heartbeat:")]
+
+
+# ----------------------------------------------------------------------
+# Healthcheck ping must survive the kill switch: halted-but-alive must
+# never look like downtime to the external watchdog (July 11-12 false
+# DOWN alerts while the agents were halted by kill.txt)
+# ----------------------------------------------------------------------
+
+def test_heartbeat_pings_healthcheck_when_running(tmp_path):
+    loop = _make_loop()
+    loop.live_config.kill_file = str(tmp_path / "absent-kill.txt")
+    loop.healthcheck = MagicMock()
+    _force_heartbeat_due(loop)
+    loop._maybe_heartbeat()
+    loop.healthcheck.ping.assert_called_once_with()
+
+
+def test_heartbeat_pings_healthcheck_with_halted_note_when_kill_switch_active(
+        tmp_path, caplog):
+    loop = _make_loop()
+    kill = tmp_path / "kill.txt"
+    kill.write_text("Auto-kill: Daily DD halt: 3.0% (limit 3.0%)\n")
+    loop.live_config.kill_file = str(kill)
+    loop.healthcheck = MagicMock()
+    _force_heartbeat_due(loop)
+
+    with caplog.at_level(logging.INFO, logger="agent.live.signal_loop"):
+        loop._maybe_heartbeat()
+
+    # Success ping still fires (the process IS alive), annotated so the
+    # healthchecks.io event log shows the halt context.
+    loop.healthcheck.ping.assert_called_once()
+    body = loop.healthcheck.ping.call_args[0][0]
+    assert "HALTED" in body
+    assert "EURUSD" in body
+    # ping_fail is reserved for genuine process death, not risk halts.
+    loop.healthcheck.ping_fail.assert_not_called()
+    lines = [r.message for r in caplog.records if r.message.startswith("heartbeat:")]
+    assert len(lines) == 1
+    assert "HALTED" in lines[0]
 
 
 # ----------------------------------------------------------------------

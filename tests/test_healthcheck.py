@@ -106,7 +106,10 @@ def test_ping_start_hits_start_suffix():
 
 def test_ping_returns_false_on_non_2xx():
     client = _FakeClient(status_code=500)
-    pinger = HealthcheckPinger(HealthcheckConfig(url="https://hc-ping.com/uuid"), client=client)
+    pinger = HealthcheckPinger(
+        HealthcheckConfig(url="https://hc-ping.com/uuid", retry_backoff_seconds=0),
+        client=client,
+    )
     assert pinger.ping() is False
 
 
@@ -116,7 +119,10 @@ def test_unconfigured_ping_is_a_noop_not_an_error():
 
 
 def test_network_failure_fails_open_never_raises():
-    pinger = HealthcheckPinger(HealthcheckConfig(url="https://hc-ping.com/uuid"), client=_RaisingClient())
+    pinger = HealthcheckPinger(
+        HealthcheckConfig(url="https://hc-ping.com/uuid", retry_backoff_seconds=0),
+        client=_RaisingClient(),
+    )
     assert pinger.ping() is False
     assert pinger.ping_fail("boom") is False
 
@@ -140,3 +146,77 @@ def test_from_env_wires_symbol_through(monkeypatch, suffix_call, expected_suffix
     getattr(pinger, suffix_call)()
     expected_url = "https://hc-ping.com/gbpusd-uuid" + (f"/{expected_suffix}" if expected_suffix else "")
     assert client.calls[0][1] == expected_url
+
+
+# ---------------------------------------------------------------------------
+# Transient-failure retry (the VM's DNS blips: "getaddrinfo failed",
+# 2026-07-11 03:12 UTC) — one dropped ping must not blow the 20-min check
+# period when the code can just try again a couple of seconds later.
+# ---------------------------------------------------------------------------
+
+
+class _FlakyClient:
+    """Raises N times, then behaves like a healthy client."""
+
+    def __init__(self, failures: int):
+        self.failures = failures
+        self.calls: list[tuple[str, str, bytes | None]] = []
+
+    def _maybe_fail(self):
+        if self.failures > 0:
+            self.failures -= 1
+            raise ConnectionError("getaddrinfo failed")
+
+    def get(self, url, timeout=None):
+        self.calls.append(("GET", url, None))
+        self._maybe_fail()
+        return _FakeResponse(200)
+
+    def post(self, url, content=None, timeout=None):
+        self.calls.append(("POST", url, content))
+        self._maybe_fail()
+        return _FakeResponse(200)
+
+
+def _fast_cfg(**kw) -> HealthcheckConfig:
+    return HealthcheckConfig(url="https://hc-ping.com/uuid",
+                             retry_backoff_seconds=0, **kw)
+
+
+def test_ping_retries_through_a_single_dns_blip():
+    client = _FlakyClient(failures=1)
+    pinger = HealthcheckPinger(_fast_cfg(), client=client)
+    assert pinger.ping() is True
+    assert len(client.calls) == 2  # first attempt failed, retry succeeded
+
+
+def test_ping_gives_up_after_max_attempts_and_fails_open():
+    client = _FlakyClient(failures=99)
+    pinger = HealthcheckPinger(_fast_cfg(max_attempts=3), client=client)
+    assert pinger.ping() is False  # fail-open: returns False, never raises
+    assert len(client.calls) == 3
+
+
+def test_retry_backoff_sleeps_between_attempts(monkeypatch):
+    sleeps: list[float] = []
+    monkeypatch.setattr("agent.notifications.healthcheck.time.sleep",
+                        lambda s: sleeps.append(s))
+    client = _FlakyClient(failures=99)
+    cfg = HealthcheckConfig(url="https://hc-ping.com/uuid",
+                            max_attempts=3, retry_backoff_seconds=2.0)
+    HealthcheckPinger(cfg, client=client).ping()
+    # Linear backoff: 2s after attempt 1, 4s after attempt 2, none after last.
+    assert sleeps == [2.0, 4.0]
+
+
+def test_ping_with_message_posts_body_to_base_url():
+    """ping("...HALTED...") annotates the success ping so a halted-but-alive
+    agent is distinguishable from a dead one on the healthchecks.io event
+    log. Must hit the BASE url (success), not /fail."""
+    client = _FakeClient(status_code=200)
+    pinger = HealthcheckPinger(HealthcheckConfig(url="https://hc-ping.com/uuid"), client=client)
+    assert pinger.ping("EURUSD HALTED by kill switch - process alive") is True
+    method, url, body = client.calls[0]
+    assert method == "POST"
+    assert url == "https://hc-ping.com/uuid"
+    assert b"HALTED" in body
