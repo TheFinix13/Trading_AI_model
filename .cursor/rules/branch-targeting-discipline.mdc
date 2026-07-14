@@ -1,0 +1,93 @@
+---
+description: The commit-target branch is whatever the user has declared for the current session — never inferred from HEAD, repo naming, or file layout. If unset, ask.
+alwaysApply: true
+---
+
+# Branch-targeting discipline (multi-pair-trading-agent)
+
+Canonical protocol: `/Users/the1finix/Documents/GitHub/brain-box/agents/branch-targeting-discipline.md`.
+
+Sibling hazard to file-level races
+(`concurrent-session-safety.mdc`): multiple agents can be committing to
+different branches of this repo at once. If you don't pin the target branch
+before you commit, the commit lands on whatever branch is checked out —
+potentially the wrong lane.
+
+## Core rule (per-session declaration)
+
+**The commit-target branch is whatever the user has explicitly declared for
+this session's work.** It is not a fixed property of the repo, not inferred
+from `HEAD`, and not inferred from the repo's name or which files you're
+touching. New branches may be created at any time under this repo and must
+be adapted to on the fly.
+
+- If the user has said "we're working on `main` this session" → you commit
+  only to `main`. `next-gen` is off-limits for this session.
+- If the user has said "we're working on `next-gen` this session" → you
+  commit only to `next-gen`. `main` is off-limits.
+- **If the user names a new branch to work on, that's the target — never
+  assume the checked-out branch.**
+- If the user has NOT declared a target branch for the current session's
+  work, **ASK** before staging or committing. Do not infer.
+
+## Current declared mapping (illustrative, subject to user's per-session direction)
+
+This is the mapping in force at 2026-07-14. It is a *snapshot* of past
+declarations, not a canonical hardcoding — the user may reassign a branch
+or introduce a new one at any time, and that per-session direction wins.
+
+| Branch | Lane (as currently declared) | Runs where |
+|---|---|---|
+| `main` | Live demo-MT5 zones trading agent (the "v1 trading VM") | Exness demo VMware Windows box (`git fetch && git reset --hard origin/main` on the VM) |
+| `next-gen` | v2 platform line — dashboard, `/v1` + `/v2` web UI, paper-loop shell, squad Telegram bot, runbook 7b. Not the trading agent. | Mac / second-clone dev box |
+| `m001-development` | Legacy M001 production cleanup snapshot; not deployed | — |
+| Any other branch | UNKNOWN unless the user has assigned it for this session | — |
+
+Any branch surfaced by `git branch -a` that isn't in this table, OR that
+IS in this table but hasn't been declared as the target for the current
+session's work, is UNKNOWN — ask the user before touching it.
+
+## Hard rule
+
+**If the user has told you which branch this session's work targets, you
+have no business touching any other branch.** Never assume the
+currently-checked-out branch is the intended target. Delegation prompts
+that involve `git commit` / `git push` MUST explicitly state the target
+branch and the one-line WHY; workers receiving a delegation without that
+MUST refuse and ask.
+
+## Pre-commit (short form)
+
+1. `git branch --show-current` — matches the branch the user declared for
+   this session's WORK?
+2. `git status --short` — no foreign files.
+3. `git log --oneline -5` on current, and on the intended target if
+   different.
+4. Stage explicit paths only. Never `git add -A` / `git add .`.
+5. If the declared target ≠ checked-out branch: `git checkout <target>`
+   FIRST, then stage and commit. Never commit wrong-branch on purpose and
+   cherry-pick as a matter of course.
+
+## Fixing a mistake
+
+Cherry-pick to the correct branch. No force-push, no history rewrite. Leave
+the wrong-branch commit alone unless the user asks for a revert. Report
+both branch states in the fix report.
+
+## See also
+
+- `/Users/the1finix/Documents/GitHub/multi-pair-trading-agent/.cursor/rules/concurrent-session-safety.mdc`
+  — file-level race on the same working tree (the sibling hazard).
+- `/Users/the1finix/Documents/GitHub/brain-box/agents/branch-targeting-discipline.md`
+  — full protocol + incident log.
+
+## Why this rule exists
+
+2026-07-14: a daily-DD kill-switch self-recovery fix — a production
+reliability change for the demo-MT5 agent that the user had declared runs
+on `main` this session — was delegated without a target-branch pin. The
+worker committed and pushed to the checked-out branch, `next-gen`, which
+is the unrelated v2 platform line. Cherry-pick to `main` recovered the
+change; the wrong-branch commit (`d6e0e4a` on `next-gen`) was left alone.
+Root cause: the delegating agent did not carry the user's per-session
+branch declaration into the delegation prompt.
