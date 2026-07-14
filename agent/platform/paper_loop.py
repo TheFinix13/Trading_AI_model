@@ -43,16 +43,20 @@ STATE_FILE = "state.json"
 KILL_FILE = "kill.txt"
 
 
-def notify_event(row: dict, source_file: str) -> None:
-    """TELEGRAM EXTENSION POINT (deliberately unwired).
+def notify_event(row: dict, source_file: str, notifier=None) -> None:
+    """TELEGRAM EXTENSION POINT — wired to the DEDICATED squad bot.
 
-    Called for every row the paper loop emits. Squad events are NOT
-    pushed to Telegram yet because the channel is an open user decision
-    (reuse the v1 bot chat vs a dedicated squad channel). Once decided,
-    import ``agent.notifications.telegram.TelegramNotifier`` here and
-    forward e.g. closed trades (``source_file == "trades.jsonl"``) —
-    keep proposals/rejections out to avoid paging noise.
+    Called for every row the paper loop emits. ``notifier`` is a
+    :class:`agent.platform.squad_notify.SquadNotifier` (or None). The
+    user decided the squad gets its own bot (separate token + chat), so
+    routing lives in ``squad_notify``: closed trades page as GOAL/miss,
+    proposals/rejections never page, league tables are throttled. No
+    notifier (or an unconfigured one) means this is a silent no-op, and
+    the notifier itself fails open — a Telegram outage can never crash
+    the loop.
     """
+    if notifier is not None:
+        notifier.notify_row(row, source_file)
 
 
 def _parse_ts(raw: str) -> datetime:
@@ -79,10 +83,11 @@ class PaperLoop:
     """Replay a source cache into a live output dir at accelerated pace."""
 
     def __init__(self, source_cache: Path, out_dir: Path,
-                 tick_seconds: float = 2.0) -> None:
+                 tick_seconds: float = 2.0, notifier=None) -> None:
         self.source_cache = Path(source_cache)
         self.out_dir = Path(out_dir)
         self.tick_seconds = float(tick_seconds)
+        self.notifier = notifier  # squad_notify.SquadNotifier or None
         self.rows: dict[str, list[tuple[datetime, str]]] = {
             fname: _load_rows(self.source_cache / fname, ts_field)
             for fname, ts_field in SOURCE_FILES
@@ -171,7 +176,7 @@ class PaperLoop:
         with (self.out_dir / fname).open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
         self.cursors[fname] += 1
-        notify_event(json.loads(line), fname)
+        notify_event(json.loads(line), fname, self.notifier)
         ts_str = ts.isoformat() if ts != datetime.min else None
         self.save_state(ts_str)
         return ts_str or ""
@@ -186,24 +191,33 @@ class PaperLoop:
         log(f"[paper-loop] source={self.source_cache}")
         log(f"[paper-loop] output={self.out_dir} "
             f"tick={self.tick_seconds}s remaining={self.remaining()} rows")
+        if self.notifier is not None:
+            self.notifier.notify_kickoff(
+                source_label=self.source_cache.name,
+                n_rows=self.remaining(), out_dir=str(self.out_dir))
         while True:
             reason = self.killed()
             if reason:
                 log(f"[paper-loop] kill.txt present: {reason} — stopping")
-                return "killed"
+                return self._stop("killed", reason=reason)
             if max_steps is not None and done >= max_steps:
                 log(f"[paper-loop] reached max steps ({max_steps})")
-                return "max_steps"
+                return self._stop("max_steps")
             ts = self.step()
             if ts is None:
                 log("[paper-loop] replay exhausted — all rows emitted")
-                return "done"
+                return self._stop("done")
             done += 1
             if done % 50 == 0:
                 log(f"[paper-loop] {done} rows emitted, "
                     f"{self.remaining()} remaining (sim time {ts})")
             if self.tick_seconds > 0:
                 sleep(self.tick_seconds)
+
+    def _stop(self, outcome: str, *, reason: str = "") -> str:
+        if self.notifier is not None:
+            self.notifier.notify_stop(outcome, reason=reason)
+        return outcome
 
 
 def live_status(out_dir: Path, stale_after_s: float = 120.0) -> dict:

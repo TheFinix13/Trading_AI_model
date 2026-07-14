@@ -28,8 +28,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from dotenv import load_dotenv  # noqa: E402
+
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.paper_loop import SOURCE_FILES, PaperLoop  # noqa: E402
+from agent.platform.squad_notify import SquadNotifier  # noqa: E402
+
+load_dotenv(REPO_ROOT / ".env", override=False)
 
 
 def main() -> None:
@@ -49,6 +54,9 @@ def main() -> None:
                     help="stop after N rows (default: run to exhaustion)")
     ap.add_argument("--reset", action="store_true",
                     help="wipe the output JSONLs + state.json first")
+    ap.add_argument("--no-telegram", action="store_true",
+                    help="suppress squad Telegram messages even when the "
+                         "dedicated bot is configured")
     args = ap.parse_args()
 
     src = Path(args.source_cache)
@@ -65,7 +73,22 @@ def main() -> None:
         (out_dir / "workspace_counts.json").unlink(missing_ok=True)
         print(f"[paper-loop] reset {out_dir}")
 
-    loop = PaperLoop(src, out_dir, tick_seconds=args.tick_seconds)
+    # Dedicated squad bot: platform.toml [telegram] wins over
+    # SQUAD_TELEGRAM_* env vars; unconfigured -> silent no-op.
+    notifier = None
+    if not args.no_telegram:
+        candidate = SquadNotifier.from_sources(cfg.get("telegram"))
+        if candidate.configured:
+            notifier = candidate
+            print("[paper-loop] squad Telegram bot: configured "
+                  "(goals/halts/summaries will page)")
+        else:
+            print("[paper-loop] squad Telegram bot: not configured "
+                  "(set [telegram] in platform.toml or SQUAD_TELEGRAM_* "
+                  "in .env)")
+
+    loop = PaperLoop(src, out_dir, tick_seconds=args.tick_seconds,
+                     notifier=notifier)
     try:
         outcome = loop.run(max_steps=args.max_steps)
     except KeyboardInterrupt:
