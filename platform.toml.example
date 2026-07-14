@@ -30,3 +30,19 @@
 # bot_token = "123456:ABC-..."
 # chat_id = "-1001234567890"
 # summary_every = 10
+
+# Paper loop replay-cache selection. Both are optional; CLI flags
+# (--cache / --aggregator) always win, and if this whole section is
+# absent the loop auto-picks the newest g7_replay_cache_g7retry1-*
+# under research_reviews (so a fresh G7 second attempt shows up on
+# /v2 LIVE without touching config).
+#
+#   cache      = an explicit cache id (a "g7_replay_cache_*" folder
+#                name under research_reviews) or an absolute path.
+#   aggregator = shorthand for the g7retry1 arm you want the pitch
+#                to observe: "phi41" (verdict-bearing) or "arm4"
+#                (companion). Resolves to
+#                "g7_replay_cache_g7retry1-<aggregator>".
+# [paper_loop]
+# aggregator = "phi41"
+# cache = "g7_replay_cache_g7retry1-arm4"

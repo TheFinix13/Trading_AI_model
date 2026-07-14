@@ -29,6 +29,13 @@ def _defaults(repo_root: Path) -> dict:
         # here fall back to SQUAD_TELEGRAM_BOT_TOKEN / SQUAD_TELEGRAM_CHAT_ID
         # env vars in agent.platform.squad_notify (toml wins per key).
         "telegram": {"bot_token": "", "chat_id": "", "summary_every": 10},
+        # Paper loop cache selection ([paper_loop] table). CLI flags
+        # (--cache / --aggregator) override these; when both file and
+        # CLI leave everything empty, paper_loop.select_source_cache
+        # auto-picks the newest g7_replay_cache_g7retry1-* under the
+        # research reviews dir (so a fresh G7 second attempt shows up
+        # on /v2 LIVE without config changes).
+        "paper_loop": {"cache": "", "aggregator": ""},
     }
 
 
@@ -65,6 +72,11 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
                 cfg["telegram"]["summary_every"] = int(tg["summary_every"])
             except (TypeError, ValueError):
                 pass
+    pl = raw.get("paper_loop")
+    if isinstance(pl, dict):
+        for key in ("cache", "aggregator"):
+            if pl.get(key):
+                cfg["paper_loop"][key] = str(pl[key]).strip()
     if cfg["live_dir"] is None:
         cfg["live_dir"] = Path(cfg["log_root"]) / "squad_live"
     return cfg

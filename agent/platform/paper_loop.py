@@ -42,6 +42,101 @@ SOURCE_FILES: tuple[tuple[str, str], ...] = (
 STATE_FILE = "state.json"
 KILL_FILE = "kill.txt"
 
+# Replay-cache naming knowledge (mirrors squad_events._CACHE_FILES /
+# list_matches). Kept here so cache selection is self-contained without
+# importing squad_events, which does heavier work at import time.
+CACHE_PREFIX = "g7_replay_cache_"
+G7RETRY1_PREFIX = "g7_replay_cache_g7retry1-"
+AGGREGATORS: tuple[str, ...] = ("phi41", "arm4")
+_REQUIRED_CACHE_FILES = ("proposals_all.jsonl", "proposals_rejected.jsonl",
+                         "trades.jsonl")
+
+
+def _cache_is_valid(path: Path) -> bool:
+    """A dir is a playable cache iff it has all three JSONL artifacts."""
+    if not path.is_dir():
+        return False
+    return all((path / f).exists() for f in _REQUIRED_CACHE_FILES)
+
+
+def _newest_matching(reviews_dir: Path, prefix: str) -> Path | None:
+    if not reviews_dir.exists():
+        return None
+    cands = [c for c in reviews_dir.iterdir()
+             if c.is_dir() and c.name.startswith(prefix)
+             and _cache_is_valid(c)]
+    if not cands:
+        return None
+    cands.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return cands[0]
+
+
+def select_source_cache(
+        reviews_dir: Path,
+        *,
+        cache: str | None = None,
+        aggregator: str | None = None) -> tuple[Path, str]:
+    """Resolve the replay cache to feed into the paper loop.
+
+    Precedence (higher wins):
+      1. Explicit ``cache`` id or path (from CLI ``--cache`` /
+         ``--source-cache`` or ``[paper_loop] cache`` in
+         ``platform.toml``).
+      2. ``aggregator`` shorthand — resolves to
+         ``g7_replay_cache_g7retry1-<aggregator>``. Accepts values in
+         :data:`AGGREGATORS` (phi41 is the G7-verdict-bearing arm,
+         arm4 the companion).
+      3. Newest ``g7_replay_cache_g7retry1-*`` under ``reviews_dir``
+         (the default when nothing is specified, so a fresh G7 second
+         attempt is auto-selected).
+      4. Newest ``g7_replay_cache_*`` under ``reviews_dir`` (legacy
+         fallback for older labs).
+
+    Returns ``(path, reason)`` where ``reason`` is a short label safe
+    to log at startup so the operator can confirm what's playing
+    (e.g. ``"explicit"``, ``"aggregator=phi41"``,
+    ``"newest g7retry1"``, ``"newest replay cache"``).
+
+    Raises :class:`FileNotFoundError` when the caller asked for a
+    specific cache/aggregator that doesn't exist, or when neither of
+    the auto-pick fallbacks finds anything usable. Raises
+    :class:`ValueError` for an unknown ``aggregator`` value.
+    """
+    reviews_dir = Path(reviews_dir)
+
+    if cache:
+        p = Path(cache)
+        if not p.is_absolute():
+            p = reviews_dir / cache
+        if not _cache_is_valid(p):
+            raise FileNotFoundError(
+                f"cache '{cache}' not found or missing required JSONL "
+                f"files: {p}")
+        return p, "explicit"
+
+    if aggregator:
+        if aggregator not in AGGREGATORS:
+            raise ValueError(
+                f"aggregator must be one of {AGGREGATORS}, "
+                f"got {aggregator!r}")
+        p = reviews_dir / f"{G7RETRY1_PREFIX}{aggregator}"
+        if not _cache_is_valid(p):
+            raise FileNotFoundError(
+                f"aggregator '{aggregator}' cache not found under "
+                f"{reviews_dir} (expected {p.name})")
+        return p, f"aggregator={aggregator}"
+
+    p = _newest_matching(reviews_dir, G7RETRY1_PREFIX)
+    if p is not None:
+        return p, "newest g7retry1"
+
+    p = _newest_matching(reviews_dir, CACHE_PREFIX)
+    if p is not None:
+        return p, "newest replay cache"
+
+    raise FileNotFoundError(
+        f"no {CACHE_PREFIX}* directories found under {reviews_dir}")
+
 
 def notify_event(row: dict, source_file: str, notifier=None) -> None:
     """TELEGRAM EXTENSION POINT — wired to the DEDICATED squad bot.
