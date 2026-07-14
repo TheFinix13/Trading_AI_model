@@ -44,7 +44,8 @@ DEFAULT_RESEARCH_REVIEWS = (
     / "M001_multi_agent_ensemble" / "reviews"
 )
 
-_MATCH_RE = re.compile(r"^/api/v2/match/([A-Za-z0-9_.-]+)/(summary|events)$")
+_MATCH_RE = re.compile(
+    r"^/api/v2/match/([A-Za-z0-9_.-]+)/(summary|events|event/(\d+))$")
 
 
 def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path):
@@ -93,6 +94,13 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path):
                 if kind == "summary":
                     _, summary = squad_events.build_timeline(cache_dir)
                     self._json(summary)
+                elif kind.startswith("event/"):
+                    detail = squad_events.get_event_detail(
+                        cache_dir, int(m.group(3)))
+                    if detail is None:
+                        self._json({"error": "event index out of range"}, 404)
+                    else:
+                        self._json(detail)
                 else:
                     try:
                         cursor = int(params.get("cursor", "0"))

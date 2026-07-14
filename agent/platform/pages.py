@@ -169,43 +169,66 @@ refresh(); setInterval(refresh, 10000);
 </script></body></html>"""
 
 
-V2_PAGE = f"""<!DOCTYPE html>
+# The v2 page's JS is large; a raw template with __PLACEHOLDER__
+# substitution avoids both the brace-doubling tax of an f-string and
+# Python eating JS unicode escapes like \u{1F4AD}.
+_V2_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blue Lock squad — pitch (v2)</title>
-<style>{_BASE_CSS}
-.layout{{display:grid;grid-template-columns:minmax(420px,1.4fr) minmax(320px,1fr);gap:16px}}
-@media (max-width: 900px){{ .layout{{grid-template-columns:1fr}} }}
-#pitchwrap{{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}}
-#pitch{{width:100%;height:auto;display:block;border-radius:8px}}
-.controls{{display:flex;gap:10px;align-items:center;margin:10px 0 4px;flex-wrap:wrap}}
-.controls button{{background:#21262d;color:var(--fg);border:1px solid var(--border);
-  border-radius:8px;padding:6px 16px;font-size:13px;cursor:pointer}}
-.controls button:hover{{border-color:var(--accent)}}
-.controls select{{background:#21262d;color:var(--fg);border:1px solid var(--border);
-  border-radius:8px;padding:5px 10px;font-size:13px}}
-#clock{{font-variant-numeric:tabular-nums;font-weight:700;font-size:15px}}
-#score{{font-size:15px}} #score b{{color:var(--green)}}
-.side .card{{margin-bottom:14px}}
-.tkr{{max-height:340px;overflow-y:auto}}
-.tk{{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #1c2129;font-size:12.3px;align-items:baseline}}
-.tk:last-child{{border-bottom:none}}
-.tk .t{{color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums;font-size:11px}}
-.tk .who{{font-weight:700;white-space:nowrap}}
-table{{width:100%;border-collapse:collapse;font-size:12.5px}}
-th,td{{text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)}}
-th{{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}}
-tr:last-child td{{border-bottom:none}}
-.gflash{{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);
+<style>__BASE_CSS__
+.layout{display:grid;grid-template-columns:minmax(420px,1.4fr) minmax(320px,1fr);gap:16px}
+@media (max-width: 900px){ .layout{grid-template-columns:1fr} }
+#pitchwrap{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+#pitch{width:100%;height:auto;display:block;border-radius:8px}
+.controls{display:flex;gap:10px;align-items:center;margin:10px 0 4px;flex-wrap:wrap}
+.controls button{background:#21262d;color:var(--fg);border:1px solid var(--border);
+  border-radius:8px;padding:6px 16px;font-size:13px;cursor:pointer}
+.controls button:hover{border-color:var(--accent)}
+.controls select,.controls input{background:#21262d;color:var(--fg);border:1px solid var(--border);
+  border-radius:8px;padding:5px 10px;font-size:13px}
+.controls label{font-size:12px;color:var(--dim);display:flex;gap:5px;align-items:center}
+#clock{font-variant-numeric:tabular-nums;font-weight:700;font-size:15px}
+#score{font-size:15px} #score b{color:var(--green)}
+#seek{width:100%;margin:6px 0 2px;accent-color:var(--accent)}
+.side .card{margin-bottom:14px}
+.tkr{max-height:340px;overflow-y:auto}
+.tk{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #1c2129;font-size:12.3px;
+  align-items:baseline;cursor:pointer}
+.tk:hover{background:rgba(88,166,255,.06)}
+.tk:last-child{border-bottom:none}
+.tk .t{color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums;font-size:11px}
+.tk .who{font-weight:700;white-space:nowrap}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)}
+th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+tr:last-child td{border-bottom:none}
+.gflash{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);
   font-size:54px;font-weight:900;color:var(--green);text-shadow:0 0 30px rgba(63,185,80,.8);
-  opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;letter-spacing:.1em}}
+  opacity:0;pointer-events:none;transition:opacity .2s;z-index:50;letter-spacing:.1em}
+#overlay{position:fixed;inset:0;background:rgba(1,4,9,.72);display:none;z-index:80;
+  align-items:flex-start;justify-content:center;padding:60px 16px 16px;overflow-y:auto}
+#overlay.open{display:flex}
+#modal{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  max-width:640px;width:100%;padding:20px 24px;position:relative}
+#modal h2{margin:0 0 8px;font-size:17px}
+#modal .x{position:absolute;top:10px;right:14px;background:none;border:none;color:var(--dim);
+  font-size:20px;cursor:pointer}
+#modal .x:hover{color:var(--fg)}
+.kv2{display:grid;grid-template-columns:max-content 1fr;gap:3px 16px;font-size:13px;margin:10px 0}
+.kv2 dt{color:var(--dim)} .kv2 dd{margin:0;word-break:break-word}
+#modal pre{background:#0d1117;border:1px solid var(--border);border-radius:8px;padding:10px 12px;
+  font-size:11.5px;overflow-x:auto;max-height:260px}
+.spark{display:block;margin:8px 0}
+.rt{font-size:12.3px}
+.badge.live{background:rgba(248,81,73,.18);color:var(--red);border:1px solid rgba(248,81,73,.5)}
 </style></head><body>
 <h1>Blue Lock squad — the pitch <span class="dim">v2 · M001 ensemble</span>
- <span class="badge sim">sim-only — not trading real lots</span></h1>
+ <span class="badge sim" id="modebadge">sim-only — not trading real lots</span></h1>
 <div class="sub">Walk-forward replay played as a match: passes are proposals, tackles are
-aggregator rejections, the wall is Sentinel, goals are winning trades. Live paper-mode
-stream plugs into this same page when the squad graduates.</div>
-{nav('v2')}
+aggregator rejections, the wall is Sentinel, goals are winning trades. Click a player for
+their profile; click a ticker row for the full event payload.</div>
+__NAV__
 <div class="layout">
 <div id="pitchwrap">
   <div class="controls">
@@ -218,175 +241,351 @@ stream plugs into this same page when the squad graduates.</div>
     <span id="clock">—</span>
     <span id="score">Goals <b id="goals">0</b> · Misses <span id="misses">0</span></span>
   </div>
+  <input type="range" id="seek" min="0" max="0" value="0">
+  <div class="controls" style="margin-top:2px">
+    <select id="fagent"><option value="">all players</option></select>
+    <select id="fsymbol"><option value="">all symbols</option></select>
+    <select id="ftype"><option value="">all events</option>
+      <option value="proposal">proposals</option><option value="blocked">blocked</option>
+      <option value="open">opens</option><option value="close">closes</option>
+      <option value="thought">thoughts</option></select>
+    <input id="jumpdate" placeholder="jump to YYYY-MM-DD" size="18">
+    <button id="jumpbtn">Go</button>
+    <label><input type="checkbox" id="pausegoal"> pause on goal</label>
+  </div>
   <svg id="pitch" viewBox="0 0 100 130" preserveAspectRatio="xMidYMid meet"></svg>
 </div>
 <div class="side">
-  <div class="card"><h2 style="margin:0 0 8px;font-size:15px">Match ticker</h2><div class="tkr" id="ticker"></div></div>
+  <div class="card"><h2 style="margin:0 0 8px;font-size:15px">Match ticker <span class="dim" style="font-size:11px">click a row for detail</span></h2><div class="tkr" id="ticker"></div></div>
   <div class="card"><h2 style="margin:0 0 8px;font-size:15px">League table (this match)</h2>
-    <table id="league"><tr><th>Player</th><th>Props</th><th>Blocked</th><th>Trades</th><th>Goals</th><th>Pips</th><th>TQS</th></tr></table></div>
+    <table id="league"><tr><th>Player</th><th>Props</th><th>Blocked</th><th>Trades</th><th>Goals</th><th>Win%</th><th>Pips</th><th>TQS</th></tr></table></div>
 </div>
 </div>
 <div class="gflash" id="gflash">GOAL!</div>
+<div id="overlay"><div id="modal"><button class="x" id="mclose">&times;</button><div id="mbody"></div></div></div>
 <script>
 const NS="http://www.w3.org/2000/svg";
-let roster={{}}, events=[], cursor=0, playing=false, timer=null, goals=0, misses=0;
-function esc(x){{ const d=document.createElement("div"); d.innerText=String(x); return d.innerHTML; }}
-function el(tag,attrs){{ const e=document.createElementNS(NS,tag);
-  for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }}
+let roster={}, events=[], filtered=[], pos=0, playing=false, timer=null, goals=0, misses=0;
+let matchId=null, summaryData=null;
+function esc(x){ const d=document.createElement("div"); d.innerText=String(x); return d.innerHTML; }
+function el(tag,attrs){ const e=document.createElementNS(NS,tag);
+  for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
+function evDate(t){ return new Date((t||"").replace(" ","T")); }
 
-function drawPitch(){{
+function drawPitch(){
   const svg=document.getElementById("pitch"); svg.innerHTML="";
-  svg.appendChild(el("rect",{{x:0,y:0,width:100,height:130,fill:"var(--pitch)",rx:2}}));
-  // outline + halfway + centre circle + boxes (y grows toward opponent goal at top? we use top=goal)
-  const line={{stroke:"var(--line)","stroke-width":0.5,fill:"none"}};
-  svg.appendChild(el("rect",{{x:3,y:3,width:94,height:124,...line}}));
-  svg.appendChild(el("line",{{x1:3,y1:65,x2:97,y2:65,...line}}));
-  svg.appendChild(el("circle",{{cx:50,cy:65,r:10,...line}}));
-  svg.appendChild(el("rect",{{x:30,y:3,width:40,height:14,...line}}));   // opponent box (top)
-  svg.appendChild(el("rect",{{x:30,y:113,width:40,height:14,...line}})); // own box
-  svg.appendChild(el("rect",{{x:40,y:1,width:20,height:2,fill:"#e6edf3",opacity:.85}})); // goal
-  const g=el("g",{{id:"anim"}}); svg.appendChild(g);
-  for(const [aid,r] of Object.entries(roster)){{
+  svg.appendChild(el("rect",{x:0,y:0,width:100,height:130,fill:"var(--pitch)",rx:2}));
+  const line={stroke:"var(--line)","stroke-width":0.5,fill:"none"};
+  svg.appendChild(el("rect",{x:3,y:3,width:94,height:124,...line}));
+  svg.appendChild(el("line",{x1:3,y1:65,x2:97,y2:65,...line}));
+  svg.appendChild(el("circle",{cx:50,cy:65,r:10,...line}));
+  svg.appendChild(el("rect",{x:30,y:3,width:40,height:14,...line}));   // opponent box (top)
+  svg.appendChild(el("rect",{x:30,y:113,width:40,height:14,...line})); // own box
+  svg.appendChild(el("rect",{x:40,y:1,width:20,height:2,fill:"#e6edf3",opacity:.85})); // goal
+  const g=el("g",{id:"anim"}); svg.appendChild(g);
+  const bub=el("g",{id:"bubbles"}); svg.appendChild(bub);
+  for(const [aid,r] of Object.entries(roster)){
     const px=r.x, py=130-(r.y*1.2)-5;   // roster y grows toward goal; goal is at top
-    const pg=el("g",{{id:"pl_"+aid,transform:`translate(${{px}},${{py}})`,style:"cursor:default"}});
-    pg.appendChild(el("circle",{{r:3.4,fill:r.color,stroke:"#0d1117","stroke-width":0.5}}));
-    const num=el("text",{{y:1.2,"text-anchor":"middle","font-size":3,fill:"#0d1117","font-weight":"800"}});
+    const pg=el("g",{id:"pl_"+aid,transform:`translate(${px},${py})`,style:"cursor:pointer"});
+    pg.appendChild(el("circle",{r:3.4,fill:r.color,stroke:"#0d1117","stroke-width":0.5}));
+    const num=el("text",{y:1.2,"text-anchor":"middle","font-size":3,fill:"#0d1117","font-weight":"800"});
     num.textContent=r.num; pg.appendChild(num);
-    const nm=el("text",{{y:6.6,"text-anchor":"middle","font-size":2.6,fill:"#e6edf3"}});
+    const nm=el("text",{y:6.6,"text-anchor":"middle","font-size":2.6,fill:"#e6edf3"});
     nm.textContent=r.name; pg.appendChild(nm);
-    const halo=el("circle",{{r:3.4,fill:"none",stroke:r.color,"stroke-width":0,id:"halo_"+aid}});
+    const halo=el("circle",{r:3.4,fill:"none",stroke:r.color,"stroke-width":0,id:"halo_"+aid});
     pg.appendChild(halo);
+    pg.addEventListener("click",()=>showProfile(aid));
     svg.appendChild(pg);
-  }}
-}}
-function playerPos(aid){{ const r=roster[aid];
-  return r? [r.x, 130-(r.y*1.2)-5] : [50,65]; }}
-function pulse(aid,color){{
+  }
+}
+function playerPos(aid){ const r=roster[aid];
+  return r? [r.x, 130-(r.y*1.2)-5] : [50,65]; }
+function pulse(aid,color){
   const h=document.getElementById("halo_"+aid); if(!h) return;
   h.setAttribute("stroke",color); h.setAttribute("stroke-width",1.4); h.setAttribute("r",3.4);
-  let r=3.4; const iv=setInterval(()=>{{ r+=0.9; h.setAttribute("r",r);
+  let r=3.4; const iv=setInterval(()=>{ r+=0.9; h.setAttribute("r",r);
     h.setAttribute("stroke-width",Math.max(0,1.4-(r-3.4)*0.18));
-    if(r>10){{clearInterval(iv); h.setAttribute("stroke-width",0);}} }},30);
-}}
-function ball(from,to,color,dashed){{
+    if(r>10){clearInterval(iv); h.setAttribute("stroke-width",0);} },30);
+}
+function ball(from,to,color,dashed){
   const g=document.querySelector("#anim");
-  const ln=el("line",{{x1:from[0],y1:from[1],x2:from[0],y2:from[1],stroke:color,
-    "stroke-width":0.7,opacity:0.9,...(dashed?{{"stroke-dasharray":"1.5 1.2"}}:{{}})}});
+  const ln=el("line",{x1:from[0],y1:from[1],x2:from[0],y2:from[1],stroke:color,
+    "stroke-width":0.7,opacity:0.9,...(dashed?{"stroke-dasharray":"1.5 1.2"}:{})});
   g.appendChild(ln);
-  const b=el("circle",{{cx:from[0],cy:from[1],r:1.2,fill:"#fff",stroke:color,"stroke-width":0.5}});
+  const b=el("circle",{cx:from[0],cy:from[1],r:1.2,fill:"#fff",stroke:color,"stroke-width":0.5});
   g.appendChild(b);
   const steps=14; let i=0;
-  const iv=setInterval(()=>{{ i++;
+  const iv=setInterval(()=>{ i++;
     const x=from[0]+(to[0]-from[0])*i/steps, y=from[1]+(to[1]-from[1])*i/steps;
     b.setAttribute("cx",x); b.setAttribute("cy",y);
     ln.setAttribute("x2",x); ln.setAttribute("y2",y);
-    if(i>=steps){{ clearInterval(iv);
-      setTimeout(()=>{{b.remove(); ln.style.transition="opacity .6s"; ln.style.opacity=0;
-        setTimeout(()=>ln.remove(),700);}},150); }} }},22);
-}}
-function goalFlash(){{ const f=document.getElementById("gflash");
-  f.style.opacity=1; setTimeout(()=>f.style.opacity=0,900); }}
+    if(i>=steps){ clearInterval(iv);
+      setTimeout(()=>{b.remove(); ln.style.transition="opacity .6s"; ln.style.opacity=0;
+        setTimeout(()=>ln.remove(),700);},150); } },22);
+}
+function speechBubble(aid,text){
+  const g=document.getElementById("bubbles"); if(!g) return;
+  const [px,py]=playerPos(aid);
+  const short=String(text).slice(0,42)+(String(text).length>42?"…":"");
+  const w=Math.min(46,short.length*1.55+4);
+  const bx=Math.max(4,Math.min(96-w,px-w/2)), by=Math.max(4,py-13);
+  const grp=el("g",{opacity:"0.96"});
+  grp.appendChild(el("rect",{x:bx,y:by,width:w,height:6.4,rx:2,fill:"#e6edf3",
+    stroke:"#8b949e","stroke-width":0.2}));
+  const tx=el("text",{x:bx+w/2,y:by+4.2,"text-anchor":"middle","font-size":2.4,
+    fill:"#0d1117","font-style":"italic"});
+  tx.textContent=short; grp.appendChild(tx);
+  g.appendChild(grp);
+  setTimeout(()=>{grp.style.transition="opacity .8s"; grp.style.opacity=0;
+    setTimeout(()=>grp.remove(),900);},2200);
+}
+function goalFlash(){ const f=document.getElementById("gflash");
+  f.style.opacity=1; setTimeout(()=>f.style.opacity=0,900); }
 
-function tick(ev){{
+function tickMsg(ev){
+  if(ev.type==="proposal") return `proposes ${(ev.dir||"?").toUpperCase()} ${ev.symbol} (conv ${ev.conviction})`;
+  if(ev.type==="blocked") return ev.rule?`blocked by SENTINEL — ${ev.reason}`:
+    `tackled by ${(roster[ev.by]||{name:ev.by}).name} on ${ev.symbol}`;
+  if(ev.type==="open") return `SHOT — ${(ev.dir||"?").toUpperCase()} ${ev.symbol} executed`;
+  if(ev.type==="close") return ev.goal?
+    `GOAL! +${ev.pnl_pips} pips on ${ev.symbol} (${ev.exit_reason}${ev.tqs!=null?", TQS "+ev.tqs:""})`:
+    `miss — ${ev.pnl_pips} pips on ${ev.symbol} (${ev.exit_reason})`;
+  if(ev.type==="thought") return `\u{1F4AD} ${ev.text||""}`;
+  return JSON.stringify(ev);
+}
+function tick(ev){
   const tk=document.getElementById("ticker");
-  const r=roster[ev.agent]||{{name:ev.agent,color:"#8b949e"}};
-  let msg="", color=r.color;
-  if(ev.type==="proposal") msg=`proposes ${{ev.dir.toUpperCase()}} ${{ev.symbol}} (conv ${{ev.conviction}})`;
-  else if(ev.type==="blocked") msg=ev.rule?`blocked by SENTINEL — ${{ev.reason}}`:
-    `tackled by ${{(roster[ev.by]||{{name:ev.by}}).name}} on ${{ev.symbol}}`;
-  else if(ev.type==="open") msg=`SHOT — ${{ev.dir.toUpperCase()}} ${{ev.symbol}} executed`;
-  else if(ev.type==="close") msg=ev.goal?
-    `GOAL! +${{ev.pnl_pips}} pips on ${{ev.symbol}} (${{ev.exit_reason}}${{ev.tqs!=null?", TQS "+ev.tqs:""}})`:
-    `miss — ${{ev.pnl_pips}} pips on ${{ev.symbol}} (${{ev.exit_reason}})`;
+  const r=roster[ev.agent]||{name:ev.agent,color:"#8b949e"};
   const div=document.createElement("div"); div.className="tk";
-  div.innerHTML=`<span class="t">${{esc((ev.t||"").slice(0,16))}}</span>`+
-    `<span class="who" style="color:${{color}}">${{esc(r.name)}}</span><span>${{esc(msg)}}</span>`;
+  div.innerHTML=`<span class="t">${esc((ev.t||"").slice(0,16))}</span>`+
+    `<span class="who" style="color:${r.color}">${esc(r.name)}</span><span>${esc(tickMsg(ev))}</span>`;
+  div.addEventListener("click",()=>showEventDetail(ev.gi));
   tk.prepend(div);
   while(tk.children.length>80) tk.lastChild.remove();
-}}
+}
 
-function animate(ev){{
+function animate(ev){
   const p=playerPos(ev.agent);
-  if(ev.type==="proposal"){{ pulse(ev.agent,"#58a6ff"); ball(p,[50,30],"#58a6ff",true); }}
-  else if(ev.type==="blocked"){{
+  if(ev.type==="proposal"){ pulse(ev.agent,"#58a6ff"); ball(p,[50,30],"#58a6ff",true); }
+  else if(ev.type==="blocked"){
     const q=ev.rule? [50,110] : playerPos(ev.by);
     pulse(ev.agent,"#f85149"); ball(p,q,"#f85149",true);
     if(!ev.rule) pulse(ev.by,"#d29922");
-  }}
-  else if(ev.type==="open"){{ pulse(ev.agent,"#3fb950"); ball(p,[50,8],"#3fb950",false); }}
-  else if(ev.type==="close"){{
-    if(ev.goal){{ goals++; pulse(ev.agent,"#3fb950"); ball([50,8],[50,2],"#3fb950",false); goalFlash(); }}
-    else {{ misses++; pulse(ev.agent,"#8b949e"); }}
-    document.getElementById("goals").innerText=goals;
-    document.getElementById("misses").innerText=misses;
-  }}
-}}
+  }
+  else if(ev.type==="open"){ pulse(ev.agent,"#3fb950"); ball(p,[50,8],"#3fb950",false); }
+  else if(ev.type==="thought"){ speechBubble(ev.agent, ev.text||""); }
+  else if(ev.type==="close"){
+    if(ev.goal){ goals++; pulse(ev.agent,"#3fb950"); ball([50,8],[50,2],"#3fb950",false); goalFlash(); }
+    else { misses++; pulse(ev.agent,"#8b949e"); }
+    renderScore();
+  }
+}
+function renderScore(){
+  document.getElementById("goals").innerText=goals;
+  document.getElementById("misses").innerText=misses;
+}
+function renderClock(ev){
+  document.getElementById("clock").innerText=
+    (ev? (ev.t||"").slice(0,16) : "—")+`  ·  ${pos}/${filtered.length}`;
+  document.getElementById("seek").value=pos;
+}
 
-function step(){{
-  if(cursor>=events.length){{ setPlaying(false); return; }}
-  const ev=events[cursor++];
-  document.getElementById("clock").innerText=(ev.t||"").slice(0,16)+
-    `  ·  ${{cursor}}/${{events.length}}`;
-  animate(ev); tick(ev);
-}}
-function setPlaying(on){{
+function step(){
+  if(pos>=filtered.length){ setPlaying(false); return; }
+  const ev=events[filtered[pos]]; pos++;
+  renderClock(ev); animate(ev); tick(ev);
+  if(ev.type==="close" && ev.goal && document.getElementById("pausegoal").checked)
+    setPlaying(false);
+}
+function setPlaying(on){
   playing=on;
   document.getElementById("play").innerHTML=on?"&#10074;&#10074; Pause":"&#9654; Play";
-  if(timer){{clearInterval(timer); timer=null;}}
-  if(on){{ const evps=Number(document.getElementById("speed").value);
-    timer=setInterval(step, 1000/evps); }}
-}}
+  if(timer){clearInterval(timer); timer=null;}
+  if(on){ const evps=Number(document.getElementById("speed").value);
+    timer=setInterval(step, 1000/evps); }
+}
 
-function renderLeague(summary){{
+function seek(p){
+  pos=Math.max(0,Math.min(p,filtered.length));
+  goals=0; misses=0;
+  for(let i=0;i<pos;i++){ const ev=events[filtered[i]];
+    if(ev.type==="close"){ if(ev.goal) goals++; else misses++; } }
+  renderScore();
+  const tk=document.getElementById("ticker"); tk.innerHTML="";
+  for(let i=Math.max(0,pos-40);i<pos;i++) tick(events[filtered[i]]);
+  renderClock(pos>0? events[filtered[pos-1]] : null);
+}
+function applyFilters(){
+  const fa=document.getElementById("fagent").value;
+  const fs=document.getElementById("fsymbol").value;
+  const ft=document.getElementById("ftype").value;
+  filtered=[];
+  for(let i=0;i<events.length;i++){ const e=events[i];
+    if(fa && e.agent!==fa && e.by!==fa) continue;
+    if(fs && e.symbol!==fs) continue;
+    if(ft && e.type!==ft) continue;
+    filtered.push(i);
+  }
+  document.getElementById("seek").max=filtered.length;
+  seek(0);
+}
+function jumpToDate(){
+  const raw=document.getElementById("jumpdate").value.trim();
+  if(!raw) return;
+  const target=new Date(raw.length<=10? raw+"T00:00:00Z" : raw.replace(" ","T"));
+  if(isNaN(target)) return;
+  let lo=filtered.length;
+  for(let i=0;i<filtered.length;i++){
+    if(evDate(events[filtered[i]].t)>=target){ lo=i; break; } }
+  seek(lo);
+}
+
+function fmtVal(v){
+  if(v==null) return "—";
+  if(typeof v==="number") return String(Math.round(v*10000)/10000);
+  return String(v);
+}
+function openModal(html){
+  document.getElementById("mbody").innerHTML=html;
+  document.getElementById("overlay").classList.add("open");
+}
+function closeModal(){ document.getElementById("overlay").classList.remove("open"); }
+
+async function showEventDetail(gi){
+  if(gi==null || matchId==null) return;
+  let ev;
+  try{ ev=await (await fetch(`/api/v2/${matchId==="__live__"?"live":"match/"+matchId}/event/${gi}`)).json(); }
+  catch(e){ return; }
+  if(ev.error) return;
+  const r=roster[ev.agent]||{name:ev.agent,color:"#8b949e"};
+  let rows="";
+  const base={type:ev.type, time:ev.t, symbol:ev.symbol, direction:ev.dir,
+    conviction:ev.conviction, blocked_by:ev.by, reason:ev.reason,
+    pnl_pips:ev.pnl_pips, exit_reason:ev.exit_reason, tqs:ev.tqs, text:ev.text};
+  for(const [k,v] of Object.entries(base)) if(v!=null)
+    rows+=`<dt>${esc(k)}</dt><dd>${esc(fmtVal(v))}</dd>`;
+  if(ev.detail) for(const [k,v] of Object.entries(ev.detail)){
+    if(v==null) continue;
+    if(typeof v==="object")
+      rows+=`<dt>${esc(k)}</dt><dd><pre style="margin:0">${esc(JSON.stringify(v,null,1))}</pre></dd>`;
+    else rows+=`<dt>${esc(k)}</dt><dd>${esc(fmtVal(v))}</dd>`;
+  }
+  openModal(`<h2><span style="color:${r.color}">${esc(r.name)}</span> — ${esc(ev.type)} event</h2>`+
+    `<dl class="kv2">${rows}</dl>`+
+    `<details><summary class="dim" style="cursor:pointer;font-size:12px">raw JSON</summary>`+
+    `<pre>${esc(JSON.stringify(ev,null,2))}</pre></details>`);
+}
+
+function sparkline(vals,w,h){
+  if(vals.length<2) return `<div class="dim" style="font-size:12px">not enough closed trades for a sparkline</div>`;
+  const min=Math.min(0,...vals), max=Math.max(0,...vals), span=(max-min)||1;
+  const pts=vals.map((v,i)=>`${(i/(vals.length-1))*w},${h-((v-min)/span)*h}`).join(" ");
+  const zy=h-((0-min)/span)*h;
+  const last=vals[vals.length-1];
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`+
+    `<line x1="0" y1="${zy}" x2="${w}" y2="${zy}" stroke="#30363d" stroke-width="1"/>`+
+    `<polyline points="${pts}" fill="none" stroke="${last>=0?"#3fb950":"#f85149"}" stroke-width="1.5"/></svg>`;
+}
+function showProfile(aid){
+  const r=roster[aid]||{name:aid,color:"#8b949e",role:"?",num:"?"};
+  const d=(summaryData&&summaryData.per_agent&&summaryData.per_agent[aid])||
+    {proposals:0,blocked:0,trades:0,goals:0,pips:0,mean_tqs:null,win_rate:null};
+  const closes=events.filter(e=>e.type==="close"&&e.agent===aid);
+  let cum=0; const series=closes.map(e=>{cum+=e.pnl_pips; return Math.round(cum*10)/10;});
+  const recent=closes.slice(-8).reverse().map(e=>
+    `<div class="tk rt" onclick="showEventDetail(${e.gi})"><span class="t">${esc((e.t||"").slice(0,16))}</span>`+
+    `<span>${esc(e.symbol)}</span><span class="${e.goal?"ok":"bad"}">${e.pnl_pips>0?"+":""}${e.pnl_pips} pips</span>`+
+    `<span class="dim">${esc(e.exit_reason||"")}</span></div>`).join("")||
+    `<div class="dim" style="font-size:12px">no closed trades in this match</div>`;
+  openModal(`<h2><span style="color:${r.color}">#${r.num} ${esc(r.name)}</span>`+
+    ` <span class="dim" style="font-size:13px">${esc(r.role||"")}</span></h2>`+
+    `<dl class="kv2"><dt>Proposals</dt><dd>${d.proposals}</dd>`+
+    `<dt>Blocked</dt><dd>${d.blocked}</dd><dt>Trades</dt><dd>${d.trades}</dd>`+
+    `<dt>Goals</dt><dd>${d.goals}</dd>`+
+    `<dt>Win rate</dt><dd>${d.win_rate!=null? (d.win_rate*100).toFixed(0)+"%":"—"}</dd>`+
+    `<dt>Pips</dt><dd class="${d.pips>=0?"ok":"bad"}">${d.pips}</dd>`+
+    `<dt>Mean TQS</dt><dd>${d.mean_tqs??"—"}</dd></dl>`+
+    `<div class="dim" style="font-size:12px">cumulative pips over the match</div>`+
+    sparkline(series,280,54)+
+    `<div class="dim" style="font-size:12px;margin-top:8px">recent trades</div>${recent}`);
+}
+
+function renderLeague(summary){
   const tbl=document.getElementById("league");
   tbl.querySelectorAll("tr:not(:first-child)").forEach(r=>r.remove());
-  const rows=Object.entries(summary.per_agent||{{}})
+  const rows=Object.entries(summary.per_agent||{})
     .sort((a,b)=>b[1].pips-a[1].pips);
-  for(const [aid,d] of rows){{
-    const r=roster[aid]||{{name:aid,color:"#8b949e"}};
+  for(const [aid,d] of rows){
+    const r=roster[aid]||{name:aid,color:"#8b949e"};
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td style="color:${{r.color}};font-weight:700">${{esc(r.name)}}</td>`+
-      `<td>${{d.proposals}}</td><td>${{d.blocked}}</td><td>${{d.trades}}</td>`+
-      `<td>${{d.goals}}</td><td class="${{d.pips>=0?'ok':'bad'}}">${{d.pips}}</td>`+
-      `<td>${{d.mean_tqs??"—"}}</td>`;
+    tr.innerHTML=`<td style="color:${r.color};font-weight:700">${esc(r.name)}</td>`+
+      `<td>${d.proposals}</td><td>${d.blocked}</td><td>${d.trades}</td>`+
+      `<td>${d.goals}</td><td>${d.win_rate!=null?(d.win_rate*100).toFixed(0)+"%":"—"}</td>`+
+      `<td class="${d.pips>=0?'ok':'bad'}">${d.pips}</td>`+
+      `<td>${d.mean_tqs??"—"}</td>`;
+    tr.style.cursor="pointer";
+    tr.addEventListener("click",()=>showProfile(aid));
     tbl.appendChild(tr);
-  }}
-}}
+  }
+}
+function populateFilterOptions(){
+  const fa=document.getElementById("fagent");
+  fa.querySelectorAll("option:not(:first-child)").forEach(o=>o.remove());
+  for(const [aid,r] of Object.entries(roster)){
+    const o=document.createElement("option"); o.value=aid; o.textContent=r.name;
+    fa.appendChild(o); }
+  const fs=document.getElementById("fsymbol");
+  fs.querySelectorAll("option:not(:first-child)").forEach(o=>o.remove());
+  for(const s of [...new Set(events.map(e=>e.symbol).filter(Boolean))].sort()){
+    const o=document.createElement("option"); o.value=s; o.textContent=s;
+    fs.appendChild(o); }
+}
 
-async function loadMatch(id){{
-  setPlaying(false); events=[]; cursor=0; goals=0; misses=0;
-  document.getElementById("ticker").innerHTML="";
-  document.getElementById("goals").innerText="0";
-  document.getElementById("misses").innerText="0";
+async function loadMatch(id){
+  setPlaying(false); events=[]; matchId=id;
   document.getElementById("clock").innerText="loading…";
-  const s=await (await fetch(`/api/v2/match/${{id}}/summary`)).json();
-  roster=s.roster||{{}}; drawPitch(); renderLeague(s);
-  // Page through the whole timeline (chunked to keep responses small).
+  const s=await (await fetch(`/api/v2/match/${id}/summary`)).json();
+  summaryData=s; roster=s.roster||{}; drawPitch(); renderLeague(s);
   let cur=0, total=1;
-  while(cur<total){{
-    const d=await (await fetch(`/api/v2/match/${{id}}/events?cursor=${{cur}}&limit=2000`)).json();
+  while(cur<total){
+    const d=await (await fetch(`/api/v2/match/${id}/events?cursor=${cur}&limit=2000`)).json();
+    // gi = absolute timeline index for the per-event detail endpoint.
+    d.events.forEach((e,i)=>{ e.gi=d.cursor+i; });
     events=events.concat(d.events); total=d.total; cur=d.next_cursor;
     if(!d.events.length) break;
-    document.getElementById("clock").innerText=`loaded ${{cur}}/${{total}} events…`;
-  }}
-  document.getElementById("clock").innerText=`ready · ${{events.length}} events`;
-}}
+    document.getElementById("clock").innerText=`loaded ${cur}/${total} events…`;
+  }
+  populateFilterOptions(); applyFilters();
+  document.getElementById("clock").innerText=`ready · ${events.length} events`;
+}
 
-async function init(){{
+async function init(){
   const data=await (await fetch("/api/v2/matches")).json();
   const sel=document.getElementById("match");
-  if(!data.matches.length){{
+  if(!data.matches.length){
     document.getElementById("clock").innerText="no replay caches found";
     drawPitch(); return;
-  }}
-  for(const m of data.matches){{
+  }
+  for(const m of data.matches){
     const o=document.createElement("option"); o.value=m.id; o.textContent=m.label;
     sel.appendChild(o);
-  }}
+  }
   sel.onchange=()=>loadMatch(sel.value);
   document.getElementById("play").onclick=()=>setPlaying(!playing);
-  document.getElementById("speed").onchange=()=>{{ if(playing){{setPlaying(false);setPlaying(true);}} }};
+  document.getElementById("speed").onchange=()=>{ if(playing){setPlaying(false);setPlaying(true);} };
+  document.getElementById("seek").oninput=e=>{ setPlaying(false); seek(Number(e.target.value)); };
+  document.getElementById("jumpbtn").onclick=jumpToDate;
+  document.getElementById("jumpdate").onkeydown=e=>{ if(e.key==="Enter") jumpToDate(); };
+  for(const fid of ["fagent","fsymbol","ftype"])
+    document.getElementById(fid).onchange=()=>{ setPlaying(false); applyFilters(); };
+  document.getElementById("mclose").onclick=closeModal;
+  document.getElementById("overlay").addEventListener("click",e=>{
+    if(e.target.id==="overlay") closeModal(); });
   await loadMatch(data.matches[0].id);
-}}
+}
 init();
 </script></body></html>"""
+
+V2_PAGE = (_V2_TEMPLATE
+           .replace("__BASE_CSS__", _BASE_CSS)
+           .replace("__NAV__", nav('v2')))

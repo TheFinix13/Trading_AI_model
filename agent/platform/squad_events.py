@@ -9,6 +9,19 @@ repo's walk-forward harness writes) into a single time-ordered list of
                     the wall). ``by`` names the winning agent or rule.
 * ``open``       -- a proposal was executed (shot on target).
 * ``close``      -- the trade resolved: pnl > 0 is a GOAL, else a miss.
+* ``thought``    -- an agent's inner monologue line (speech bubble).
+                    Parsed from an OPTIONAL ``thoughts.jsonl`` in the
+                    cache dir; the G7 review caches do not ship one, so
+                    this type is designed into the schema for the future
+                    live paper loop and degrades to absent when the file
+                    is missing. Expected row shape: ``{"agent_id",
+                    "timestamp", "symbol"?, "text"|"thought"|"content"}``.
+
+Every event carries a light payload for playback plus a heavy ``detail``
+dict (full rationale, tqs_components, mae/mfe, ...). ``get_events``
+strips ``detail`` to keep the paged payloads small; the UI fetches it
+lazily per event via ``get_event_detail`` (the
+``/api/v2/match/<id>/event/<n>`` endpoint).
 
 HARD RULE: this module reads artifact FILES only. It never imports
 research-repo code. The default artifact location is the sibling
@@ -59,6 +72,10 @@ _RULE_PREFIXES = ("r1_", "r2_", "r3_", "r4_", "r5_", "r6_", "kunigami_")
 _CACHE_FILES = ("proposals_all.jsonl", "proposals_rejected.jsonl",
                 "trades.jsonl")
 
+# Optional artifacts a cache MAY carry; they feed extra event types but
+# their absence is normal (the G7 review caches have none).
+_OPTIONAL_FILES = ("thoughts.jsonl",)
+
 _timeline_cache: dict[str, tuple[tuple, list[dict], dict]] = {}
 _cache_lock = threading.Lock()
 
@@ -101,7 +118,7 @@ def list_matches(reviews_dir: Path) -> list[dict]:
 
 def _cache_key(cache_dir: Path) -> tuple:
     parts = []
-    for f in _CACHE_FILES:
+    for f in _CACHE_FILES + _OPTIONAL_FILES:
         p = cache_dir / f
         s = p.stat() if p.exists() else None
         parts.append((f, int(s.st_mtime_ns) if s else 0,
@@ -121,6 +138,7 @@ def build_timeline(cache_dir: Path) -> tuple[list[dict], dict]:
 
     for p in _read_jsonl(cache_dir / "proposals_all.jsonl"):
         agent = p.get("agent_id", "?")
+        rat = p.get("rationale") if isinstance(p.get("rationale"), dict) else {}
         events.append({
             "t": p.get("timestamp", ""),
             "type": "proposal",
@@ -128,6 +146,21 @@ def build_timeline(cache_dir: Path) -> tuple[list[dict], dict]:
             "symbol": p.get("symbol", "?"),
             "dir": p.get("direction", "?"),
             "conviction": round(float(p.get("conviction", 0.0)), 3),
+            "detail": {
+                "entry": p.get("entry"),
+                "stop": p.get("stop"),
+                "regime_fit": p.get("regime_fit"),
+                "agent_tier": p.get("agent_tier"),
+                "signal_reason": rat.get("signal_reason"),
+                "doctrine_ref": rat.get("doctrine_ref"),
+                "empirical_prior": rat.get("empirical_prior"),
+                "base_conviction": rat.get("base_conviction"),
+                "final_conviction": rat.get("final_conviction"),
+                "peer_confluence_isagi": rat.get("peer_confluence_isagi"),
+                "peer_confluence_lift": rat.get("peer_confluence_lift"),
+                "htf_align": rat.get("htf_align"),
+                "atr_pips": rat.get("atr_pips"),
+            },
         })
 
     for r in _read_jsonl(cache_dir / "proposals_rejected.jsonl"):
@@ -142,6 +175,15 @@ def build_timeline(cache_dir: Path) -> tuple[list[dict], dict]:
                    else r.get("winner_agent_id", "?")),
             "rule": is_rule,
             "reason": reason,
+            "detail": {
+                "winner_conviction": r.get("winner_conviction"),
+                "loser_conviction": r.get("loser_conviction"),
+                "winner_tier": r.get("winner_tier"),
+                "loser_tier": r.get("loser_tier"),
+                "winner_direction": r.get("winner_direction"),
+                "loser_direction": r.get("loser_direction"),
+                "tick_id": r.get("tick_id"),
+            },
         })
 
     for t in _read_jsonl(cache_dir / "trades.jsonl"):
@@ -158,6 +200,13 @@ def build_timeline(cache_dir: Path) -> tuple[list[dict], dict]:
             "agent": agent,
             "symbol": symbol,
             "dir": t.get("direction", "?"),
+            "detail": {
+                "entry": t.get("entry"),
+                "stop": t.get("stop"),
+                "take_profit": t.get("take_profit"),
+                "source_conviction": t.get("source_conviction"),
+                "source_sl_pips": t.get("source_sl_pips"),
+            },
         })
         events.append({
             "t": t.get("exit_time", ""),
@@ -169,6 +218,26 @@ def build_timeline(cache_dir: Path) -> tuple[list[dict], dict]:
             "tqs": tqs,
             "exit_reason": t.get("exit_reason", "?"),
             "r": t.get("r_multiple"),
+            "detail": {
+                "r_multiple": t.get("r_multiple"),
+                "mae_pips": t.get("mae_pips"),
+                "mfe_pips": t.get("mfe_pips"),
+                "bars_held": t.get("bars_held"),
+                "exit_price": t.get("exit_price"),
+                "tqs_components": tc if isinstance(tc, dict) else None,
+            },
+        })
+
+    # Optional thoughts stream (absent in the G7 review caches — see the
+    # module docstring). One row -> one lightweight `thought` event.
+    for th in _read_jsonl(cache_dir / "thoughts.jsonl"):
+        text = th.get("text") or th.get("thought") or th.get("content") or ""
+        events.append({
+            "t": th.get("timestamp", ""),
+            "type": "thought",
+            "agent": th.get("agent_id", "?"),
+            "symbol": th.get("symbol"),
+            "text": str(text)[:200],
         })
 
     events.sort(key=lambda e: _parse_ts(e["t"]) if e["t"] else datetime.min)
@@ -206,6 +275,8 @@ def _summarise(cache_dir: Path, events: list[dict]) -> dict:
     for d in per_agent.values():
         d["mean_tqs"] = (round(d["tqs_sum"] / d["tqs_n"], 4)
                          if d["tqs_n"] else None)
+        d["win_rate"] = (round(d["goals"] / d["trades"], 3)
+                         if d["trades"] else None)
         d["pips"] = round(d["pips"], 1)
         del d["tqs_sum"], d["tqs_n"]
 
@@ -228,14 +299,27 @@ def _summarise(cache_dir: Path, events: list[dict]) -> dict:
 
 
 def get_events(cache_dir: Path, cursor: int, limit: int) -> dict:
-    """Cursor-paged slice of the timeline (the playback API payload)."""
+    """Cursor-paged slice of the timeline (the playback API payload).
+
+    Heavy ``detail`` dicts are stripped here — the UI fetches them
+    lazily per event through :func:`get_event_detail`.
+    """
     events, summary = build_timeline(cache_dir)
     cursor = max(0, int(cursor))
     limit = max(1, min(int(limit), 2000))
-    window = events[cursor:cursor + limit]
+    window = [{k: v for k, v in e.items() if k != "detail"}
+              for e in events[cursor:cursor + limit]]
     return {
         "cursor": cursor,
         "next_cursor": cursor + len(window),
         "total": summary["n_events"],
         "events": window,
     }
+
+
+def get_event_detail(cache_dir: Path, index: int) -> dict | None:
+    """The full payload of one event by timeline index (drill-down)."""
+    events, _ = build_timeline(cache_dir)
+    if 0 <= index < len(events):
+        return events[index]
+    return None

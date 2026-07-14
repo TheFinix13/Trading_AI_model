@@ -40,7 +40,13 @@ def replay_cache(tmp_path: Path) -> Path:
     cache.mkdir(parents=True)
     _write_jsonl(cache / "proposals_all.jsonl", [
         {"agent_id": "isagi_yoichi", "timestamp": "2024-01-01T00:00:00+00:00",
-         "symbol": "EURUSD", "direction": "long", "conviction": 0.75},
+         "symbol": "EURUSD", "direction": "long", "conviction": 0.75,
+         "rationale": {"signal_reason": "zone_demand",
+                       "doctrine_ref": "06-blue-lock-doctrine.md sec 3.1",
+                       "empirical_prior": "E001/E006",
+                       "base_conviction": 0.65, "final_conviction": 0.75,
+                       "peer_confluence_isagi": False,
+                       "peer_confluence_lift": 0.0}},
         {"agent_id": "barou_shoei", "timestamp": "2024-01-01T04:00:00+00:00",
          "symbol": "USDCAD", "direction": "short", "conviction": 0.7},
         {"agent_id": "bachira_meguru", "timestamp": "2024-01-01T04:00:00+00:00",
@@ -63,6 +69,7 @@ def replay_cache(tmp_path: Path) -> Path:
          "entry_time": "2024-01-01 00:00:00+00:00",
          "exit_time": "2024-01-01 12:00:00+00:00",
          "direction": "long", "exit_reason": "tp", "pnl_pips": 42.5,
+         "mae_pips": 5.0, "mfe_pips": 50.0, "bars_held": 3,
          "r_multiple": 1.5, "tqs_components": {"tqs": 0.61}},
         {"agent_id": "bachira_meguru", "symbol": "USDCAD",
          "entry_time": "2024-01-01 04:00:00+00:00",
@@ -159,6 +166,70 @@ class TestSquadEvents:
         assert len(rest["events"]) == first["total"] - 4
         assert rest["next_cursor"] == first["total"]
 
+    def test_proposal_detail_carries_rationale(self, replay_cache):
+        events, _ = squad_events.build_timeline(
+            replay_cache / "g7_replay_cache_test-match")
+        prop = next(e for e in events
+                    if e["type"] == "proposal" and e["agent"] == "isagi_yoichi")
+        d = prop["detail"]
+        assert d["signal_reason"] == "zone_demand"
+        assert d["doctrine_ref"].startswith("06-blue-lock-doctrine")
+        assert d["base_conviction"] == 0.65
+        assert d["final_conviction"] == 0.75
+
+    def test_close_detail_carries_trade_forensics(self, replay_cache):
+        events, _ = squad_events.build_timeline(
+            replay_cache / "g7_replay_cache_test-match")
+        close = next(e for e in events
+                     if e["type"] == "close" and e["agent"] == "isagi_yoichi")
+        d = close["detail"]
+        assert d["r_multiple"] == 1.5
+        assert d["mae_pips"] == 5.0
+        assert d["mfe_pips"] == 50.0
+        assert d["tqs_components"]["tqs"] == 0.61
+
+    def test_paged_events_strip_detail(self, replay_cache):
+        cache = replay_cache / "g7_replay_cache_test-match"
+        page = squad_events.get_events(cache, cursor=0, limit=100)
+        assert page["events"], "expected events"
+        assert all("detail" not in e for e in page["events"])
+
+    def test_event_detail_lookup(self, replay_cache):
+        cache = replay_cache / "g7_replay_cache_test-match"
+        events, _ = squad_events.build_timeline(cache)
+        idx = next(i for i, e in enumerate(events) if e["type"] == "close")
+        detail = squad_events.get_event_detail(cache, idx)
+        assert detail["type"] == "close"
+        assert "detail" in detail
+        assert squad_events.get_event_detail(cache, 10_000) is None
+
+    def test_summary_win_rate(self, replay_cache):
+        _, summary = squad_events.build_timeline(
+            replay_cache / "g7_replay_cache_test-match")
+        pa = summary["per_agent"]
+        assert pa["isagi_yoichi"]["win_rate"] == 1.0
+        assert pa["bachira_meguru"]["win_rate"] == 0.0
+        assert pa["barou_shoei"]["win_rate"] is None  # no trades
+
+    def test_optional_thoughts_stream(self, replay_cache):
+        cache = replay_cache / "g7_replay_cache_test-match"
+        # Absent thoughts.jsonl -> no thought events (graceful).
+        events, _ = squad_events.build_timeline(cache)
+        assert not [e for e in events if e["type"] == "thought"]
+        _write_jsonl(cache / "thoughts.jsonl", [
+            {"agent_id": "isagi_yoichi",
+             "timestamp": "2024-01-01T02:00:00+00:00",
+             "symbol": "EURUSD", "text": "the field is opening up"},
+        ])
+        events, _ = squad_events.build_timeline(cache)
+        thoughts = [e for e in events if e["type"] == "thought"]
+        assert len(thoughts) == 1
+        assert thoughts[0]["text"] == "the field is opening up"
+        # And they sort into the timeline by timestamp.
+        from datetime import datetime
+        times = [datetime.fromisoformat(e["t"]) for e in events]
+        assert times == sorted(times)
+
     def test_cache_invalidates_on_file_change(self, replay_cache):
         cache = replay_cache / "g7_replay_cache_test-match"
         events1, _ = squad_events.build_timeline(cache)
@@ -249,6 +320,15 @@ class TestHttpSurface:
         page = json.loads(body)
         assert len(page["events"]) == 5
         assert page["next_cursor"] == 5
+
+    def test_event_detail_endpoint(self, server):
+        mid = "g7_replay_cache_test-match"
+        status, body = _get(server + f"/api/v2/match/{mid}/event/0")
+        assert status == 200
+        ev = json.loads(body)
+        assert ev["type"] and ev["t"]
+        status, _ = _get(server + f"/api/v2/match/{mid}/event/9999")
+        assert status == 404
 
     def test_unknown_match_404(self, server):
         status, _ = _get(server + "/api/v2/match/g7_replay_cache_nope/summary")
