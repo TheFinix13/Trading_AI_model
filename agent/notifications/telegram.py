@@ -351,6 +351,51 @@ def build_partial_scaleout(*, symbol: str, ticket: int, closed_lots: float,
     )
 
 
+def build_dd_halt_cleared(
+    *,
+    symbol: str,
+    halt_date: str,
+    resumed_date: str,
+    consecutive_days: int,
+) -> str:
+    """Self-recovery notice: a daily-DD auto-halt re-armed at UTC rollover.
+
+    This is an INFO-grade message (not a page): the protective close
+    already happened when the halt fired; this just says the agent is
+    watching again now that the per-day drawdown budget has reset.
+    """
+    lines = [
+        f"{_header(symbol, 'Trading RE-ARMED')}",
+        f"Daily-DD auto-halt from `{halt_date}` cleared at the UTC day "
+        f"rollover (`{resumed_date}`).",
+        "Protective close already happened at halt time; the 3%/day budget "
+        "has reset, so evaluation resumes automatically.",
+    ]
+    if consecutive_days > 1:
+        lines.append(
+            f"Note: {consecutive_days} consecutive DD-halt day(s) — "
+            "sticky escalation applies if this keeps up."
+        )
+    return "\n".join(lines)
+
+
+def build_dd_halt_escalated(
+    *,
+    symbol: str,
+    consecutive_days: int,
+    sticky_after: int,
+) -> str:
+    """Thrash-guard page: repeated daily-DD halts converted to a sticky halt."""
+    return "\n".join([
+        f"{_header(symbol, 'STICKY HALT — manual review needed')}",
+        f"{symbol} has hit the 3%/day drawdown halt {consecutive_days} "
+        f"days in a row (>= {sticky_after}).",
+        "Auto-recovery is DISABLED for this symbol until a human deletes "
+        "the kill file. Something is persistently wrong — investigate "
+        "before re-arming.",
+    ])
+
+
 def build_emergency_close(
     *,
     symbol: str,
@@ -468,4 +513,6 @@ __all__ = [
     "build_soft_stop_exit",
     "build_partial_scaleout",
     "build_emergency_close",
+    "build_dd_halt_cleared",
+    "build_dd_halt_escalated",
 ]

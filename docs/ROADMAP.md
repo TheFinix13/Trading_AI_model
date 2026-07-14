@@ -7,7 +7,7 @@ go through the full validation pipeline (grid → holdout → walk-forward →
 pre-registered gates), and the risk constitution (max risk %, catastrophe
 stops, kill switch, demotion rules) is only ever changed by a human commit.
 
-Last updated: 2026-06-12.
+Last updated: 2026-07-13.
 
 ## 1) Near-term research items (existing data, human-run pipeline)
 
@@ -68,6 +68,24 @@ Last updated: 2026-06-12.
   `max_open_positions` / sizing code changes land here.
 - **Trigger:** M001 graduation gate lands (or explicit decision to branch
   off and run this in parallel).
+
+### 1.7 Confidence-gated risk cooldown (replaces binary kill-switch on DD halts)
+- **What:** continuous loss-magnitude-scaled confidence score + shadow-
+  trade recovery instead of a persistent `kill.txt` blind after daily-DD /
+  circuit-breaker events — each symbol process still decides independently,
+  with an account-wide drawdown gauge modulating all three (no new IPC).
+- **Status (2026-07-13):** E017 validation **complete, verdict
+  `parked_capital_cost`** in `finance-research-experiments`. Graduated
+  confidence (GC-S) eliminates blind dead time (median 0 h vs 6,500 h for
+  hard kill-switch) and cuts max DD (2.5% vs 16.9%) but **fails Pareto**
+  on terminal equity vs compounding under the bootstrap ledger. **Phase 3
+  blocked** — binary `kill.txt` stays; see
+  `experiments/E017_confidence_gated_cooldown/STOP_NOTICE.md`.
+- **If revisited:** fresh pre-reg (E018+) with a redesigned success metric
+  or recovery function; no production wiring without a positive verdict.
+- **Trigger:** explicit user decision to reopen after reading E017 REPORT;
+  separate from the open ops question of whether daily-DD halts should
+  auto-clear at UTC day rollover (still undecided, not E017 scope).
 
 ## 2) Autonomy ladder (agent self-improvement without breaking guardrails)
 

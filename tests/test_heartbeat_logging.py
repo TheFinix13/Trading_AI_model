@@ -179,6 +179,39 @@ def test_heartbeat_pings_healthcheck_with_halted_note_when_kill_switch_active(
     assert "HALTED" in lines[0]
 
 
+def test_heartbeat_annotates_daily_dd_halt_as_self_clearing(tmp_path, caplog):
+    """A clean daily-DD auto-kill heartbeat says it will re-arm at the next
+    UTC rollover (so the operator knows NOT to rush to the VM)."""
+    loop = _make_loop()
+    kill = tmp_path / "kill.txt"
+    kill.write_text("Auto-kill: Daily DD halt: 3.0% (limit 3.0%)\n"
+                    "2026-07-10T02:15:16+00:00\n")
+    loop.live_config.kill_file = str(kill)
+    loop.healthcheck = MagicMock()
+    _force_heartbeat_due(loop)
+    with caplog.at_level(logging.INFO, logger="agent.live.signal_loop"):
+        loop._maybe_heartbeat()
+    line = [r.message for r in caplog.records
+            if r.message.startswith("heartbeat:")][0]
+    assert "re-arms at next UTC rollover" in line
+    body = loop.healthcheck.ping.call_args[0][0]
+    assert "re-arms at next UTC rollover" in body
+
+
+def test_heartbeat_annotates_manual_kill_as_sticky(tmp_path, caplog):
+    loop = _make_loop()
+    kill = tmp_path / "kill.txt"
+    kill.write_text("manual: operator stop\n")
+    loop.live_config.kill_file = str(kill)
+    loop.healthcheck = MagicMock()
+    _force_heartbeat_due(loop)
+    with caplog.at_level(logging.INFO, logger="agent.live.signal_loop"):
+        loop._maybe_heartbeat()
+    line = [r.message for r in caplog.records
+            if r.message.startswith("heartbeat:")][0]
+    assert "manual clear required" in line
+
+
 # ----------------------------------------------------------------------
 # "evaluated, no setup" line at each candle-close evaluation
 # ----------------------------------------------------------------------

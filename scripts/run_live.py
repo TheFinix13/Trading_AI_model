@@ -62,7 +62,12 @@ from agent.live.broker import create_broker
 from agent.live.config import LiveConfig
 from agent.live.router_wiring import UndeployedSymbolError, build_live_routes
 from agent.live.signal_loop import SignalLoop
-from agent.utils import kill_switch_reason
+from agent.live.state_store import StateStore
+from agent.utils import (
+    is_daily_dd_auto_kill,
+    kill_file_creation_utc_date,
+    kill_switch_reason,
+)
 
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 
@@ -283,6 +288,109 @@ async def _startup_health(args: argparse.Namespace, cfg, live: LiveConfig) -> bo
     return False
 
 
+def _recovery_is_escalated(state_store_path: Path) -> bool:
+    """True iff the persisted ``dd_halt_recovery`` latch shows this symbol has
+    escalated to a sticky halt (3-consecutive-DD-day thrash guard).
+
+    Reuses the state.json written by the running loop rather than re-deriving
+    the streak. A missing/corrupt file or absent section means "no escalation
+    recorded" (returns False) — only an explicit ``escalated: true`` blocks.
+    """
+    try:
+        state = StateStore(state_store_path).load()
+    except Exception:  # pragma: no cover - defensive; load() already guards
+        return False
+    if not isinstance(state, dict):
+        return False
+    rec = state.get("dd_halt_recovery")
+    if not isinstance(rec, dict):
+        return False
+    return bool(rec.get("escalated", False))
+
+
+def _preflight_kill_switch(live: LiveConfig, cfg,
+                           state_store_path: Path) -> bool:
+    """Startup kill-switch pre-flight, consistent with the running loop's
+    ``PositionMonitor._maybe_auto_clear_dd_halt`` self-recovery.
+
+    Returns ``True`` when it is safe to start (possibly after auto-clearing a
+    stale daily-DD kill), ``False`` when startup must be refused. Behaviour:
+
+    - The MASTER ``cfg.kill_switch_file`` is a human "stop everything" switch
+      and is **never** auto-cleared — present ⇒ refuse.
+    - A PER-SYMBOL kill file whose reason is a *clean daily-DD auto-kill*
+      (``is_daily_dd_auto_kill``) whose creation UTC date is *strictly before*
+      today AND whose symbol has **not** escalated is auto-cleared (it would
+      have cleared at the UTC rollover anyway); startup proceeds.
+    - Everything else — manual kill, non-DD auto-kill, master file, same-day
+      halt, unparseable creation date, or an escalated sticky latch — refuses
+      to start (fail-safe: human/master/catastrophe stops always win).
+
+    ``--kill-switch off`` sets ``SKIP_KILL_SWITCH`` before this runs, so
+    ``kill_switch_reason`` returns ``None`` for both files and we start.
+    """
+    # Master switch first: never auto-clears.
+    master_path = cfg.kill_switch_file
+    master_reason = kill_switch_reason(master_path)
+    if master_reason is not None:
+        log.error(
+            "REFUSING TO START: master kill switch file present at %s\n"
+            "Reason recorded when it was created:\n%s\n"
+            "This is the manual 'stop everything' switch — it never "
+            "auto-clears. Delete it (after confirming it's safe) and "
+            "restart, or pass --kill-switch off to ignore it.",
+            master_path, master_reason,
+        )
+        return False
+
+    per_symbol_path = Path(live.kill_file)
+    reason = kill_switch_reason(per_symbol_path)
+    if reason is None:
+        return True  # no per-symbol kill file (or SKIP_KILL_SWITCH set)
+
+    # A per-symbol kill file is present. Only a stale, clean, non-escalated
+    # daily-DD auto-kill may self-clear at startup — mirroring the loop.
+    today = datetime.now(tz=timezone.utc).date()
+    halt_date = kill_file_creation_utc_date(per_symbol_path)
+    if (is_daily_dd_auto_kill(reason)
+            and halt_date is not None
+            and halt_date < today
+            and not _recovery_is_escalated(state_store_path)):
+        try:
+            per_symbol_path.unlink()
+        except OSError as exc:
+            log.error(
+                "REFUSING TO START: could not auto-clear stale daily-DD kill "
+                "file %s across the UTC rollover: %s", per_symbol_path, exc,
+            )
+            return False
+        log.warning(
+            "[DD AUTO-CLEAR @ startup] stale daily-DD kill file %s (halt day "
+            "%s) self-cleared across the UTC rollover to %s — starting "
+            "normally. The protective close already happened when the file "
+            "was written; the 3%%/day budget has since reset.",
+            per_symbol_path, halt_date, today,
+        )
+        return True
+
+    # Fail-safe refusal for everything else (manual / non-DD auto-kill /
+    # same-day / unparseable date / escalated sticky halt).
+    escalated_note = ""
+    if is_daily_dd_auto_kill(reason) and _recovery_is_escalated(state_store_path):
+        escalated_note = (
+            "\nThis symbol has ESCALATED to a sticky halt (auto-DD halt hit "
+            "the consecutive-day thrash limit) — auto-recovery is disabled "
+            "until a human investigates.")
+    log.error(
+        "REFUSING TO START: kill switch file already present at %s\n"
+        "Reason recorded when it was created:\n%s%s\n"
+        "Delete this file (after confirming it's safe to resume) "
+        "and restart, or pass --kill-switch off to ignore it.",
+        per_symbol_path, reason, escalated_note,
+    )
+    return False
+
+
 def main() -> None:
     args = parse_args()
     if args.verbose:
@@ -356,17 +464,14 @@ def main() -> None:
     # maintenance window — restarting PowerShell never cleared it, and
     # nothing printed WHY nothing was trading. Surface it loudly and refuse
     # to proceed rather than spin up a loop that will just keep skipping.
-    for kill_path in (Path(live.kill_file), cfg.kill_switch_file):
-        reason = kill_switch_reason(kill_path)
-        if reason is not None:
-            log.error(
-                "REFUSING TO START: kill switch file already present at %s\n"
-                "Reason recorded when it was created:\n%s\n"
-                "Delete this file (after confirming it's safe to resume) "
-                "and restart, or pass --kill-switch off to ignore it.",
-                kill_path, reason,
-            )
-            sys.exit(1)
+    #
+    # EXCEPTION (2026-07-14): a stale, clean daily-DD auto-kill from a PRIOR
+    # UTC day self-clears here, mirroring the running loop's rollover
+    # self-recovery — so a restart across UTC midnight no longer strands the
+    # agent on yesterday's per-day-drawdown halt. Master / manual / non-DD /
+    # same-day / escalated halts still block boot (fail-safe).
+    if not _preflight_kill_switch(live, cfg, state_store_path):
+        sys.exit(1)
 
     health_loop = asyncio.new_event_loop()
     try:

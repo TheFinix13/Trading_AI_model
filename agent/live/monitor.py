@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -32,12 +32,19 @@ from agent.notifications.healthcheck import HealthcheckPinger
 from agent.notifications.telegram import (
     TelegramNotifier,
     build_be_move,
+    build_dd_halt_cleared,
+    build_dd_halt_escalated,
     build_emergency_close,
     build_partial_scaleout,
     build_soft_stop_exit,
 )
 from agent.types import Direction
-from agent.utils import kill_switch_active, kill_switch_reason
+from agent.utils import (
+    is_daily_dd_auto_kill,
+    kill_file_creation_utc_date,
+    kill_switch_active,
+    kill_switch_reason,
+)
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +71,7 @@ class PositionMonitor:
         trade_closed_cb: Callable[[int, dict], None] | None = None,
         soft_stop_cfg: SoftStopConfig | None = None,
         on_state_change: Callable[[], None] | None = None,
+        dd_halt_recovery_cb: Callable[[date, date], object] | None = None,
     ):
         self.broker = broker
         self.config = config
@@ -79,6 +87,12 @@ class PositionMonitor:
         # Optional callback invoked whenever monitor state changes (BE move,
         # partial exit) so the parent SignalLoop can persist the full state.
         self._on_state_change = on_state_change
+        # Optional decision callback for daily-DD-halt self-recovery, called
+        # ``cb(halt_date, today) -> "hold" | "clear" | "escalate"`` (wired to
+        # RiskManager.evaluate_dd_halt_rollover by SignalLoop). None disables
+        # auto-recovery entirely (default), so this monitor keeps the legacy
+        # sticky-until-manual-delete behaviour unless explicitly opted in.
+        self._dd_halt_recovery_cb = dd_halt_recovery_cb
 
         # Track which positions we've already moved to breakeven
         self._breakeven_applied: set[int] = set()
@@ -324,6 +338,12 @@ class PositionMonitor:
     async def _check_positions(self) -> None:
         """Single monitoring iteration."""
         try:
+            # Daily-DD-halt self-recovery FIRST: if yesterday's clean daily-DD
+            # auto-kill is still in force and a UTC rollover has passed, lift
+            # the blind halt (or escalate to sticky) before the kill-switch
+            # check below would otherwise keep the loop dark another day.
+            self._maybe_auto_clear_dd_halt()
+
             # Kill switch check — emergency close all
             kill_path = Path(self.live_config.kill_file)
             active_path: Path | None = None
@@ -1008,6 +1028,113 @@ class PositionMonitor:
             len(self._restored_ctx_tickets),
             ", ".join(str(t) for t in sorted(self._restored_ctx_tickets)) or "none",
         )
+
+    # ------------------------------------------------------------------
+    # Daily-DD-halt self-recovery
+    # ------------------------------------------------------------------
+
+    def _maybe_auto_clear_dd_halt(self, now: datetime | None = None) -> str | None:
+        """Self-re-arm a daily-DD auto-kill at the UTC day rollover.
+
+        Safety invariants (see the reliability report / E019):
+        - Only the PER-SYMBOL kill file (``live_config.kill_file``) is ever
+          eligible; the master ``config.kill_switch_file`` is never touched.
+        - Only a *clean daily-DD auto-kill* (reason ``Auto-kill: Daily DD
+          halt ...``) can auto-clear — a human-created kill file or any other
+          auto-kill (consecutive-error / catastrophe / broker-misread) stays
+          sticky forever.
+        - The protective CLOSE already happened when the file was written;
+          this only lifts the *persistent blinding*, never re-opens risk.
+        - Same-UTC-day → hold (the 3%/day budget has not reset). Only a
+          rollover clears, aligned with ``RiskManager.on_new_day``.
+        - Thrash guard: after N consecutive DD-halt days the decision
+          callback returns ``escalate`` and we convert the file to a sticky
+          halt + page the operator instead of re-arming.
+
+        Returns the action taken (``"clear"`` / ``"escalate"`` / ``"hold"``)
+        or ``None`` when auto-recovery is disabled / not applicable, mostly
+        for tests. Never raises.
+        """
+        if self._dd_halt_recovery_cb is None:
+            return None
+        kill_path = Path(self.live_config.kill_file)
+        if not kill_switch_active(kill_path):
+            return None
+        reason = kill_switch_reason(kill_path)
+        if not is_daily_dd_auto_kill(reason):
+            return None  # sticky: master kill, manual, or non-DD auto-kill
+        halt_date = kill_file_creation_utc_date(kill_path)
+        if halt_date is None:
+            # Cannot establish the creation day → fail safe (stay halted).
+            log.warning(
+                "Daily-DD kill file %s has no parseable creation date — "
+                "leaving it in force (fail-safe).", kill_path,
+            )
+            return None
+        today = (now or datetime.now(tz=timezone.utc)).astimezone(timezone.utc).date()
+        decision = self._dd_halt_recovery_cb(halt_date, today)
+        action = getattr(decision, "action", decision)
+        consecutive = int(getattr(decision, "consecutive_days", 0) or 0)
+        sticky_after = int(getattr(decision, "sticky_after", 0) or 0)
+
+        if action == "clear":
+            try:
+                kill_path.unlink()
+            except OSError as exc:
+                log.warning("Auto-clear could not remove %s: %s — staying "
+                            "halted this cycle", kill_path, exc)
+                return "hold"
+            self._kill_switch_handled = False
+            log.warning(
+                "[DD AUTO-CLEAR] daily-DD kill %s (halt day %s) cleared at "
+                "UTC rollover %s — resuming evaluation (streak=%d)",
+                kill_path, halt_date, today, consecutive,
+            )
+            self.notifier.notify_text(build_dd_halt_cleared(
+                symbol=self.live_config.symbol,
+                halt_date=halt_date.isoformat(),
+                resumed_date=today.isoformat(),
+                consecutive_days=consecutive,
+            ))
+            self._notify_state_change()
+            return "clear"
+
+        if action == "escalate":
+            # Rewrite the file so its reason no longer classifies as a
+            # daily-DD auto-kill: it is now sticky until a human deletes it.
+            try:
+                stamp = (now or datetime.now(tz=timezone.utc)).isoformat()
+                kill_path.write_text(
+                    f"STICKY halt: daily-DD auto-halt hit {consecutive} "
+                    f"day(s) in a row (>= {sticky_after}) — auto-recovery "
+                    f"DISABLED, manual review + kill-file delete required.\n"
+                    f"{stamp}\n"
+                )
+            except OSError as exc:
+                log.error("Failed to rewrite %s to sticky on escalation: %s",
+                          kill_path, exc)
+            log.critical(
+                "[DD HALT ESCALATED] %s auto-DD-halted %d consecutive days "
+                ">= %d — converted to a STICKY halt, auto-recovery disabled",
+                self.live_config.symbol, consecutive, sticky_after,
+            )
+            self.notifier.notify_text(build_dd_halt_escalated(
+                symbol=self.live_config.symbol,
+                consecutive_days=consecutive,
+                sticky_after=sticky_after,
+            ))
+            self._notify_state_change()
+            return "escalate"
+
+        return "hold"
+
+    def _notify_state_change(self) -> None:
+        """Fire the state-persist callback, swallowing any error."""
+        if self._on_state_change is not None:
+            try:
+                self._on_state_change()
+            except Exception as exc:
+                log.debug("on_state_change failed: %s", exc)
 
     # Suppress repeat emergency-close notifications (Telegram +
     # healthcheck halt annotation) within this window. 2026-07-10 02:15 UTC

@@ -28,6 +28,38 @@ class RiskState:
     history: list[float] = field(default_factory=list)
 
 
+@dataclass
+class DDHaltRecoveryState:
+    """Cross-day bookkeeping for daily-DD-halt self-recovery.
+
+    Unlike :class:`RiskState` (which is day-scoped and reset every UTC
+    rollover), this survives day rollover AND process restart: it is how
+    the thrash guard remembers that the *same symbol* auto-DD-halted on
+    several consecutive days. Persisted via a dedicated, NON-day-scoped
+    section of ``state.json`` (see ``get_recovery_state`` /
+    ``restore_recovery_state``).
+    """
+    # UTC dates (ISO strings) on which a daily-DD auto-halt was recorded at
+    # its rollover clear. Bounded tail; only the recent run matters.
+    halt_dates: list[str] = field(default_factory=list)
+    # Latched once the thrash guard escalates so we neither re-alert nor
+    # keep re-arming a symbol that halts every single day.
+    escalated: bool = False
+
+
+@dataclass
+class DDHaltRolloverDecision:
+    """Result of :meth:`RiskManager.evaluate_dd_halt_rollover`.
+
+    ``action`` is one of ``"hold"`` / ``"clear"`` / ``"escalate"``; the
+    counts let the caller render an accurate operator notification without
+    reaching back into risk state.
+    """
+    action: str
+    consecutive_days: int = 0
+    sticky_after: int = 0
+
+
 class RiskDecision:
     APPROVED = "approved"
     SKIP_KILL_SWITCH = "skip_kill_switch"
@@ -47,10 +79,21 @@ class RiskResult:
 
 
 class RiskManager:
+    # Thrash guard: if the SAME symbol auto-DD-halts on this many
+    # consecutive UTC days, stop silently re-arming — escalate to a sticky
+    # halt + Telegram alert so a human looks at why it keeps blowing the 3%
+    # daily budget (a persistently broken regime, not a one-off bad day).
+    # 3 = "twice was noise, three days running is a pattern"; documented in
+    # the reliability report and E019 protocol.
+    DD_HALT_STICKY_AFTER_DAYS: int = 3
+    # Bound the persisted history so state.json can't grow without limit.
+    _DD_HALT_HISTORY_MAX: int = 30
+
     def __init__(self, cfg: Config, kill_switch_path: Path | None = None):
         self.cfg = cfg
         self.kill_switch_path = kill_switch_path or cfg.kill_switch_file
         self.state = RiskState()
+        self.recovery = DDHaltRecoveryState()
 
     def on_new_day(self, today: date, balance: float) -> None:
         if self.state.day != today:
@@ -66,6 +109,97 @@ class RiskManager:
             if dd >= self.cfg.risk.daily_dd_halt_pct:
                 self.state.halted_today = True
                 log.warning("Daily DD halt triggered: dd=%.4f >= %.4f", dd, self.cfg.risk.daily_dd_halt_pct)
+
+    # ------------------------------------------------------------------
+    # Daily-DD-halt self-recovery (auto-clear at UTC rollover + thrash guard)
+    # ------------------------------------------------------------------
+
+    def _record_dd_halt_day(self, halt_date: date) -> None:
+        """Idempotently record a daily-DD auto-halt day (keeps the tail)."""
+        iso = halt_date.isoformat()
+        if iso not in self.recovery.halt_dates:
+            self.recovery.halt_dates.append(iso)
+            self.recovery.halt_dates = self.recovery.halt_dates[
+                -self._DD_HALT_HISTORY_MAX:
+            ]
+
+    def consecutive_dd_halt_days(self) -> int:
+        """Length of the run of consecutive UTC calendar days ending at the
+        most recently recorded daily-DD halt day (the *active* streak)."""
+        if not self.recovery.halt_dates:
+            return 0
+        try:
+            days = sorted({date.fromisoformat(d) for d in self.recovery.halt_dates})
+        except (ValueError, TypeError):
+            return 0
+        streak = 1
+        for i in range(len(days) - 1, 0, -1):
+            if (days[i] - days[i - 1]).days == 1:
+                streak += 1
+            else:
+                break
+        return streak
+
+    def evaluate_dd_halt_rollover(
+        self, halt_date: date, today: date
+    ) -> DDHaltRolloverDecision:
+        """Decide what to do with a daily-DD auto-kill file.
+
+        Pure decision + bookkeeping; the caller (PositionMonitor) performs
+        the file I/O and notifications. ``action`` is one of:
+
+        * ``"hold"``     — still the same UTC day as the halt: the 3%-PER-DAY
+          budget has not reset yet, stay halted (no state change).
+        * ``"clear"``    — a UTC rollover has passed: re-arm (delete the kill
+          file). Records ``halt_date`` in the thrash history.
+        * ``"escalate"`` — the same symbol has now auto-DD-halted on
+          ``DD_HALT_STICKY_AFTER_DAYS`` consecutive days: convert to a sticky
+          halt instead of re-arming, and latch ``recovery.escalated``.
+
+        Fails safe: any non-rollover / same-day case returns ``"hold"``.
+        """
+        n = self.DD_HALT_STICKY_AFTER_DAYS
+        if today <= halt_date:
+            return DDHaltRolloverDecision("hold", sticky_after=n)
+        # A rollover has happened — this halt day is now behind us.
+        self._record_dd_halt_day(halt_date)
+        streak = self.consecutive_dd_halt_days()
+        if streak >= n or self.recovery.escalated:
+            self.recovery.escalated = True
+            log.warning(
+                "Daily-DD halt thrash guard: %d consecutive DD-halt days "
+                ">= %d — escalating to a STICKY halt (manual review).",
+                streak, n,
+            )
+            return DDHaltRolloverDecision("escalate", streak, n)
+        return DDHaltRolloverDecision("clear", streak, n)
+
+    def get_recovery_state(self) -> dict:
+        """JSON-serialisable snapshot of the NON-day-scoped recovery state.
+
+        Persisted and restored unconditionally (see
+        ``SignalLoop._restore_state``) so the thrash counter survives both
+        UTC day rollover and process restart.
+        """
+        return {
+            "halt_dates": list(self.recovery.halt_dates),
+            "escalated": bool(self.recovery.escalated),
+        }
+
+    def restore_recovery_state(self, data: dict) -> None:
+        """Restore recovery state from a persisted dict (never raises)."""
+        raw_dates = data.get("halt_dates", [])
+        if isinstance(raw_dates, list):
+            self.recovery.halt_dates = [
+                str(d) for d in raw_dates[-self._DD_HALT_HISTORY_MAX:]
+            ]
+        self.recovery.escalated = bool(data.get("escalated", False))
+        log.info(
+            "[STATE LOADED] dd_halt_recovery restored: %d halt-day(s) "
+            "(streak=%d) escalated=%s",
+            len(self.recovery.halt_dates), self.consecutive_dd_halt_days(),
+            self.recovery.escalated,
+        )
 
     # ------------------------------------------------------------------
     # Portfolio-wide open-risk ceiling (Wave 2.2, 2026-07-01)

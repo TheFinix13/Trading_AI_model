@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import tempfile
-from datetime import datetime, time
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -73,3 +73,70 @@ def kill_switch_reason(path: Path | str) -> str | None:
         return p.read_text(encoding="utf-8").strip() or "(empty kill file)"
     except OSError:
         return "(kill file exists but could not be read)"
+
+
+# ---------------------------------------------------------------------------
+# Daily-DD auto-kill classification + creation date (self-recovery support)
+#
+# A daily-DD circuit-breaker halt writes a per-symbol kill.txt whose FIRST
+# line is exactly ``Auto-kill: Daily DD halt: <pct>% (limit <pct>%)`` (see
+# PositionMonitor._emergency_close_all). Because that limit is literally a
+# "% PER DAY" budget that RiskManager.on_new_day resets at the UTC date
+# change, this specific halt class is safe to auto-clear at the next UTC
+# midnight — re-arming evaluation without a human deleting the file.
+#
+# EVERYTHING ELSE stays sticky: the master kill_switch_file, a manually
+# created kill.txt, and any auto-kill whose reason is NOT a clean daily-DD
+# halt (consecutive-error / catastrophe / broker-misread paths). Human stop
+# and non-DD safety halts always win — this classifier is deliberately
+# narrow and fails safe (returns False / None on anything ambiguous).
+# ---------------------------------------------------------------------------
+
+
+def is_daily_dd_auto_kill(reason: str | None) -> bool:
+    """True iff a kill file's recorded reason marks it as an *automatic
+    daily-drawdown* halt — the ONLY halt class eligible for auto-clear.
+
+    Requires BOTH the ``Auto-kill:`` prefix (agent-written, never a human
+    file) AND the ``Daily DD halt`` marker. Consecutive-error, catastrophe
+    and manual kill files therefore stay sticky.
+    """
+    if not reason:
+        return False
+    text = reason.strip().lower()
+    return text.startswith("auto-kill:") and "daily dd halt" in text
+
+
+def kill_file_creation_utc_date(path: Path | str) -> date | None:
+    """Best-effort UTC calendar date on which a kill file was created.
+
+    Prefers the ISO timestamp ``_emergency_close_all`` writes on the second
+    line; falls back to the file's mtime. Returns ``None`` when the file is
+    missing or no date can be established — callers must fail safe (stay
+    halted) on ``None`` rather than guess a rollover.
+    """
+    p = Path(path)
+    if not p.exists():
+        return None
+    try:
+        lines = p.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        lines = []
+    # Skip the reason (line 0); look for an ISO timestamp on later lines.
+    for line in lines[1:]:
+        stamp = line.strip()
+        if not stamp:
+            continue
+        try:
+            ts = datetime.fromisoformat(stamp)
+        except ValueError:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts.astimezone(timezone.utc).date()
+    try:
+        return datetime.fromtimestamp(
+            p.stat().st_mtime, tz=timezone.utc
+        ).date()
+    except OSError:
+        return None

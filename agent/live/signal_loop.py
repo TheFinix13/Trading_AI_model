@@ -64,7 +64,11 @@ from agent.risk.manager import RiskDecision, RiskManager
 from agent.risk.post_loss_guard import GuardConfig, PostLossGuard
 from agent.rules.engine import precompute
 from agent.types import Direction, Setup, Timeframe
-from agent.utils import kill_switch_active, kill_switch_reason
+from agent.utils import (
+    is_daily_dd_auto_kill,
+    kill_switch_active,
+    kill_switch_reason,
+)
 
 log = logging.getLogger(__name__)
 
@@ -170,6 +174,12 @@ class SignalLoop:
             on_state_change=(
                 self._persist_state if self._state_store is not None else None
             ),
+            # Daily-DD-halt self-recovery: the monitor asks the RiskManager
+            # (the risk constitution) whether a stale daily-DD kill file may
+            # be auto-cleared at the UTC rollover, or has thrashed into a
+            # sticky halt. Delegating keeps the day-boundary + thrash-counter
+            # authority in one place.
+            dd_halt_recovery_cb=self.risk_manager.evaluate_dd_halt_rollover,
         )
 
         self._last_bar_times: dict[str, datetime] = {}
@@ -200,6 +210,10 @@ class SignalLoop:
             "position_monitor": self.monitor.get_persist_state(),
             "post_loss_guard": self.post_loss_guard.get_persist_state(),
             "risk_manager": self.risk_manager.get_persist_state(),
+            # NON-day-scoped: the daily-DD-halt thrash counter must survive
+            # both process restart AND the UTC day rollover, so it lives in
+            # its own top-level section restored unconditionally below.
+            "dd_halt_recovery": self.risk_manager.get_recovery_state(),
             "signal_loop": {
                 "last_bar_times": {
                     tf: t.isoformat()
@@ -275,6 +289,19 @@ class SignalLoop:
                 log.info(
                     "[STATE LOADED] risk_manager state is from %s (today %s) — discarded",
                     rm_day, today,
+                )
+
+        # ── RiskManager daily-DD-halt recovery (NON-day-scoped) ──────────
+        # Restored REGARDLESS of day: the thrash counter's whole job is to
+        # remember DD halts across the very day rollovers that reset the
+        # day-scoped risk_manager state above. Do not gate this on `today`.
+        rec_data = state.get("dd_halt_recovery")
+        if rec_data and isinstance(rec_data, dict):
+            try:
+                self.risk_manager.restore_recovery_state(rec_data)
+            except Exception as exc:
+                log.warning(
+                    "[STATE LOADED] dd_halt_recovery restore failed: %s", exc
                 )
 
         # ── SignalLoop._last_bar_times (up to 2 days old) ────────────────
@@ -968,11 +995,23 @@ class SignalLoop:
             status = "running (account snapshot pending)"
         kill_path = self._active_kill_path()
         if kill_path is not None:
-            log.info("heartbeat: %s | HALTED (kill switch at %s) | next H4 close ~%s UTC",
-                     status, kill_path, next_h4_close_utc(now).strftime("%H:%M"))
+            # Annotate WHY nothing is trading and whether it will self-clear:
+            # a clean daily-DD auto-kill re-arms at the next UTC rollover; a
+            # sticky/manual/escalated kill needs a human.
+            reason = kill_switch_reason(kill_path)
+            if is_daily_dd_auto_kill(reason):
+                halt_note = "auto-DD halt, re-arms at next UTC rollover"
+            else:
+                halt_note = "sticky, manual clear required"
+            log.info(
+                "heartbeat: %s | HALTED (kill switch at %s — %s) | next H4 "
+                "close ~%s UTC",
+                status, kill_path, halt_note,
+                next_h4_close_utc(now).strftime("%H:%M"),
+            )
             self.healthcheck.ping(
                 f"{self.live_config.symbol} HALTED by kill switch "
-                f"({kill_path.name}) - process alive"
+                f"({kill_path.name}, {halt_note}) - process alive"
             )
         else:
             log.info("heartbeat: %s | next H4 close ~%s UTC",

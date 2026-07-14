@@ -7,13 +7,17 @@ halting them across VM/script restarts with zero indication why.
 """
 from __future__ import annotations
 
+import copy
 import importlib.util
+import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from agent.config import load_config
 from agent.utils import kill_switch_active, kill_switch_reason
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -122,6 +126,140 @@ def test_main_refuses_to_start_when_kill_file_present(monkeypatch, tmp_path, cap
     assert exc.value.code == 1
     assert "REFUSING TO START" in caplog.text
     assert "Daily DD halt" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Startup self-recovery: a STALE daily-DD auto-kill from a prior UTC day now
+# self-clears at boot (mirrors PositionMonitor._maybe_auto_clear_dd_halt), so
+# a VM restart across UTC midnight resumes instead of staying blind. Master /
+# manual / non-DD / same-day / escalated halts still refuse to start.
+# ---------------------------------------------------------------------------
+
+_STALE_DD_KILL = (
+    "Auto-kill: Daily DD halt: 3.0% (limit 3.0%)\n"
+    "2020-01-01T02:15:16+00:00\n"  # definitely a prior UTC day
+)
+
+
+def _preflight_setup(tmp_path, symbol="EURUSD"):
+    cfg = copy.copy(load_config())
+    cfg.symbol = symbol
+    cfg.kill_switch_file = tmp_path / "master_kill"  # absent by default
+    args = SimpleNamespace(
+        broker="paper", interval=30, no_revenge_guard=False, balance=None,
+        no_telegram=True,
+    )
+    live = run_live._build_live_config(cfg, args, ["H4"], tmp_path)
+    state_path = tmp_path / symbol / "state.json"
+    return cfg, live, state_path
+
+
+def _write_kill(live, content):
+    p = Path(live.kill_file)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content)
+    return p
+
+
+def test_preflight_clears_stale_daily_dd_kill_across_rollover(tmp_path):
+    cfg, live, state_path = _preflight_setup(tmp_path)
+    kill = _write_kill(live, _STALE_DD_KILL)
+    assert run_live._preflight_kill_switch(live, cfg, state_path) is True
+    assert not kill.exists()  # self-cleared
+
+
+def test_preflight_blocks_same_day_daily_dd_kill(tmp_path):
+    cfg, live, state_path = _preflight_setup(tmp_path)
+    today = datetime.now(tz=timezone.utc).date().isoformat()
+    kill = _write_kill(
+        live,
+        f"Auto-kill: Daily DD halt: 3.0% (limit 3.0%)\n{today}T00:00:00+00:00\n",
+    )
+    assert run_live._preflight_kill_switch(live, cfg, state_path) is False
+    assert kill.exists()  # same UTC day → still blocked, not cleared
+
+
+def test_preflight_blocks_manual_kill_file(tmp_path):
+    cfg, live, state_path = _preflight_setup(tmp_path)
+    kill = _write_kill(live, "manual: operator stop for maintenance\n")
+    assert run_live._preflight_kill_switch(live, cfg, state_path) is False
+    assert kill.exists()
+
+
+def test_preflight_blocks_non_dd_auto_kill(tmp_path):
+    cfg, live, state_path = _preflight_setup(tmp_path)
+    kill = _write_kill(
+        live,
+        "Auto-kill: catastrophic loss 12.0% of balance\n"
+        "2020-01-01T02:15:16+00:00\n",
+    )
+    assert run_live._preflight_kill_switch(live, cfg, state_path) is False
+    assert kill.exists()
+
+
+def test_preflight_master_kill_file_never_auto_clears(tmp_path):
+    cfg, live, state_path = _preflight_setup(tmp_path)
+    # No per-symbol kill file; a (DD-looking) MASTER file must still block.
+    Path(cfg.kill_switch_file).write_text(_STALE_DD_KILL)
+    assert run_live._preflight_kill_switch(live, cfg, state_path) is False
+    assert Path(cfg.kill_switch_file).exists()
+
+
+def test_preflight_escalated_sticky_latch_still_blocks(tmp_path):
+    cfg, live, state_path = _preflight_setup(tmp_path)
+    kill = _write_kill(live, _STALE_DD_KILL)
+    # Persisted thrash-guard latch: this symbol escalated to a sticky halt.
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps({
+        "schema": 1,
+        "dd_halt_recovery": {
+            "halt_dates": ["2026-07-10", "2026-07-11", "2026-07-12"],
+            "escalated": True,
+        },
+    }))
+    assert run_live._preflight_kill_switch(live, cfg, state_path) is False
+    assert kill.exists()  # escalated → never auto-clears at startup
+
+
+def test_preflight_no_kill_file_starts(tmp_path):
+    cfg, live, state_path = _preflight_setup(tmp_path)
+    assert run_live._preflight_kill_switch(live, cfg, state_path) is True
+
+
+def test_main_starts_after_clearing_stale_dd_kill(monkeypatch, tmp_path, caplog):
+    """End-to-end: a stale daily-DD kill no longer refuses boot — main()
+    proceeds past the pre-flight (we stop it at _startup_health to keep the
+    test hermetic) and the kill file is gone."""
+    monkeypatch.delenv("SKIP_KILL_SWITCH", raising=False)
+    fake_route = SimpleNamespace(
+        symbol="EURUSD", timeframe="H4", session="all", mode="htf_against",
+        risk_scale=1.0, alpha=SimpleNamespace(name="zone_h4_all"),
+    )
+    monkeypatch.setattr(run_live, "build_live_routes",
+                        lambda symbol, cfg: [fake_route])
+    monkeypatch.setattr(run_live, "setup_live_logging",
+                        lambda symbol, log_dir=None: tmp_path / symbol / "x.log")
+
+    kill_path = tmp_path / "EURUSD" / "kill.txt"
+    kill_path.parent.mkdir(parents=True, exist_ok=True)
+    kill_path.write_text(_STALE_DD_KILL)
+
+    async def fake_health(args, cfg, live):
+        return False  # clean early exit AFTER the pre-flight passes
+
+    monkeypatch.setattr(run_live, "_startup_health", fake_health)
+    monkeypatch.setattr(sys, "argv", [
+        "run_live.py", "--symbol", "EURUSD", "--log-dir", str(tmp_path),
+    ])
+
+    import logging
+    with caplog.at_level(logging.WARNING, logger="run_live"):
+        with pytest.raises(SystemExit) as exc:
+            run_live.main()
+    assert exc.value.code == 1  # from _startup_health, not the pre-flight
+    assert not kill_path.exists()  # self-cleared at startup
+    assert "AUTO-CLEAR @ startup" in caplog.text
+    assert "REFUSING TO START" not in caplog.text
 
 
 def test_main_ignores_kill_file_when_kill_switch_off(monkeypatch, tmp_path):
