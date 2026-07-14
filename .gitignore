@@ -88,3 +88,7 @@ tmp/
 .cache/
 fixtures/
 platform.toml
+
+# Session claim files (ephemeral coordination state — see brain-box agents/concurrent-session-safety.md)
+.sessions/*
+!.sessions/README.md
