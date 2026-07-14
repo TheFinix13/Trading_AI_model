@@ -322,6 +322,72 @@ stop. Proposals and rejections never page. Unconfigured or broken
 Telegram can never crash the loop (fail-open, same as v1); pass
 `--no-telegram` to silence a configured bot for one run.
 
+### 7b.5 Watch all 7 v1 squad players on the pitch (paper observation)
+
+Paper mode replays a G7 second-attempt (`g7retry1`) cache with all 7 v1
+players active — Phase Y Barou v1.3 weapon, dispersion-primitives
+round 2, Nagi provenance borrow — into the `/v2` LIVE stream. It is
+**shadow-only paper observation**: the loop only copies JSON rows
+between files, never talks to a broker, never places orders. The v1
+zones agent on `main` is completely unaffected — it does not share code,
+processes, log root, or branch with the platform clone.
+
+By default (no flags), the loop picks the newest
+`g7_replay_cache_g7retry1-*` under the research reviews dir. Pin a
+specific aggregator arm with `--aggregator {phi41,arm4}` — phi41 is
+verdict-bearing, arm4 the companion; either is fine for observation.
+An explicit `--cache <id>` overrides both.
+
+**On the VM** (both clones already exist per §7b — the trading clone at
+`C:\TradingAgent` on `main` is untouched; the platform clone at
+`C:\TradingAgent-platform` on `next-gen` gets the paper loop):
+
+```powershell
+cd C:\TradingAgent-platform
+git fetch && git checkout next-gen && git reset --hard origin/next-gen
+
+# Terminal 1 — paper loop (fresh g7retry1 cache, phi41 verdict arm).
+# Startup logs the resolved cache clearly, e.g.:
+#   [paper-loop] source cache: g7_replay_cache_g7retry1-phi41 (aggregator=phi41)
+.venv\Scripts\python scripts\run_squad_paper.py --aggregator phi41
+# or --cache g7_replay_cache_g7retry1-arm4  to pick the companion arm
+# or --cache g7_replay_cache_g7retry1-arm4 --reset  to restart from row 0
+
+# Terminal 2 — platform server (skip if already installed as a service).
+.venv\Scripts\python scripts\serve_platform.py --host 0.0.0.0 --port 8787 --auth-token <secret>
+```
+
+Browse `http://<VM-IP>:8787/?token=<secret>` from the Mac, hit `/v2`,
+switch the source dropdown to **LIVE**. All 8 pitch positions render
+(the 7 v1 players + Kunigami retained as the Sentinel R5 defender);
+proposal / block / open / close events tick through as the loop
+appends rows. The LIVE badge, ticker, league table, and player-profile
+cards all populate from the same `/api/v2/live/*` endpoints — nothing
+special about "live" vs "replay" on the client side.
+
+**Kill switch (paper mode is a `kill.txt` in the live dir, NOT the v1
+`kill_switch` at the repo root):**
+
+```powershell
+# stops the paper loop at the next tick, state.json is preserved so a
+# restart resumes from where you paused
+"pause for review" | Out-File -Encoding ascii $HOME\Documents\TradingAgentLogs\squad_live\kill.txt
+```
+
+Delete that file (and restart `run_squad_paper.py`) to resume, or pass
+`--reset` on the next start to wipe `state.json` + JSONLs and replay
+from the top. The v1 trading agent's kill switches
+(`{log_root}/{SYMBOL}/kill.txt`, global `kill_switch`) are completely
+independent — nothing here touches them.
+
+Config knobs (all optional, CLI always wins) in `platform.toml`:
+
+```toml
+[paper_loop]
+aggregator = "phi41"                             # or "arm4"
+# cache = "g7_replay_cache_g7retry1-arm4"        # explicit id / path
+```
+
 ## 8. Emergency stop
 
 ```powershell

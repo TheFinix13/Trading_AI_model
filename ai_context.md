@@ -1,5 +1,38 @@
-# AI Context — brain dump (updated 2026-07-14, v0.33)
+# AI Context — brain dump (updated 2026-07-14, v0.34)
 
+> v0.34 — **All 7 v1 squad players wired for /v2 LIVE paper-mode
+> observation on the VM via the fresh `g7retry1` default cache (still
+> shadow-only, still `next-gen`, still zero live-broker path).** Paper
+> loop now auto-picks the newest `g7_replay_cache_g7retry1-*` under
+> research reviews at startup so a fresh G7 second attempt lands on
+> `/v2` LIVE with no config edits — Phase Y Barou v1.3 weapon,
+> dispersion-primitives round 2, Nagi provenance borrow all visible.
+> Explicit precedence in `agent/platform/paper_loop.select_source_cache`:
+> `--cache <id>` (or legacy `--source-cache` alias) → `--aggregator
+> {phi41,arm4}` (resolves to `g7_replay_cache_g7retry1-<arm>`, phi41 is
+> verdict-bearing) → `[paper_loop] cache/aggregator` in `platform.toml`
+> → newest g7retry1 → newest any-g7 replay (unchanged legacy fallback).
+> Cache reason logged at startup (`[paper-loop] source cache: <id>
+> (<reason>)`). Roster in `agent/platform/squad_events.ROSTER` covers
+> all 8 pitch slots (7 v1 + Kunigami retained as Sentinel R5 defender);
+> the g7retry1 stream emits proposal/trade rows for 6 of the 7 (Reo is
+> a midfield-general/copier — publishes workspace signals only, no
+> standalone proposals in this cache format, by-design v1 behaviour).
+> **Not a G7 graduation** — G7 gate FAIL 3/7 gates real broker orders,
+> unaffected by this change. Paper mode remains shadow-only: the loop
+> only copies JSON rows between files (`agent/platform/paper_loop.py`
+> hard guarantees preserved), the `main` trading clone at
+> `C:\TradingAgent` is untouched, kill switch is `kill.txt` in
+> `<log_root>/squad_live/`. Runbook §7b.5 added — "watch all 7 v1
+> players on the pitch" walkthrough (both VM clones, terminal 1 =
+> paper loop, terminal 2 = platform server, browser → /v2 → LIVE).
+> Smoke-tested locally: `--aggregator phi41` writes 200 rows into
+> `squad_live/` in ~3s, server tails through `/api/v2/live/{status,
+> events,summary}`, roster + per-agent activity render as expected.
+> 16 new tests (14 cache-selection precedence + 2 config `[paper_loop]`
+> parsing); **557 tests pass** (was 541), 1 pre-existing playwright
+> skip.
+>
 > v0.33 — **Platform build-out D1-D4 on `next-gen`: /v2 UX depth, squad
 > paper-loop live plumbing, ops (auth/healthz/config/runbook), QA
 > harness. Read-only + shadow-only; zero trading-logic change.**
