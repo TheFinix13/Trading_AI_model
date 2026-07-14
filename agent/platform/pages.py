@@ -541,10 +541,19 @@ function populateFilterOptions(){
     fs.appendChild(o); }
 }
 
-function setModeBadge(live,running){
+function setModeBadge(live,running,source){
   const b=document.getElementById("modebadge");
   if(live){ b.className="badge live";
-    b.innerText=running?"\u25CF LIVE — paper stream (shadow-only)":"LIVE — stream idle"; }
+    const isMarket = source && String(source).indexOf("live_market")===0;
+    const isCache = source==="cache_replay";
+    if(isMarket){
+      b.innerText=running?"\u25CF LIVE — market paper (shadow-only)":"LIVE — market stream idle";
+    } else if(isCache){
+      b.innerText=running?"\u25CF LIVE — cache paper (shadow-only)":"LIVE — cache stream idle";
+    } else {
+      b.innerText=running?"\u25CF LIVE — paper stream (shadow-only)":"LIVE — stream idle";
+    }
+  }
   else { b.className="badge sim"; b.innerText="sim-only — not trading real lots"; }
 }
 function stopLive(){
@@ -604,8 +613,8 @@ async function loadLive(){
 }
 async function pollLiveStatus(){
   try{ const st=await (await fetch("/api/v2/live/status")).json();
-    setModeBadge(true, !!st.running); }
-  catch(e){ setModeBadge(true,false); }
+    setModeBadge(true, !!st.running, st.source); }
+  catch(e){ setModeBadge(true,false,null); }
 }
 async function pollLive(){
   if(!livePolling) return;

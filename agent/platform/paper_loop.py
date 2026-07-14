@@ -344,6 +344,14 @@ def live_status(out_dir: Path, stale_after_s: float = 120.0) -> dict:
                               if state_age_s is not None else None),
         "last_event_time": state.get("last_event_time"),
         "source_cache": state.get("source_cache"),
+        # Distinguishes the history-replay paper loop from the
+        # live-market squad runtime (scripts/run_squad_live.py). The
+        # latter writes state["source"] = "live_market:*" or
+        # "cache_replay"; the former leaves it unset / stores
+        # source_cache. UI badge swaps on this field.
+        "source": state.get("source") or (
+            "replay_paper" if state.get("source_cache") else None
+        ),
         "cursors": state.get("cursors"),
         "kill": kill_reason,
     }

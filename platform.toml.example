@@ -46,3 +46,12 @@
 # [paper_loop]
 # aggregator = "phi41"
 # cache = "g7_replay_cache_g7retry1-arm4"
+
+# Live-market squad paper runtime (scripts/run_squad_live.py).
+# CLI flags always win; empty feed = platform default (mt5 on Windows,
+# cache elsewhere). Shadow-only — never places broker orders.
+# [squad_live]
+# feed = "mt5"
+# aggregator = "phi41"
+# poll_seconds = 45
+# symbols = ["EURUSD", "GBPUSD", "USDCAD"]

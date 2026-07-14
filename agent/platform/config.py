@@ -36,6 +36,16 @@ def _defaults(repo_root: Path) -> dict:
         # research reviews dir (so a fresh G7 second attempt shows up
         # on /v2 LIVE without config changes).
         "paper_loop": {"cache": "", "aggregator": ""},
+        # Live-market squad paper runtime ([squad_live] table). CLI
+        # flags on scripts/run_squad_live.py override these. Default
+        # feed is resolved at runtime (mt5 on Windows, cache elsewhere)
+        # when left empty.
+        "squad_live": {
+            "feed": "",
+            "aggregator": "phi41",
+            "poll_seconds": 45,
+            "symbols": ["EURUSD", "GBPUSD", "USDCAD"],
+        },
     }
 
 
@@ -77,6 +87,19 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
         for key in ("cache", "aggregator"):
             if pl.get(key):
                 cfg["paper_loop"][key] = str(pl[key]).strip()
+    sl = raw.get("squad_live")
+    if isinstance(sl, dict):
+        if sl.get("feed"):
+            cfg["squad_live"]["feed"] = str(sl["feed"]).strip()
+        if sl.get("aggregator"):
+            cfg["squad_live"]["aggregator"] = str(sl["aggregator"]).strip()
+        if sl.get("poll_seconds"):
+            try:
+                cfg["squad_live"]["poll_seconds"] = float(sl["poll_seconds"])
+            except (TypeError, ValueError):
+                pass
+        if isinstance(sl.get("symbols"), list) and sl["symbols"]:
+            cfg["squad_live"]["symbols"] = [str(s) for s in sl["symbols"]]
     if cfg["live_dir"] is None:
         cfg["live_dir"] = Path(cfg["log_root"]) / "squad_live"
     return cfg
