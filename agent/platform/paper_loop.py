@@ -43,6 +43,18 @@ STATE_FILE = "state.json"
 KILL_FILE = "kill.txt"
 
 
+def notify_event(row: dict, source_file: str) -> None:
+    """TELEGRAM EXTENSION POINT (deliberately unwired).
+
+    Called for every row the paper loop emits. Squad events are NOT
+    pushed to Telegram yet because the channel is an open user decision
+    (reuse the v1 bot chat vs a dedicated squad channel). Once decided,
+    import ``agent.notifications.telegram.TelegramNotifier`` here and
+    forward e.g. closed trades (``source_file == "trades.jsonl"``) —
+    keep proposals/rejections out to avoid paging noise.
+    """
+
+
 def _parse_ts(raw: str) -> datetime:
     return datetime.fromisoformat(raw)
 
@@ -159,6 +171,7 @@ class PaperLoop:
         with (self.out_dir / fname).open("a", encoding="utf-8") as fh:
             fh.write(line + "\n")
         self.cursors[fname] += 1
+        notify_event(json.loads(line), fname)
         ts_str = ts.isoformat() if ts != datetime.min else None
         self.save_state(ts_str)
         return ts_str or ""

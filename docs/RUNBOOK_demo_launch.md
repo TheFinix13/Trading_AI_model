@@ -178,6 +178,94 @@ path); without it, v2 simply lists no matches — v1 is unaffected.
 
 `scripts/serve_live_dashboard.py` remains as the v1-only variant.
 
+### 7b.1 Config file, health endpoint, auth
+
+The server (and the paper loop below) reads an optional **`platform.toml`**
+at the repo root — copy `platform.toml.example` and set `log_root`,
+`research_reviews`, `live_dir`, `host`/`port`, `auth_token`. CLI flags
+always override the file. The file is gitignored (machine-local).
+
+**Health endpoint:** `GET /healthz` returns
+`{"status":"ok","version":...,"uptime_seconds":...}` with no auth —
+point a healthchecks.io HTTP check (or any uptime monitor) at
+`http://<host>:8787/healthz` and alert on non-200.
+
+**Auth:** binding non-localhost without a token prints a warning and
+leaves the dashboards open to the network. Set `--auth-token <secret>`
+(or `auth_token` in platform.toml); then every route except `/healthz`
+requires the token. First visit uses `http://<host>:8787/v2?token=<secret>`
+— that plants a session cookie so subsequent page fetches work without
+the query string. Scripted access can send `Authorization: Bearer <secret>`.
+On `127.0.0.1` binds the token is ignored (local browsing stays open).
+
+### 7b.2 Squad paper loop (shadow-only STUB stream for /v2 LIVE mode)
+
+`scripts/run_squad_paper.py` replays an existing M001 replay cache into
+`<log_root>/squad_live/` in accelerated wall-clock time, in the same
+three-JSONL schema — this feeds the `/v2` page's **LIVE** source option
+via `/api/v2/live/*`. It is shadow-only: it never places broker orders
+(it only copies JSON rows between files) and it exists to prove the live
+plumbing before the validated squad graduates in.
+
+```bash
+# Mac (sibling research checkout auto-detected):
+./.venv/bin/python scripts/run_squad_paper.py \
+    --source-cache g7_replay_cache_phi5-arm4-post-kunigami --tick-seconds 2
+```
+
+Controls: `--max-steps N` stops after N rows; `--reset` wipes the output
+and restarts the replay; Ctrl-C (or a `kill.txt` dropped in the output
+dir) stops it, and a restart resumes from `state.json`:
+
+```bash
+echo "pause for review" > ~/Documents/TradingAgentLogs/squad_live/kill.txt
+```
+
+### 7b.3 Installing the platform server as a Windows service
+
+Unlike the trading agents, the platform server does NOT need MT5's
+desktop session, so both service approaches work. Run it from the
+**platform clone** (`C:\TradingAgent-platform`, `next-gen`), never the
+trading clone.
+
+**Option A — Task Scheduler (no extra software):**
+
+```powershell
+$action = New-ScheduledTaskAction -Execute "C:\TradingAgent-platform\.venv\Scripts\python.exe" `
+  -Argument "scripts\serve_platform.py --host 0.0.0.0 --port 8787 --auth-token <secret>" `
+  -WorkingDirectory "C:\TradingAgent-platform"
+$trigger = New-ScheduledTaskTrigger -AtStartup
+Register-ScheduledTask -TaskName "PlatformWebUI" -Action $action -Trigger $trigger `
+  -RunLevel Limited -Description "Read-only trading platform web UI (next-gen)"
+Start-ScheduledTask -TaskName "PlatformWebUI"
+```
+
+(`-AtStartup` works here because the server needs no desktop session;
+the trading agents keep their `AtLogOn` + watchdog setup from section 2.)
+
+**Option B — NSSM (auto-restart on crash):**
+
+```powershell
+nssm install PlatformWebUI "C:\TradingAgent-platform\.venv\Scripts\python.exe" `
+  "scripts\serve_platform.py --host 0.0.0.0 --port 8787 --auth-token <secret>"
+nssm set PlatformWebUI AppDirectory "C:\TradingAgent-platform"
+nssm set PlatformWebUI AppStdout "C:\TradingAgent-platform\platform_service.log"
+nssm set PlatformWebUI AppStderr "C:\TradingAgent-platform\platform_service.log"
+nssm start PlatformWebUI
+```
+
+Verify either way: `curl http://localhost:8787/healthz` on the VM, then
+`http://<VM-IP>:8787/v1?token=<secret>` from the Mac. Prefer
+`platform.toml` on the VM for the paths/token so the service command
+line stays short.
+
+**Telegram note:** squad/paper-loop events are deliberately NOT wired
+into Telegram yet — which channel they should page (the existing v1 bot
+chat or a separate squad channel) is an open user decision. The
+extension point is documented in `agent/platform/paper_loop.py`
+(`notify_event`); wire it to
+`agent.notifications.telegram.TelegramNotifier` once decided.
+
 ## 8. Emergency stop
 
 ```powershell

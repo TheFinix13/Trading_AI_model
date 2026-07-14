@@ -49,20 +49,49 @@ _LIVE_RE = re.compile(r"^/api/v2/live/(summary|events|status|event/(\d+))$")
 
 
 def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
-                 live_dir: Path | None = None):
+                 live_dir: Path | None = None,
+                 auth_token: str | None = None):
+    """``auth_token`` enables token auth on every route except /healthz
+    (so uptime probes stay simple). main() only passes it through when
+    binding non-localhost — on 127.0.0.1 the platform stays open."""
     started_at = time.time()
 
     class Handler(BaseHTTPRequestHandler):
+        _set_cookie: str | None = None
+
         def _send(self, body: bytes, ctype: str, code: int = 200) -> None:
             self.send_response(code)
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            if self._set_cookie:
+                self.send_header("Set-Cookie", self._set_cookie)
+                self._set_cookie = None
             self.end_headers()
             self.wfile.write(body)
 
         def _json(self, payload: dict, code: int = 200) -> None:
             self._send(json.dumps(payload).encode(), "application/json", code)
+
+        def _authorized(self, params: dict) -> bool:
+            """?token= / Bearer header / cookie. A correct query token
+            plants a session cookie so page-issued fetches (which carry
+            no query token) keep working."""
+            if auth_token is None:
+                return True
+            if params.get("token") == auth_token:
+                self._set_cookie = (f"platform_token={auth_token}; Path=/; "
+                                    "HttpOnly; SameSite=Strict")
+                return True
+            authz = self.headers.get("Authorization", "")
+            if authz == f"Bearer {auth_token}":
+                return True
+            cookies = self.headers.get("Cookie", "")
+            for part in cookies.split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == "platform_token" and v == auth_token:
+                    return True
+            return False
 
         def do_GET(self):  # noqa: N802
             path, _, query = self.path.partition("?")
@@ -71,6 +100,11 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 k, _, v = pair.partition("=")
                 if k:
                     params[k] = v
+
+            if path != "/healthz" and not self._authorized(params):
+                self._json({"error": "unauthorized — pass ?token= or "
+                                     "Authorization: Bearer"}, 401)
+                return
 
             if path in ("/", "/index.html"):
                 self._send(HUB_PAGE.encode(), "text/html; charset=utf-8")
@@ -176,13 +210,26 @@ def main() -> None:
     ap.add_argument("--host", default=cfg["host"],
                     help="bind address (0.0.0.0 to view from another machine)")
     ap.add_argument("--port", type=int, default=cfg["port"])
+    ap.add_argument("--auth-token", default=cfg["auth_token"],
+                    help="require this token on all routes when binding "
+                         "non-localhost (?token=, Bearer header, or the "
+                         "cookie set on first tokened visit)")
     args = ap.parse_args()
+
+    # Auth only bites on non-localhost binds; local browsing stays open.
+    localhost = args.host in ("127.0.0.1", "localhost", "::1")
+    effective_token = None if localhost else args.auth_token
+    if not localhost and not args.auth_token:
+        print("WARNING: binding non-localhost without --auth-token — "
+              "anyone on the network can read the dashboards")
 
     server = ThreadingHTTPServer(
         (args.host, args.port),
         make_handler(args.log_root, args.repo_root, args.research_reviews,
-                     live_dir=args.live_dir),
+                     live_dir=args.live_dir, auth_token=effective_token),
     )
+    if effective_token:
+        print("Auth: token required on all routes except /healthz")
     print(f"Platform v{PLATFORM_VERSION} on http://{args.host}:{args.port}")
     print(f"  v1 log root:        {args.log_root}")
     print(f"  v2 research reviews: {args.research_reviews} "

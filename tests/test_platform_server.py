@@ -425,6 +425,45 @@ class TestHttpSurface:
         assert status == 200
         assert json.loads(body)["t"]
 
+    def test_auth_token_enforced(self, replay_cache, log_root, tmp_path,
+                                 live_dir):
+        handler = make_handler(log_root, tmp_path, replay_cache,
+                               live_dir=live_dir, auth_token="hunter2")
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{srv.server_address[1]}"
+        try:
+            # No token -> 401 everywhere except /healthz.
+            status, _ = _get(base + "/v2")
+            assert status == 401
+            status, _ = _get(base + "/api/v1/status")
+            assert status == 401
+            status, _ = _get(base + "/healthz")
+            assert status == 200
+            # Wrong token -> 401.
+            status, _ = _get(base + "/v2?token=wrong")
+            assert status == 401
+            # Query token works and plants a session cookie.
+            req = urllib.request.Request(base + "/v2?token=hunter2")
+            with urllib.request.urlopen(req) as resp:
+                assert resp.status == 200
+                cookie = resp.headers.get("Set-Cookie", "")
+                assert "platform_token=hunter2" in cookie
+            # Bearer header works.
+            req = urllib.request.Request(
+                base + "/api/v2/matches",
+                headers={"Authorization": "Bearer hunter2"})
+            with urllib.request.urlopen(req) as resp:
+                assert resp.status == 200
+            # Cookie alone works (what page-issued fetches rely on).
+            req = urllib.request.Request(
+                base + "/api/v2/matches",
+                headers={"Cookie": "platform_token=hunter2"})
+            with urllib.request.urlopen(req) as resp:
+                assert resp.status == 200
+        finally:
+            srv.shutdown()
+
     def test_live_appends_are_visible_without_restart(self, server, live_dir):
         status, body = _get(server + "/api/v2/live/events?cursor=0&limit=1000")
         before = json.loads(body)["total"]
