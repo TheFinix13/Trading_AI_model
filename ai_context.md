@@ -1,5 +1,46 @@
-# AI Context — brain dump (updated 2026-07-13, v0.31)
+# AI Context — brain dump (updated 2026-07-14, v0.33)
 
+> v0.33 — **Platform build-out D1-D4 on `next-gen`: /v2 UX depth, squad
+> paper-loop live plumbing, ops (auth/healthz/config/runbook), QA
+> harness. Read-only + shadow-only; zero trading-logic change.**
+> D1 (/v2 pitch UX): every event carries a heavy `detail` dict
+> (proposal rationale — signal_reason / doctrine_ref / empirical_prior /
+> base→final conviction / peer confluence; close forensics —
+> r_multiple / mae / mfe / tqs_components) stripped from paged payloads
+> and served lazily via `/api/v2/match/<id>/event/<n>`; player profile
+> cards (click pitch or league row: stats, win rate, cumulative-pips
+> sparkline, recent trades), ticker-row event drill-down modal, timeline
+> seek bar + jump-to-date + agent/symbol/type filters + auto-pause-on-
+> goal; optional `thought` event type (speech bubbles) parsed from
+> `thoughts.jsonl` when present — the G7 review caches ship none
+> (verified), so it degrades to absent by design. D2 (live plumbing):
+> `agent/platform/paper_loop.py` + `scripts/run_squad_paper.py` — a
+> shadow-only STUB team replaying an existing replay cache into
+> `<log-root>/squad_live/` in accelerated wall-clock time, verbatim rows
+> in the same three-JSONL schema (kill.txt honored, state.json cursor
+> resume, NEVER places broker orders); `/api/v2/live/{summary,events,
+> status,event/<n>}` tail that dir through the same mtime-cached parser;
+> /v2 gained a LIVE source option (polls the tail, LIVE badge vs sim
+> badge); `/healthz` (uptime+version, no auth); `platform.toml` config
+> (stdlib tomllib; `agent/platform/config.py`; example committed, real
+> file gitignored; CLI overrides). D3 (ops): `--auth-token` — on
+> non-localhost binds every route except /healthz requires ?token= /
+> Bearer / session cookie (planted on first tokened visit); RUNBOOK 7b
+> extended (7b.1 config/healthz/auth, 7b.2 paper loop, 7b.3 Windows
+> service install via Task Scheduler or NSSM — fine for the platform
+> server, no MT5 desktop-session constraint); Telegram for squad events
+> deliberately NOT wired — extension point documented at
+> `paper_loop.notify_event`, channel choice is a pending user decision.
+> D4 (QA): `agent/platform/event_schema.py` — the event contract as a
+> plain-dict validator (5 event types); contract tests validate BOTH
+> producers (replay parse + paper-loop output) + the sim-vs-paper parity
+> gate (paper replay == direct parse, byte-equivalent event streams);
+> Playwright E2E (chromium) boots the real server on a synthetic cache,
+> plays the match, asserts pitch/scoreboard/league/modals — self-skips
+> when playwright/chromium missing (`requirements-dev.txt`). Smoke-
+> tested against the real research caches (77,780-event match loads;
+> LIVE mode tails a real paper-loop run). **519 tests pass** (was 479).
+>
 > v0.31 — **Platform web UI (`scripts/serve_platform.py`) — hub + /v1
 > live view + /v2 squad pitch. Read-only; zero trading-logic change.**
 > One stdlib-only server, three pages. `/v1`: the running zones agent
@@ -374,7 +415,7 @@ untouched.
 | Vaults / ladder / reports | `agent/journal/vault.py`, `agent/journal/target_ladder.py`, `agent/reports/rejection_review.py`, `scripts/daily_summary.py`, `scripts/weekly_report.py` (THE weekly one-command zip: REPORT.md + logs + vault evidence + params + checklist), `scripts/compile_review_bundle.py` (ad-hoc deep-dives) |
 | Validation | `scripts/run_zone_all_tfs.py`, `scripts/run_ablation.py`, `scripts/run_walk_forward.py` |
 | Docs | `docs/CHECKPOINT.md`, `docs/00-overview.md`, `docs/archive/`, `docs/audits/` |
-| Platform (next-gen) | `scripts/build_dashboard.py` → `reports/dashboard.html`, `docs/RUNBOOK_demo_launch.md` |
+| Platform (next-gen) | `scripts/build_dashboard.py` → `reports/dashboard.html`, `docs/RUNBOOK_demo_launch.md`, `scripts/serve_platform.py` (+ `platform.toml.example`), `scripts/run_squad_paper.py`, `agent/platform/{live_status,squad_events,paper_loop,event_schema,config,pages}.py`, tests `tests/test_platform_{server,contract,e2e}.py` + `tests/test_squad_paper_loop.py` |
 | M001 pointer | `docs/research/multi-agent-ensemble/README.md` |
 | Workspace setup | `.cursor/workspace-tips.md` (multi-root: this repo + research + brain-box) |
 
