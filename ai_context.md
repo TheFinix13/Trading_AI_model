@@ -1,5 +1,24 @@
-# AI Context — brain dump (updated 2026-07-14, v0.34)
+# AI Context — brain dump (updated 2026-07-14, v0.35)
 
+> v0.35 — **MT5-connected live-market squad paper runtime on `next-gen`
+> (shadow-only).** Ported v1 agent core into `agent/squad/` from research
+> sim commit `e084c5b` (deliberate reimplementation — research code
+> never imported). `scripts/run_squad_live.py` pulls newly closed H4
+> bars (`--feed mt5` on VM / `--feed cache` on Mac), runs the 7-proposer
+> roster + Kunigami R5 side channel, workspace chemistry, phi41 (or
+> arm4) aggregator + Sentinel, paper fills via production
+> `_open`/`_check_exit`, appends the same three-JSONL schema under
+> `<log_root>/squad_live/`. Honours `kill.txt`, persists `state.json`,
+> writes daily heartbeats, wires squad Telegram. `/api/v2/live/status`
+> gains a `source` field; /v2 badge swaps for market vs replay paper.
+> Parity harness vs banked `g7retry1-phi41` early slice: **97.05%**
+> proposal-key match, **96.62%** conviction-within-±0.05. Labelled
+> "ported v1 (unvalidated port)" — G7 was FAIL 3/7, not a graduation.
+> Simplified vs research: no shadow-ledger, no Wild-Card Kunigami DD
+> gate, no F17 DeltaInfo, Barou v1.3 on by default (off via
+> `--parity-mode`). Runbook §7b.6. **569 tests pass** (was 557), 1
+> playwright skip.
+>
 > v0.34 — **All 7 v1 squad players wired for /v2 LIVE paper-mode
 > observation on the VM via the fresh `g7retry1` default cache (still
 > shadow-only, still `next-gen`, still zero live-broker path).** Paper
@@ -433,6 +452,11 @@ untouched.
   research-validated heavier trading; forked from `main` @ `052515a`);
   `m001-development` = pre-M001 baseline for future M001 graduation; tag
   `v2-zone-d1-against-stable-2026-06-24` at `6f1cc75` for rollback.
+- **Squad live paper runtime (v0.35, next-gen only):** ported v1 squad
+  core under `agent/squad/` + `scripts/run_squad_live.py`. Shadow-only
+  reaction to today's H4 bars (MT5 read-only / cache fallback). Parity
+  vs g7retry1-phi41 early slice ≈ 97% proposal-key / conviction@±0.05.
+  Still NOT a G7 graduation — observation only.
 
 ## 2) Key file paths
 
@@ -448,11 +472,24 @@ untouched.
 | Vaults / ladder / reports | `agent/journal/vault.py`, `agent/journal/target_ladder.py`, `agent/reports/rejection_review.py`, `scripts/daily_summary.py`, `scripts/weekly_report.py` (THE weekly one-command zip: REPORT.md + logs + vault evidence + params + checklist), `scripts/compile_review_bundle.py` (ad-hoc deep-dives) |
 | Validation | `scripts/run_zone_all_tfs.py`, `scripts/run_ablation.py`, `scripts/run_walk_forward.py` |
 | Docs | `docs/CHECKPOINT.md`, `docs/00-overview.md`, `docs/archive/`, `docs/audits/` |
-| Platform (next-gen) | `scripts/build_dashboard.py` → `reports/dashboard.html`, `docs/RUNBOOK_demo_launch.md`, `scripts/serve_platform.py` (+ `platform.toml.example`), `scripts/run_squad_paper.py`, `agent/platform/{live_status,squad_events,paper_loop,event_schema,config,pages}.py`, tests `tests/test_platform_{server,contract,e2e}.py` + `tests/test_squad_paper_loop.py` |
+| Platform (next-gen) | `scripts/build_dashboard.py` → `reports/dashboard.html`, `docs/RUNBOOK_demo_launch.md` (§7b.5 replay / §7b.6 live-market paper), `scripts/serve_platform.py` (+ `platform.toml.example`), `scripts/run_squad_paper.py`, `scripts/run_squad_live.py`, `agent/platform/{live_status,squad_events,paper_loop,event_schema,config,pages,squad_notify}.py`, `agent/squad/` (ported v1 core), tests `tests/test_platform_{server,contract,e2e}.py` + `tests/test_squad_{core,live_e2e,parity,paper_loop}.py` |
 | M001 pointer | `docs/research/multi-agent-ensemble/README.md` |
 | Workspace setup | `.cursor/workspace-tips.md` (multi-root: this repo + research + brain-box) |
 
 ## 3) Next immediate goal
+
+**Deploy §7b.6 on the VM platform clone (`next-gen`):** start
+`scripts/run_squad_live.py --feed mt5` beside the platform server, confirm
+`/v2` LIVE badge reads "market paper", and watch a few real H4 closes
+through the shadow JSONL stream. Keep v1 `main` / `C:\TradingAgent`
+untouched. Optional follow-ups (do not start without discussion): raise
+parity floor toward full-panel proposal fidelity; port shadow-ledger /
+Wild-Card Kunigami gate if paper evidence warrants; G7 re-gate before any
+broker-order path.
+
+**Parked (do not start without discussion):** graduating the squad to
+real broker orders; rewriting v1 zones live path; anything that edits
+`agent/live/` / `agent/risk/` from a concurrent session's WIP.
 
 **2026-07-13 GBPUSD weekly review — pending user decisions:** (1) run
 `python scripts\weekly_report.py --days 7` on the VM (now the one-command

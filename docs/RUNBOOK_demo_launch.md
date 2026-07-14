@@ -388,6 +388,81 @@ aggregator = "phi41"                             # or "arm4"
 # cache = "g7_replay_cache_g7retry1-arm4"        # explicit id / path
 ```
 
+### 7b.6 Run the squad on the live market (paper)
+
+This is the milestone that makes the v2 Blue Lock squad react to
+**today's** H4 bars instead of replaying a banked cache. Agent logic
+is a **ported v1 (unvalidated port)** under `agent/squad/` —
+reimplemented from the research sim at commit `e084c5b`, never
+imported. G7 gate was FAIL 3/7; this runtime is for paper observation,
+not live trading. **Shadow-only: never places broker orders.** The v1
+zones agent on `main` is completely unaffected.
+
+Hard guarantees (same family as §7b.5):
+
+* MT5 is used **read-only** for bars when `--feed mt5` (VM). Dev Macs
+  use `--feed cache` (parquet replay, accelerated).
+* Events append to the same three-JSONL schema under
+  `<log_root>/squad_live/` so `/v2` LIVE + the squad Telegram bot work
+  unchanged. `/api/v2/live/status` exposes a `source` field
+  (`live_market:mt5` / `cache_replay` / `replay_paper`) so the badge
+  can distinguish this runtime from the §7b.5 history-replay loop.
+* `kill.txt` in the live dir stops at the next poll; `state.json`
+  resumes open shadow positions + per-symbol cursor; daily
+  `heartbeat_YYYYMMDD.log` lines land in the same dir.
+* Default aggregator arm is sealed phi41; `--aggregator arm4` enables
+  multi-position. `--parity-mode` disables Barou v1.3 so cache-parity
+  work matches sealed v1.
+
+**Parity honesty (as of the first port):** against the banked
+`g7retry1-phi41` early-slice proposals (2015-02-17→2015-03-17), the
+ported engine matched **97%** of reference `(timestamp, symbol,
+agent_id, direction)` keys and **97%** of those also hit conviction
+within ±0.05. Not byte-identical (float paths, Phase Y Barou default,
+shadow-ledger / Wild-Card Kunigami gate not ported). Do not claim
+G7-validated behaviour.
+
+**On the VM** (platform clone on `next-gen`):
+
+```powershell
+cd C:\TradingAgent-platform
+git fetch && git checkout next-gen && git reset --hard origin/next-gen
+
+# Terminal 1 — live-market paper runtime (MT5 read-only for H4 bars).
+# NEVER places broker orders. Startup logs feed + arm + out dir.
+.venv\Scripts\python scripts\run_squad_live.py --feed mt5 --aggregator phi41 --poll 45
+
+# Optional: pin symbols / out-dir / wipe state
+# .venv\Scripts\python scripts\run_squad_live.py --feed mt5 --symbols EURUSD GBPUSD USDCAD --reset
+
+# Terminal 2 — platform server (skip if already a service).
+.venv\Scripts\python scripts\serve_platform.py --host 0.0.0.0 --port 8787 --auth-token <secret>
+```
+
+**On Mac (no MT5)** — accelerated cache replay through the same
+runtime (useful for smoke-testing before the VM):
+
+```bash
+.venv/bin/python scripts/run_squad_live.py --feed cache --poll 1 --max-steps 50
+```
+
+Browse `/v2` → LIVE. The badge should read **LIVE — market paper
+(shadow-only)** when `source` starts with `live_market`. Kill:
+
+```powershell
+"pause for review" | Out-File -Encoding ascii $HOME\Documents\TradingAgentLogs\squad_live\kill.txt
+```
+
+Config knobs (CLI always wins) in `platform.toml`:
+
+```toml
+[squad_live]
+feed = "mt5"                 # or "cache"; empty = platform default
+aggregator = "phi41"         # or "arm4"
+poll_seconds = 45
+symbols = ["EURUSD", "GBPUSD", "USDCAD"]
+```
+
 ## 8. Emergency stop
 
 ```powershell
