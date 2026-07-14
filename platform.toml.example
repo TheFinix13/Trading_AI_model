@@ -1,0 +1,21 @@
+# Platform server config — copy to platform.toml at the repo root.
+# Everything is optional; CLI flags override these values.
+# (platform.toml itself is gitignored — it is machine-local.)
+
+# The live zones-agent's log root (v1 page reads state.json/daily logs here).
+# log_root = "C:/Users/trader/Documents/TradingAgentLogs"
+
+# M001 reviews dir holding g7_replay_cache_* (v2 replay page).
+# research_reviews = "C:/Users/trader/Documents/GitHub/finance-research-experiments/programs/M001_multi_agent_ensemble/reviews"
+
+# Where the paper loop writes its live stream (default: <log_root>/squad_live).
+# live_dir = "C:/Users/trader/Documents/TradingAgentLogs/squad_live"
+
+# Bind address/port. Use 0.0.0.0 to reach the server from another machine —
+# set auth_token when you do.
+# host = "127.0.0.1"
+# port = 8787
+
+# When set AND binding non-localhost, every request must carry the token
+# (?token=..., Authorization: Bearer, or the cookie set on first visit).
+# auth_token = "change-me"

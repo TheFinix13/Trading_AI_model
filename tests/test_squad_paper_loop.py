@@ -1,0 +1,154 @@
+"""Tests for the shadow-only squad paper loop (agent/platform/paper_loop.py).
+
+The loop replays a source replay cache into a live output dir in the
+same three-JSONL schema. Hard guarantees under test: kill.txt stops it,
+state.json lets it resume without double-appending, and a full replay
+parses to the byte-identical event stream as the source cache (the
+sim-vs-paper parity contract, see also test_platform_contract.py).
+"""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from agent.platform import squad_events  # noqa: E402
+from agent.platform.paper_loop import PaperLoop, live_status  # noqa: E402
+
+
+def _write_jsonl(path: Path, rows: list[dict]) -> None:
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n",
+                    encoding="utf-8")
+
+
+@pytest.fixture()
+def source_cache(tmp_path: Path) -> Path:
+    cache = tmp_path / "g7_replay_cache_source"
+    cache.mkdir()
+    _write_jsonl(cache / "proposals_all.jsonl", [
+        {"agent_id": "isagi_yoichi", "timestamp": "2024-01-01T00:00:00+00:00",
+         "symbol": "EURUSD", "direction": "long", "conviction": 0.75,
+         "rationale": {"signal_reason": "zone_demand"}},
+        {"agent_id": "barou_shoei", "timestamp": "2024-01-01T04:00:00+00:00",
+         "symbol": "USDCAD", "direction": "short", "conviction": 0.7},
+    ])
+    _write_jsonl(cache / "proposals_rejected.jsonl", [
+        {"tick_id": 1, "symbol": "USDCAD",
+         "timestamp": "2024-01-01T04:00:00+00:00",
+         "winner_agent_id": "isagi_yoichi", "loser_agent_id": "barou_shoei",
+         "rejection_reason": "lower_conviction_same_symbol"},
+    ])
+    _write_jsonl(cache / "trades.jsonl", [
+        {"agent_id": "isagi_yoichi", "symbol": "EURUSD",
+         "entry_time": "2024-01-01 00:00:00+00:00",
+         "exit_time": "2024-01-01 12:00:00+00:00",
+         "direction": "long", "exit_reason": "tp", "pnl_pips": 42.5,
+         "r_multiple": 1.5, "tqs_components": {"tqs": 0.61}},
+    ])
+    (cache / "workspace_counts.json").write_text(
+        json.dumps({"publish": {"isagi_yoichi": 2}}), encoding="utf-8")
+    return cache
+
+
+def _run_to_completion(loop: PaperLoop) -> str:
+    return loop.run(sleep=lambda s: None, log=lambda *a, **k: None)
+
+
+class TestPaperLoop:
+
+    def test_full_replay_emits_everything(self, source_cache, tmp_path):
+        out = tmp_path / "squad_live"
+        loop = PaperLoop(source_cache, out, tick_seconds=0)
+        assert _run_to_completion(loop) == "done"
+        for fname in ("proposals_all.jsonl", "proposals_rejected.jsonl",
+                      "trades.jsonl", "workspace_counts.json", "state.json"):
+            assert (out / fname).exists(), fname
+        assert loop.remaining() == 0
+
+    def test_rows_are_appended_verbatim(self, source_cache, tmp_path):
+        out = tmp_path / "squad_live"
+        _run_to_completion(PaperLoop(source_cache, out, tick_seconds=0))
+        for fname in ("proposals_all.jsonl", "proposals_rejected.jsonl",
+                      "trades.jsonl"):
+            src_rows = [json.loads(x) for x in
+                        (source_cache / fname).read_text().splitlines() if x]
+            out_rows = [json.loads(x) for x in
+                        (out / fname).read_text().splitlines() if x]
+            assert out_rows == src_rows, fname
+
+    def test_kill_txt_stops_the_loop(self, source_cache, tmp_path):
+        out = tmp_path / "squad_live"
+        out.mkdir()
+        (out / "kill.txt").write_text("halt for review", encoding="utf-8")
+        loop = PaperLoop(source_cache, out, tick_seconds=0)
+        assert _run_to_completion(loop) == "killed"
+        # Nothing was emitted.
+        assert (out / "proposals_all.jsonl").read_text() == ""
+
+    def test_max_steps_and_resume_without_double_append(
+            self, source_cache, tmp_path):
+        out = tmp_path / "squad_live"
+        loop1 = PaperLoop(source_cache, out, tick_seconds=0)
+        assert loop1.run(max_steps=2, sleep=lambda s: None,
+                         log=lambda *a, **k: None) == "max_steps"
+        # A fresh loop instance resumes from state.json.
+        loop2 = PaperLoop(source_cache, out, tick_seconds=0)
+        assert _run_to_completion(loop2) == "done"
+        total_rows = sum(
+            len((out / f).read_text().splitlines())
+            for f in ("proposals_all.jsonl", "proposals_rejected.jsonl",
+                      "trades.jsonl"))
+        assert total_rows == 4  # 2 proposals + 1 reject + 1 trade, no dupes
+
+    def test_state_reset_on_different_source(self, source_cache, tmp_path):
+        out = tmp_path / "squad_live"
+        loop1 = PaperLoop(source_cache, out, tick_seconds=0)
+        loop1.run(max_steps=1, sleep=lambda s: None, log=lambda *a, **k: None)
+        # Same out dir, different source path -> cursors start at 0.
+        other = tmp_path / "g7_replay_cache_other"
+        other.mkdir()
+        loop2 = PaperLoop(other, out, tick_seconds=0)
+        loop2.load_state()
+        assert all(c == 0 for c in loop2.cursors.values())
+
+    def test_emitted_stream_parses_like_the_source(
+            self, source_cache, tmp_path):
+        """Parity: parsed(paper output) == parsed(source), byte-for-byte."""
+        out = tmp_path / "squad_live"
+        _run_to_completion(PaperLoop(source_cache, out, tick_seconds=0))
+        src_events, src_summary = squad_events.build_timeline(source_cache)
+        out_events, out_summary = squad_events.build_timeline(out)
+        assert json.dumps(out_events, sort_keys=True) == \
+            json.dumps(src_events, sort_keys=True)
+        assert out_summary["per_agent"] == src_summary["per_agent"]
+
+
+class TestLiveStatus:
+
+    def test_missing_dir(self, tmp_path):
+        st = live_status(tmp_path / "nope")
+        assert st["exists"] is False
+        assert st["running"] is False
+
+    def test_running_fresh_state(self, source_cache, tmp_path):
+        out = tmp_path / "squad_live"
+        loop = PaperLoop(source_cache, out, tick_seconds=0)
+        loop.run(max_steps=1, sleep=lambda s: None, log=lambda *a, **k: None)
+        st = live_status(out)
+        assert st["exists"] is True
+        assert st["running"] is True  # state.json written milliseconds ago
+        assert st["last_event_time"].startswith("2024-01-01")
+        assert st["source_cache"] == str(source_cache)
+
+    def test_kill_marks_not_running(self, source_cache, tmp_path):
+        out = tmp_path / "squad_live"
+        loop = PaperLoop(source_cache, out, tick_seconds=0)
+        loop.run(max_steps=1, sleep=lambda s: None, log=lambda *a, **k: None)
+        (out / "kill.txt").write_text("stop", encoding="utf-8")
+        st = live_status(out)
+        assert st["running"] is False
+        assert st["kill"] == "stop"

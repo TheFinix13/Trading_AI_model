@@ -87,3 +87,4 @@ logs/
 tmp/
 .cache/
 fixtures/
+platform.toml

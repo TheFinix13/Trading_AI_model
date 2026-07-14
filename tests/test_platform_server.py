@@ -268,12 +268,57 @@ class TestLiveStatus:
 
 
 # ---------------------------------------------------------------------------
+# platform.toml config
+# ---------------------------------------------------------------------------
+
+class TestConfig:
+
+    def test_defaults_without_file(self, tmp_path):
+        from agent.platform.config import load_config
+        cfg = load_config(tmp_path)
+        assert cfg["host"] == "127.0.0.1"
+        assert cfg["port"] == 8787
+        assert cfg["auth_token"] is None
+        assert cfg["live_dir"] == Path(cfg["log_root"]) / "squad_live"
+
+    def test_toml_overrides_and_derived_live_dir(self, tmp_path):
+        from agent.platform.config import load_config
+        (tmp_path / "platform.toml").write_text(
+            'log_root = "/tmp/logs"\nport = 9999\nauth_token = "s3cret"\n',
+            encoding="utf-8")
+        cfg = load_config(tmp_path)
+        assert cfg["log_root"] == Path("/tmp/logs")
+        assert cfg["port"] == 9999
+        assert cfg["auth_token"] == "s3cret"
+        assert cfg["live_dir"] == Path("/tmp/logs") / "squad_live"
+
+    def test_broken_toml_falls_back(self, tmp_path):
+        from agent.platform.config import load_config
+        (tmp_path / "platform.toml").write_text("not [ valid toml",
+                                                encoding="utf-8")
+        cfg = load_config(tmp_path)
+        assert cfg["port"] == 8787
+
+
+# ---------------------------------------------------------------------------
 # HTTP surface
 # ---------------------------------------------------------------------------
 
 @pytest.fixture()
-def server(replay_cache, log_root, tmp_path):
-    handler = make_handler(log_root, tmp_path, replay_cache)
+def live_dir(replay_cache, tmp_path) -> Path:
+    """A live output dir produced by the paper loop from the fixture cache."""
+    from agent.platform.paper_loop import PaperLoop
+    out = tmp_path / "squad_live"
+    PaperLoop(replay_cache / "g7_replay_cache_test-match", out,
+              tick_seconds=0).run(sleep=lambda s: None,
+                                  log=lambda *a, **k: None)
+    return out
+
+
+@pytest.fixture()
+def server(replay_cache, log_root, tmp_path, live_dir):
+    handler = make_handler(log_root, tmp_path, replay_cache,
+                           live_dir=live_dir)
     srv = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=srv.serve_forever, daemon=True)
     thread.start()
@@ -343,3 +388,55 @@ class TestHttpSurface:
     def test_unknown_path_404(self, server):
         status, _ = _get(server + "/definitely-not-a-page")
         assert status == 404
+
+    def test_healthz(self, server):
+        status, body = _get(server + "/healthz")
+        assert status == 200
+        payload = json.loads(body)
+        assert payload["status"] == "ok"
+        assert payload["uptime_seconds"] >= 0
+        assert payload["version"]
+
+    def test_live_status_endpoint(self, server):
+        status, body = _get(server + "/api/v2/live/status")
+        assert status == 200
+        st = json.loads(body)
+        assert st["exists"] is True
+        assert st["running"] is True
+
+    def test_live_tail_matches_replay_parse(self, server):
+        # The live dir was produced by the paper loop from the same
+        # fixture cache, so the tail must serve the same events.
+        status, body = _get(server + "/api/v2/live/events?cursor=0&limit=100")
+        assert status == 200
+        live_page = json.loads(body)
+        status, body = _get(
+            server + "/api/v2/match/g7_replay_cache_test-match/events"
+            "?cursor=0&limit=100")
+        replay_page = json.loads(body)
+        assert live_page["events"] == replay_page["events"]
+        assert live_page["total"] == replay_page["total"]
+
+    def test_live_summary_and_event_detail(self, server):
+        status, body = _get(server + "/api/v2/live/summary")
+        assert status == 200
+        assert "per_agent" in json.loads(body)
+        status, body = _get(server + "/api/v2/live/event/0")
+        assert status == 200
+        assert json.loads(body)["t"]
+
+    def test_live_appends_are_visible_without_restart(self, server, live_dir):
+        status, body = _get(server + "/api/v2/live/events?cursor=0&limit=1000")
+        before = json.loads(body)["total"]
+        with (live_dir / "proposals_all.jsonl").open("a",
+                                                     encoding="utf-8") as fh:
+            fh.write(json.dumps({
+                "agent_id": "nagi_seishiro",
+                "timestamp": "2024-01-02T00:00:00+00:00",
+                "symbol": "AUDUSD", "direction": "long",
+                "conviction": 0.8}) + "\n")
+        status, body = _get(
+            server + f"/api/v2/live/events?cursor={before}&limit=10")
+        page = json.loads(body)
+        assert page["total"] == before + 1
+        assert page["events"][0]["agent"] == "nagi_seishiro"

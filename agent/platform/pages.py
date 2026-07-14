@@ -266,7 +266,7 @@ __NAV__
 <script>
 const NS="http://www.w3.org/2000/svg";
 let roster={}, events=[], filtered=[], pos=0, playing=false, timer=null, goals=0, misses=0;
-let matchId=null, summaryData=null;
+let matchId=null, summaryData=null, liveTimer=null, livePolling=false;
 function esc(x){ const d=document.createElement("div"); d.innerText=String(x); return d.innerHTML; }
 function el(tag,attrs){ const e=document.createElementNS(NS,tag);
   for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
@@ -541,33 +541,114 @@ function populateFilterOptions(){
     fs.appendChild(o); }
 }
 
+function setModeBadge(live,running){
+  const b=document.getElementById("modebadge");
+  if(live){ b.className="badge live";
+    b.innerText=running?"\u25CF LIVE — paper stream (shadow-only)":"LIVE — stream idle"; }
+  else { b.className="badge sim"; b.innerText="sim-only — not trading real lots"; }
+}
+function stopLive(){
+  if(liveTimer){clearInterval(liveTimer); liveTimer=null;}
+  livePolling=false; setModeBadge(false);
+  document.getElementById("seek").disabled=false;
+  document.getElementById("play").disabled=false;
+}
+
+async function fetchAllEvents(base){
+  let cur=0, total=1, out=[];
+  while(cur<total){
+    const d=await (await fetch(`${base}/events?cursor=${cur}&limit=2000`)).json();
+    // gi = absolute timeline index for the per-event detail endpoint.
+    d.events.forEach((e,i)=>{ e.gi=d.cursor+i; });
+    out=out.concat(d.events); total=d.total; cur=d.next_cursor;
+    if(!d.events.length) break;
+    document.getElementById("clock").innerText=`loaded ${cur}/${total} events…`;
+  }
+  return out;
+}
+
 async function loadMatch(id){
+  if(id==="__live__") return loadLive();
+  stopLive();
   setPlaying(false); events=[]; matchId=id;
   document.getElementById("clock").innerText="loading…";
   const s=await (await fetch(`/api/v2/match/${id}/summary`)).json();
   summaryData=s; roster=s.roster||{}; drawPitch(); renderLeague(s);
-  let cur=0, total=1;
-  while(cur<total){
-    const d=await (await fetch(`/api/v2/match/${id}/events?cursor=${cur}&limit=2000`)).json();
-    // gi = absolute timeline index for the per-event detail endpoint.
-    d.events.forEach((e,i)=>{ e.gi=d.cursor+i; });
-    events=events.concat(d.events); total=d.total; cur=d.next_cursor;
-    if(!d.events.length) break;
-    document.getElementById("clock").innerText=`loaded ${cur}/${total} events…`;
-  }
+  events=await fetchAllEvents(`/api/v2/match/${id}`);
   populateFilterOptions(); applyFilters();
   document.getElementById("clock").innerText=`ready · ${events.length} events`;
+}
+
+async function loadLive(){
+  stopLive(); setPlaying(false); events=[]; matchId="__live__";
+  document.getElementById("clock").innerText="connecting to live stream…";
+  let s;
+  try{ s=await (await fetch("/api/v2/live/summary")).json(); }
+  catch(e){ s=null; }
+  if(!s || s.error){
+    document.getElementById("clock").innerText="live dir not found — start the paper loop first";
+    setModeBadge(true,false); drawPitch(); return;
+  }
+  summaryData=s; roster=s.roster||{}; drawPitch(); renderLeague(s);
+  events=await fetchAllEvents("/api/v2/live");
+  populateFilterOptions(); applyFilters();
+  seek(filtered.length);   // catch up: ticker shows the recent tail
+  // Live tail: seek/play are disabled; new events animate as they land.
+  document.getElementById("seek").disabled=true;
+  document.getElementById("play").disabled=true;
+  livePolling=true;
+  liveTimer=setInterval(pollLive, 2000);
+  pollLiveStatus();
+  document.getElementById("clock").innerText=
+    `LIVE · ${events.length} events so far`;
+}
+async function pollLiveStatus(){
+  try{ const st=await (await fetch("/api/v2/live/status")).json();
+    setModeBadge(true, !!st.running); }
+  catch(e){ setModeBadge(true,false); }
+}
+async function pollLive(){
+  if(!livePolling) return;
+  let d;
+  try{ d=await (await fetch(
+    `/api/v2/live/events?cursor=${events.length}&limit=500`)).json(); }
+  catch(e){ return; }
+  if(!d.events || matchId!=="__live__") return;
+  d.events.forEach((e,i)=>{ e.gi=d.cursor+i; });
+  const fa=document.getElementById("fagent").value;
+  const fs=document.getElementById("fsymbol").value;
+  const ft=document.getElementById("ftype").value;
+  for(const e of d.events){
+    events.push(e);
+    if(fa && e.agent!==fa && e.by!==fa) continue;
+    if(fs && e.symbol!==fs) continue;
+    if(ft && e.type!==ft) continue;
+    filtered.push(e.gi); pos=filtered.length;
+    animate(e); tick(e);
+    if(e.type==="close"){ if(e.goal) goals++; else misses++; renderScore(); }
+    document.getElementById("clock").innerText=
+      `LIVE · ${(e.t||"").slice(0,16)} · ${events.length} events`;
+  }
+  if(d.events.length) pollLiveStatus();
 }
 
 async function init(){
   const data=await (await fetch("/api/v2/matches")).json();
   const sel=document.getElementById("match");
-  if(!data.matches.length){
+  let liveAvailable=false;
+  try{ const st=await (await fetch("/api/v2/live/status")).json();
+    liveAvailable=!!st.exists; }catch(e){}
+  if(!data.matches.length && !liveAvailable){
     document.getElementById("clock").innerText="no replay caches found";
     drawPitch(); return;
   }
   for(const m of data.matches){
     const o=document.createElement("option"); o.value=m.id; o.textContent=m.label;
+    sel.appendChild(o);
+  }
+  if(liveAvailable){
+    const o=document.createElement("option");
+    o.value="__live__"; o.textContent="\u25CF LIVE — squad paper stream";
     sel.appendChild(o);
   }
   sel.onchange=()=>loadMatch(sel.value);
@@ -581,7 +662,8 @@ async function init(){
   document.getElementById("mclose").onclick=closeModal;
   document.getElementById("overlay").addEventListener("click",e=>{
     if(e.target.id==="overlay") closeModal(); });
-  await loadMatch(data.matches[0].id);
+  if(data.matches.length) await loadMatch(data.matches[0].id);
+  else await loadLive();
 }
 init();
 </script></body></html>"""

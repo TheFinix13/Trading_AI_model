@@ -1,0 +1,227 @@
+"""Shadow-only paper loop shell for the v2 squad (STUB team).
+
+The squad's real agent logic lives in the research repo and is NOT yet
+validated for porting (G7 gate pending). Until it graduates, this loop
+replays an existing replay cache in accelerated wall-clock time,
+appending raw rows to a LIVE output directory in the exact same
+three-JSONL schema the review caches use. That proves the end-to-end
+live plumbing (writer -> mtime-cached parser -> live-tail API -> LIVE
+page) so the validated squad can drop in later as a different row
+source.
+
+HARD GUARANTEES:
+
+* Shadow-only. This module never talks to a broker, never imports MT5,
+  never places orders. It only copies JSON rows between files.
+* The research repo is read-only source material; output goes under the
+  local log root (``<log-root>/squad_live/`` by default).
+* A ``kill.txt`` in the output directory stops the loop at the next
+  tick.
+* ``state.json`` in the output directory records per-file cursors so a
+  restarted loop resumes where it left off instead of double-appending.
+
+Parity contract: replaying a cache end-to-end produces an output dir
+whose parsed event stream is byte-equivalent to parsing the source
+cache directly (rows are appended verbatim, per-file relative order
+preserved, so ``squad_events.build_timeline`` sees identical input).
+"""
+from __future__ import annotations
+
+import json
+import time
+from datetime import datetime
+from pathlib import Path
+
+# (filename, timestamp field used to pace the replay clock)
+SOURCE_FILES: tuple[tuple[str, str], ...] = (
+    ("proposals_all.jsonl", "timestamp"),
+    ("proposals_rejected.jsonl", "timestamp"),
+    ("trades.jsonl", "entry_time"),
+)
+
+STATE_FILE = "state.json"
+KILL_FILE = "kill.txt"
+
+
+def _parse_ts(raw: str) -> datetime:
+    return datetime.fromisoformat(raw)
+
+
+def _load_rows(path: Path, ts_field: str) -> list[tuple[datetime, str]]:
+    """(timestamp, verbatim-json-line) per row, original order preserved."""
+    if not path.exists():
+        return []
+    out: list[tuple[datetime, str]] = []
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            ts = _parse_ts(row[ts_field]) if row.get(ts_field) else datetime.min
+            out.append((ts, line))
+    return out
+
+
+class PaperLoop:
+    """Replay a source cache into a live output dir at accelerated pace."""
+
+    def __init__(self, source_cache: Path, out_dir: Path,
+                 tick_seconds: float = 2.0) -> None:
+        self.source_cache = Path(source_cache)
+        self.out_dir = Path(out_dir)
+        self.tick_seconds = float(tick_seconds)
+        self.rows: dict[str, list[tuple[datetime, str]]] = {
+            fname: _load_rows(self.source_cache / fname, ts_field)
+            for fname, ts_field in SOURCE_FILES
+        }
+        self.cursors: dict[str, int] = {fname: 0 for fname, _ in SOURCE_FILES}
+
+    # -- state -------------------------------------------------------------
+
+    def _state_path(self) -> Path:
+        return self.out_dir / STATE_FILE
+
+    def load_state(self) -> None:
+        try:
+            state = json.loads(self._state_path().read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        if state.get("source_cache") != str(self.source_cache):
+            return  # different source -> start fresh cursors
+        for fname, _ in SOURCE_FILES:
+            cur = state.get("cursors", {}).get(fname)
+            if isinstance(cur, int) and 0 <= cur <= len(self.rows[fname]):
+                self.cursors[fname] = cur
+
+    def save_state(self, last_ts: str | None) -> None:
+        payload = {
+            "source_cache": str(self.source_cache),
+            "cursors": self.cursors,
+            "last_event_time": last_ts,
+            "saved_at": datetime.now().astimezone().isoformat(),
+        }
+        tmp = self._state_path().with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, indent=1), encoding="utf-8")
+        tmp.replace(self._state_path())
+
+    def killed(self) -> str | None:
+        kill = self.out_dir / KILL_FILE
+        if kill.exists():
+            try:
+                return kill.read_text(encoding="utf-8")[:200].strip() or "killed"
+            except OSError:
+                return "killed (unreadable)"
+        return None
+
+    # -- replay ------------------------------------------------------------
+
+    def _next_file(self) -> str | None:
+        """The source file whose next pending row is earliest in time.
+
+        Ties break in SOURCE_FILES order, which matches the order
+        ``squad_events.build_timeline`` ingests files, so per-file
+        relative order (all that matters for parity) is preserved.
+        """
+        best: str | None = None
+        best_ts: datetime | None = None
+        for fname, _ in SOURCE_FILES:
+            cur = self.cursors[fname]
+            if cur >= len(self.rows[fname]):
+                continue
+            ts = self.rows[fname][cur][0]
+            if best_ts is None or ts < best_ts:
+                best, best_ts = fname, ts
+        return best
+
+    def remaining(self) -> int:
+        return sum(len(self.rows[f]) - self.cursors[f]
+                   for f, _ in SOURCE_FILES)
+
+    def prepare_output(self) -> None:
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        # Ship workspace_counts.json so the dir is a full artifact set.
+        src_ws = self.source_cache / "workspace_counts.json"
+        dst_ws = self.out_dir / "workspace_counts.json"
+        if src_ws.exists() and not dst_ws.exists():
+            dst_ws.write_text(src_ws.read_text(encoding="utf-8"),
+                              encoding="utf-8")
+        for fname, _ in SOURCE_FILES:
+            (self.out_dir / fname).touch()
+
+    def step(self) -> str | None:
+        """Append the next row (across files, time-ordered). Returns its
+        timestamp string, or None when the replay is exhausted."""
+        fname = self._next_file()
+        if fname is None:
+            return None
+        ts, line = self.rows[fname][self.cursors[fname]]
+        with (self.out_dir / fname).open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+        self.cursors[fname] += 1
+        ts_str = ts.isoformat() if ts != datetime.min else None
+        self.save_state(ts_str)
+        return ts_str or ""
+
+    def run(self, max_steps: int | None = None,
+            sleep=time.sleep, log=print) -> str:
+        """Drive the replay. Returns why it stopped:
+        'done' | 'killed' | 'max_steps'."""
+        self.prepare_output()
+        self.load_state()
+        done = 0
+        log(f"[paper-loop] source={self.source_cache}")
+        log(f"[paper-loop] output={self.out_dir} "
+            f"tick={self.tick_seconds}s remaining={self.remaining()} rows")
+        while True:
+            reason = self.killed()
+            if reason:
+                log(f"[paper-loop] kill.txt present: {reason} — stopping")
+                return "killed"
+            if max_steps is not None and done >= max_steps:
+                log(f"[paper-loop] reached max steps ({max_steps})")
+                return "max_steps"
+            ts = self.step()
+            if ts is None:
+                log("[paper-loop] replay exhausted — all rows emitted")
+                return "done"
+            done += 1
+            if done % 50 == 0:
+                log(f"[paper-loop] {done} rows emitted, "
+                    f"{self.remaining()} remaining (sim time {ts})")
+            if self.tick_seconds > 0:
+                sleep(self.tick_seconds)
+
+
+def live_status(out_dir: Path, stale_after_s: float = 120.0) -> dict:
+    """Status payload for /api/v2/live/status (read-only over out_dir)."""
+    out_dir = Path(out_dir)
+    state_path = out_dir / STATE_FILE
+    state: dict = {}
+    state_age_s: float | None = None
+    if state_path.exists():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state_age_s = time.time() - state_path.stat().st_mtime
+        except (OSError, json.JSONDecodeError):
+            state = {}
+    kill = out_dir / KILL_FILE
+    kill_reason = None
+    if kill.exists():
+        try:
+            kill_reason = kill.read_text(encoding="utf-8")[:200].strip()
+        except OSError:
+            kill_reason = "(unreadable)"
+    running = (state_age_s is not None and state_age_s < stale_after_s
+               and kill_reason is None)
+    return {
+        "dir": str(out_dir),
+        "exists": out_dir.is_dir(),
+        "running": running,
+        "state_age_seconds": (round(state_age_s, 1)
+                              if state_age_s is not None else None),
+        "last_event_time": state.get("last_event_time"),
+        "source_cache": state.get("source_cache"),
+        "cursors": state.get("cursors"),
+        "kill": kill_reason,
+    }
