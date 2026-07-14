@@ -19,3 +19,14 @@
 # When set AND binding non-localhost, every request must carry the token
 # (?token=..., Authorization: Bearer, or the cookie set on first visit).
 # auth_token = "change-me"
+
+# DEDICATED squad Telegram bot (v2 paper loop) — separate token + chat
+# from the v1 trading bot so match commentary never mixes with trade
+# pages. Values here win over the SQUAD_TELEGRAM_BOT_TOKEN /
+# SQUAD_TELEGRAM_CHAT_ID env vars (per key). chat_id may be
+# comma-separated for multi-chat fan-out. summary_every = closed trades
+# between league-table posts (default 10).
+# [telegram]
+# bot_token = "123456:ABC-..."
+# chat_id = "-1001234567890"
+# summary_every = 10

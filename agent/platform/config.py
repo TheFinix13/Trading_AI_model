@@ -25,6 +25,10 @@ def _defaults(repo_root: Path) -> dict:
         "host": "127.0.0.1",
         "port": 8787,
         "auth_token": None,
+        # Dedicated v2 squad Telegram bot ([telegram] table). Empty values
+        # here fall back to SQUAD_TELEGRAM_BOT_TOKEN / SQUAD_TELEGRAM_CHAT_ID
+        # env vars in agent.platform.squad_notify (toml wins per key).
+        "telegram": {"bot_token": "", "chat_id": "", "summary_every": 10},
     }
 
 
@@ -51,6 +55,16 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
             pass
     if raw.get("auth_token"):
         cfg["auth_token"] = str(raw["auth_token"])
+    tg = raw.get("telegram")
+    if isinstance(tg, dict):
+        for key in ("bot_token", "chat_id"):
+            if tg.get(key):
+                cfg["telegram"][key] = str(tg[key])
+        if tg.get("summary_every"):
+            try:
+                cfg["telegram"]["summary_every"] = int(tg["summary_every"])
+            except (TypeError, ValueError):
+                pass
     if cfg["live_dir"] is None:
         cfg["live_dir"] = Path(cfg["log_root"]) / "squad_live"
     return cfg
