@@ -1,5 +1,45 @@
-# AI Context — brain dump (updated 2026-07-06, v0.26)
+# AI Context — brain dump (updated 2026-07-14, v0.27)
 
+> v0.27 — **Trading-agent production fixes cherry-picked from next-gen
+> (2026-07-14). No strategy change — reliability + observability only.**
+> Three commits (c59a3b3, ca8b455, 4f12b94) selectively brought across
+> from the next-gen platform line, preserving main as the trading branch:
+>
+> 1. **Telegram audit + healthcheck accuracy** (c59a3b3) — every live
+>    message now leads with the symbol (`*SYMBOL | Event*`); trade
+>    CLOSED reports R against the original entry-time soft stop (fixes
+>    the +0.00R confusion after BE moves); TRADING HALTED is
+>    rate-limited to 1 msg/10 min per process; healthcheck retries 3×
+>    with backoff on DNS failures and annotates halted pings as
+>    alive-but-halted (success, not /fail) so intentional halts no
+>    longer flag the check DOWN. 23 new tests.
+>
+> 2. **One-command weekly review bundle** (ca8b455) — `scripts/weekly_report.py`
+>    produces a single zip with per-symbol REPORT.md, uptime/downtime
+>    timeline, cross-symbol cascade detection, active parameter
+>    snapshot, and near-miss/loss vault artifacts. Run on VM:
+>    `python scripts\weekly_report.py --days 7`. Replaces
+>    paste-a-dozen-files-into-chat weekly reviews. 13 new tests.
+>
+> 3. **Daily-DD kill-switch self-recovery** (4f12b94) — clean
+>    `Auto-kill: Daily DD halt...` files now auto-clear at the next UTC
+>    rollover (aligned with `RiskManager.on_new_day`) in BOTH the running
+>    loop AND `run_live.py::_preflight_kill_switch` startup path, so a VM
+>    restart across midnight also self-recovers with no human deletion.
+>    Protective close on the DD event is unchanged; master
+>    `kill_switch_file`, manual kills, and non-DD auto-kills
+>    (catastrophe/broker-misread/consecutive-error) stay STICKY forever;
+>    3-consecutive-DD-day thrash guard escalates to a sticky halt +
+>    Telegram page. Counter persisted non-day-scoped in state.json.
+>    26 new tests. `docs/VM_SCRIPTS.md` also added — the practical
+>    catalog of every script the VM runs.
+>
+> Full suite on `main`: **489 pass, 0 failures**. Next-gen platform
+> commits (dashboards, squad UI, platform.toml, session-claim
+> scaffolding) were deliberately NOT cherry-picked — they belong on the
+> v2 line, not the trading agent. VM safe to `git fetch; git reset --hard
+> origin/main` and restart watchdog tasks.
+>
 > v0.26 — **Near-miss vault chart redesign (observation tooling only, no
 > live-path change).** `agent/journal/chart_snapshot.py` rewritten: custom
 > TradingView-esque mplfinance style (was plain "yahoo"), auto-hiding
