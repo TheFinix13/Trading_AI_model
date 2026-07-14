@@ -299,6 +299,25 @@ class TestConfig:
         cfg = load_config(tmp_path)
         assert cfg["port"] == 8787
 
+    def test_paper_loop_defaults_are_empty(self, tmp_path):
+        from agent.platform.config import load_config
+        cfg = load_config(tmp_path)
+        # Empty strings so callers can just check truthiness (see
+        # scripts/run_squad_paper.py) -- the actual auto-pick happens
+        # in paper_loop.select_source_cache when both are empty.
+        assert cfg["paper_loop"] == {"cache": "", "aggregator": ""}
+
+    def test_paper_loop_toml_overrides(self, tmp_path):
+        from agent.platform.config import load_config
+        (tmp_path / "platform.toml").write_text(
+            "[paper_loop]\n"
+            'aggregator = "phi41"\n'
+            'cache = "g7_replay_cache_g7retry1-arm4"\n',
+            encoding="utf-8")
+        cfg = load_config(tmp_path)
+        assert cfg["paper_loop"]["aggregator"] == "phi41"
+        assert cfg["paper_loop"]["cache"] == "g7_replay_cache_g7retry1-arm4"
+
 
 # ---------------------------------------------------------------------------
 # HTTP surface
