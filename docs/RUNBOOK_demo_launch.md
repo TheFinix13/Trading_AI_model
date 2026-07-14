@@ -259,12 +259,68 @@ Verify either way: `curl http://localhost:8787/healthz` on the VM, then
 `platform.toml` on the VM for the paths/token so the service command
 line stays short.
 
-**Telegram note:** squad/paper-loop events are deliberately NOT wired
-into Telegram yet — which channel they should page (the existing v1 bot
-chat or a separate squad channel) is an open user decision. The
-extension point is documented in `agent/platform/paper_loop.py`
-(`notify_event`); wire it to
-`agent.notifications.telegram.TelegramNotifier` once decided.
+**Telegram note:** squad/paper-loop events page through a DEDICATED
+squad bot (decided 2026-07-14 — separate token + chat so match
+commentary never mixes with the v1 trading bot). Setup walkthrough in
+section 7b.4 below; routing lives in `agent/platform/squad_notify.py`
+and is a silent no-op until the bot is configured.
+
+### 7b.4 Squad Telegram bot (dedicated v2 bot — create + wire + test)
+
+The squad gets its **own** bot and chat. The v1 keys (`TG_BOT_TOKEN` /
+`TG_CHAT_ID`) are deliberately ignored by the squad notifier — never
+reuse them here.
+
+**1. Create the bot (BotFather):**
+
+1. In Telegram, message **@BotFather** → `/newbot`.
+2. Pick a display name (e.g. `Blue Lock Squad`) and a unique username
+   ending in `bot` (e.g. `bluelock_squad_bot`).
+3. BotFather replies with the **bot token** (`123456:ABC-...`) — copy it,
+   never commit it.
+
+**2. Get the chat id:**
+
+1. Open a chat with the new bot and send it any message (this is
+   required — bots cannot message you first). For a group, add the bot
+   to the group and post a message there.
+2. Fetch the id (replace `<TOKEN>`):
+
+```bash
+curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | python3 -m json.tool
+```
+
+   The `"chat":{"id":...}` field is your chat id (group ids are
+   negative, e.g. `-1001234567890`). Empty `result`? Send the bot
+   another message and re-run.
+
+**3. Configure (VM or Mac).** Either fill `platform.toml` at the repo
+root (wins over env, per key):
+
+```toml
+[telegram]
+bot_token = "123456:ABC-..."
+chat_id = "-1001234567890"   # comma-separated for multi-chat fan-out
+summary_every = 10           # closed trades between league-table posts
+```
+
+or set the env vars in `.env` (see `.env.example`):
+`SQUAD_TELEGRAM_BOT_TOKEN` and `SQUAD_TELEGRAM_CHAT_ID`.
+
+**4. One-shot test** (exit code 0 = confirmed send, 1 = unconfigured or
+rejected — scriptable like `scripts/notify_telegram.py` for v1):
+
+```bash
+./.venv/bin/python scripts/notify_squad_telegram.py
+```
+
+A sample `GOAL — Isagi #11` message lands in the squad chat. From then
+on `scripts/run_squad_paper.py` pages automatically: kickoff at start,
+GOAL/miss per closed trade (player, symbol, pips, TQS, R), a league
+table every `summary_every` closes, and full-time/halt + final table at
+stop. Proposals and rejections never page. Unconfigured or broken
+Telegram can never crash the loop (fail-open, same as v1); pass
+`--no-telegram` to silence a configured bot for one run.
 
 ## 8. Emergency stop
 
