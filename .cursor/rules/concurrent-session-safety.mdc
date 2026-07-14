@@ -25,4 +25,28 @@ any other file you didn't create earlier in this same session:
    — stop and reconcile by hand, don't overwrite.
 5. Commit in small units rather than one end-of-session batch.
 
+## Session claim ritual (added 2026-07-14)
+
+The canonical protocol now includes a session-claim mechanism — full
+detail in `agents/concurrent-session-safety.md` §1–§2 (brain-box).
+
+At session start, in EVERY repo this session will write to (this repo,
+and siblings like `finance-research-experiments` or brain-box if you'll
+log there):
+
+1. `git status --short` + `git log --oneline -5` — unrecognized
+   uncommitted work or same-day unrelated commits = another session;
+   treat foreign paths as untouchable (never clean/stash/commit/revert
+   them).
+2. Read `.sessions/` claim files; overlapping scope → narrower claim
+   wins the contested paths; genuine same-file conflict → ask the user.
+3. Drop your own claim: `.sessions/<date>_<topic>.md` (started-at,
+   anchor, topic, write-scope, status). Mark done or delete at session
+   end. `.sessions/` is gitignored (README inside has the format).
+
+Never commit another session's uncommitted work even if it looks
+finished. If a file changes under you mid-session, stop, snapshot your
+version, three-way diff, and hand both-touched hunks to the user — never
+guess-merge.
+
 See also: `/Users/the1finix/Documents/GitHub/brain-box/.cursor/rules/concurrent-session-safety.mdc`
