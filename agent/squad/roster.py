@@ -40,8 +40,10 @@ from agent.squad.agents.a05_reo import A5ReoV1
 from agent.squad.agents.a06_nagi import A6NagiV1
 from agent.squad.agents.a07_barou import A7BarouV1
 from agent.squad.agents.a08_karasu import A8KarasuV1
+from agent.squad.agents.a09_sae import A9SaeV1
 from agent.squad.agents.a10_kunigami import A10KunigamiV1
 from agent.squad.news_config import DEFAULT_NEWS_CONFIG, NewsDefenderConfig
+from agent.squad.sae_config import DEFAULT_SAE_CONFIG, SaeConfig
 
 log = logging.getLogger(__name__)
 
@@ -61,11 +63,13 @@ PROPOSING_AGENT_IDS: tuple[str, ...] = (
 @dataclass
 class SquadRoster:
     """Instantiated squad + the retired Kunigami side channel +
-    Karasu news-window defender side channel.
+    Karasu news-window defender side channel + optional Sae
+    event-specialist striker.
 
     ``karasu`` is always populated (a news defender exists in every
-    build). Sae will be added in a follow-up commit when the Phase AE
-    pre-reg lands.
+    build). ``sae`` is always populated too, but only appears in
+    ``proposers`` when :class:`SaeConfig` has ``sae_enabled=True`` --
+    ``sae_enabled`` on this dataclass mirrors that flag for callers.
     """
 
     proposers: list[Any]
@@ -73,16 +77,23 @@ class SquadRoster:
     isagi: A1IsagiV1
     barou: A7BarouV1
     karasu: A8KarasuV1
+    sae: A9SaeV1
+    sae_enabled: bool = False
 
     @property
     def all_agents(self) -> list[Any]:
-        """Proposing roster only (Kunigami + Karasu are NOT here)."""
+        """Proposing roster only (Kunigami + Karasu are NOT here;
+        Sae is only here when enabled)."""
         return list(self.proposers)
 
     def by_id(self) -> dict[str, Any]:
         out = {a.agent_id: a for a in self.proposers}
         out[self.kunigami.agent_id] = self.kunigami
         out[self.karasu.agent_id] = self.karasu
+        if not self.sae_enabled:
+            # Sae still discoverable by id for diagnostics even when
+            # not in proposers (matches the Kunigami side-channel pattern).
+            out[self.sae.agent_id] = self.sae
         return out
 
 
@@ -92,8 +103,9 @@ def build_roster(
     barou_v12: bool = False,
     barou_v13: bool = True,
     news_config: NewsDefenderConfig | None = None,
+    sae_config: SaeConfig | None = None,
 ) -> SquadRoster:
-    """Construct the 7-proposer + Kunigami + Karasu roster.
+    """Construct the 7-proposer + Kunigami + Karasu roster (Sae opt-in).
 
     ``barou_v13=True`` (default for live paper observation) enables the
     Phase Y Barou v1.3 weapon config when available. Set ``barou_v13=False``
@@ -103,8 +115,14 @@ def build_roster(
     :mod:`agent.squad.news_config`). Karasu is always instantiated;
     if no calendar is hydrated (missing cache), Karasu is fail-open
     and R7 passes through every proposal.
+
+    ``sae_config`` overrides the default Sae knobs (see
+    :mod:`agent.squad.sae_config`). Sae is instantiated regardless
+    (so ``roster.sae`` is always a real object), but only appears
+    in ``roster.proposers`` when ``sae_config.sae_enabled=True``.
     """
     news_cfg = news_config or DEFAULT_NEWS_CONFIG
+    sae_cfg = sae_config or DEFAULT_SAE_CONFIG
 
     isagi = A1IsagiV1()
     bachira = A2BachiraV1()
@@ -122,7 +140,14 @@ def build_roster(
 
     kunigami = A10KunigamiV1()
     karasu = A8KarasuV1(config=news_cfg)
+    sae = A9SaeV1(config=sae_cfg, news_config=news_cfg)
+
     proposers = [isagi, bachira, rin, chigiri, reo, nagi, barou]
+    if sae_cfg.sae_enabled:
+        proposers.append(sae)
+        log.info("Sae ENABLED (event_specialist)")
+    else:
+        log.info("Sae DISABLED (awaiting Phase AE pre-reg)")
 
     # Narrow symbol whitelists to the caller's universe when agents
     # already subscribe to a wider (or equal) set. Agents whose home
@@ -141,6 +166,8 @@ def build_roster(
         isagi=isagi,
         barou=barou,
         karasu=karasu,
+        sae=sae,
+        sae_enabled=bool(sae_cfg.sae_enabled),
     )
 
 
