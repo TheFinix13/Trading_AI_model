@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from agent.alphas.backtest import FIXED_LOT
 from agent.squad.aggregator import AggregationOutcome, aggregate
 from agent.squad.aggregator_arms.multi_position import (
     ARM4_K_POSITIONS,
@@ -593,6 +594,39 @@ class SquadEngine:
                 self._append_jsonl("proposals_rejected.jsonl", rej)
                 continue
 
+            # Sentinel accept: enforce decision.risk_scale on the sizer output.
+            # R5 (loss-streak) and R7 (news-impact medium) both return an
+            # advisory scale between 0.0 and 1.0 that has historically been
+            # informational only; the executor was still filling FIXED_LOT.
+            # Multiply here so the paper broker's fill reflects the scaled
+            # position. If scaling drives below the broker min-lot floor we
+            # SKIP the trade rather than round back up -- rounding up would
+            # negate the point of the scale-down.
+            risk_scale = float(getattr(decision, "risk_scale", 1.0) or 1.0)
+            scaled_lot = round(FIXED_LOT * risk_scale, 8)
+            if scaled_lot + 1e-9 < MIN_LOT:
+                rej = {
+                    "tick_id": int(tick_id),
+                    "symbol": symbol,
+                    "winner_agent_id": proposal.agent_id,
+                    "winner_conviction": float(proposal.conviction),
+                    "loser_agent_id": proposal.agent_id,
+                    "loser_conviction": float(proposal.conviction),
+                    "loser_direction": proposal.direction,
+                    "winner_direction": proposal.direction,
+                    "rejection_reason": "sentinel_risk_scale_below_min_lot",
+                    "sentinel_reason": (
+                        f"risk_scale={risk_scale:.4f} x FIXED_LOT={FIXED_LOT} "
+                        f"= {scaled_lot:.4f} < min_lot {MIN_LOT}"
+                    ),
+                    "sentinel_rule": decision.rule,
+                    "rank_at_block": int(rank_idx),
+                    "timestamp": proposal.timestamp.isoformat(),
+                }
+                result.rejected.append(rej)
+                self._append_jsonl("proposals_rejected.jsonl", rej)
+                continue
+
             if self.multi_position:
                 reason = self._arm4_reject_reason(symbol, proposal)
                 if reason is not None:
@@ -646,6 +680,11 @@ class SquadEngine:
                     target_hold_hours=target_hh,
                     risk_dollars=risk_dollars,
                 )
+                if risk_scale != 1.0:
+                    ot.trade.lot_size = scaled_lot
+                    ot.trade.commission = (
+                        scaled_lot / FIXED_LOT * ot.trade.commission
+                    )
                 if self.multi_position:
                     self.open_trades_multi.setdefault(symbol, []).append(ot)
                     if len(self.open_trades_multi[symbol]) >= ARM4_K_POSITIONS:
