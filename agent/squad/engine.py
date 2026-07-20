@@ -407,6 +407,20 @@ class SquadEngine:
             self.ledger.append(kt)
             result.thoughts.append(kt)
 
+        # Karasu news-window observe (R7 side channel); publishes an
+        # advisory Thought when a scheduled release is inside the
+        # blackout window on this symbol. Also published to the
+        # workspace so peer intend() can see the advisory.
+        kara = getattr(self.roster, "karasu", None)
+        if kara is not None and symbol in kara.symbols:
+            karat = kara.observe(market, self.ledger)
+            self.ledger.append(karat)
+            result.thoughts.append(karat)
+            if self.workspace.publish(karat):
+                self.workspace_publish_counts[kara.agent_id] = (
+                    self.workspace_publish_counts.get(kara.agent_id, 0) + 1
+                )
+
         if self.bars_seen[symbol] <= WARMUP_BARS:
             self.save_state()
             return result
@@ -531,10 +545,21 @@ class SquadEngine:
         """Sentinel + concurrency gate; open winning proposals."""
         closed: list[TradeRecord] = []
         kuni_active = bool(self.roster.kunigami.warning_active_at(bar.time))
+        karasu = getattr(self.roster, "karasu", None)
         candidates = outcome.ranked_by_symbol.get(symbol, [])
         for rank_idx, proposal in enumerate(candidates):
             if proposal.symbol != symbol:
                 continue
+            karasu_impact = "none"
+            karasu_title: str | None = None
+            karasu_curs: frozenset[str] | None = None
+            karasu_mte: int | None = None
+            if karasu is not None:
+                kw = karasu.warning_active_at(proposal.timestamp, proposal.symbol)
+                karasu_impact = kw.impact
+                karasu_title = kw.event_title
+                karasu_curs = kw.currencies if kw.currencies else None
+                karasu_mte = kw.minutes_to_event
             sentinel_ctx = SentinelContext(
                 equity=self.equity,
                 pip_value_per_min_lot=SANDBOX_PIP_VALUE_PER_MIN_LOT,
@@ -543,6 +568,10 @@ class SquadEngine:
                 ),
                 proposals_today_by_agent=dict(self.per_agent_proposals_today),
                 kunigami_loss_streak_active=kuni_active,
+                karasu_impact=karasu_impact,
+                karasu_event_title=karasu_title,
+                karasu_event_currencies=karasu_curs,
+                karasu_minutes_to_event=karasu_mte,
             )
             decision = sentinel_evaluate_proposal(proposal, sentinel_ctx)
             if not decision.allowed:

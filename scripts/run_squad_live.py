@@ -53,6 +53,8 @@ from agent.squad.feed import (  # noqa: E402
     default_feed_name,
     make_feed,
 )
+from agent.squad.news_config import DEFAULT_NEWS_CONFIG  # noqa: E402
+from agent.squad.news_refresher import NewsFeedRefresher  # noqa: E402
 from agent.squad.roster import build_roster  # noqa: E402
 from agent.live.signal_loop import next_h4_close_utc  # noqa: E402
 
@@ -171,6 +173,31 @@ def run_loop(args, cfg: dict) -> str:
         warmup = feed.warmup_bars()
 
     engine.prepare(warmup)
+
+    news_cfg = DEFAULT_NEWS_CONFIG
+    news_refresher: NewsFeedRefresher | None = None
+    if not args.no_news_refresh:
+        news_refresher = NewsFeedRefresher(
+            karasu=roster.karasu,
+            cache_path=news_cfg.cache_path,
+            feed_url=news_cfg.feed_url,
+            ttl_seconds=news_cfg.cache_ttl_seconds,
+            interval_seconds=float(args.news_refresh_seconds),
+        )
+        if args.refresh_news:
+            n = news_refresher.kickoff()
+            log.info("Karasu calendar kickoff: %d events cached", n)
+        else:
+            # Read whatever is already on disk without touching the
+            # network; refresher will attempt a fetch after one
+            # interval elapses.
+            try:
+                n = roster.karasu.load_calendar()
+                log.info("Karasu cache-only load: %d events", n)
+            except Exception as exc:   # noqa: BLE001
+                log.warning("Karasu cache load failed: %s", exc)
+        news_refresher.start()
+
     log.info(
         "squad live starting (%s) feed=%s arm=%s symbols=%s out=%s",
         PORT_LABEL, feed_name, args.aggregator, symbols, out_dir,
@@ -267,6 +294,8 @@ def run_loop(args, cfg: dict) -> str:
         outcome = "interrupted"
     finally:
         engine.save_state()
+        if news_refresher is not None:
+            news_refresher.stop()
         if notifier is not None and outcome not in ("killed",):
             notifier.notify_stop(outcome if outcome != "interrupted" else "max_steps")
         if broker is not None:
@@ -312,6 +341,25 @@ def main() -> None:
     ap.add_argument(
         "--parity-mode", action="store_true",
         help="disable Barou v1.3 weapon (use sealed v1) for cache parity work",
+    )
+    ap.add_argument(
+        "--refresh-news", action="store_true",
+        help=(
+            "kickoff a synchronous news-calendar refresh at startup "
+            "(one fetch before the tick loop starts); the background "
+            "refresher runs regardless unless --no-news-refresh"
+        ),
+    )
+    ap.add_argument(
+        "--no-news-refresh", action="store_true",
+        help=(
+            "disable Karasu's background news refresher entirely; "
+            "Karasu will still read any pre-existing on-disk cache"
+        ),
+    )
+    ap.add_argument(
+        "--news-refresh-seconds", type=int, default=3600,
+        help="background news-refresh interval (seconds); default 3600 (1 h)",
     )
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()

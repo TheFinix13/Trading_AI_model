@@ -320,6 +320,30 @@ def load_fixture(fixture_path: Path | str) -> list[NewsEvent]:
     return parse_calendar_xml(Path(fixture_path).read_text())
 
 
+def refresh_cache_if_stale(
+    *,
+    feed_url: str = DEFAULT_FEED_URL,
+    cache_path: Path | str = DEFAULT_CACHE_PATH,
+    ttl_seconds: int = DEFAULT_TTL_SECONDS,
+    now: datetime | None = None,
+    fetcher=None,
+) -> list[NewsEvent]:
+    """Refresh the local news cache iff it's stale; return the events.
+
+    Thin alias for :func:`fetch_calendar` with force_refresh=False. Meant
+    to be called from the live-runtime refresher (typically in a
+    background thread). Falls back to the cache on any fetch failure --
+    the caller doesn't need to catch."""
+    return fetch_calendar(
+        feed_url=feed_url,
+        cache_path=cache_path,
+        ttl_seconds=ttl_seconds,
+        force_refresh=False,
+        now=now,
+        fetcher=fetcher,
+    )
+
+
 # Make `timedelta` available at module level for callers that need
 # to express TTLs symbolically.
 __all__ = [
@@ -329,6 +353,7 @@ __all__ = [
     "parse_calendar_xml",
     "filter_events",
     "load_fixture",
+    "refresh_cache_if_stale",
     "DEFAULT_FEED_URL",
     "DEFAULT_CACHE_PATH",
     "DEFAULT_TTL_SECONDS",

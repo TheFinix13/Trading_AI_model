@@ -1,10 +1,25 @@
-"""Squad roster factory -- 7 proposing agents + Kunigami R5 side channel.
+"""Squad roster factory -- 7 proposing agents + Kunigami R5 side channel
++ Karasu R7 news side channel + optional Sae event specialist.
 
 Ported v1 (unvalidated port) from the research G7 walk-forward harness
 (``run_g7_v1_checkpoint_gate.py::run_g7_walk_forward``) @ commit e084c5b
 (2026-07-14). Kunigami is RETIRED from proposing (G7 §11.12) but retained
 as a Sentinel R5 anti-tilt side channel via ``record_closed_trade`` /
 ``warning_active_at``.
+
+Karasu (2026-07-20, Phase AD pending research pre-reg) joins the roster
+as a side-channel-only auxiliary; the engine feeds his
+``warning_active_at(as_of, symbol)`` into the Sentinel R7 news-impact
+ladder. Like Kunigami, Karasu is NEVER in ``roster.proposers``.
+
+Sae (Phase AE pending research pre-reg) is a Tier-1 event-specialist
+striker that only fires inside a scheduled event window. He is
+DISABLED BY DEFAULT (``sae_enabled=False`` on
+:class:`agent.squad.sae_config.SaeConfig`) and only appears in
+``roster.proposers`` when explicitly enabled by the caller. The
+``roster.sae`` attribute is populated regardless, so the engine can
+still ping it for tests / diagnostics without swapping the enabled
+flag.
 
 Default Barou config: Phase Y v1.3 weapon (``htf_align_mode="with"``)
 when the agent constructor exposes that knob; otherwise the sealed v1
@@ -13,6 +28,7 @@ pass ``barou_v13=False``.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,7 +39,11 @@ from agent.squad.agents.a04_chigiri import A4ChigiriV1
 from agent.squad.agents.a05_reo import A5ReoV1
 from agent.squad.agents.a06_nagi import A6NagiV1
 from agent.squad.agents.a07_barou import A7BarouV1
+from agent.squad.agents.a08_karasu import A8KarasuV1
 from agent.squad.agents.a10_kunigami import A10KunigamiV1
+from agent.squad.news_config import DEFAULT_NEWS_CONFIG, NewsDefenderConfig
+
+log = logging.getLogger(__name__)
 
 DEFAULT_SYMBOLS: tuple[str, ...] = ("EURUSD", "GBPUSD", "USDCAD")
 
@@ -40,21 +60,29 @@ PROPOSING_AGENT_IDS: tuple[str, ...] = (
 
 @dataclass
 class SquadRoster:
-    """Instantiated squad + the retired Kunigami side channel."""
+    """Instantiated squad + the retired Kunigami side channel +
+    Karasu news-window defender side channel.
+
+    ``karasu`` is always populated (a news defender exists in every
+    build). Sae will be added in a follow-up commit when the Phase AE
+    pre-reg lands.
+    """
 
     proposers: list[Any]
     kunigami: A10KunigamiV1
     isagi: A1IsagiV1
     barou: A7BarouV1
+    karasu: A8KarasuV1
 
     @property
     def all_agents(self) -> list[Any]:
-        """Proposing roster only (Kunigami is NOT in the publisher list)."""
+        """Proposing roster only (Kunigami + Karasu are NOT here)."""
         return list(self.proposers)
 
     def by_id(self) -> dict[str, Any]:
         out = {a.agent_id: a for a in self.proposers}
         out[self.kunigami.agent_id] = self.kunigami
+        out[self.karasu.agent_id] = self.karasu
         return out
 
 
@@ -63,13 +91,21 @@ def build_roster(
     symbols: tuple[str, ...] | list[str] = DEFAULT_SYMBOLS,
     barou_v12: bool = False,
     barou_v13: bool = True,
+    news_config: NewsDefenderConfig | None = None,
 ) -> SquadRoster:
-    """Construct the 7-proposer + Kunigami roster.
+    """Construct the 7-proposer + Kunigami + Karasu roster.
 
     ``barou_v13=True`` (default for live paper observation) enables the
     Phase Y Barou v1.3 weapon config when available. Set ``barou_v13=False``
     (and ``barou_v12=False``) for g7retry1-parity replays.
+
+    ``news_config`` overrides the default news-defender knobs (see
+    :mod:`agent.squad.news_config`). Karasu is always instantiated;
+    if no calendar is hydrated (missing cache), Karasu is fail-open
+    and R7 passes through every proposal.
     """
+    news_cfg = news_config or DEFAULT_NEWS_CONFIG
+
     isagi = A1IsagiV1()
     bachira = A2BachiraV1()
     rin = A3RinV1()
@@ -85,12 +121,16 @@ def build_roster(
     )
 
     kunigami = A10KunigamiV1()
+    karasu = A8KarasuV1(config=news_cfg)
     proposers = [isagi, bachira, rin, chigiri, reo, nagi, barou]
 
     # Narrow symbol whitelists to the caller's universe when agents
     # already subscribe to a wider (or equal) set. Agents whose home
     # symbol is outside the universe (e.g. Barou is USDCAD-only) keep
     # their natural symbols -- filtered at drive time by eligibility.
+    # Karasu keeps his full multi-currency scope (news impact is a
+    # currency-scoped signal, not a per-pair signal); the R7 gate
+    # already filters by ``proposal.symbol`` at admission.
     for agent in proposers + [kunigami]:
         if hasattr(agent, "symbols") and agent.symbols:
             agent.symbols = [s for s in agent.symbols if s in symbols] or list(agent.symbols)
@@ -100,6 +140,7 @@ def build_roster(
         kunigami=kunigami,
         isagi=isagi,
         barou=barou,
+        karasu=karasu,
     )
 
 

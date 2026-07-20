@@ -16,9 +16,9 @@ silently passes a violating order downstream.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Literal
+from typing import Callable, Literal, Optional
 
 from agent.squad.types import AgentProposal, OrderIntent
 
@@ -47,9 +47,10 @@ class SentinelDecision:
     """Outcome of a single Sentinel evaluation."""
 
     allowed: bool
-    rule: Literal["R1", "R2", "R3", "R4", "R5", "R6", "EXT", "OK"]
+    rule: Literal["R1", "R2", "R3", "R4", "R5", "R6", "R7", "EXT", "OK"]
     reason: str
     payload: dict
+    risk_scale: float = 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +283,98 @@ def check_r6_per_symbol_risk_cap(
 
 
 # ---------------------------------------------------------------------------
+# R7 -- News-impact ladder (Karasu-consumer)
+# ---------------------------------------------------------------------------
+#
+# Karasu (A8) publishes advisories to the workspace; the Sentinel's R7 is
+# the hard-rule layer that turns them into a decision:
+#
+#   impact == "high"   -> BLOCK the proposal (allowed=False, rule=R7).
+#   impact == "medium" -> ALLOW but return risk_scale (default 0.5),
+#                         which the executor is responsible for applying
+#                         to the sizer output. Rule tag "R7" so the
+#                         audit log can distinguish it from R5 dampening.
+#   impact == "none"   -> pass through (rule="OK").
+#
+# The block/scale ladder is a two-knob surface on SentinelContext
+# (``news_impact_block_min`` and ``news_impact_scale_medium``) so the
+# Phase AD arm can vary them without a source patch.
+
+NEWS_R7_BLOCK_IMPACTS_DEFAULT: frozenset[str] = frozenset({"high"})
+NEWS_R7_SCALE_IMPACTS_DEFAULT: frozenset[str] = frozenset({"medium"})
+NEWS_R7_SCALE_FACTOR_DEFAULT: float = 0.5
+
+
+def check_r7_news_impact(
+    *,
+    impact: str,
+    event_title: str | None = None,
+    currencies: frozenset[str] | None = None,
+    minutes_to_event: int | None = None,
+    block_impacts: frozenset[str] = NEWS_R7_BLOCK_IMPACTS_DEFAULT,
+    scale_impacts: frozenset[str] = NEWS_R7_SCALE_IMPACTS_DEFAULT,
+    scale_factor: float = NEWS_R7_SCALE_FACTOR_DEFAULT,
+) -> SentinelDecision:
+    """R7: convert a Karasu news-window impact into a Sentinel decision.
+
+    Inputs are the fields of :class:`agent.squad.agents.a08_karasu.KarasuWarning`;
+    the caller (the engine's SentinelContext builder) resolves the
+    warning per (symbol, as_of) and passes it here as flat kwargs so
+    the rule stays a pure function.
+
+    ``impact`` is compared **case-insensitively**. Passing ``"none"``
+    (or the empty string) short-circuits to a pass-through OK.
+    """
+    imp = (impact or "none").strip().lower()
+    if imp == "none" or not imp:
+        return SentinelDecision(
+            allowed=True, rule="OK", reason="R7 ok", payload={},
+            risk_scale=1.0,
+        )
+
+    payload: dict = {
+        "impact": imp,
+        "event_title": event_title,
+        "currencies": sorted(currencies) if currencies else [],
+        "minutes_to_event": minutes_to_event,
+    }
+    block = {i.lower() for i in block_impacts}
+    scale = {i.lower() for i in scale_impacts}
+
+    if imp in block:
+        return SentinelDecision(
+            allowed=False,
+            rule="R7",
+            reason=(
+                f"R7_news_high_impact: {imp}-impact news window"
+                + (f" ('{event_title}')" if event_title else "")
+                + (
+                    f" in {minutes_to_event:+d} min"
+                    if minutes_to_event is not None else ""
+                )
+            ),
+            payload=payload,
+            risk_scale=0.0,
+        )
+    if imp in scale:
+        return SentinelDecision(
+            allowed=True,
+            rule="R7",
+            reason=(
+                f"R7_news_medium_impact_scale: applying "
+                f"{scale_factor:.0%} risk scale"
+                + (f" ('{event_title}')" if event_title else "")
+            ),
+            payload=payload,
+            risk_scale=float(scale_factor),
+        )
+    return SentinelDecision(
+        allowed=True, rule="OK", reason="R7 ok (impact not in ladder)",
+        payload=payload, risk_scale=1.0,
+    )
+
+
+# ---------------------------------------------------------------------------
 # External-shock triggers (doctrine section 4.2)
 # ---------------------------------------------------------------------------
 
@@ -348,6 +441,18 @@ class SentinelContext:
     high-conviction losing streak, the Sentinel dampens risk 24 h.
     `open_symbol_risk_dollars` and `additional_risk_dollars` are the
     R6 (per-symbol total-risk cap) inputs used by Phi5 Arm 4.
+
+    R7 news-impact inputs (Karasu-side):
+
+    * ``karasu_impact``: one of ``"high"``, ``"medium"``, ``"none"``.
+      Callers derive it by resolving the Karasu warning for the
+      proposal's ``(symbol, timestamp)`` before invoking evaluate.
+    * ``karasu_event_title`` / ``karasu_event_currencies`` /
+      ``karasu_minutes_to_event``: passthrough fields; only used
+      to enrich the R7 payload's audit trail.
+    * ``news_impact_block_min`` / ``news_impact_scale_medium`` /
+      ``news_impact_scale_factor``: ladder knobs. Defaults match
+      the doctrine (block on 'high', 50 % on 'medium').
     """
 
     equity: float
@@ -359,6 +464,17 @@ class SentinelContext:
     kunigami_loss_streak_active: bool = False
     open_symbol_risk_dollars: dict[str, float] | None = None
     additional_risk_dollars: float | None = None
+    karasu_impact: str = "none"
+    karasu_event_title: str | None = None
+    karasu_event_currencies: frozenset[str] | None = None
+    karasu_minutes_to_event: int | None = None
+    news_impact_block_min: frozenset[str] = field(
+        default_factory=lambda: NEWS_R7_BLOCK_IMPACTS_DEFAULT,
+    )
+    news_impact_scale_medium: frozenset[str] = field(
+        default_factory=lambda: NEWS_R7_SCALE_IMPACTS_DEFAULT,
+    )
+    news_impact_scale_factor: float = NEWS_R7_SCALE_FACTOR_DEFAULT
 
 
 def evaluate_proposal(
@@ -439,11 +555,36 @@ def evaluate(
         if not r6.allowed:
             return r6
 
+    if (context.karasu_impact or "none").lower() != "none":
+        r7 = check_r7_news_impact(
+            impact=context.karasu_impact,
+            event_title=context.karasu_event_title,
+            currencies=context.karasu_event_currencies,
+            minutes_to_event=context.karasu_minutes_to_event,
+            block_impacts=context.news_impact_block_min,
+            scale_impacts=context.news_impact_scale_medium,
+            scale_factor=context.news_impact_scale_factor,
+        )
+        if not r7.allowed:
+            return r7
+        if r7.rule == "R7":
+            # Medium-impact scale-only path: R7 rides alongside the
+            # subsequent rules (only EXT can still block). We return
+            # the scale-decorated decision if EXT passes below.
+            _r7_pending = r7
+        else:
+            _r7_pending = None
+    else:
+        _r7_pending = None
+
     if context.external is not None:
         ext = check_external_shocks(context.external)
         if not ext.allowed:
             return ext
 
+    if _r7_pending is not None:
+        return _r7_pending
     return SentinelDecision(
-        allowed=True, rule="OK", reason="ok", payload={}
+        allowed=True, rule="OK", reason="ok", payload={},
+        risk_scale=1.0,
     )
