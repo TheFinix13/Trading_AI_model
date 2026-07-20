@@ -1,27 +1,27 @@
-# AI Context — brain dump (updated 2026-07-20, v0.38)
+# AI Context — brain dump (updated 2026-07-20, v0.39)
 
-> v0.38 — **Platform hub redesigned for newcomers** (commit `8dd2669`
-> on `next-gen`). The old static two-tile hub becomes a live overview:
-> three-card KPI strip `Promise.all`-ing `/api/v1/status`,
-> `/api/v2/live/status`, `/api/v2/live/events?limit=5` and `/healthz`
-> on 15 s refresh; "What am I looking at?" plain-English explainer;
-> native `<details>` glossary defining every jargon term (Karasu,
-> Sae, Sentinel, TQS, `tick_summary`, all 7 Blue Lock names); recent-
-> activity feed with type chips; footer pinning
-> version/log-root/branch. v2 badge now correctly reads
-> `source="live_market:*"` → green "live shadow paper",
-> `"cache_replay"` → purple, idle → amber; auth 401s degrade
-> gracefully. Only `HUB_PAGE` in `agent/platform/pages.py` rewritten;
-> `_BASE_CSS`, `_NAV`, `V1_PAGE`, `V2_PAGE` untouched. **635 tests
-> pass** (was 620); +15 in new `tests/platform/test_hub_page.py`.
+> v0.39 — **/v2 UX pass + first-visit guided tour** (commit `6e14735`
+> on `next-gen`). Display-only rewrite of `V2_PAGE`: mode dropdown
+> now plain English ("LIVE — Today's market" / "Historical replay ·
+> Single-shot rule" for phi41 / "Twin-strike rule" for arm4; wire ids
+> unchanged as `<option value=>`), speed picker as 🐢/⏩/🚀/⚡ tiers
+> (8/16/60/120 ev/s). New surfaces: ℹ️ info popover (mode-aware,
+> `/#glossary` deep-link), mode-aware H1 subtitle, live
+> "waiting on the market" empty-state panel (next-H4 countdown,
+> workspace count, standby pills), player hover tooltips,
+> first-visit ribbon (`localStorage.v2_visited`, 60 s auto-hide),
+> 6-step guided tour (dim shade + spotlight ring, Esc exits).
+> `HUB_PAGE` gained `id="glossary"` anchor. **654 tests pass**
+> (was 635); +19 in `tests/platform/test_v2_page.py` + hub anchor.
 >
-> v0.37 (`5ba01ec`, `762d7d8`): /v2 dashboard reliability — poll
-> heartbeat kills false MARKET STREAM IDLE; engine emits
-> `tick_summary` per bar so quiet ticks show muted. Landmarks:
-> **v0.36** Karasu A8 + Sae A9 + R7 news ladder + `risk_scale`
-> enforced (`5de1e8c`); **v0.35** live-market squad paper; **v0.27**
-> `next-gen` split; **v0.25** live-agent reliability. Full history:
-> `git log --oneline main..next-gen` and `docs/00-journey.md`.
+> v0.38 (`8dd2669`): platform hub redesigned — KPI strip, plain-
+> English explainer, native `<details>` glossary, recent-activity
+> feed, mode-aware v2 badge. v0.37 (`5ba01ec`, `762d7d8`): /v2
+> heartbeat + `tick_summary`. Landmarks: **v0.36** Karasu A8 + Sae
+> A9 + R7 news ladder + `risk_scale`; **v0.35** live-market squad
+> paper; **v0.27** `next-gen` split; **v0.25** live-agent
+> reliability. Full history: `git log --oneline main..next-gen`
+> and `docs/00-journey.md`.
 
 Read this first in a fresh chat. Deeper history: `docs/00-journey.md`
 and `docs/CHECKPOINT.md`. **Active R&D:** `finance-research-experiments`
@@ -44,12 +44,13 @@ on demo only.
   high, 0.5× medium); `risk_scale` now enforced end-to-end (v0.36).
 - **Platform (`next-gen`, read-only):** `scripts/serve_platform.py`,
   hub (v0.38 KPI-strip redesign) + /v1 live view + /v2 squad pitch
-  tailing paper JSONL; runbook §7b/§7b.5/§7b.6. v0.37 heartbeat +
-  tick_summary fixes remain.
+  (v0.39 UX pass — plain-English mode picker, info popover, live
+  waiting-panel, hover tooltips, first-visit ribbon + guided tour)
+  tailing paper JSONL; runbook §7b/§7b.5/§7b.6.
 - **Data cache:** `data/parquet/` — EURUSD / GBPUSD / USDCAD +
   **USDJPY / USDCHF new** (17,706 H4 + 3,436 D1 each, 2015 → 2026-07-20).
 - **Observability:** daily logs, heartbeat, vaults, weekly bundle,
-  rejection-review digest. **635 tests pass.**
+  rejection-review digest. **654 tests pass.**
 
 ## 2) Key file paths
 
@@ -61,7 +62,7 @@ on demo only.
 | Karasu + Sae | `agent/squad/agents/a0{8,9}_*.py`, `agent/squad/{news,sae}_config.py`, `agent/news/calendar.py` |
 | Platform | `agent/platform/*.py`, `scripts/{serve_platform,run_squad_paper,build_dashboard,weekly_report}.py` |
 | Data | `agent/data/*.py`, `data/parquet/*.parquet` |
-| Tests | `tests/test_squad_*.py`, `tests/squad/test_engine_{risk_scale,tick_summary}.py`, `tests/platform/{test_squad_events_parsing,test_hub_page}.py` (hub tests new v0.38), `tests/test_platform_*.py` |
+| Tests | `tests/test_squad_*.py`, `tests/squad/test_engine_{risk_scale,tick_summary}.py`, `tests/platform/{test_squad_events_parsing,test_hub_page,test_v2_page}.py` (v2 UX tests new v0.39), `tests/test_platform_*.py` |
 | Docs | `docs/CHECKPOINT.md`, `docs/00-journey.md`, `docs/RUNBOOK_demo_launch.md`, `docs/08-live-trading-and-deployment.md` |
 | M001 pointer | `docs/research/multi-agent-ensemble/README.md` |
 
