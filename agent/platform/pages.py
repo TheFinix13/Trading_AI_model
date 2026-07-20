@@ -44,32 +44,519 @@ def nav(active: str) -> str:
                        v2="here" if active == "v2" else "")
 
 
-HUB_PAGE = f"""<!DOCTYPE html>
+# The hub is rewritten from a static two-tile page into a live overview:
+# a KPI strip fed by the platform's own API endpoints, a plain-english
+# "what am I looking at?" explainer, a glossary <details>, and a recent-
+# activity feed off /api/v2/live/events. Uses the raw-template
+# __PLACEHOLDER__ substitution (same trick as _V2_TEMPLATE) to avoid
+# f-string brace doubling in the JS/CSS.
+_HUB_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Trading platform</title><style>{_BASE_CSS}
-.tiles{{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}}
-.tile{{background:var(--panel);border:1px solid var(--border);border-radius:12px;
-  padding:22px 24px;display:block;color:var(--fg)}}
-.tile:hover{{border-color:var(--accent);text-decoration:none}}
-.tile h2{{margin:0 0 6px;font-size:18px}}
-.tile p{{margin:6px 0 0;color:var(--dim);font-size:13.5px}}
+<title>Trading platform</title><style>__BASE_CSS__
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+@media (max-width: 700px){.kpis{grid-template-columns:1fr}}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.kpi h3{margin:0 0 10px;font-size:12.5px;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--dim);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.kpi .row{display:flex;justify-content:space-between;font-size:13.5px;padding:3px 0;gap:8px;
+  align-items:baseline}
+.kpi .row .k{color:var(--dim)} .kpi .row .v{font-variant-numeric:tabular-nums}
+.kpi .foot{font-size:11.5px;color:var(--dim);margin-top:8px;padding-top:6px;
+  border-top:1px solid var(--border);word-break:break-all}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:18px}
+.tile{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+  padding:22px 24px;display:block;color:var(--fg)}
+.tile:hover{border-color:var(--accent);text-decoration:none}
+.tile h2{margin:0 0 6px;font-size:18px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tile p{margin:6px 0 0;color:var(--dim);font-size:13.5px;line-height:1.55}
+.tile p code, .tile strong{color:var(--fg)}
+.tile .summary{margin-top:10px;font-size:12.5px;color:var(--dim);
+  font-variant-numeric:tabular-nums}
+.explainer{margin-bottom:18px}
+.explainer h3{margin:0 0 8px;font-size:15px}
+.explainer p{margin:8px 0;font-size:13.5px;line-height:1.6;color:var(--fg)}
+.explainer strong{color:var(--fg)}
+.explainer em{color:var(--accent);font-style:normal;font-weight:600}
+.explainer code{background:#0d1117;padding:1px 6px;border-radius:4px;font-size:12px;color:var(--dim)}
+details.glossary{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:12px 16px;margin-bottom:18px;font-size:13px}
+details.glossary summary{cursor:pointer;font-weight:600;color:var(--fg);padding:2px 0;
+  outline:none;user-select:none;list-style:revert}
+details.glossary summary:hover{color:var(--accent)}
+details.glossary dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;
+  margin:12px 0 4px;font-size:12.5px}
+details.glossary dt{font-weight:700;color:var(--accent);white-space:nowrap}
+details.glossary dd{margin:0;color:var(--fg)}
+.activity{margin-bottom:18px}
+.activity h3{margin:0 0 10px;font-size:15px;display:flex;justify-content:space-between;
+  align-items:baseline;gap:8px;flex-wrap:wrap}
+.activity h3 .aux{font-size:11.5px;color:var(--dim);font-weight:400}
+.activity .ev{display:grid;grid-template-columns:max-content 68px max-content 1fr;gap:10px;
+  font-size:12.5px;padding:5px 0;border-bottom:1px solid #1c2129;align-items:baseline}
+.activity .ev:last-child{border-bottom:none}
+.activity .ev .t{color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap;font-size:11.5px}
+.activity .ev .s{color:var(--accent);font-weight:600}
+.activity .empty{color:var(--dim);font-style:italic;font-size:12.5px;padding:4px 0}
+.chip{font-size:10px;font-weight:700;text-transform:uppercase;padding:1px 7px;border-radius:999px;
+  letter-spacing:.04em;white-space:nowrap;background:rgba(139,148,158,.15);color:var(--dim);
+  border:1px solid var(--border)}
+.chip.goal{background:rgba(63,185,80,.15);color:var(--green);border-color:rgba(63,185,80,.4)}
+.chip.miss,.chip.blocked{background:rgba(248,81,73,.12);color:var(--red);border-color:rgba(248,81,73,.4)}
+.chip.proposal{background:rgba(88,166,255,.12);color:var(--accent);border-color:rgba(88,166,255,.4)}
+.chip.open{background:rgba(188,140,255,.12);color:var(--purple);border-color:rgba(188,140,255,.4)}
+.footer{margin-top:24px;padding-top:12px;border-top:1px solid var(--border);
+  font-size:11.5px;color:var(--dim);text-align:center;line-height:1.7}
+.footer code{background:#0d1117;padding:1px 6px;border-radius:4px;font-size:11px;color:var(--fg)}
+#updated{position:fixed;top:14px;right:20px;font-size:12px;color:var(--dim)}
 </style></head><body>
 <h1>Multi-pair trading platform</h1>
-<div class="sub">next-gen line &middot; v1 trades on demo MT5 &middot; v2 is simulation-only research until graduated</div>
-{nav('hub')}
-<div class="tiles">
-<a class="tile" href="/v1"><h2>v1 &mdash; Zones agent <span class="badge alive">live &middot; demo MT5</span></h2>
-<p>The H4 supply/demand zones agent running on the VM (main branch).
-Open positions, day PnL, guards, kill switches, and a live decision feed
-of every signal it evaluated, blocked, or traded. Auto-refreshes every 10&nbsp;s.</p></a>
-<a class="tile" href="/v2"><h2>v2 &mdash; Blue Lock squad <span class="badge sim">sim-only</span></h2>
-<p>The M001 multi-agent ensemble as a football match: agents positioned on a
-pitch, proposals as passes and shots, aggregator tackles, Sentinel wall,
-goals on winning trades. Plays back walk-forward replay evidence today; the
-same page will tail a live paper-mode stream when the squad graduates.</p></a>
+<div class="sub">Two AI agents on Exness demo MT5 &mdash; v1 trades real demo orders,
+v2 shadow-simulates alongside for research. Auto-refreshes every 15&nbsp;s.</div>
+__NAV__
+<div id="updated">loading&hellip;</div>
+
+<div class="kpis">
+  <div class="kpi" id="kpi-v1">
+    <h3><span>v1 &middot; Zones agent</span>
+        <span class="badge no-data" id="kpi-v1-badge">&hellip;</span></h3>
+    <div class="row"><span class="k">pairs tracked</span>
+        <span class="v" id="kpi-v1-pairs">&mdash;</span></div>
+    <div class="row"><span class="k">open positions</span>
+        <span class="v" id="kpi-v1-open">&mdash;</span></div>
+    <div class="row"><span class="k">day PnL</span>
+        <span class="v" id="kpi-v1-pnl">&mdash;</span></div>
+    <div class="foot" id="kpi-v1-foot">&mdash;</div>
+  </div>
+  <div class="kpi" id="kpi-v2">
+    <h3><span>v2 &middot; Squad pitch</span>
+        <span class="badge no-data" id="kpi-v2-badge">&hellip;</span></h3>
+    <div class="row"><span class="k">source</span>
+        <span class="v" id="kpi-v2-src">&mdash;</span></div>
+    <div class="row"><span class="k">last event</span>
+        <span class="v" id="kpi-v2-lastev">&mdash;</span></div>
+    <div class="row"><span class="k">poll heartbeat</span>
+        <span class="v" id="kpi-v2-poll">&mdash;</span></div>
+    <div class="foot" id="kpi-v2-foot">&mdash;</div>
+  </div>
+  <div class="kpi" id="kpi-sys">
+    <h3><span>System</span>
+        <span class="badge no-data" id="kpi-sys-badge">&hellip;</span></h3>
+    <div class="row"><span class="k">platform</span>
+        <span class="v" id="kpi-sys-ver">&mdash;</span></div>
+    <div class="row"><span class="k">uptime</span>
+        <span class="v" id="kpi-sys-uptime">&mdash;</span></div>
+    <div class="row"><span class="k">UTC now</span>
+        <span class="v" id="kpi-sys-clock">&mdash;</span></div>
+    <div class="foot" id="kpi-sys-foot">&mdash;</div>
+  </div>
 </div>
+
+<div class="tiles">
+  <a class="tile" href="/v1">
+    <h2>v1 &mdash; Zones agent
+        <span class="badge no-data" id="tile-v1-badge">&hellip;</span></h2>
+    <p>The H4 supply/demand zones agent running on the VM
+    (<code>main</code> branch code). Places real orders on the Exness
+    demo MT5 account. This page shows open positions, day PnL, per-pair
+    kill switches, and a live decision feed of every signal it evaluated,
+    blocked, or traded. Auto-refreshes every 10&nbsp;s.</p>
+    <div class="summary" id="tile-v1-summary">&hellip;</div>
+  </a>
+  <a class="tile" href="/v2">
+    <h2>v2 &mdash; Blue Lock squad
+        <span class="badge no-data" id="tile-v2-badge">&hellip;</span></h2>
+    <p>The M001 multi-agent ensemble as a football match: 7 characters
+    from Blue Lock, each with a distinct trading playstyle. Currently
+    running in <strong>live shadow-paper</strong> mode &mdash; reading
+    real MT5 bars alongside v1 but NOT placing orders. Proposals show as
+    passes, aggregator rejections as tackles, Sentinel R7 news blocks as
+    a wall, winning trades as goals. Historical walk-forward replays
+    also available on this page.</p>
+    <div class="summary" id="tile-v2-summary">&hellip;</div>
+  </a>
+</div>
+
+<div class="card explainer">
+  <h3>What am I looking at?</h3>
+  <p><strong>Two agents, one demo account.</strong> This platform runs
+  two AI trading agents against an Exness demo MetaTrader&nbsp;5 account
+  (paper money &mdash; no real capital at risk). The <strong>v1 zones
+  agent</strong> is the current production strategy and places real
+  orders on the demo account. The <strong>v2 squad</strong> is the
+  next-generation research line: an ensemble of 7 characters styled
+  after the anime <em>Blue Lock</em>, each embodying a different
+  trading playstyle.</p>
+  <p><strong>Why two agents?</strong> Safety hierarchy. v1 has passed
+  evaluation and earns the right to send real orders on demo. v2 runs
+  in <strong>shadow mode</strong>: it reads the same live market bars,
+  its 7 characters propose trades every 4 hours, but nothing is ever
+  sent to the broker. We watch v2's shadow performance for weeks or
+  months before considering promotion &mdash; the goal is to catch
+  failure modes BEFORE they trade money.</p>
+  <p><strong>How to read the /v2 page.</strong> The squad is rendered
+  as a football match. Every H4 bar close, each active character
+  <em>observes</em> the market and may <em>propose</em> a trade (a
+  pass). Other characters can <em>tackle</em> (invalidate) the
+  proposal. Surviving proposals hit the <em>Sentinel wall</em>
+  (risk-management gates: news blackouts, drawdown limits, position
+  caps). Ones that pass become <em>shots</em> (paper broker fills).
+  Wins are <em>goals</em>, losses are <em>misses</em>. Even bars with
+  no proposals show as a subtle grey <code>tick_summary</code> row so
+  you can see the squad breathe.</p>
+</div>
+
+<details class="glossary">
+<summary>Glossary &mdash; show/hide</summary>
+<dl>
+  <dt>H4 / D1</dt><dd>4-hour and daily candlestick timeframes.</dd>
+  <dt>Zones agent</dt><dd>Identifies supply/demand price zones and
+      trades pullbacks to them.</dd>
+  <dt>Blue Lock squad</dt><dd>7 characters, each with a distinct
+      playstyle (Isagi, Bachira, Rin, Chigiri, Reo, Nagi, Barou).</dd>
+  <dt>Karasu</dt><dd>News defender. Reads the economic calendar and
+      publishes advisories that block or scale down proposals near
+      high-impact events.</dd>
+  <dt>Sae</dt><dd>Event specialist. Trades big scheduled news releases
+      (currently disabled by default).</dd>
+  <dt>Shadow paper</dt><dd>Simulated fills against real market prices;
+      no real orders sent.</dd>
+  <dt>Sentinel</dt><dd>Risk-management gate. Blocks proposals violating
+      drawdown / news / position rules.</dd>
+  <dt>Workspace</dt><dd>Shared "thought stream" where characters
+      publish observations for peers to see (Nagi's confluence fuel).</dd>
+  <dt>Aggregator</dt><dd>Combines all character proposals into at most
+      one shot per bar (Phi&nbsp;4.1 aggregator).</dd>
+  <dt>TQS</dt><dd>Trade Quality Score. A per-proposal quality metric
+      (0&ndash;1) used for post-hoc evaluation.</dd>
+  <dt>Proposal / Pass</dt><dd>A character's suggested trade before any
+      risk gate.</dd>
+  <dt>Tackle</dt><dd>When another character or the aggregator rejects
+      a proposal.</dd>
+  <dt>Shot</dt><dd>A proposal that survived all gates and became a
+      paper broker order.</dd>
+  <dt>Goal / Miss</dt><dd>Shot that hit take-profit / stop-loss.</dd>
+  <dt>tick_summary</dt><dd>One row per (bar &times; symbol) proving the
+      squad evaluated even when no one proposed.</dd>
+</dl>
+</details>
+
+<div class="card activity">
+<h3>Recent activity <span class="aux">last 5 events from the v2 squad
+    &middot; refreshes with the page</span></h3>
+<div id="activity"><div class="empty">loading&hellip;</div></div>
+</div>
+
+<div class="footer" id="footer">&hellip;</div>
+
+<script>
+function esc(x){ const d=document.createElement("div"); d.innerText=String(x); return d.innerHTML; }
+
+function humanAge(sec){
+  if(sec==null || isNaN(sec)) return "\u2014";
+  const s = Math.round(Number(sec));
+  if(s < 5) return "just now";
+  if(s < 90) return s + " s ago";
+  const m = Math.round(s/60);
+  if(m < 90) return m + " min ago";
+  const h = Math.round(m/60);
+  if(h < 48) return h + " h ago";
+  return Math.round(h/24) + " d ago";
+}
+function humanUptime(sec){
+  if(sec==null || isNaN(sec)) return "\u2014";
+  const s = Math.round(Number(sec));
+  if(s < 60) return s + " s";
+  const m = Math.floor(s/60);
+  if(m < 60) return m + " m";
+  const h = Math.floor(m/60);
+  const rm = m - h*60;
+  if(h < 24) return h + " h " + rm + " m";
+  const d = Math.floor(h/24);
+  const rh = h - d*24;
+  return d + " d " + rh + " h";
+}
+function ageFromIso(iso){
+  if(!iso) return null;
+  const t = new Date(String(iso).replace(" ","T"));
+  if(isNaN(t)) return null;
+  return (Date.now() - t.getTime())/1000;
+}
+function fmtMoney(n){
+  if(n==null || isNaN(n)) return "\u2014";
+  const v = Number(n);
+  const sign = v>=0 ? "+$" : "-$";
+  return sign + Math.abs(v).toFixed(2);
+}
+
+async function fetchJson(url){
+  try{
+    const r = await fetch(url);
+    if(r.status === 401) return {__auth__: true};
+    if(!r.ok) return {__error__: "HTTP " + r.status};
+    return await r.json();
+  } catch(e){ return {__error__: String(e && e.message || e)}; }
+}
+
+function worstV1Status(symbols){
+  // Rank so alive < stale < no-data < down; the KPI badge should mirror
+  // the WORST symbol status so a single dead pair is visible immediately.
+  const rank = {"alive":0, "stale":1, "no-data":2, "down":3};
+  let worst = null;
+  for(const s of (symbols||[])){
+    const st = s.status || "no-data";
+    if(worst === null || (rank[st]||0) > (rank[worst]||0)) worst = st;
+  }
+  return worst || "no-data";
+}
+function v2Badge(v2){
+  if(!v2) return {cls:"no-data", text:"no data"};
+  if(v2.__auth__) return {cls:"stale", text:"auth required"};
+  if(v2.__error__) return {cls:"down", text:"api error"};
+  if(!v2.exists) return {cls:"no-data", text:"no live dir"};
+  const src = v2.source || "";
+  if(v2.running && src.indexOf("live_market:") === 0)
+    return {cls:"alive", text:"live shadow paper"};
+  if(v2.running && src === "cache_replay")
+    return {cls:"sim", text:"cache replay"};
+  if(v2.running) return {cls:"alive", text:"live"};
+  return {cls:"stale", text:"idle"};
+}
+function setBadge(id, cls, text){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.className = "badge " + cls;
+  el.innerText = text;
+}
+
+function renderV1Kpi(v1){
+  if(v1.__auth__){
+    setBadge("kpi-v1-badge","stale","auth required");
+    document.getElementById("kpi-v1-pairs").innerText="\u2014";
+    document.getElementById("kpi-v1-open").innerText="\u2014";
+    document.getElementById("kpi-v1-pnl").innerText="\u2014";
+    document.getElementById("kpi-v1-foot").innerText=
+      "pass ?token= in the URL to unlock live data";
+    setBadge("tile-v1-badge","stale","auth required");
+    document.getElementById("tile-v1-summary").innerText=
+      "live data locked \u2014 pass ?token= in URL";
+    return;
+  }
+  if(v1.__error__){
+    setBadge("kpi-v1-badge","down","api error");
+    document.getElementById("kpi-v1-foot").innerText=
+      "/api/v1/status: " + v1.__error__;
+    setBadge("tile-v1-badge","down","api error");
+    document.getElementById("tile-v1-summary").innerText=
+      "status fetch failed \u2014 " + v1.__error__;
+    return;
+  }
+  const symbols = v1.symbols || [];
+  if(!symbols.length){
+    setBadge("kpi-v1-badge","no-data","no v1 logs yet");
+    setBadge("tile-v1-badge","no-data","no v1 logs yet");
+    document.getElementById("kpi-v1-pairs").innerText="0";
+    document.getElementById("kpi-v1-open").innerText="0";
+    document.getElementById("kpi-v1-pnl").innerText="\u2014";
+    document.getElementById("kpi-v1-foot").innerText=
+      "log root: " + (v1.log_root || "unknown");
+    document.getElementById("tile-v1-summary").innerText=
+      "no pairs yet \u2014 waiting on first heartbeat";
+    return;
+  }
+  const status = worstV1Status(symbols);
+  setBadge("kpi-v1-badge", status, status);
+  setBadge("tile-v1-badge", status, status);
+  let nOpen = 0, dayPnl = 0, hasPnl = false;
+  let balance = null, bestAge = Infinity;
+  for(const s of symbols){
+    if((s.positions || []).length) nOpen++;
+    const r = s.risk || {};
+    if(r.day_pnl != null){ dayPnl += Number(r.day_pnl); hasPnl = true; }
+    // Freshest symbol's day_open_balance is our best-effort account
+    // balance surrogate (live_status doesn't expose an equity field).
+    if(r.day_open_balance != null && s.age_seconds != null &&
+       s.age_seconds < bestAge){
+      balance = Number(r.day_open_balance); bestAge = s.age_seconds;
+    }
+  }
+  document.getElementById("kpi-v1-pairs").innerText = symbols.length;
+  document.getElementById("kpi-v1-open").innerText = nOpen;
+  const pnlEl = document.getElementById("kpi-v1-pnl");
+  if(hasPnl){
+    pnlEl.innerText = fmtMoney(dayPnl);
+    pnlEl.className = "v " + (dayPnl >= 0 ? "ok" : "bad");
+  } else { pnlEl.innerText = "\u2014"; pnlEl.className = "v"; }
+  document.getElementById("kpi-v1-foot").innerText =
+    balance != null
+      ? ("day-open balance $" + balance.toFixed(2))
+      : "no balance recorded yet";
+  document.getElementById("tile-v1-summary").innerText =
+    symbols.length + " pair" + (symbols.length === 1 ? "" : "s") +
+    " \u00b7 " + nOpen + " open \u00b7 day PnL " +
+    (hasPnl ? fmtMoney(dayPnl) : "\u2014");
+}
+
+function renderV2Kpi(v2, evsTotal){
+  const b = v2Badge(v2);
+  setBadge("kpi-v2-badge", b.cls, b.text);
+  setBadge("tile-v2-badge", b.cls, b.text);
+  if(v2.__auth__ || v2.__error__){
+    document.getElementById("kpi-v2-src").innerText = "\u2014";
+    document.getElementById("kpi-v2-lastev").innerText = "\u2014";
+    document.getElementById("kpi-v2-poll").innerText = "\u2014";
+    document.getElementById("kpi-v2-foot").innerText =
+      v2.__auth__
+        ? "pass ?token= in the URL to unlock live data"
+        : ("/api/v2/live/status: " + v2.__error__);
+    document.getElementById("tile-v2-summary").innerText =
+      v2.__auth__ ? "live data locked \u2014 pass ?token= in URL"
+                  : "status fetch failed \u2014 " + v2.__error__;
+    return;
+  }
+  document.getElementById("kpi-v2-src").innerText = v2.source || "idle";
+  document.getElementById("kpi-v2-lastev").innerText =
+    humanAge(ageFromIso(v2.last_event_time));
+  const poll = v2.poll_heartbeat_age_seconds;
+  document.getElementById("kpi-v2-poll").innerText =
+    poll == null ? "\u2014" : (Math.round(Number(poll)) + " s ago");
+  document.getElementById("kpi-v2-foot").innerText =
+    v2.kill ? ("KILL: " + v2.kill)
+            : (v2.dir ? ("dir: " + v2.dir) : "no dir");
+  const totalTxt = (evsTotal == null)
+    ? ""
+    : (" \u00b7 " + evsTotal + " event" + (evsTotal === 1 ? "" : "s") + " total");
+  document.getElementById("tile-v2-summary").innerText =
+    "source: " + (v2.source || "idle") +
+    " \u00b7 last event: " + humanAge(ageFromIso(v2.last_event_time)) +
+    totalTxt;
+}
+
+function renderSysKpi(health, v1){
+  if(!health || health.__error__){
+    setBadge("kpi-sys-badge","down","api error");
+    document.getElementById("kpi-sys-ver").innerText = "\u2014";
+    document.getElementById("kpi-sys-uptime").innerText = "\u2014";
+    document.getElementById("kpi-sys-foot").innerText =
+      "/healthz: " + (health && health.__error__ ? health.__error__ : "unavailable");
+    return;
+  }
+  const kill = (v1 && !v1.__auth__ && !v1.__error__) ? v1.global_kill : null;
+  if(kill){
+    setBadge("kpi-sys-badge","down","GLOBAL KILL");
+  } else {
+    setBadge("kpi-sys-badge","alive","no kill");
+  }
+  document.getElementById("kpi-sys-ver").innerText = "v" + (health.version || "?");
+  document.getElementById("kpi-sys-uptime").innerText = humanUptime(health.uptime_seconds);
+  document.getElementById("kpi-sys-foot").innerText =
+    kill ? ("kill switch: " + kill) : ("status: " + (health.status || "?"));
+}
+
+function chipCls(ev){
+  if(ev.type === "close") return ev.goal ? "goal" : "miss";
+  if(ev.type === "blocked") return "blocked";
+  if(ev.type === "proposal") return "proposal";
+  if(ev.type === "open") return "open";
+  return "";
+}
+function shortMsg(ev){
+  if(ev.type === "proposal"){
+    const dir = (ev.dir || "?").toString().toUpperCase();
+    return "proposal " + dir +
+      (ev.conviction != null ? (" (conv " + ev.conviction + ")") : "");
+  }
+  if(ev.type === "blocked") return ev.rule
+    ? ("blocked by Sentinel \u2014 " + (ev.reason || "?"))
+    : ("tackled by " + (ev.by || "?"));
+  if(ev.type === "open") return "shot " + (ev.dir || "?").toString().toUpperCase();
+  if(ev.type === "close") return ev.goal
+    ? ("GOAL +" + ev.pnl_pips + " pips (" + (ev.exit_reason || "tp") + ")")
+    : ("miss " + ev.pnl_pips + " pips (" + (ev.exit_reason || "sl") + ")");
+  if(ev.type === "thought") return "thought: " + String(ev.text || "").slice(0, 80);
+  if(ev.type === "tick_summary"){
+    const n = (ev.players_evaluated || []).length;
+    const p = ev.proposal_count || 0;
+    return "tick \u2014 " + n + " evaluated, " + p +
+      " proposal" + (p === 1 ? "" : "s");
+  }
+  return ev.type;
+}
+function renderActivity(evsResp){
+  const el = document.getElementById("activity");
+  if(evsResp.__auth__){
+    el.innerHTML =
+      '<div class="empty">auth required \u2014 pass ?token= in URL to see events</div>';
+    return;
+  }
+  // 404 = live dir not created yet; treat as "no events" not an error.
+  if(evsResp.__error__ && evsResp.__error__ !== "HTTP 404"){
+    el.innerHTML =
+      '<div class="empty">events endpoint error: ' +
+      esc(evsResp.__error__) + '</div>';
+    return;
+  }
+  const events = (evsResp && evsResp.events) || [];
+  if(!events.length){
+    el.innerHTML =
+      '<div class="empty">no v2 events yet \u2014 waiting on first H4 bar close</div>';
+    return;
+  }
+  el.innerHTML = events.slice(-5).reverse().map(ev =>
+    '<div class="ev">' +
+      '<span class="t">' + esc(String(ev.t || "").slice(0, 16)) + '</span>' +
+      '<span class="s">' + esc(ev.symbol || "\u2014") + '</span>' +
+      '<span class="chip ' + chipCls(ev) + '">' + esc(ev.type) + '</span>' +
+      '<span>' + esc(shortMsg(ev)) + '</span>' +
+    '</div>').join("");
+}
+
+function renderFooter(health, v1){
+  const ver = (health && !health.__error__) ? (health.version || "?") : "?";
+  const logRoot = (v1 && !v1.__auth__ && !v1.__error__ && v1.log_root)
+    ? v1.log_root : "(unknown)";
+  document.getElementById("footer").innerHTML =
+    "Platform v" + esc(ver) +
+    " \u00b7 deployed on Exness VM (Windows 11 ARM)" +
+    " \u00b7 logs in <code>" + esc(logRoot) + "</code>" +
+    " \u00b7 code on <code>next-gen</code> branch";
+}
+
+async function refreshAll(){
+  const [v1, v2, evs, health] = await Promise.all([
+    fetchJson("/api/v1/status"),
+    fetchJson("/api/v2/live/status"),
+    fetchJson("/api/v2/live/events?cursor=0&limit=5"),
+    fetchJson("/healthz"),
+  ]);
+  const evsTotal = (evs && !evs.__auth__ && !evs.__error__)
+    ? (evs.total != null ? evs.total : (evs.events || []).length) : null;
+  renderV1Kpi(v1);
+  renderV2Kpi(v2, evsTotal);
+  renderSysKpi(health, v1);
+  renderActivity(evs);
+  renderFooter(health, v1);
+  document.getElementById("updated").innerText =
+    "updated " + new Date().toLocaleTimeString();
+}
+
+function tickClock(){
+  const el = document.getElementById("kpi-sys-clock");
+  if(!el) return;
+  const now = new Date();
+  el.innerText = now.toISOString().slice(11, 19) + " UTC";
+}
+
+refreshAll();
+setInterval(refreshAll, 15000);
+tickClock();
+setInterval(tickClock, 1000);
+</script>
 </body></html>"""
+
+HUB_PAGE = (_HUB_TEMPLATE
+            .replace("__BASE_CSS__", _BASE_CSS)
+            .replace("__NAV__", nav('hub')))
 
 
 V1_PAGE = f"""<!DOCTYPE html>
