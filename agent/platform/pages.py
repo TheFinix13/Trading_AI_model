@@ -206,7 +206,7 @@ __NAV__
   you can see the squad breathe.</p>
 </div>
 
-<details class="glossary">
+<details class="glossary" id="glossary">
 <summary>Glossary &mdash; show/hide</summary>
 <dl>
   <dt>H4 / D1</dt><dd>4-hour and daily candlestick timeframes.</dd>
@@ -717,24 +717,132 @@ tr:last-child td{border-bottom:none}
 .spark{display:block;margin:8px 0}
 .rt{font-size:12.3px}
 .badge.live{background:rgba(248,81,73,.18);color:var(--red);border:1px solid rgba(248,81,73,.5)}
+/* v2 UX pass — mode picker with info button, popover, waiting panel,
+ * hover tooltips, first-visit ribbon, guided tour overlay. */
+.mode-wrap{position:relative;display:inline-flex;align-items:center;gap:6px}
+.info-btn{background:none;border:1px solid var(--border);color:var(--dim);
+  border-radius:999px;width:26px;height:26px;padding:0;cursor:pointer;
+  font-size:13px;line-height:1;display:inline-flex;align-items:center;
+  justify-content:center;transition:border-color .15s,color .15s}
+.info-btn:hover,.info-btn:focus{border-color:var(--accent);color:var(--fg);outline:none}
+.popover{position:fixed;z-index:60;background:var(--panel);
+  border:1px solid var(--border);border-radius:10px;padding:14px 16px 12px;
+  max-width:380px;font-size:12.8px;line-height:1.55;
+  box-shadow:0 8px 32px rgba(0,0,0,.5);color:var(--fg);display:none}
+.popover.open{display:block}
+.popover .close{position:absolute;top:4px;right:8px;background:none;
+  border:none;color:var(--dim);font-size:16px;cursor:pointer;line-height:1}
+.popover .close:hover{color:var(--fg)}
+.popover code{background:#0d1117;padding:1px 5px;border-radius:4px;font-size:11.5px;color:var(--dim)}
+.popover .foot{margin-top:10px;font-size:11.5px;color:var(--dim)}
+.popover .foot a{color:var(--accent)}
+#waiting-panel{margin:12px 0 4px;padding:14px 16px;border-left:3px solid var(--accent);
+  transition:opacity .5s;display:none}
+#waiting-panel.open{display:block}
+#waiting-panel h3{margin:0 0 8px;font-size:13.5px;color:var(--fg);
+  display:flex;align-items:center;gap:8px}
+#waiting-panel h3 .pulse{width:8px;height:8px;background:var(--red);border-radius:50%;
+  box-shadow:0 0 8px rgba(248,81,73,.7);animation:wpulse 1.6s infinite ease-in-out}
+@keyframes wpulse{0%,100%{opacity:.6}50%{opacity:1}}
+#waiting-panel .row{display:flex;justify-content:space-between;font-size:12.5px;
+  padding:3px 0;color:var(--dim);gap:12px}
+#waiting-panel .row .v{color:var(--fg);font-variant-numeric:tabular-nums}
+#waiting-panel .pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+#waiting-panel .foot{margin-top:8px;font-size:11.5px;color:var(--dim);font-style:italic}
+.pill{font-size:11px;font-weight:600;padding:2px 9px 2px 7px;border-radius:999px;
+  background:rgba(139,148,158,.12);border:1px solid var(--border);
+  color:var(--fg);white-space:nowrap;display:inline-flex;align-items:center;gap:5px}
+.pill .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.player-tooltip{position:fixed;z-index:70;background:var(--panel);
+  border:1px solid var(--border);border-radius:8px;padding:8px 10px;
+  max-width:260px;font-size:12px;line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,.5);
+  pointer-events:none;display:none;color:var(--fg)}
+.player-tooltip.open{display:block}
+.player-tooltip .n{font-weight:700;font-size:13px}
+.player-tooltip .p{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:var(--accent);font-size:11.5px;margin:3px 0}
+.player-tooltip .s{color:var(--dim);font-size:11px}
+.player-tooltip .r{color:var(--fg);font-size:11.5px;margin-top:4px}
+#v2-ribbon{background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.35);
+  border-radius:8px;padding:9px 14px;margin-bottom:14px;font-size:13px;
+  display:none;align-items:center;gap:14px;flex-wrap:wrap;color:var(--fg);
+  transition:opacity .35s}
+#v2-ribbon.open{display:flex}
+#v2-ribbon .msg{flex:1;min-width:200px}
+#v2-ribbon button{background:#21262d;border:1px solid var(--border);color:var(--fg);
+  border-radius:6px;padding:4px 12px;font-size:12.5px;cursor:pointer}
+#v2-ribbon button.primary{background:rgba(88,166,255,.18);border-color:var(--accent);
+  color:var(--accent)}
+#v2-ribbon button:hover{border-color:var(--accent);color:var(--accent)}
+#take-tour{position:fixed;top:14px;right:20px;font-size:12px;color:var(--dim);
+  border:1px solid var(--border);padding:4px 10px;border-radius:999px;
+  background:var(--panel);cursor:pointer;z-index:40;user-select:none}
+#take-tour:hover{color:var(--accent);border-color:var(--accent);text-decoration:none}
+#tour-shade{position:fixed;inset:0;background:rgba(1,4,9,.72);z-index:100;
+  display:none;cursor:pointer}
+#tour-shade.open{display:block}
+.tour-spotlight{position:relative;z-index:110;box-shadow:0 0 0 3px rgba(88,166,255,.55),
+  0 0 24px rgba(88,166,255,.3);border-radius:8px;transition:box-shadow .2s}
+#tour-tooltip{position:fixed;z-index:120;background:var(--panel);
+  border:1px solid var(--accent);border-radius:10px;padding:14px 16px;
+  max-width:340px;font-size:13px;line-height:1.55;box-shadow:0 10px 40px rgba(0,0,0,.6);
+  color:var(--fg);display:none}
+#tour-tooltip.open{display:block}
+#tour-tooltip h4{margin:0 0 6px;font-size:14px;color:var(--accent)}
+#tour-tooltip .step-meta{font-size:11px;color:var(--dim);text-transform:uppercase;
+  letter-spacing:.06em;margin-bottom:4px}
+#tour-tooltip .actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;align-items:center}
+#tour-tooltip button{background:#21262d;border:1px solid var(--border);color:var(--fg);
+  border-radius:6px;padding:5px 12px;font-size:12.5px;cursor:pointer}
+#tour-tooltip button.primary{background:rgba(88,166,255,.2);border-color:var(--accent);
+  color:var(--accent)}
+#tour-tooltip button:hover{border-color:var(--accent)}
+#tour-tooltip button.skip{margin-left:auto;color:var(--dim);border-color:transparent;
+  background:transparent}
+#tour-tooltip button.skip:hover{color:var(--fg);border-color:var(--border)}
 </style></head><body>
 <h1>Blue Lock squad — the pitch <span class="dim">v2 · M001 ensemble</span>
  <span class="badge sim" id="modebadge">sim-only — not trading real lots</span></h1>
-<div class="sub">Walk-forward replay played as a match: passes are proposals, tackles are
+<div class="sub" id="v2-subtitle">Walk-forward replay played as a match: passes are proposals, tackles are
 aggregator rejections, the wall is Sentinel, goals are winning trades. Click a player for
 their profile; click a ticker row for the full event payload.</div>
 __NAV__
+<div id="v2-ribbon" role="status">
+  <span class="msg">💡 <b>First time here?</b> Click ℹ️ next to the mode selector for a
+  quick explanation. This page is display-only — <b>real bars, no orders sent</b>.</span>
+  <button class="primary" id="ribbon-tour">Show me around →</button>
+  <button id="ribbon-dismiss" aria-label="Dismiss">Dismiss ×</button>
+</div>
+<a href="#" id="take-tour" role="button">Take the tour</a>
 <div class="layout">
 <div id="pitchwrap">
   <div class="controls">
-    <select id="match"></select>
+    <span class="mode-wrap">
+      <select id="match" aria-label="playback mode"></select>
+      <button type="button" id="mode-info-btn" class="info-btn"
+              title="What does this mode mean?" aria-label="Mode help">i</button>
+    </span>
     <button id="play">&#9654; Play</button>
-    <select id="speed">
-      <option value="2">2 ev/s</option><option value="8" selected>8 ev/s</option>
-      <option value="30">30 ev/s</option><option value="120">120 ev/s</option>
+    <select id="speed" aria-label="playback speed">
+      <option value="8" selected>🐢 Slow — 8 events/s</option>
+      <option value="16">⏩ Medium — 16 events/s</option>
+      <option value="60">🚀 Fast — 60 events/s</option>
+      <option value="120">⚡ Turbo — 120 events/s</option>
     </select>
     <span id="clock">—</span>
     <span id="score">Goals <b id="goals">0</b> · Misses <span id="misses">0</span></span>
+  </div>
+  <div id="waiting-panel" class="card" role="status" aria-live="polite">
+    <h3><span class="pulse"></span>Waiting on the market</h3>
+    <div class="row"><span>Next bar close</span>
+      <span class="v" id="wp-next">—</span></div>
+    <div class="row"><span>Workspace</span>
+      <span class="v" id="wp-workspace">—</span></div>
+    <div class="row"><span>On standby</span>
+      <span class="v" id="wp-standby-count">—</span></div>
+    <div class="pills" id="wp-pills"></div>
+    <div class="foot">The squad evaluates every H4 close (~4 h cadence). Most bars pass
+      silently — a real proposal only appears when a character finds a clean setup.</div>
   </div>
   <input type="range" id="seek" min="0" max="0" value="0">
   <div class="controls" style="margin-top:2px">
@@ -753,17 +861,125 @@ __NAV__
   <svg id="pitch" viewBox="0 0 100 130" preserveAspectRatio="xMidYMid meet"></svg>
 </div>
 <div class="side">
-  <div class="card"><h2 style="margin:0 0 8px;font-size:15px">Match ticker <span class="dim" style="font-size:11px">click a row for detail</span></h2><div class="tkr" id="ticker"></div></div>
-  <div class="card"><h2 style="margin:0 0 8px;font-size:15px">League table (this match)</h2>
+  <div class="card" id="ticker-card"><h2 style="margin:0 0 8px;font-size:15px">Match ticker <span class="dim" style="font-size:11px">click a row for detail</span></h2><div class="tkr" id="ticker"></div></div>
+  <div class="card" id="league-card"><h2 style="margin:0 0 8px;font-size:15px">League table (this match)</h2>
     <table id="league"><tr><th>Player</th><th>Props</th><th>Blocked</th><th>Trades</th><th>Goals</th><th>Win%</th><th>Pips</th><th>TQS</th></tr></table></div>
 </div>
 </div>
 <div class="gflash" id="gflash">GOAL!</div>
 <div id="overlay"><div id="modal"><button class="x" id="mclose">&times;</button><div id="mbody"></div></div></div>
+<div id="info-popover" class="popover" role="dialog" aria-labelledby="info-popover-title">
+  <button class="close" id="info-popover-close" aria-label="Close">&times;</button>
+  <div id="info-popover-body"></div>
+  <div class="foot">See the <a href="/#glossary">[glossary]</a> on the hub for every jargon term.</div>
+</div>
+<div id="player-tooltip" class="player-tooltip" aria-hidden="true"></div>
+<div id="tour-shade" aria-hidden="true"></div>
+<div id="tour-tooltip" role="dialog" aria-live="polite">
+  <div class="step-meta" id="tour-step-meta">Step 1 / 6</div>
+  <h4 id="tour-title">—</h4>
+  <div id="tour-body">—</div>
+  <div class="actions">
+    <button id="tour-back">Back</button>
+    <button class="primary" id="tour-next">Next</button>
+    <button class="skip" id="tour-skip">Skip tour</button>
+  </div>
+</div>
 <script>
 const NS="http://www.w3.org/2000/svg";
 let roster={}, events=[], filtered=[], pos=0, playing=false, timer=null, goals=0, misses=0;
 let matchId=null, summaryData=null, liveTimer=null, livePolling=false;
+let currentMode=null, waitingTimer=null, tourStep=0, tourActive=false;
+let ribbonAutoHideTimer=null;
+
+// Plain-English labels for the mode picker. Keyed by the option `value`
+// used in the <select> — replay values are the m.label from
+// /api/v2/matches (e.g. "g7retry1-phi41"), plus the "__live__" sentinel.
+// The internal wire ids (m.id = "g7_replay_cache_g7retry1-phi41") stay
+// unchanged; this map ONLY controls display copy.
+const MODE_LABELS = {
+  "__live__": {
+    display: "\uD83D\uDD34 LIVE — Today's market",
+    subtitle: "Real MT5 bars, no orders sent",
+    kind: "live",
+  },
+  "g7retry1-phi41": {
+    display: "\uD83D\uDCFC Historical replay · Single-shot rule",
+    subtitle: "2015-2019 walk-forward, one shot per pair per bar. Conservative — this is the G7-verdict arm.",
+    kind: "replay",
+  },
+  "g7retry1-arm4": {
+    display: "\uD83D\uDCFC Historical replay · Twin-strike rule",
+    subtitle: "Same period; up to two shots per pair per bar. More aggressive — companion arm to the G7-verdict.",
+    kind: "replay",
+  },
+};
+function modeInfo(key){
+  if(key && MODE_LABELS[key]) return MODE_LABELS[key];
+  // Future aggregators: any g7retry1-<tail> label we haven't hard-coded
+  // gets a synthesised historical-replay label so the picker never
+  // shows a raw jargon id.
+  const m = String(key||"").match(/^g7retry1-(.+)$/);
+  if(m) return {
+    display: "\uD83D\uDCFC Historical replay · " + m[1],
+    subtitle: "Aggregator: " + m[1] + " (walk-forward replay).",
+    kind: "replay",
+  };
+  return {display: String(key||"?"), subtitle: "", kind: "replay"};
+}
+
+// 2-3 sentence popover copy per mode. Keyed the same way as MODE_LABELS.
+const MODE_HELP = {
+  "__live__": "This is real-time. The squad is watching live MT5 bars and evaluating every H4 close (every 4 hours). Because setups are picky, most bars pass silently — you'll see a subtle <code>\u22EF tick_summary</code> row for each bar the squad observed. Real proposals appear only when a character finds a clean setup.",
+  "g7retry1-phi41": "This replay shows how the squad performed over ~4 years of walk-forward when we picked the single highest-conviction character's proposal on each bar. This is the arm that carries the current G7 verdict.",
+  "g7retry1-arm4": "Same replay period, but the aggregator allows up to two characters to shoot on the same bar. More trades, more risk exposure. Compare its league table with the single-shot rule to see how the aggregator choice matters.",
+};
+function modeHelp(key){
+  if(key && MODE_HELP[key]) return MODE_HELP[key];
+  const m = String(key||"").match(/^g7retry1-(.+)$/);
+  if(m) return "Historical replay using the <code>" + esc(m[1]) +
+    "</code> aggregator. See <a href=\"/#glossary\">the glossary</a> for aggregator definitions.";
+  return "No description available for this mode.";
+}
+
+// Mode-aware subtitle. Rendered as HTML (has <code>/<strong>).
+const MODE_SUBTITLE = {
+  live: "Reading live MT5 bars in real time. The squad evaluates every H4 close (~4 h cadence) but only proposes on clean setups. Silent bars appear as subtle <code>\u22EF tick_summary</code> rows below. <strong>Nothing here is trading real money</strong> — shadow paper only.",
+  replay: "Walk-forward replay played as a match: passes are proposals, tackles are aggregator rejections, the wall is Sentinel, goals are winning trades. Click a player for their profile; click a ticker row for the full event payload.",
+};
+
+// Character playstyles (from agent/squad/agents/a0X_*.py `playstyle`
+// attribute) and default subscribed symbols (from agent/squad/roster.py
+// DEFAULT_SYMBOLS + agent-specific overrides). Static because the hover
+// tooltip is a display-only affordance — the source of truth stays in
+// the Python roster.
+const PLAYER_INFO = {
+  "isagi_yoichi":   {playstyle:"conservative_metavision", symbols:["EURUSD","GBPUSD","USDCAD"]},
+  "bachira_meguru": {playstyle:"rebel_tight",             symbols:["EURUSD","GBPUSD","USDCAD"]},
+  "itoshi_rin":     {playstyle:"analytical_precision",    symbols:["EURUSD"]},
+  "chigiri_hyoma":  {playstyle:"speed_momentum",          symbols:["EURUSD","GBPUSD"]},
+  "reo_mikage":     {playstyle:"copier_hrp",              symbols:["EURUSD","GBPUSD","USDCAD"]},
+  "nagi_seishiro":  {playstyle:"confluence_only",         symbols:["EURUSD","GBPUSD","USDCAD"]},
+  "barou_shoei":    {playstyle:"solo_king",               symbols:["USDCAD"]},
+};
+
+// Guided tour steps. Kept short (5-6 total per spec) — each targets a
+// selector already in the DOM and describes the element in plain English.
+const TOUR_STEPS = [
+  {sel:"#match", title:"Mode picker",
+   body:"This is where you choose what to watch — live squad activity, or a historical replay of how the squad performed over past years."},
+  {sel:"#mode-info-btn", title:"Info button",
+   body:"Not sure what a mode means? Click here for a plain-English explanation of the current one."},
+  {sel:"#pitch", title:"The pitch",
+   body:"Every character is one of the 7 squad members. Hover a circle to see their playstyle and stats."},
+  {sel:"#ticker-card", title:"Match ticker",
+   body:"Every proposal, tackle, and shot appears here in order. Grey <code>\u22EF tick_summary</code> rows show the squad watching quietly between real events."},
+  {sel:"#league-card", title:"League table",
+   body:"How each character has performed in this match. Bachira usually leads — he's the volume proposer."},
+  {sel:"#speed", title:"Playback speed",
+   body:"For historical replays, this controls playback speed. LIVE mode ignores it since events arrive in real time."},
+];
+
 function esc(x){ const d=document.createElement("div"); d.innerText=String(x); return d.innerHTML; }
 function el(tag,attrs){ const e=document.createElementNS(NS,tag);
   for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
@@ -792,6 +1008,9 @@ function drawPitch(){
     const halo=el("circle",{r:3.4,fill:"none",stroke:r.color,"stroke-width":0,id:"halo_"+aid});
     pg.appendChild(halo);
     pg.addEventListener("click",()=>showProfile(aid));
+    pg.addEventListener("mouseenter",(e)=>showPlayerTooltip(aid, e));
+    pg.addEventListener("mousemove",(e)=>positionPlayerTooltip(e));
+    pg.addEventListener("mouseleave",hidePlayerTooltip);
     svg.appendChild(pg);
   }
 }
@@ -1079,6 +1298,264 @@ function setModeBadge(live,running,source){
   }
   else { b.className="badge sim"; b.innerText="sim-only — not trading real lots"; }
 }
+
+function updateModeUI(key){
+  // Repaint the mode-scoped surfaces (subtitle, badge kind, waiting
+  // panel visibility). Called when the user changes the picker or
+  // whenever events cross the "waiting" threshold.
+  currentMode = key;
+  const info = modeInfo(key);
+  const sub = document.getElementById("v2-subtitle");
+  if(sub) sub.innerHTML = info.kind === "live"
+    ? MODE_SUBTITLE.live : MODE_SUBTITLE.replay;
+  // Base badge state; the LIVE polling path overwrites this with
+  // running/source detail once /api/v2/live/status resolves.
+  if(info.kind !== "live") setModeBadge(false);
+  refreshWaitingPanel();
+}
+
+// ---------------------------------------------------------------------
+// Item 5: "waiting on the market" empty-state panel (live mode only,
+// <10 events). Countdown updates every 30 s; pill list refreshes when
+// new events land via pollLive.
+// ---------------------------------------------------------------------
+function nextH4CloseMs(){
+  const now = new Date();
+  const hUtc = now.getUTCHours();
+  const nextH = (Math.floor(hUtc/4) + 1) * 4;
+  const y = now.getUTCFullYear(), m = now.getUTCMonth(), d = now.getUTCDate();
+  if(nextH >= 24) return Date.UTC(y, m, d + 1, 0, 0, 0);
+  return Date.UTC(y, m, d, nextH, 0, 0);
+}
+function fmtCountdown(ms){
+  if(ms <= 0) return "any moment";
+  const totalMin = Math.max(1, Math.round(ms / 60000));
+  const h = Math.floor(totalMin / 60);
+  const mn = totalMin % 60;
+  if(h === 0) return "in " + mn + " min";
+  return "in " + h + " h " + mn + " m";
+}
+function refreshWaitingPanel(){
+  const el = document.getElementById("waiting-panel");
+  if(!el) return;
+  const info = modeInfo(currentMode);
+  const shouldShow = (info.kind === "live") && (events.length < 10);
+  if(!shouldShow){
+    el.classList.remove("open");
+    if(waitingTimer){ clearInterval(waitingTimer); waitingTimer = null; }
+    return;
+  }
+  el.classList.add("open");
+  renderWaitingContents();
+  if(!waitingTimer){
+    waitingTimer = setInterval(renderWaitingContents, 30_000);
+  }
+}
+function renderWaitingContents(){
+  const el = document.getElementById("waiting-panel");
+  if(!el || !el.classList.contains("open")) return;
+  const closeMs = nextH4CloseMs();
+  const dt = new Date(closeMs);
+  const hh = String(dt.getUTCHours()).padStart(2, "0");
+  document.getElementById("wp-next").innerText =
+    hh + ":00 UTC · " + fmtCountdown(closeMs - Date.now());
+  // Latest tick_summary provides workspace count.
+  let latestTick = null;
+  for(let i = events.length - 1; i >= 0; i--){
+    if(events[i].type === "tick_summary"){ latestTick = events[i]; break; }
+  }
+  const wsEl = document.getElementById("wp-workspace");
+  if(latestTick){
+    const n = latestTick.workspace_thought_count || 0;
+    wsEl.innerText = n + " thought" + (n===1?"":"s") + " in workspace right now";
+  } else {
+    wsEl.innerText = "waiting for the first tick";
+  }
+  // Standby pills = union of players_evaluated across recent ticks.
+  // Fall back to the roster if we've seen no tick_summary yet, so a
+  // fresh page load isn't blank.
+  const seen = new Set();
+  for(const ev of events){
+    if(ev.type === "tick_summary"){
+      for(const p of (ev.players_evaluated || [])) seen.add(p);
+    }
+  }
+  let ids = Array.from(seen);
+  if(!ids.length) ids = Object.keys(roster || {}).filter(k =>
+    (roster[k].role || "").indexOf("Sentinel") < 0);
+  const pillsEl = document.getElementById("wp-pills");
+  pillsEl.innerHTML = ids.map(aid => {
+    const r = (roster && roster[aid]) || {name: aid, color: "#8b949e"};
+    return '<span class="pill"><span class="dot" style="background:'+r.color+
+      '"></span>'+esc(r.name)+'</span>';
+  }).join("");
+  document.getElementById("wp-standby-count").innerText =
+    ids.length + " character" + (ids.length===1?"":"s");
+}
+
+// ---------------------------------------------------------------------
+// Item 3: info popover (position:fixed near the info button, close on
+// outside-click or Esc, pointer-events on the underlying pitch stay live).
+// ---------------------------------------------------------------------
+function openInfoPopover(){
+  const btn = document.getElementById("mode-info-btn");
+  const pop = document.getElementById("info-popover");
+  if(!btn || !pop) return;
+  const info = modeInfo(currentMode);
+  document.getElementById("info-popover-body").innerHTML =
+    "<b>" + esc(info.display) + "</b><p style=\"margin:6px 0 0\">" +
+    modeHelp(currentMode) + "</p>";
+  pop.classList.add("open");
+  const r = btn.getBoundingClientRect();
+  // Prefer below-right of the button; flip above if we'd overflow.
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let left = r.left, top = r.bottom + 8;
+  if(left + pw > vw - 8) left = Math.max(8, vw - pw - 8);
+  if(top + ph > vh - 8) top = Math.max(8, r.top - ph - 8);
+  pop.style.left = left + "px";
+  pop.style.top = top + "px";
+}
+function closeInfoPopover(){
+  const pop = document.getElementById("info-popover");
+  if(pop) pop.classList.remove("open");
+}
+
+// ---------------------------------------------------------------------
+// Item 6: player hover tooltip. Uses position:fixed so it doesn't clip
+// the SVG viewBox; positioned from the cursor with edge-flipping.
+// ---------------------------------------------------------------------
+function showPlayerTooltip(aid, evt){
+  const tip = document.getElementById("player-tooltip");
+  if(!tip) return;
+  const r = roster[aid] || {name: aid, color: "#8b949e"};
+  const info = PLAYER_INFO[aid] || {playstyle: "?", symbols: []};
+  const stats = (summaryData && summaryData.per_agent
+                 && summaryData.per_agent[aid]) || null;
+  let record = "no trades in this match yet";
+  if(stats){
+    record = stats.proposals + " proposal" + (stats.proposals===1?"":"s") +
+      " · " + stats.trades + " trade" + (stats.trades===1?"":"s") +
+      " · " + stats.goals + " goal" + (stats.goals===1?"":"s");
+  }
+  tip.innerHTML =
+    '<div class="n" style="color:'+r.color+'">'+esc(r.name)+'</div>'+
+    '<div class="p">'+esc(info.playstyle)+'</div>'+
+    '<div class="s">'+esc(info.symbols.join(" · "))+'</div>'+
+    '<div class="r">'+esc(record)+'</div>';
+  tip.classList.add("open");
+  positionPlayerTooltip(evt);
+}
+function positionPlayerTooltip(evt){
+  const tip = document.getElementById("player-tooltip");
+  if(!tip || !tip.classList.contains("open")) return;
+  const pad = 12;
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  if(x + w > vw - 8) x = evt.clientX - w - pad;
+  if(y + h > vh - 8) y = evt.clientY - h - pad;
+  tip.style.left = Math.max(4, x) + "px";
+  tip.style.top = Math.max(4, y) + "px";
+}
+function hidePlayerTooltip(){
+  const tip = document.getElementById("player-tooltip");
+  if(tip) tip.classList.remove("open");
+}
+
+// ---------------------------------------------------------------------
+// Item 7: first-visit ribbon. localStorage 'v2_visited' prevents it
+// showing again after dismiss or 60 s idle expiry.
+// ---------------------------------------------------------------------
+function initRibbon(){
+  const r = document.getElementById("v2-ribbon");
+  if(!r) return;
+  let visited = false;
+  try{ visited = localStorage.getItem("v2_visited") === "true"; }catch(e){}
+  if(visited) return;
+  r.classList.add("open");
+  ribbonAutoHideTimer = setTimeout(dismissRibbon, 60_000);
+  document.getElementById("ribbon-dismiss").onclick = dismissRibbon;
+  document.getElementById("ribbon-tour").onclick = ()=>{
+    dismissRibbon(); startTour(0);
+  };
+}
+function dismissRibbon(){
+  const r = document.getElementById("v2-ribbon");
+  if(!r) return;
+  r.classList.remove("open");
+  try{ localStorage.setItem("v2_visited", "true"); }catch(e){}
+  if(ribbonAutoHideTimer){ clearTimeout(ribbonAutoHideTimer);
+    ribbonAutoHideTimer = null; }
+}
+
+// ---------------------------------------------------------------------
+// Item 8: guided tour overlay. Progress state is JS-memory only —
+// running the tour twice is fine. Escape / shade click both exit.
+// ---------------------------------------------------------------------
+function startTour(step){
+  tourActive = true;
+  tourStep = step || 0;
+  document.getElementById("tour-shade").classList.add("open");
+  renderTourStep();
+}
+function renderTourStep(){
+  clearTourSpotlight();
+  const s = TOUR_STEPS[tourStep];
+  if(!s){ exitTour(); return; }
+  const target = document.querySelector(s.sel);
+  if(!target){
+    // Target not in DOM — skip forward rather than trap the user.
+    tourStep++; renderTourStep(); return;
+  }
+  target.classList.add("tour-spotlight");
+  // Scroll into view if needed, then position the tooltip.
+  const r = target.getBoundingClientRect();
+  if(r.top < 20 || r.bottom > window.innerHeight - 20){
+    target.scrollIntoView({behavior:"smooth", block:"center"});
+  }
+  const tip = document.getElementById("tour-tooltip");
+  tip.classList.add("open");
+  document.getElementById("tour-step-meta").innerText =
+    "Step " + (tourStep+1) + " / " + TOUR_STEPS.length;
+  document.getElementById("tour-title").innerText = s.title;
+  document.getElementById("tour-body").innerHTML = s.body;
+  document.getElementById("tour-back").disabled = (tourStep === 0);
+  document.getElementById("tour-next").innerText =
+    (tourStep === TOUR_STEPS.length - 1) ? "Done" : "Next";
+  // Position tooltip: prefer below, fall back to above / side if needed.
+  setTimeout(()=>positionTourTooltip(target), 20);
+}
+function positionTourTooltip(target){
+  const tip = document.getElementById("tour-tooltip");
+  const r = target.getBoundingClientRect();
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const tw = tip.offsetWidth, th = tip.offsetHeight;
+  const pad = 14;
+  let top = r.bottom + pad, left = r.left;
+  if(top + th > vh - 8) top = Math.max(8, r.top - th - pad);
+  if(top < 8) top = 8;
+  if(left + tw > vw - 8) left = Math.max(8, vw - tw - 8);
+  if(left < 8) left = 8;
+  tip.style.top = top + "px";
+  tip.style.left = left + "px";
+}
+function clearTourSpotlight(){
+  document.querySelectorAll(".tour-spotlight").forEach(n =>
+    n.classList.remove("tour-spotlight"));
+}
+function advanceTour(delta){
+  const next = tourStep + delta;
+  if(next < 0) return;
+  if(next >= TOUR_STEPS.length){ exitTour(); return; }
+  tourStep = next; renderTourStep();
+}
+function exitTour(){
+  tourActive = false;
+  clearTourSpotlight();
+  document.getElementById("tour-shade").classList.remove("open");
+  document.getElementById("tour-tooltip").classList.remove("open");
+}
 function stopLive(){
   if(liveTimer){clearInterval(liveTimer); liveTimer=null;}
   livePolling=false; setModeBadge(false);
@@ -1104,6 +1581,11 @@ async function loadMatch(id){
   stopLive();
   setPlaying(false); events=[]; matchId=id;
   document.getElementById("clock").innerText="loading…";
+  // For the label-key convention (see MODE_LABELS), we strip the
+  // g7_replay_cache_ prefix — this is the same transform list_matches
+  // does server-side to produce m.label.
+  const modeKey = String(id).replace(/^g7_replay_cache_/, "");
+  updateModeUI(modeKey);
   const s=await (await fetch(`/api/v2/match/${id}/summary`)).json();
   summaryData=s; roster=s.roster||{}; drawPitch(); renderLeague(s);
   events=await fetchAllEvents(`/api/v2/match/${id}`);
@@ -1113,13 +1595,18 @@ async function loadMatch(id){
 
 async function loadLive(){
   stopLive(); setPlaying(false); events=[]; matchId="__live__";
+  updateModeUI("__live__");
   document.getElementById("clock").innerText="connecting to live stream…";
   let s;
   try{ s=await (await fetch("/api/v2/live/summary")).json(); }
   catch(e){ s=null; }
   if(!s || s.error){
     document.getElementById("clock").innerText="live dir not found — start the paper loop first";
-    setModeBadge(true,false); drawPitch(); return;
+    setModeBadge(true,false); drawPitch();
+    // Show the waiting panel even with no roster so newcomers see
+    // the "next H4 close" affordance immediately.
+    refreshWaitingPanel();
+    return;
   }
   summaryData=s; roster=s.roster||{}; drawPitch(); renderLeague(s);
   events=await fetchAllEvents("/api/v2/live");
@@ -1133,6 +1620,7 @@ async function loadLive(){
   pollLiveStatus();
   document.getElementById("clock").innerText=
     `LIVE · ${events.length} events so far`;
+  refreshWaitingPanel();
 }
 async function pollLiveStatus(){
   try{ const st=await (await fetch("/api/v2/live/status")).json();
@@ -1161,7 +1649,13 @@ async function pollLive(){
     document.getElementById("clock").innerText=
       `LIVE · ${(e.t||"").slice(0,16)} · ${events.length} events`;
   }
-  if(d.events.length) pollLiveStatus();
+  if(d.events.length){
+    pollLiveStatus();
+    // Waiting-panel visibility depends on events.length crossing 10;
+    // recheck on every batch so the fade-out fires as soon as we have
+    // enough real activity.
+    refreshWaitingPanel();
+  }
 }
 
 async function init(){
@@ -1175,12 +1669,17 @@ async function init(){
     drawPitch(); return;
   }
   for(const m of data.matches){
-    const o=document.createElement("option"); o.value=m.id; o.textContent=m.label;
+    const o=document.createElement("option");
+    o.value=m.id;
+    o.textContent=modeInfo(m.label).display;
+    o.title=modeInfo(m.label).subtitle;
     sel.appendChild(o);
   }
   if(liveAvailable){
     const o=document.createElement("option");
-    o.value="__live__"; o.textContent="\u25CF LIVE — squad paper stream";
+    o.value="__live__";
+    o.textContent=MODE_LABELS["__live__"].display;
+    o.title=MODE_LABELS["__live__"].subtitle;
     sel.appendChild(o);
   }
   sel.onchange=()=>loadMatch(sel.value);
@@ -1204,6 +1703,45 @@ async function init(){
       el.classList.toggle("hidden", hide);
     });
   };
+
+  // Info popover: toggle on click, close on outside-click / Esc.
+  const infoBtn = document.getElementById("mode-info-btn");
+  infoBtn.onclick = (e) => {
+    e.stopPropagation();
+    const pop = document.getElementById("info-popover");
+    if(pop.classList.contains("open")) closeInfoPopover();
+    else openInfoPopover();
+  };
+  document.getElementById("info-popover-close").onclick = closeInfoPopover;
+  document.addEventListener("click", (e) => {
+    const pop = document.getElementById("info-popover");
+    if(!pop.classList.contains("open")) return;
+    if(e.target === infoBtn || infoBtn.contains(e.target)) return;
+    if(pop.contains(e.target)) return;
+    closeInfoPopover();
+  });
+  document.getElementById("info-popover").addEventListener("click",
+    (e) => e.stopPropagation());
+
+  // First-visit ribbon + always-on "Take the tour" affordance.
+  initRibbon();
+  document.getElementById("take-tour").onclick = (e) => {
+    e.preventDefault();
+    dismissRibbon(); startTour(0);
+  };
+
+  // Tour buttons + shade click + Escape.
+  document.getElementById("tour-next").onclick = () => advanceTour(1);
+  document.getElementById("tour-back").onclick = () => advanceTour(-1);
+  document.getElementById("tour-skip").onclick = exitTour;
+  document.getElementById("tour-shade").onclick = exitTour;
+  document.addEventListener("keydown", (e) => {
+    if(e.key !== "Escape") return;
+    if(tourActive){ exitTour(); return; }
+    const pop = document.getElementById("info-popover");
+    if(pop && pop.classList.contains("open")) closeInfoPopover();
+  });
+
   if(data.matches.length) await loadMatch(data.matches[0].id);
   else await loadLive();
 }

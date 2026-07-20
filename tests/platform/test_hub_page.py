@@ -89,8 +89,15 @@ class TestHubStructure:
     def test_glossary_uses_native_details_disclosure(self):
         # <details class="glossary"> keeps the section collapsible with
         # zero JS, so the KPI strip stays uncluttered by default.
-        assert "<details class=\"glossary\">" in HUB_PAGE
+        # Tolerant of extra attributes on the same tag (e.g. the
+        # id="glossary" anchor added for the v2 info-popover deep-link).
+        assert "<details class=\"glossary\"" in HUB_PAGE
         assert "<summary>Glossary" in HUB_PAGE
+
+    def test_glossary_carries_deep_link_anchor(self):
+        # v2 info popover links to /#glossary — the anchor must exist
+        # on the hub so browsers scroll to (and auto-open) the details.
+        assert "id=\"glossary\"" in HUB_PAGE
 
     def test_footer_pins_branch_and_deploy_context(self):
         # Newcomers land here first — the footer tells them which branch
