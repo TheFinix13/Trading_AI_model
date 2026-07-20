@@ -233,7 +233,74 @@ def test_ladder_note_splits_across_lines_for_mobile():
     )
     assert "Extension ladder" in msg
     assert "  - swing 1.33241 (1.6R)" in msg
-    assert "  - zone_edge 1.32565 (2.9R)" in msg
+    # Underscore-bearing source labels are Markdown-escaped so Telegram
+    # renders them literally instead of interpreting `_` as italic markers.
+    assert r"  - zone\_edge 1.32565 (2.9R)" in msg
+
+
+def test_ladder_note_escapes_underscores_for_telegram_markdown():
+    """Regression: 2026-07-15 → 07-17 lost three OPEN alerts (USDCAD
+    2963842103, GBPUSD 2966547972, GBPUSD 2969136564) because ladders with
+    an ODD count of ``_``-containing source labels (``daily_level`` +
+    ``zone_edge``) produced unbalanced Markdown italic entities and got
+    rejected client-side by Telegram with a 400
+    ``Can't find end of the entity starting at byte offset ~420``.
+    """
+    msg = build_trade_opened(
+        symbol="GBPUSD", alpha="zone_h4_all", direction="short",
+        ticket=2966547972, entry=1.35351, lots=0.03, soft_sl=1.35502,
+        catastrophe_sl=1.35770, tp=1.35055,
+        ladder_note=(
+            "\nExtension ladder (opinion only): "
+            # 3× daily_level = 3 underscores = odd → historically triggered the 400.
+            "`daily_level 1.34514 (5.5R) · daily_level 1.34431 (6.1R) · "
+            "trendline 1.34291 (7.0R) · swing 1.34111 (8.2R) · "
+            "swing 1.34063 (8.6R) · daily_level 1.33970 (9.2R)`"
+        ),
+    )
+    # Every ladder-rung underscore is now escaped.
+    assert msg.count(r"daily\_level") == 3
+    # After removing the escapes, no raw underscore remains in the rendered
+    # body (the alpha `zone_h4_all` header underscores stay raw because they
+    # already appear as an even count on this cell — the ladder was the
+    # actual 400 trigger, and that's what this fix hardens).
+    ladder_section = msg.split("Extension ladder")[1]
+    unescaped = ladder_section.replace(r"\_", "")
+    assert "_" not in unescaped, (
+        "Unescaped underscore leaked into ladder section: "
+        f"{unescaped!r}"
+    )
+
+
+def test_ladder_note_deduplicates_opinion_only_header():
+    """Regression: ``_format_ladder_note`` was appending ``(opinion only)``
+    to the prefix even when the caller (``signal_loop._route_signal``)
+    already included it — visible in the 2026-07-20 USDCAD OPEN message as
+    ``Extension ladder (opinion only) (opinion only):``.
+    """
+    msg = build_trade_opened(
+        symbol="USDCAD", alpha="zone_h4_all", direction="long",
+        ticket=2981476697, entry=1.40367, lots=0.02, soft_sl=1.40021,
+        catastrophe_sl=1.39522, tp=1.40851,
+        ladder_note=(
+            "\nExtension ladder (opinion only): "
+            "`zone_edge 1.41510 (3.3R) · swing 1.41740 (4.0R)`"
+        ),
+    )
+    assert msg.count("(opinion only)") == 1
+
+
+def test_ladder_note_still_adds_opinion_only_when_caller_omits_it():
+    """Idempotency check: the formatter still adds ``(opinion only)`` when
+    a hypothetical caller passes just ``Extension ladder:`` without it."""
+    msg = build_trade_opened(
+        symbol="EURUSD", alpha="zone_h4_all", direction="long",
+        ticket=1, entry=1.09, lots=0.01, soft_sl=1.085,
+        catastrophe_sl=1.080, tp=1.10,
+        ladder_note="\nExtension ladder: `swing 1.10500 (2.0R)`",
+    )
+    assert msg.count("(opinion only)") == 1
+    assert "Extension ladder (opinion only):" in msg
 
 
 def test_emergency_close_omits_account_line_when_unknown():

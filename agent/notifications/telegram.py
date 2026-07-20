@@ -209,7 +209,17 @@ def format_halt_reason(reason: str) -> str:
 
 
 def _format_ladder_note(ladder_note: str) -> str:
-    """Break a long ladder string into short phone-friendly lines."""
+    """Break a long ladder string into short phone-friendly lines.
+
+    Underscore-containing source labels (``daily_level``, ``zone_edge``) are
+    Markdown-escaped so Telegram renders them literally instead of parsing
+    ``_`` as italic markers. Prior to 2026-07-20 the raw ``_`` characters
+    reached the Telegram API and any ladder with an odd count of
+    ``_``-containing rungs produced a 400 ``Can't find end of the entity``
+    parse error, silently dropping the OPEN alert while the trade itself
+    proceeded normally (see 2026-07-15 → 07-17 daily agent logs, three
+    OPEN alerts lost across GBPUSD/USDCAD).
+    """
     if not ladder_note:
         return ""
     raw = ladder_note.strip()
@@ -219,13 +229,38 @@ def _format_ladder_note(ladder_note: str) -> str:
         rungs = rungs.strip().strip("`")
         if not rungs:
             return f"\n{raw}"
-        lines = [f"\n{prefix.strip()} (opinion only):"]
+        # Idempotent header: if the caller already spelled out
+        # "(opinion only)" in the prefix, don't append it a second time.
+        prefix_clean = prefix.strip()
+        if "(opinion only)" not in prefix_clean:
+            prefix_clean = f"{prefix_clean} (opinion only)"
+        lines = [f"\n{prefix_clean}:"]
         for chunk in rungs.split(" · "):
             chunk = chunk.strip()
             if chunk:
-                lines.append(f"  - {chunk}")
+                lines.append(f"  - {_md_escape_underscores(chunk)}")
         return "\n".join(lines)
     return f"\n{raw}"
+
+
+def _md_escape_underscores(text: str) -> str:
+    """Escape underscores for Telegram Markdown (v1) so they render literally.
+
+    Only touches raw ``_`` (leaves already-escaped ``\\_`` alone). Used at the
+    ladder-rung boundary where source labels like ``daily_level`` /
+    ``zone_edge`` reach the message body outside any code-fence.
+    """
+    if "_" not in text:
+        return text
+    out: list[str] = []
+    prev = ""
+    for ch in text:
+        if ch == "_" and prev != "\\":
+            out.append(r"\_")
+        else:
+            out.append(ch)
+        prev = ch
+    return "".join(out)
 
 
 def build_agent_online(symbol: str, broker_type: str, alphas: list[str]) -> str:
