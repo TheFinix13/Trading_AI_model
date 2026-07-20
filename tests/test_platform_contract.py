@@ -85,6 +85,15 @@ class TestSchemaValidator:
              "pnl_pips": 42.5, "exit_reason": "tp", "tqs": 0.61, "r": 1.5},
             {"t": "2024-01-01T00:00:00+00:00", "type": "thought",
              "agent": "isagi_yoichi", "symbol": None, "text": "hm"},
+            # tick_summary is a proof-of-life footer with no agent
+            # attribution — the validator recognises it as
+            # agent-optional; see event_schema._AGENT_OPTIONAL_TYPES.
+            {"t": "2024-01-01T00:00:00+00:00", "type": "tick_summary",
+             "symbol": "EURUSD", "tick_id": 42,
+             "players_evaluated": ["isagi_yoichi", "barou_shoei"],
+             "players_who_proposed": [],
+             "proposal_count": 0, "post_sentinel_count": 0,
+             "workspace_thought_count": 3},
         ]
         assert {s["type"] for s in samples} == set(EVENT_TYPES)
         for s in samples:

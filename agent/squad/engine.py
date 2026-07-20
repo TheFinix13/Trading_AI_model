@@ -61,6 +61,11 @@ JSONL_FILES = (
     "trades.jsonl",
 )
 
+# Per-tick summary rows land here (see _emit_tick_summary). One row per
+# on_bar() call, regardless of whether any proposals fired -- this is the
+# /v2 dashboard's proof-of-life signal on quiet bars.
+TICK_SUMMARY_FILE = "events.jsonl"
+
 
 class _AgentScopedSnapshot:
     """Read-tracking wrapper around a WorkspaceSnapshot (G7 C4 counts)."""
@@ -116,6 +121,11 @@ class TickResult:
     closed_trades: list[TradeRecord] = field(default_factory=list)
     thoughts: list[Thought] = field(default_factory=list)
     yields: list[YieldReason] = field(default_factory=list)
+    # Count of proposals whose Sentinel decision was ``allowed=True`` in
+    # ``_admit`` (informational; feeds the per-tick ``tick_summary``
+    # event). Aggregator rejections and arm4 concurrency rejections are
+    # NOT counted here since they occur outside the Sentinel gate.
+    sentinel_pass_count: int = 0
 
 
 NotifyFn = Callable[[dict, str], None]
@@ -306,6 +316,43 @@ class SquadEngine:
             except Exception as exc:  # noqa: BLE001
                 log.warning("notifier failed: %s", exc)
 
+    def _emit_tick_summary(
+        self,
+        *,
+        symbol: str,
+        bar_time_iso: str,
+        eligible: list[Any],
+        result: TickResult,
+    ) -> None:
+        """Append one ``tick_summary`` row to ``events.jsonl``.
+
+        Fired at the tail of every ``on_bar`` call regardless of whether
+        any proposals materialised -- silent ticks (the ~99% case on
+        quiet bars) still get a row so the /v2 dashboard can prove the
+        squad is evaluating rather than asleep. Note: Karasu (news
+        defender) and Kunigami (R5 side channel) are NOT in
+        ``eligible`` -- they're not proposers, and their advisories
+        ride as separate ``thought`` events.
+        """
+        proposers_who_fired: list[str] = sorted({
+            p.agent_id for p in result.proposals if p.symbol == symbol
+        })
+        players_evaluated: list[str] = sorted(a.agent_id for a in eligible)
+        row = {
+            "type": "tick_summary",
+            "timestamp": bar_time_iso,
+            "symbol": symbol,
+            "tick_id": int(self.tick_id),
+            "players_evaluated": players_evaluated,
+            "players_who_proposed": proposers_who_fired,
+            "proposal_count": int(
+                sum(1 for p in result.proposals if p.symbol == symbol)
+            ),
+            "post_sentinel_count": int(result.sentinel_pass_count),
+            "workspace_thought_count": int(len(self.workspace.thoughts)),
+        }
+        self._append_jsonl(TICK_SUMMARY_FILE, row)
+
     # ------------------------------------------------------------------
     # Market state helpers
     # ------------------------------------------------------------------
@@ -422,13 +469,23 @@ class SquadEngine:
                     self.workspace_publish_counts.get(kara.agent_id, 0) + 1
                 )
 
+        bar_time_iso = self.last_bar_times[symbol]
+
         if self.bars_seen[symbol] <= WARMUP_BARS:
+            self._emit_tick_summary(
+                symbol=symbol, bar_time_iso=bar_time_iso,
+                eligible=eligible, result=result,
+            )
             self.save_state()
             return result
 
         series = self.bars_by_symbol[symbol]
         if next_bar is None:
             if bar_index >= len(series) - 1:
+                self._emit_tick_summary(
+                    symbol=symbol, bar_time_iso=bar_time_iso,
+                    eligible=eligible, result=result,
+                )
                 self.save_state()
                 return result
             next_bar = series[bar_index + 1]
@@ -460,6 +517,10 @@ class SquadEngine:
             )
 
         if not proposals_this_tick:
+            self._emit_tick_summary(
+                symbol=symbol, bar_time_iso=bar_time_iso,
+                eligible=eligible, result=result,
+            )
             self.workspace.prune_before(max(0, tick_id - 500))
             self.save_state()
             return result
@@ -482,6 +543,13 @@ class SquadEngine:
         )
         result.closed_trades.extend(closed_extra)
 
+        # tick_summary lands AFTER the tick's individual proposal /
+        # tackle / shot rows so operators reading events.jsonl see the
+        # summary as a natural "closing footer" for the tick.
+        self._emit_tick_summary(
+            symbol=symbol, bar_time_iso=bar_time_iso,
+            eligible=eligible, result=result,
+        )
         self.workspace.prune_before(max(0, tick_id - 500))
         self.save_state()
         return result
@@ -593,6 +661,12 @@ class SquadEngine:
                 result.rejected.append(rej)
                 self._append_jsonl("proposals_rejected.jsonl", rej)
                 continue
+
+            # Sentinel passed. Track for the per-tick summary event
+            # even if a downstream gate (min-lot floor, arm4 slot,
+            # concurrency limit) later blocks the fill: those are
+            # NOT Sentinel decisions.
+            result.sentinel_pass_count += 1
 
             # Sentinel accept: enforce decision.risk_scale on the sizer output.
             # R5 (loss-streak) and R7 (news-impact medium) both return an

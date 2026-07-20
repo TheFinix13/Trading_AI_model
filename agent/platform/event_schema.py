@@ -11,21 +11,34 @@ silently breaking the UI.
 Field reference (light payload; the optional ``detail`` dict carries
 heavy forensics and is stripped from paged API responses):
 
-* common      -- t: ISO-8601 str, type: one of EVENT_TYPES, agent: str
-* proposal    -- symbol, dir, conviction (0..1-ish float)
-* blocked     -- symbol, by (agent id or "SENTINEL"), rule (bool),
-                 reason (str)
-* open        -- symbol, dir
-* close       -- symbol, goal (bool), pnl_pips (float), exit_reason,
-                 tqs (float|None), r (float|None)
-* thought     -- text (str), symbol (str|None); optional stream, absent
-                 from the G7 review caches by design
+* common       -- t: ISO-8601 str, type: one of EVENT_TYPES, agent: str
+                  (``agent`` is required for every type EXCEPT
+                  ``tick_summary`` — see below).
+* proposal     -- symbol, dir, conviction (0..1-ish float)
+* blocked      -- symbol, by (agent id or "SENTINEL"), rule (bool),
+                  reason (str)
+* open         -- symbol, dir
+* close        -- symbol, goal (bool), pnl_pips (float), exit_reason,
+                  tqs (float|None), r (float|None)
+* thought      -- text (str), symbol (str|None); optional stream, absent
+                  from the G7 review caches by design
+* tick_summary -- symbol, tick_id (int), proposal_count (int),
+                  post_sentinel_count (int), workspace_thought_count (int),
+                  players_evaluated (list[str]), players_who_proposed
+                  (list[str]). Proof-of-life footer emitted per H4 tick
+                  even when no proposals fire; NOT associated with a
+                  single agent (``agent`` is omitted).
 """
 from __future__ import annotations
 
 from datetime import datetime
 
-EVENT_TYPES = ("proposal", "blocked", "open", "close", "thought")
+EVENT_TYPES = (
+    "proposal", "blocked", "open", "close", "thought", "tick_summary",
+)
+
+# Types where the common ``agent`` field is not required (see docstring).
+_AGENT_OPTIONAL_TYPES = frozenset({"tick_summary"})
 
 # type -> {field: (allowed python types, required?)}
 _FIELDS: dict[str, dict[str, tuple[tuple, bool]]] = {
@@ -56,6 +69,15 @@ _FIELDS: dict[str, dict[str, tuple[tuple, bool]]] = {
         "text": ((str,), True),
         "symbol": ((str, type(None)), False),
     },
+    "tick_summary": {
+        "symbol": ((str,), True),
+        "tick_id": ((int,), True),
+        "proposal_count": ((int,), True),
+        "post_sentinel_count": ((int,), True),
+        "workspace_thought_count": ((int,), True),
+        "players_evaluated": ((list,), True),
+        "players_who_proposed": ((list,), True),
+    },
 }
 
 
@@ -78,8 +100,11 @@ def validate_event(event: object) -> list[str]:
         except ValueError:
             errors.append(f"t={t!r} is not ISO-8601")
 
-    if not isinstance(event.get("agent"), str) or not event["agent"]:
-        errors.append(f"agent={event.get('agent')!r} must be a non-empty str")
+    if etype not in _AGENT_OPTIONAL_TYPES:
+        if not isinstance(event.get("agent"), str) or not event["agent"]:
+            errors.append(
+                f"agent={event.get('agent')!r} must be a non-empty str"
+            )
 
     for field, (types, required) in _FIELDS[etype].items():
         if field not in event:

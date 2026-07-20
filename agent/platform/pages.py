@@ -199,6 +199,14 @@ _V2_TEMPLATE = r"""<!DOCTYPE html>
 .tk:last-child{border-bottom:none}
 .tk .t{color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums;font-size:11px}
 .tk .who{font-weight:700;white-space:nowrap}
+/* Silent-tick summary rows: muted visual weight so they don't dominate
+ * the ticker on quiet bars but still confirm the squad is evaluating.
+ * Filter checkbox in the controls hides them for a noise-free view. */
+.tk.tick-summary{color:var(--dim);font-size:11.5px;opacity:.72;
+  cursor:default;font-style:italic}
+.tk.tick-summary:hover{background:transparent}
+.tk.tick-summary .who{font-weight:500;color:var(--dim)}
+.tk.hidden{display:none}
 table{width:100%;border-collapse:collapse;font-size:12.5px}
 th,td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--border)}
 th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
@@ -248,10 +256,12 @@ __NAV__
     <select id="ftype"><option value="">all events</option>
       <option value="proposal">proposals</option><option value="blocked">blocked</option>
       <option value="open">opens</option><option value="close">closes</option>
-      <option value="thought">thoughts</option></select>
+      <option value="thought">thoughts</option>
+      <option value="tick_summary">tick summaries</option></select>
     <input id="jumpdate" placeholder="jump to YYYY-MM-DD" size="18">
     <button id="jumpbtn">Go</button>
     <label><input type="checkbox" id="pausegoal"> pause on goal</label>
+    <label><input type="checkbox" id="hidesilent"> hide silent ticks</label>
   </div>
   <svg id="pitch" viewBox="0 0 100 130" preserveAspectRatio="xMidYMid meet"></svg>
 </div>
@@ -351,10 +361,32 @@ function tickMsg(ev){
     `GOAL! +${ev.pnl_pips} pips on ${ev.symbol} (${ev.exit_reason}${ev.tqs!=null?", TQS "+ev.tqs:""})`:
     `miss — ${ev.pnl_pips} pips on ${ev.symbol} (${ev.exit_reason})`;
   if(ev.type==="thought") return `\u{1F4AD} ${ev.text||""}`;
+  if(ev.type==="tick_summary"){
+    const nEv=(ev.players_evaluated||[]).length;
+    const nPr=(ev.players_who_proposed||[]).length;
+    const wc=ev.workspace_thought_count??0;
+    const propTxt = ev.proposal_count===0
+      ? "0 proposals"
+      : `${ev.proposal_count} proposal${ev.proposal_count===1?"":"s"} (${nPr} proposer${nPr===1?"":"s"})`;
+    return `\u22EF ${ev.symbol||"?"} @ ${(ev.t||"").slice(0,16)} — ${nEv} players evaluated, ${propTxt}, workspace: ${wc} thought${wc===1?"":"s"}`;
+  }
   return JSON.stringify(ev);
 }
 function tick(ev){
   const tk=document.getElementById("ticker");
+  if(ev.type==="tick_summary"){
+    // Silent-tick row: muted styling, no roster lookup (no per-agent
+    // attribution), respects the hidesilent checkbox.
+    const div=document.createElement("div");
+    div.className="tk tick-summary";
+    if(document.getElementById("hidesilent") &&
+       document.getElementById("hidesilent").checked) div.classList.add("hidden");
+    div.innerHTML=`<span class="t">${esc((ev.t||"").slice(0,16))}</span>`+
+      `<span class="who">tick</span><span>${esc(tickMsg(ev))}</span>`;
+    tk.prepend(div);
+    while(tk.children.length>80) tk.lastChild.remove();
+    return;
+  }
   const r=roster[ev.agent]||{name:ev.agent,color:"#8b949e"};
   const div=document.createElement("div"); div.className="tk";
   div.innerHTML=`<span class="t">${esc((ev.t||"").slice(0,16))}</span>`+
@@ -365,6 +397,10 @@ function tick(ev){
 }
 
 function animate(ev){
+  // tick_summary events are proof-of-life footers, not real match
+  // events — no pitch animation, no score change. The ticker row is
+  // the entire UI affordance.
+  if(ev.type==="tick_summary") return;
   const p=playerPos(ev.agent);
   if(ev.type==="proposal"){ pulse(ev.agent,"#58a6ff"); ball(p,[50,30],"#58a6ff",true); }
   else if(ev.type==="blocked"){
@@ -671,6 +707,16 @@ async function init(){
   document.getElementById("mclose").onclick=closeModal;
   document.getElementById("overlay").addEventListener("click",e=>{
     if(e.target.id==="overlay") closeModal(); });
+  document.getElementById("hidesilent").onchange=e=>{
+    // Toggle silent-tick visibility in-place without a full re-seek,
+    // so playback position and score aren't disturbed. Applies to
+    // rows currently in the ticker; new rows respect the checkbox at
+    // insertion time (see tick()).
+    const hide=e.target.checked;
+    document.querySelectorAll(".tk.tick-summary").forEach(el=>{
+      el.classList.toggle("hidden", hide);
+    });
+  };
   if(data.matches.length) await loadMatch(data.matches[0].id);
   else await loadLive();
 }

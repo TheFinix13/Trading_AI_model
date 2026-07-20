@@ -16,6 +16,11 @@ repo's walk-forward harness writes) into a single time-ordered list of
                     live paper loop and degrades to absent when the file
                     is missing. Expected row shape: ``{"agent_id",
                     "timestamp", "symbol"?, "text"|"thought"|"content"}``.
+* ``tick_summary`` -- one row per H4 tick, emitted by the live squad
+                    engine into an OPTIONAL ``events.jsonl``. Serves as
+                    proof-of-life on quiet bars (0 proposals) so the /v2
+                    ticker keeps moving even when nothing traded. Does
+                    NOT count toward the per-agent trade / goal tally.
 
 Every event carries a light payload for playback plus a heavy ``detail``
 dict (full rationale, tqs_components, mae/mfe, ...). ``get_events``
@@ -73,8 +78,9 @@ _CACHE_FILES = ("proposals_all.jsonl", "proposals_rejected.jsonl",
                 "trades.jsonl")
 
 # Optional artifacts a cache MAY carry; they feed extra event types but
-# their absence is normal (the G7 review caches have none).
-_OPTIONAL_FILES = ("thoughts.jsonl",)
+# their absence is normal (the G7 review caches have none, and older
+# live paper runs pre-date events.jsonl).
+_OPTIONAL_FILES = ("thoughts.jsonl", "events.jsonl")
 
 _timeline_cache: dict[str, tuple[tuple, list[dict], dict]] = {}
 _cache_lock = threading.Lock()
@@ -238,6 +244,35 @@ def build_timeline(cache_dir: Path) -> tuple[list[dict], dict]:
             "agent": th.get("agent_id", "?"),
             "symbol": th.get("symbol"),
             "text": str(text)[:200],
+        })
+
+    # Optional per-tick summary stream (events.jsonl). Live squad emits
+    # one row per H4 tick per symbol so the /v2 ticker keeps moving on
+    # bars with 0 proposals. Older caches don't ship this file. Only
+    # rows tagged type=='tick_summary' are recognised; other rows are
+    # skipped defensively so the file can grow to hold other event
+    # types later without breaking older UIs.
+    for ts_row in _read_jsonl(cache_dir / "events.jsonl"):
+        if ts_row.get("type") != "tick_summary":
+            continue
+        players_ev = ts_row.get("players_evaluated") or []
+        players_pr = ts_row.get("players_who_proposed") or []
+        events.append({
+            "t": ts_row.get("timestamp", ""),
+            "type": "tick_summary",
+            "symbol": ts_row.get("symbol", "?"),
+            "tick_id": int(ts_row.get("tick_id", 0)),
+            "players_evaluated": (
+                list(players_ev) if isinstance(players_ev, list) else []
+            ),
+            "players_who_proposed": (
+                list(players_pr) if isinstance(players_pr, list) else []
+            ),
+            "proposal_count": int(ts_row.get("proposal_count", 0)),
+            "post_sentinel_count": int(ts_row.get("post_sentinel_count", 0)),
+            "workspace_thought_count": int(
+                ts_row.get("workspace_thought_count", 0)
+            ),
         })
 
     events.sort(key=lambda e: _parse_ts(e["t"]) if e["t"] else datetime.min)
