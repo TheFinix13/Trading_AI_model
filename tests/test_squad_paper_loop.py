@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -161,6 +162,73 @@ class TestLiveStatus:
         st = live_status(out)
         assert st["running"] is False
         assert st["kill"] == "stop"
+
+    # -- poll_heartbeat.txt: proof-of-life between H4 bar closes ---------
+
+    def test_fresh_state_only_still_running(self, source_cache, tmp_path):
+        """No poll_heartbeat.txt but state.json is fresh -> running=True
+        (backwards-compat: pre-fix behavior preserved)."""
+        out = tmp_path / "squad_live"
+        loop = PaperLoop(source_cache, out, tick_seconds=0)
+        loop.run(max_steps=1, sleep=lambda s: None, log=lambda *a, **k: None)
+        # No poll_heartbeat.txt file: the paper loop doesn't write one
+        # (only run_squad_live.py does). state.json is fresh.
+        assert not (out / "poll_heartbeat.txt").exists()
+        st = live_status(out)
+        assert st["running"] is True
+        assert st["poll_heartbeat_age_seconds"] is None
+        # state_age_seconds still populated (backwards compat).
+        assert st["state_age_seconds"] is not None
+
+    def test_stale_state_but_fresh_poll_heartbeat_runs(
+            self, source_cache, tmp_path):
+        """The bug being fixed: state.json is >120s old (no recent bar
+        close) but poll_heartbeat.txt was just written -> running=True."""
+        out = tmp_path / "squad_live"
+        loop = PaperLoop(source_cache, out, tick_seconds=0)
+        loop.run(max_steps=1, sleep=lambda s: None, log=lambda *a, **k: None)
+        # Age state.json past the 120s freshness window (H4-cadence
+        # "quiet" between bar closes).
+        stale = time.time() - 3600.0
+        os.utime(out / "state.json", (stale, stale))
+        # But the poll loop just fired its per-iteration heartbeat.
+        (out / "poll_heartbeat.txt").write_text(
+            "2026-07-21T00:00:00+00:00 tick=42\n", encoding="utf-8")
+        st = live_status(out)
+        assert st["running"] is True, (
+            "fresh poll_heartbeat.txt must override stale state.json"
+        )
+        assert st["poll_heartbeat_age_seconds"] is not None
+        assert st["poll_heartbeat_age_seconds"] < 60.0
+        # state age still reported for the operator (bar close age).
+        assert st["state_age_seconds"] is not None
+        assert st["state_age_seconds"] >= 120.0
+
+    def test_both_stale_reports_not_running(self, source_cache, tmp_path):
+        """Neither signal is fresh -> the runner really is idle."""
+        out = tmp_path / "squad_live"
+        loop = PaperLoop(source_cache, out, tick_seconds=0)
+        loop.run(max_steps=1, sleep=lambda s: None, log=lambda *a, **k: None)
+        stale = time.time() - 3600.0
+        os.utime(out / "state.json", (stale, stale))
+        (out / "poll_heartbeat.txt").write_text(
+            "old\n", encoding="utf-8")
+        os.utime(out / "poll_heartbeat.txt", (stale, stale))
+        st = live_status(out)
+        assert st["running"] is False
+        assert st["poll_heartbeat_age_seconds"] >= 120.0
+
+    def test_kill_beats_fresh_poll_heartbeat(self, source_cache, tmp_path):
+        """kill.txt trumps any freshness signal (safety-first)."""
+        out = tmp_path / "squad_live"
+        loop = PaperLoop(source_cache, out, tick_seconds=0)
+        loop.run(max_steps=1, sleep=lambda s: None, log=lambda *a, **k: None)
+        (out / "poll_heartbeat.txt").write_text(
+            "2026-07-21T00:00:00+00:00 tick=42\n", encoding="utf-8")
+        (out / "kill.txt").write_text("halt", encoding="utf-8")
+        st = live_status(out)
+        assert st["running"] is False
+        assert st["kill"] == "halt"
 
 
 def _mk_cache(root: Path, name: str, mtime: float | None = None) -> Path:

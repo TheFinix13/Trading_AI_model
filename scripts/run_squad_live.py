@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -114,6 +115,27 @@ def _seconds_until_next_h4_poll(poll: float) -> float:
     return max(poll, wait) if wait > poll else poll
 
 
+def _write_poll_heartbeat(out_dir: Path, tick_id: int) -> None:
+    """Atomically rewrite ``poll_heartbeat.txt`` on every poll iteration.
+
+    The /v2 dashboard's ``paper_loop.live_status`` treats this file's
+    mtime as a running-signal. Written every outer-loop iteration
+    (~poll cadence) so the badge stays alive between H4 bar closes.
+    Uses tmp + ``os.replace`` for atomicity: readers never observe a
+    torn/partial line.
+    """
+    path = out_dir / "poll_heartbeat.txt"
+    tmp = path.with_suffix(".tmp")
+    line = (
+        f"{datetime.now(tz=timezone.utc).isoformat()} tick={tick_id}\n"
+    )
+    try:
+        tmp.write_text(line, encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as exc:
+        log.warning("poll heartbeat write failed: %s", exc)
+
+
 def run_loop(args, cfg: dict) -> str:
     symbols = tuple(args.symbols) if args.symbols else DEFAULT_SYMBOLS
     out_dir = Path(args.out_dir) if args.out_dir else Path(cfg["live_dir"])
@@ -123,6 +145,7 @@ def run_loop(args, cfg: dict) -> str:
         for fname in (
             "proposals_all.jsonl", "proposals_rejected.jsonl",
             "trades.jsonl", "state.json", "workspace_counts.json",
+            "poll_heartbeat.txt",
         ):
             (out_dir / fname).unlink(missing_ok=True)
         log.info("reset %s", out_dir)
@@ -214,6 +237,12 @@ def run_loop(args, cfg: dict) -> str:
     outcome = "done"
     try:
         while True:
+            # Proof-of-life for the /v2 dashboard between H4 bar closes:
+            # state.json is only rewritten on bar closes (via save_state
+            # in engine.on_bar), which leaves ~99% of clock time with a
+            # stale mtime even though this loop is polling healthily.
+            # See agent/platform/paper_loop.live_status.
+            _write_poll_heartbeat(out_dir, engine.tick_id)
             reason = engine.kill_active()
             if reason is not None:
                 log.warning("kill.txt active: %s", reason)

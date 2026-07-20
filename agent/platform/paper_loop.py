@@ -41,6 +41,7 @@ SOURCE_FILES: tuple[tuple[str, str], ...] = (
 
 STATE_FILE = "state.json"
 KILL_FILE = "kill.txt"
+POLL_HEARTBEAT_FILE = "poll_heartbeat.txt"
 
 # Replay-cache naming knowledge (mirrors squad_events._CACHE_FILES /
 # list_matches). Kept here so cache selection is self-contained without
@@ -316,7 +317,17 @@ class PaperLoop:
 
 
 def live_status(out_dir: Path, stale_after_s: float = 120.0) -> dict:
-    """Status payload for /api/v2/live/status (read-only over out_dir)."""
+    """Status payload for /api/v2/live/status (read-only over out_dir).
+
+    The runner (``scripts/run_squad_live.py``) writes ``state.json`` only
+    on H4 bar closes, so between bars (~99 % of clock time) that file is
+    stale even though the poll loop is healthy. To avoid a false
+    ``MARKET STREAM IDLE`` on the /v2 badge, ``poll_heartbeat.txt`` is
+    rewritten on every poll iteration and is treated as an equal
+    freshness signal here: ``running=True`` iff either the state or the
+    poll heartbeat is younger than ``stale_after_s`` (and no kill file
+    is present).
+    """
     out_dir = Path(out_dir)
     state_path = out_dir / STATE_FILE
     state: dict = {}
@@ -327,6 +338,13 @@ def live_status(out_dir: Path, stale_after_s: float = 120.0) -> dict:
             state_age_s = time.time() - state_path.stat().st_mtime
         except (OSError, json.JSONDecodeError):
             state = {}
+    poll_path = out_dir / POLL_HEARTBEAT_FILE
+    poll_age_s: float | None = None
+    if poll_path.exists():
+        try:
+            poll_age_s = time.time() - poll_path.stat().st_mtime
+        except OSError:
+            poll_age_s = None
     kill = out_dir / KILL_FILE
     kill_reason = None
     if kill.exists():
@@ -334,14 +352,24 @@ def live_status(out_dir: Path, stale_after_s: float = 120.0) -> dict:
             kill_reason = kill.read_text(encoding="utf-8")[:200].strip()
         except OSError:
             kill_reason = "(unreadable)"
-    running = (state_age_s is not None and state_age_s < stale_after_s
-               and kill_reason is None)
+    fresh = (
+        (state_age_s is not None and state_age_s < stale_after_s)
+        or (poll_age_s is not None and poll_age_s < stale_after_s)
+    )
+    running = fresh and kill_reason is None
     return {
         "dir": str(out_dir),
         "exists": out_dir.is_dir(),
         "running": running,
         "state_age_seconds": (round(state_age_s, 1)
                               if state_age_s is not None else None),
+        # Distinct from state_age_seconds: state.json is only rewritten
+        # on H4 bar closes (~every 4 hours), while poll_heartbeat.txt is
+        # rewritten on every poll iteration (~45 s cadence). The UI can
+        # show both so operators can distinguish "recent bar close" from
+        # "recent poll but no bar yet".
+        "poll_heartbeat_age_seconds": (round(poll_age_s, 1)
+                                       if poll_age_s is not None else None),
         "last_event_time": state.get("last_event_time"),
         "source_cache": state.get("source_cache"),
         # Distinguishes the history-replay paper loop from the
