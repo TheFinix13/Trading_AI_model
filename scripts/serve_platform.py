@@ -45,7 +45,8 @@ PLATFORM_VERSION = "0.2.0"
 
 _MATCH_RE = re.compile(
     r"^/api/v2/match/([A-Za-z0-9_.-]+)/(summary|events|event/(\d+))$")
-_LIVE_RE = re.compile(r"^/api/v2/live/(summary|events|status|event/(\d+))$")
+_LIVE_RE = re.compile(
+    r"^/api/v2/live/(summary|events|status|workspace|event/(\d+))$")
 
 
 def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
@@ -136,6 +137,15 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                                {"dir": None, "exists": False,
                                 "running": False,
                                 "error": "no live dir configured"})
+                    return
+                if kind == "workspace":
+                    # Latest workspace snapshot -- the "what is the squad
+                    # thinking right now" panel on /v2 LIVE. Returns
+                    # {exists:False, thoughts:[]} when no snapshot yet
+                    # (fresh dir), matching paper_loop.live_workspace.
+                    self._json(paper_loop.live_workspace(live_dir)
+                               if live_dir else
+                               {"exists": False, "thoughts": []})
                     return
                 if live_dir is None or not live_dir.is_dir():
                     self._json({"error": "live dir not found"}, 404)

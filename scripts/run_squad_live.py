@@ -145,7 +145,8 @@ def run_loop(args, cfg: dict) -> str:
         for fname in (
             "proposals_all.jsonl", "proposals_rejected.jsonl",
             "trades.jsonl", "events.jsonl", "state.json",
-            "workspace_counts.json", "poll_heartbeat.txt",
+            "workspace_counts.json", "workspace_snapshot.json",
+            "poll_heartbeat.txt",
         ):
             (out_dir / fname).unlink(missing_ok=True)
         log.info("reset %s", out_dir)

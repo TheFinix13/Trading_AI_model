@@ -54,6 +54,14 @@ ARM4_SANDBOX_RISK_CAP_FRAC = 0.50
 STATE_FILE = "state.json"
 KILL_FILE = "kill.txt"
 HEARTBEAT_PREFIX = "heartbeat_"
+# Rolling snapshot of the last ~60 Thoughts on the workspace (sorted
+# newest-first). Written on every on_bar so the /v2 LIVE dashboard can
+# read the squad's current head without tailing the entire ledger.
+WORKSPACE_SNAPSHOT_FILE = "workspace_snapshot.json"
+WORKSPACE_SNAPSHOT_CAP = 60
+# Top-N thoughts embedded into every tick_summary event so historical
+# replays surface the same "peek into the squad's head" as LIVE mode.
+TICK_SUMMARY_TOP_THOUGHTS = 5
 
 JSONL_FILES = (
     "proposals_all.jsonl",
@@ -237,6 +245,11 @@ class SquadEngine:
         tmp.write_text(json.dumps(state, indent=2, default=str), encoding="utf-8")
         tmp.replace(self._state_path())
         self._write_workspace_counts()
+        # Snapshot the current workspace on every save_state() call so
+        # readers (/v2 LIVE panel) get a fresh view on every on_bar.
+        # Cheap: bounded by WORKSPACE_SNAPSHOT_CAP and reuses the same
+        # tmp+replace pattern as state.json.
+        self._write_workspace_snapshot()
 
     def load_state(self) -> None:
         path = self._state_path()
@@ -294,6 +307,44 @@ class SquadEngine:
             json.dumps(payload, indent=2), encoding="utf-8",
         )
 
+    def _recent_thoughts_jsonable(
+        self, *, limit: int = WORKSPACE_SNAPSHOT_CAP,
+    ) -> list[dict]:
+        """Newest-first (timestamp desc, agent_id asc), capped at ``limit``.
+
+        The workspace itself is bounded by ``prune_before`` (~500 rows)
+        so scanning is cheap; sorting keeps output deterministic for
+        the UI and for tests. Negating the timestamp epoch flips the
+        primary sort to descending while keeping agent_id ascending
+        without a two-pass sort.
+        """
+        ordered = sorted(
+            self.workspace.thoughts,
+            key=lambda t: (-t.timestamp.timestamp(), t.agent_id),
+        )
+        return [t.to_jsonable() for t in ordered[:limit]]
+
+    def _write_workspace_snapshot(self) -> None:
+        """Atomically write ``workspace_snapshot.json``.
+
+        Rolling window over the last ``WORKSPACE_SNAPSHOT_CAP`` thoughts,
+        newest first. Consumed by the /v2 LIVE dashboard via
+        ``agent.platform.paper_loop.live_workspace``. tmp + rename gives
+        readers atomic swaps -- they never see a torn partial write.
+        """
+        payload = {
+            "as_of": datetime.now(tz=timezone.utc).isoformat(),
+            "tick_id": int(self.tick_id),
+            "thought_count": int(len(self.workspace.thoughts)),
+            "thoughts": self._recent_thoughts_jsonable(),
+        }
+        path = self.out_dir / WORKSPACE_SNAPSHOT_FILE
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(
+            json.dumps(payload, indent=2, default=str), encoding="utf-8",
+        )
+        tmp.replace(path)
+
     def write_heartbeat(self, note: str = "") -> None:
         day = datetime.now(tz=timezone.utc).strftime("%Y%m%d")
         path = self.out_dir / f"{HEARTBEAT_PREFIX}{day}.log"
@@ -338,6 +389,26 @@ class SquadEngine:
             p.agent_id for p in result.proposals if p.symbol == symbol
         })
         players_evaluated: list[str] = sorted(a.agent_id for a in eligible)
+        # Top-5 highest-confidence thoughts published on this tick, so
+        # historical replay watchers can peek into the squad's head the
+        # same way the LIVE workspace panel does. Compact fields only
+        # (agent_id, symbol, narrative, confidence) — full detail lives
+        # in workspace_snapshot.json for LIVE consumers.
+        this_tick_thoughts = [
+            t for t in self.workspace.thoughts if t.tick_id == self.tick_id
+        ]
+        this_tick_thoughts.sort(
+            key=lambda t: (-float(t.confidence_in_thought), t.agent_id),
+        )
+        thoughts_top5 = [
+            {
+                "agent_id": t.agent_id,
+                "symbol": t.symbol,
+                "narrative": t.narrative,
+                "confidence": float(t.confidence_in_thought),
+            }
+            for t in this_tick_thoughts[:TICK_SUMMARY_TOP_THOUGHTS]
+        ]
         row = {
             "type": "tick_summary",
             "timestamp": bar_time_iso,
@@ -350,6 +421,7 @@ class SquadEngine:
             ),
             "post_sentinel_count": int(result.sentinel_pass_count),
             "workspace_thought_count": int(len(self.workspace.thoughts)),
+            "thoughts_top5": thoughts_top5,
         }
         self._append_jsonl(TICK_SUMMARY_FILE, row)
 

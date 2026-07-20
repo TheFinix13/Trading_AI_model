@@ -188,6 +188,95 @@ class TestV2ModeAwareCopy:
         assert 'id="v2-subtitle"' in V2_PAGE
 
 
+class TestV2WorkspacePanelMarkup:
+    """v0.40: the /v2 workspace panel + LIVE-connection pill + replay
+    transport toggle live in the static template. JS wires the visibility
+    swap, but the DOM shapes must exist or the swap silently no-ops."""
+
+    def test_workspace_panel_present(self):
+        for marker in (
+            'id="workspace-panel"',
+            'id="workspace-grid"',
+            'id="workspace-empty"',
+            'id="workspace-meta"',
+            "what the squad is thinking",
+        ):
+            assert marker in V2_PAGE, f"missing workspace piece: {marker!r}"
+
+    def test_workspace_empty_state_copy(self):
+        # Both the empty-state prompt and the "next H4 close" hh
+        # placeholder ship so the newcomer sees a real value on load.
+        assert "hasn't published any thoughts yet" in V2_PAGE
+        assert 'id="workspace-next-hh"' in V2_PAGE
+
+    def test_replay_transport_and_live_connection_containers_both_present(self):
+        # Item 2: mode-scoped swap between the Play/speed row and the
+        # LIVE connection pill. Both containers must exist so JS can
+        # flip them without inserting DOM.
+        assert 'id="replay-transport"' in V2_PAGE
+        assert 'id="live-connection"' in V2_PAGE
+        assert 'id="live-event-count"' in V2_PAGE
+        assert 'id="live-refresh"' in V2_PAGE
+
+    def test_live_dot_pulse_css_present(self):
+        # Polish pass: the pulsing ● glyph on LIVE indicators.
+        assert "livePulse" in V2_PAGE
+        assert ".live-dot" in V2_PAGE
+        # The keyframes must define opacity oscillation, not a static rule.
+        assert "@keyframes livePulse" in V2_PAGE
+
+    def test_workspace_snapshot_endpoint_wire_referenced(self):
+        # JS keys off /api/v2/live/workspace -- confirm the URL literal
+        # ships so a rename breaks the test rather than the runtime.
+        assert "/api/v2/live/workspace" in V2_PAGE
+
+    def test_shared_tooltip_panel_class_applied(self):
+        # Polish pass: shared .tooltip-panel base class on the info
+        # popover + player tooltip so radius / colour / arrow align.
+        assert ".tooltip-panel" in V2_PAGE
+        assert 'class="popover tooltip-panel"' in V2_PAGE
+        assert 'class="player-tooltip tooltip-panel"' in V2_PAGE
+
+    def test_fade_in_animation_defined(self):
+        assert "@keyframes fadeIn" in V2_PAGE
+        assert ".card.fade-in" in V2_PAGE
+
+    def test_countdown_uses_second_precision_format(self):
+        # Item countdown-ticker precision: JS emits "s" suffixes and
+        # the seconds-only branch under a minute.
+        assert 'in " + totalSec + " s"' in V2_PAGE or \
+               'in " + totalSec + " s' in V2_PAGE
+
+
+class TestV1ExcursionRendering:
+    """Fix 3: /v1 excursion JSON is parsed and rendered as pills. The
+    raw JSON.stringify(excursion) path is gone."""
+
+    def test_v1_no_raw_jsonstringify_excursion(self):
+        from agent.platform.pages import V1_PAGE
+        # Regression pin: the old code did
+        # `esc(JSON.stringify(p.excursion))`. Removing that literal
+        # means the fix is in.
+        assert "JSON.stringify(p.excursion)" not in V1_PAGE, (
+            "raw JSON.stringify(excursion) render path still present"
+        )
+
+    def test_v1_excursion_pills_helper_present(self):
+        from agent.platform.pages import V1_PAGE
+        # Helper name + at least the MAE/MFE labels the tests below
+        # exercise via HTTP.
+        assert "excursionPills" in V1_PAGE
+        for label in ("MAE", "MFE", "Last", "Profit", "Stop", "TP"):
+            assert label in V1_PAGE, f"missing excursion label: {label!r}"
+
+    def test_v1_card_body_has_overflow_safety_net(self):
+        from agent.platform.pages import V1_PAGE
+        # word-break / overflow-wrap on .card so any future stray
+        # long token can't overflow the card visually again.
+        assert "word-break:break-word" in V1_PAGE
+        assert "overflow-wrap:anywhere" in V1_PAGE
+
+
 class TestV2HubGlossaryLink:
     """The v2 info popover deep-links to the hub glossary via
     ``/#glossary`` — the anchor must exist on the hub."""

@@ -316,17 +316,26 @@ function v2Badge(v2){
   if(!v2.exists) return {cls:"no-data", text:"no live dir"};
   const src = v2.source || "";
   if(v2.running && src.indexOf("live_market:") === 0)
-    return {cls:"alive", text:"live shadow paper"};
+    return {cls:"alive", text:"live shadow paper", live:true};
   if(v2.running && src === "cache_replay")
-    return {cls:"sim", text:"cache replay"};
-  if(v2.running) return {cls:"alive", text:"live"};
+    return {cls:"sim", text:"cache replay", live:true};
+  if(v2.running) return {cls:"alive", text:"live", live:true};
   return {cls:"stale", text:"idle"};
 }
-function setBadge(id, cls, text){
+function setBadge(id, cls, text, opts){
   const el = document.getElementById(id);
   if(!el) return;
   el.className = "badge " + cls;
-  el.innerText = text;
+  // Live badges get a pulsing ● glyph so LIVE state is legible at a
+  // glance across the hub. innerText path is preserved for the rest
+  // of the badges (idle / auth / error) so no other renderer changes.
+  if(opts && opts.live){
+    const d = document.createElement("div");
+    d.innerText = String(text);
+    el.innerHTML = '<span class="live-dot">\u25CF</span> ' + d.innerHTML;
+  } else {
+    el.innerText = text;
+  }
 }
 
 function renderV1Kpi(v1){
@@ -399,8 +408,8 @@ function renderV1Kpi(v1){
 
 function renderV2Kpi(v2, evsTotal){
   const b = v2Badge(v2);
-  setBadge("kpi-v2-badge", b.cls, b.text);
-  setBadge("tile-v2-badge", b.cls, b.text);
+  setBadge("kpi-v2-badge", b.cls, b.text, {live: b.live});
+  setBadge("tile-v2-badge", b.cls, b.text, {live: b.live});
   if(v2.__auth__ || v2.__error__){
     document.getElementById("kpi-v2-src").innerText = "\u2014";
     document.getElementById("kpi-v2-lastev").innerText = "\u2014";
@@ -565,11 +574,31 @@ V1_PAGE = f"""<!DOCTYPE html>
 <title>Zones agent — live (v1)</title>
 <style>{_BASE_CSS}
 .cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-bottom:20px}}
+.card{{word-break:break-word;overflow-wrap:anywhere}}
 .card h2{{margin:0 0 10px;font-size:17px;display:flex;align-items:center;gap:10px}}
 .kv{{display:grid;grid-template-columns:max-content 1fr;gap:3px 14px;font-size:13px;margin:8px 0}}
 .kv dt{{color:var(--dim)}} .kv dd{{margin:0}}
 .pos{{border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin:8px 0;font-size:13px}}
 .pos .dir-long{{color:var(--green);font-weight:700}} .pos .dir-short{{color:var(--red);font-weight:700}}
+.pos .dir-chip{{font-size:10px;font-weight:700;padding:1px 8px;border-radius:999px;
+  text-transform:uppercase;letter-spacing:.03em;vertical-align:middle}}
+.pos .dir-chip.long{{background:rgba(63,185,80,.15);color:var(--green);
+  border:1px solid rgba(63,185,80,.4)}}
+.pos .dir-chip.short{{background:rgba(248,81,73,.15);color:var(--red);
+  border:1px solid rgba(248,81,73,.4)}}
+.pos .exc-pills{{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}}
+.pos .exc-pill{{font-size:11px;font-weight:500;padding:2px 8px;border-radius:999px;
+  background:rgba(139,148,158,.1);border:1px solid var(--border);
+  color:var(--fg);white-space:nowrap;font-variant-numeric:tabular-nums;
+  display:inline-flex;gap:5px;align-items:baseline}}
+.pos .exc-pill .k{{color:var(--dim);font-size:10px;text-transform:uppercase;
+  letter-spacing:.03em;font-weight:600}}
+.pos .exc-pill.mae{{background:rgba(248,81,73,.06);border-color:rgba(248,81,73,.28)}}
+.pos .exc-pill.mfe{{background:rgba(63,185,80,.06);border-color:rgba(63,185,80,.28)}}
+.pos .exc-pill.profit-pos{{background:rgba(63,185,80,.08);
+  border-color:rgba(63,185,80,.4);color:var(--green);font-weight:600}}
+.pos .exc-pill.profit-neg{{background:rgba(248,81,73,.08);
+  border-color:rgba(248,81,73,.4);color:var(--red);font-weight:600}}
 .flat{{color:var(--dim);font-size:13px;font-style:italic}}
 .feed{{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px 18px}}
 .feed h2{{margin:0 0 10px;font-size:17px}}
@@ -603,15 +632,54 @@ function fmtAge(s){{ if(s==null) return "n/a";
   if(s<5400) return Math.round(s/60)+"m ago";
   return (s/3600).toFixed(1)+"h ago"; }}
 function esc(x){{ const d=document.createElement("div"); d.innerText=String(x); return d.innerHTML; }}
+function fmtPips(v){{ if(v==null||isNaN(v)) return null;
+  const n=Number(v); return (Math.round(n*10)/10).toFixed(1)+" pips"; }}
+function fmtPx(v){{ if(v==null||isNaN(v)) return null;
+  return Number(v).toFixed(5); }}
+function fmtMoney(v){{ if(v==null||isNaN(v)) return null;
+  const n=Number(v); const sign=n<0?"-":(n>0?"+":"");
+  return sign+"$"+Math.abs(n).toFixed(2); }}
+function excursionPills(exc){{
+  // Parse the excursion dict written by
+  // agent/live/monitor.py::_update_excursion into a compact pill row.
+  // Missing / malformed fields are silently skipped so the section
+  // degrades gracefully -- never render a raw JSON overflow line.
+  if(!exc || typeof exc!=="object") return "";
+  const pills=[];
+  const mae=fmtPips(exc.mae_pips);
+  if(mae!=null) pills.push({{cls:"mae",k:"MAE",v:mae}});
+  const mfe=fmtPips(exc.mfe_pips);
+  if(mfe!=null) pills.push({{cls:"mfe",k:"MFE",v:mfe}});
+  const last=fmtPx(exc.last_price);
+  if(last!=null) pills.push({{cls:"",k:"Last",v:last}});
+  const profit=fmtMoney(exc.last_profit);
+  if(profit!=null){{
+    const cls = Number(exc.last_profit)>0 ? "profit-pos"
+              : Number(exc.last_profit)<0 ? "profit-neg" : "";
+    pills.push({{cls:cls,k:"Profit",v:profit}});
+  }}
+  const stop=fmtPx(exc.broker_stop);
+  if(stop!=null) pills.push({{cls:"",k:"Stop",v:stop}});
+  const tp=fmtPx(exc.broker_tp);
+  if(tp!=null) pills.push({{cls:"",k:"TP",v:tp}});
+  const openPx=fmtPx(exc.open_price);
+  if(openPx!=null) pills.push({{cls:"",k:"Open",v:openPx}});
+  if(!pills.length) return "";
+  return '<div class="exc-pills">'+pills.map(p =>
+    '<span class="exc-pill '+p.cls+'"><span class="k">'+esc(p.k)+
+    '</span> '+esc(p.v)+'</span>').join("")+'</div>';
+}}
 function posHtml(p){{
   const dir=(p.direction||"?").toLowerCase();
+  const dirChip=(dir==="long"||dir==="short")
+    ? '<span class="dir-chip '+dir+'">'+dir.toUpperCase()+'</span>'
+    : '<span class="dim">'+esc(dir.toUpperCase())+'</span>';
   const bits=[];
   for(const k of ["entry","sl","soft_stop","tp","lots","lot_size","timeframe","alpha"]){{
     if(p[k]!=null) bits.push(k+"="+p[k]); }}
-  let exc="";
-  if(p.excursion) exc='<div class="dim">excursion: '+esc(JSON.stringify(p.excursion))+'</div>';
-  return '<div class="pos"><span class="dir-'+dir+'">'+dir.toUpperCase()+
-    '</span> ticket '+esc(p.ticket)+' — '+esc(bits.join("  "))+exc+'</div>'; }}
+  const exc=excursionPills(p.excursion);
+  return '<div class="pos">'+dirChip+
+    ' ticket '+esc(p.ticket)+' — '+esc(bits.join("  "))+exc+'</div>'; }}
 async function refresh(){{
   let data;
   try{{ data = await (await fetch("/api/v1/status")).json(); }}
@@ -800,6 +868,83 @@ tr:last-child td{border-bottom:none}
 #tour-tooltip button.skip{margin-left:auto;color:var(--dim);border-color:transparent;
   background:transparent}
 #tour-tooltip button.skip:hover{color:var(--fg);border-color:var(--border)}
+/* v0.40 additions -- workspace panel + LIVE-connection pill + polish.
+ * Grouped here so a future consolidation pass can pull the whole
+ * block into a dedicated file without cherry-picking selectors. */
+.card{transition:opacity 200ms ease}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.card.fade-in{animation:fadeIn 300ms ease}
+/* Shared tooltip-panel class -- Item-3 info popover, Item-6 player
+ * tooltip, and the workspace-thought hover use the same base look. */
+.tooltip-panel{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:12px 14px;color:var(--fg);
+  box-shadow:0 6px 24px rgba(0,0,0,.5)}
+/* Pulsing ● glyph on LIVE indicators. Used in header badge, hub
+ * cards, and #live-connection. Kept subtle -- 2 s ease loop. */
+@keyframes livePulse{0%,100%{opacity:1}50%{opacity:.35}}
+.live-dot{animation:livePulse 2s ease-in-out infinite;display:inline-block}
+@keyframes rotate360{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.spin-once{animation:rotate360 300ms ease}
+/* LIVE-connection pill: replaces the Play/speed transport in LIVE
+ * mode so the user isn't teased with meaningless controls. */
+#live-connection{display:none;align-items:center;gap:10px;font-size:12.5px;
+  color:var(--dim);background:rgba(248,81,73,.06);
+  border:1px solid rgba(248,81,73,.28);border-radius:999px;padding:4px 12px}
+#live-connection.open{display:inline-flex}
+#live-connection .dot{color:var(--red)}
+#live-connection button{background:none;border:1px solid var(--border);
+  color:var(--dim);border-radius:999px;width:24px;height:24px;padding:0;
+  font-size:12px;line-height:1;cursor:pointer;display:inline-flex;
+  align-items:center;justify-content:center}
+#live-connection button:hover{color:var(--fg);border-color:var(--accent)}
+#replay-transport{display:inline-flex;gap:10px;align-items:center}
+#replay-transport.hidden{display:none}
+/* Workspace panel -- "what the squad is thinking". Cell grid auto-fits
+ * min 280px; per-agent grouping is done by JS-sort so we can keep the
+ * layout a single CSS grid rather than per-agent subheaders. */
+#workspace-panel{margin-top:14px}
+#workspace-panel .meta{font-size:12px;color:var(--dim);margin:0 0 10px;
+  display:flex;justify-content:space-between;align-items:center;gap:8px}
+#workspace-panel .meta button{background:none;border:1px solid var(--border);
+  color:var(--dim);border-radius:6px;padding:2px 10px;font-size:11.5px;
+  cursor:pointer}
+#workspace-panel .meta button:hover{color:var(--fg);border-color:var(--accent)}
+.thought-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+  gap:10px}
+.thought-card{border:1px solid var(--border);border-radius:8px;
+  padding:10px 12px;background:rgba(139,148,158,.04);
+  font-size:12.5px;line-height:1.5;transition:border-color .15s}
+.thought-card:hover{border-color:var(--accent)}
+.thought-card .hd{display:flex;align-items:center;gap:8px;font-size:12.5px;
+  margin-bottom:6px}
+.thought-card .hd .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.thought-card .hd .nm{font-weight:700}
+.thought-card .hd .sym{color:var(--dim);font-size:11.5px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.thought-card .hd .conf{margin-left:auto;font-size:11.5px;color:var(--dim);
+  font-variant-numeric:tabular-nums}
+.thought-card .narrative{color:var(--fg);font-size:12.5px;
+  margin:2px 0 8px;font-style:italic;word-break:break-word;
+  overflow-wrap:anywhere}
+.thought-card .conf-bar{height:3px;background:rgba(139,148,158,.15);
+  border-radius:2px;overflow:hidden;margin-bottom:8px}
+.thought-card .conf-bar > span{display:block;height:100%;
+  background:var(--accent);border-radius:2px}
+.thought-card .tags{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+.thought-card .tag{font-size:10px;color:var(--dim);
+  background:rgba(139,148,158,.1);padding:1px 6px;border-radius:4px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.thought-card .foot{color:var(--dim);font-size:11px;
+  border-top:1px solid rgba(139,148,158,.15);padding-top:6px;
+  margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;
+  font-variant-numeric:tabular-nums}
+.thought-card .foot .k{color:var(--dim)}
+.thought-card .foot .v{color:var(--fg)}
+.thought-card.dir-long .hd{border-left:none}
+.thought-card.dir-long .foot .v.dir{color:var(--green)}
+.thought-card.dir-short .foot .v.dir{color:var(--red)}
+#workspace-empty{padding:20px 16px;text-align:center;color:var(--dim);
+  font-size:12.5px;font-style:italic}
 </style></head><body>
 <h1>Blue Lock squad — the pitch <span class="dim">v2 · M001 ensemble</span>
  <span class="badge sim" id="modebadge">sim-only — not trading real lots</span></h1>
@@ -822,13 +967,22 @@ __NAV__
       <button type="button" id="mode-info-btn" class="info-btn"
               title="What does this mode mean?" aria-label="Mode help">i</button>
     </span>
-    <button id="play">&#9654; Play</button>
-    <select id="speed" aria-label="playback speed">
-      <option value="8" selected>🐢 Slow — 8 events/s</option>
-      <option value="16">⏩ Medium — 16 events/s</option>
-      <option value="60">🚀 Fast — 60 events/s</option>
-      <option value="120">⚡ Turbo — 120 events/s</option>
-    </select>
+    <span id="replay-transport">
+      <button id="play">&#9654; Play</button>
+      <select id="speed" aria-label="playback speed">
+        <option value="8" selected>🐢 Slow — 8 events/s</option>
+        <option value="16">⏩ Medium — 16 events/s</option>
+        <option value="60">🚀 Fast — 60 events/s</option>
+        <option value="120">⚡ Turbo — 120 events/s</option>
+      </select>
+    </span>
+    <span id="live-connection" role="status" aria-live="polite">
+      <span class="dot live-dot">&#9679;</span>
+      <span>LIVE · connected · refresh every 15s ·
+        <span id="live-event-count">0</span> events since reset</span>
+      <button type="button" id="live-refresh"
+              title="Refresh now" aria-label="Refresh now">&#8635;</button>
+    </span>
     <span id="clock">—</span>
     <span id="score">Goals <b id="goals">0</b> · Misses <span id="misses">0</span></span>
   </div>
@@ -843,6 +997,22 @@ __NAV__
     <div class="pills" id="wp-pills"></div>
     <div class="foot">The squad evaluates every H4 close (~4 h cadence). Most bars pass
       silently — a real proposal only appears when a character finds a clean setup.</div>
+  </div>
+  <div id="workspace-panel" class="card" role="region"
+       aria-label="Squad workspace — recent thoughts" style="display:none">
+    <h3 style="margin:0 0 8px;font-size:14px">Workspace — what the squad is thinking
+      <span class="dim" style="font-size:11.5px;font-weight:400">
+        · latest H4 close, newest first</span></h3>
+    <div class="meta">
+      <span id="workspace-meta">—</span>
+      <button type="button" id="workspace-toggle" style="display:none">
+        show all N thoughts</button>
+    </div>
+    <div class="thought-grid" id="workspace-grid"></div>
+    <div id="workspace-empty" style="display:none">
+      The squad hasn't published any thoughts yet. Wait for the next
+      H4 close at <span id="workspace-next-hh">—</span> UTC.
+    </div>
   </div>
   <input type="range" id="seek" min="0" max="0" value="0">
   <div class="controls" style="margin-top:2px">
@@ -868,12 +1038,12 @@ __NAV__
 </div>
 <div class="gflash" id="gflash">GOAL!</div>
 <div id="overlay"><div id="modal"><button class="x" id="mclose">&times;</button><div id="mbody"></div></div></div>
-<div id="info-popover" class="popover" role="dialog" aria-labelledby="info-popover-title">
+<div id="info-popover" class="popover tooltip-panel" role="dialog" aria-labelledby="info-popover-title">
   <button class="close" id="info-popover-close" aria-label="Close">&times;</button>
   <div id="info-popover-body"></div>
   <div class="foot">See the <a href="/#glossary">[glossary]</a> on the hub for every jargon term.</div>
 </div>
-<div id="player-tooltip" class="player-tooltip" aria-hidden="true"></div>
+<div id="player-tooltip" class="player-tooltip tooltip-panel" aria-hidden="true"></div>
 <div id="tour-shade" aria-hidden="true"></div>
 <div id="tour-tooltip" role="dialog" aria-live="polite">
   <div class="step-meta" id="tour-step-meta">Step 1 / 6</div>
@@ -1082,13 +1252,24 @@ function tick(ev){
   const tk=document.getElementById("ticker");
   if(ev.type==="tick_summary"){
     // Silent-tick row: muted styling, no roster lookup (no per-agent
-    // attribution), respects the hidesilent checkbox.
+    // attribution), respects the hidesilent checkbox. In replay mode
+    // a click opens the workspace panel with THIS tick's top-5 thoughts
+    // (LIVE mode ignores the click -- its panel is already refreshing
+    // on the 15 s cadence).
     const div=document.createElement("div");
     div.className="tk tick-summary";
     if(document.getElementById("hidesilent") &&
        document.getElementById("hidesilent").checked) div.classList.add("hidden");
     div.innerHTML=`<span class="t">${esc((ev.t||"").slice(0,16))}</span>`+
       `<span class="who">tick</span><span>${esc(tickMsg(ev))}</span>`;
+    if(Array.isArray(ev.thoughts_top5) && ev.thoughts_top5.length){
+      div.style.cursor = "pointer";
+      div.addEventListener("click", () => {
+        const info = modeInfo(currentMode);
+        if(info.kind === "live") return;
+        renderWorkspaceFromTop5(ev);
+      });
+    }
     tk.prepend(div);
     while(tk.children.length>80) tk.lastChild.remove();
     return;
@@ -1288,12 +1469,21 @@ function setModeBadge(live,running,source){
   if(live){ b.className="badge live";
     const isMarket = source && String(source).indexOf("live_market")===0;
     const isCache = source==="cache_replay";
+    // Wrap the ● glyph in .live-dot when running so it inherits the
+    // header badge's shared pulse animation; idle states drop the
+    // glyph entirely so a dead stream can't look alive.
     if(isMarket){
-      b.innerText=running?"\u25CF LIVE — market paper (shadow-only)":"LIVE — market stream idle";
+      b.innerHTML = running
+        ? '<span class="live-dot">\u25CF</span> LIVE — market paper (shadow-only)'
+        : 'LIVE — market stream idle';
     } else if(isCache){
-      b.innerText=running?"\u25CF LIVE — cache paper (shadow-only)":"LIVE — cache stream idle";
+      b.innerHTML = running
+        ? '<span class="live-dot">\u25CF</span> LIVE — cache paper (shadow-only)'
+        : 'LIVE — cache stream idle';
     } else {
-      b.innerText=running?"\u25CF LIVE — paper stream (shadow-only)":"LIVE — stream idle";
+      b.innerHTML = running
+        ? '<span class="live-dot">\u25CF</span> LIVE — paper stream (shadow-only)'
+        : 'LIVE — stream idle';
     }
   }
   else { b.className="badge sim"; b.innerText="sim-only — not trading real lots"; }
@@ -1311,7 +1501,30 @@ function updateModeUI(key){
   // Base badge state; the LIVE polling path overwrites this with
   // running/source detail once /api/v2/live/status resolves.
   if(info.kind !== "live") setModeBadge(false);
+  // Swap the transport row: Play + speed dropdown are meaningless on
+  // LIVE (real-time, no seek), so hide them and show the connection
+  // pill instead. Replay mode is the inverse.
+  const transport = document.getElementById("replay-transport");
+  const conn = document.getElementById("live-connection");
+  if(info.kind === "live"){
+    if(transport) transport.classList.add("hidden");
+    if(conn) conn.classList.add("open");
+    updateLiveEventCount();
+  } else {
+    if(transport) transport.classList.remove("hidden");
+    if(conn) conn.classList.remove("open");
+  }
   refreshWaitingPanel();
+  // Workspace panel is LIVE-first: fetch immediately, then let the
+  // poll cadence keep it fresh. Replay mode leaves it hidden until
+  // the user clicks a tick_summary row.
+  if(info.kind === "live") refreshLiveWorkspace();
+  else hideWorkspacePanel();
+}
+
+function updateLiveEventCount(){
+  const el = document.getElementById("live-event-count");
+  if(el) el.innerText = String(events.length);
 }
 
 // ---------------------------------------------------------------------
@@ -1329,11 +1542,16 @@ function nextH4CloseMs(){
 }
 function fmtCountdown(ms){
   if(ms <= 0) return "any moment";
-  const totalMin = Math.max(1, Math.round(ms / 60000));
+  const totalSec = Math.max(0, Math.round(ms / 1000));
+  // Under a minute: seconds only, so the last stretch reads as a real
+  // ticker. Otherwise h/m/s in the usual grouping.
+  if(totalSec < 60) return "in " + totalSec + " s";
+  const s = totalSec % 60;
+  const totalMin = Math.floor(totalSec / 60);
   const h = Math.floor(totalMin / 60);
   const mn = totalMin % 60;
-  if(h === 0) return "in " + mn + " min";
-  return "in " + h + " h " + mn + " m";
+  if(h === 0) return "in " + mn + " m " + s + " s";
+  return "in " + h + " h " + mn + " m " + s + " s";
 }
 function refreshWaitingPanel(){
   const el = document.getElementById("waiting-panel");
@@ -1346,9 +1564,11 @@ function refreshWaitingPanel(){
     return;
   }
   el.classList.add("open");
+  el.classList.add("fade-in");
   renderWaitingContents();
   if(!waitingTimer){
-    waitingTimer = setInterval(renderWaitingContents, 30_000);
+    // 1 s cadence so the last-minute countdown reads as a real ticker.
+    waitingTimer = setInterval(renderWaitingContents, 1_000);
   }
 }
 function renderWaitingContents(){
@@ -1556,8 +1776,168 @@ function exitTour(){
   document.getElementById("tour-shade").classList.remove("open");
   document.getElementById("tour-tooltip").classList.remove("open");
 }
+// ---------------------------------------------------------------------
+// Workspace panel — "what the squad is thinking" (Fix 1).
+// LIVE mode: fetch every 15 s from /api/v2/live/workspace (real-time
+// snapshot). Replay mode: user clicks a tick_summary row -> renderFromTop5
+// paints the top-5 thoughts captured in that tick's event row.
+// ---------------------------------------------------------------------
+let workspaceTimer = null;
+let workspaceShowAll = false;
+const WORKSPACE_DISPLAY_LIMIT = 14;
+function hideWorkspacePanel(){
+  const p = document.getElementById("workspace-panel");
+  if(p) p.style.display = "none";
+  if(workspaceTimer){ clearInterval(workspaceTimer); workspaceTimer = null; }
+}
+function showWorkspacePanel(){
+  const p = document.getElementById("workspace-panel");
+  if(!p) return;
+  const was = p.style.display;
+  p.style.display = "block";
+  // Fade-in only on the first show, not on every refresh.
+  if(was === "none"){
+    p.classList.remove("fade-in");
+    void p.offsetWidth;
+    p.classList.add("fade-in");
+  }
+}
+async function refreshLiveWorkspace(){
+  const info = modeInfo(currentMode);
+  if(info.kind !== "live"){
+    hideWorkspacePanel();
+    return;
+  }
+  showWorkspacePanel();
+  let ws = null;
+  try{ ws = await (await fetch("/api/v2/live/workspace")).json(); }
+  catch(e){ ws = {exists:false, thoughts:[]}; }
+  renderWorkspace(ws || {exists:false, thoughts:[]},
+                   {source:"live", asOf: ws && ws.as_of, tickId: ws && ws.tick_id});
+  // Poll every 15 s while LIVE is the active mode.
+  if(!workspaceTimer){
+    workspaceTimer = setInterval(refreshLiveWorkspace, 15_000);
+  }
+}
+function renderWorkspaceFromTop5(ev){
+  // Replay-mode entry point: a tick_summary row exposes at most 5
+  // thoughts captured at emit time. Fewer fields than LIVE (compact
+  // {agent_id, symbol, narrative, confidence}) so the card degrades
+  // gracefully with narrative-only content.
+  showWorkspacePanel();
+  const thoughts = (ev && Array.isArray(ev.thoughts_top5))
+    ? ev.thoughts_top5 : [];
+  renderWorkspace({exists:true, thoughts_top5:true, thoughts},
+                  {source:"tick_summary", asOf: ev && ev.t,
+                   tickId: ev && ev.tick_id});
+}
+function renderWorkspace(ws, meta){
+  const grid = document.getElementById("workspace-grid");
+  const empty = document.getElementById("workspace-empty");
+  const metaEl = document.getElementById("workspace-meta");
+  const toggle = document.getElementById("workspace-toggle");
+  if(!grid || !empty || !metaEl) return;
+  const thoughts = (ws && Array.isArray(ws.thoughts)) ? ws.thoughts : [];
+  // Sort: timestamp desc, agent_id asc. Engine already does this for
+  // the LIVE snapshot; tick_summary top-5 arrives confidence-sorted,
+  // so re-sort here for a single consistent presentation.
+  thoughts.sort((a,b) => {
+    const ta = new Date(a.timestamp || meta.asOf || 0).getTime();
+    const tb = new Date(b.timestamp || meta.asOf || 0).getTime();
+    if(tb !== ta) return tb - ta;
+    return String(a.agent_id||"").localeCompare(String(b.agent_id||""));
+  });
+  // Group visually by agent: keep the (ts desc) primary order but
+  // adjacent-cluster same-agent cards so hover / scan reads as a
+  // per-character stack rather than a shuffled feed.
+  const perAgent = {};
+  const agentOrder = [];
+  for(const t of thoughts){
+    const aid = t.agent_id || "?";
+    if(!(aid in perAgent)){ perAgent[aid] = []; agentOrder.push(aid); }
+    perAgent[aid].push(t);
+  }
+  const ordered = [];
+  for(const aid of agentOrder) for(const t of perAgent[aid]) ordered.push(t);
+  const limit = workspaceShowAll ? ordered.length : WORKSPACE_DISPLAY_LIMIT;
+  const shown = ordered.slice(0, limit);
+  if(!thoughts.length){
+    grid.innerHTML = "";
+    empty.style.display = "block";
+    const dt = new Date(nextH4CloseMs());
+    const hh = String(dt.getUTCHours()).padStart(2, "0");
+    const nn = document.getElementById("workspace-next-hh");
+    if(nn) nn.innerText = hh + ":00";
+    metaEl.innerText = "0 thoughts";
+    if(toggle) toggle.style.display = "none";
+    return;
+  }
+  empty.style.display = "none";
+  grid.innerHTML = shown.map(t => workspaceCardHtml(t)).join("");
+  // Meta line: source + count + tick id.
+  const total = (ws && typeof ws.thought_count === "number")
+    ? ws.thought_count : thoughts.length;
+  const src = meta.source === "tick_summary"
+    ? "from tick #" + (meta.tickId || "?") + " · " + (meta.asOf||"").slice(0,16)
+    : "as of " + (meta.asOf ? String(meta.asOf).slice(11,19) + " UTC" : "—");
+  metaEl.innerText = "Showing " + shown.length + " of " + total +
+    " thought" + (total===1?"":"s") + " · " + src;
+  if(toggle){
+    if(ordered.length > WORKSPACE_DISPLAY_LIMIT){
+      toggle.style.display = "inline-block";
+      toggle.innerText = workspaceShowAll
+        ? "show fewer"
+        : ("show all " + ordered.length + " thoughts");
+    } else {
+      toggle.style.display = "none";
+    }
+  }
+}
+function workspaceCardHtml(t){
+  const aid = t.agent_id || "?";
+  const r = roster[aid] || {name: aid, color: "#8b949e"};
+  const conf = (typeof t.confidence === "number") ? t.confidence
+             : (typeof t.confidence_in_thought === "number")
+               ? t.confidence_in_thought : null;
+  const confPct = conf==null ? 0 : Math.max(0, Math.min(1, conf)) * 100;
+  const confTxt = conf==null ? "?" : conf.toFixed(2);
+  const tags = Array.isArray(t.tags) ? t.tags : [];
+  const read = t.read || null;
+  const exp = t.expected_action || null;
+  const dir = read ? read.direction_bias : null;
+  const stopPips = read ? read.expected_stop_pips : null;
+  const dirClass = dir === "long" ? "dir-long"
+                 : dir === "short" ? "dir-short" : "";
+  let foot = "";
+  if(exp || dir || stopPips != null){
+    const parts = [];
+    if(exp) parts.push('<span class="k">expected</span> <span class="v">'+esc(exp)+'</span>');
+    if(dir) parts.push('<span class="k">dir</span> <span class="v dir">'+esc(String(dir).toUpperCase())+'</span>');
+    if(stopPips != null) parts.push('<span class="k">stop</span> <span class="v">'+esc(Math.round(stopPips*10)/10)+' pips</span>');
+    foot = '<div class="foot">'+parts.join("")+'</div>';
+  }
+  const narrative = t.narrative || "";
+  const shortSym = t.symbol || "";
+  const tagsHtml = tags.length
+    ? '<div class="tags">'+tags.map(x =>
+        '<span class="tag">'+esc(x)+'</span>').join("")+'</div>'
+    : "";
+  return '<div class="thought-card '+dirClass+'">'+
+    '<div class="hd">'+
+      '<span class="dot" style="background:'+r.color+'"></span>'+
+      '<span class="nm" style="color:'+r.color+'">'+esc(r.name)+'</span>'+
+      '<span class="sym">'+esc(shortSym)+'</span>'+
+      '<span class="conf">conf '+esc(confTxt)+'</span>'+
+    '</div>'+
+    '<div class="narrative">'+esc(narrative)+'</div>'+
+    '<div class="conf-bar"><span style="width:'+confPct.toFixed(0)+'%"></span></div>'+
+    tagsHtml+foot+
+  '</div>';
+}
+
 function stopLive(){
   if(liveTimer){clearInterval(liveTimer); liveTimer=null;}
+  if(workspaceTimer){clearInterval(workspaceTimer); workspaceTimer=null;}
   livePolling=false; setModeBadge(false);
   document.getElementById("seek").disabled=false;
   document.getElementById("play").disabled=false;
@@ -1656,6 +2036,10 @@ async function pollLive(){
     // enough real activity.
     refreshWaitingPanel();
   }
+  // The live-connection pill's "N events since reset" counter tracks
+  // events.length regardless of whether this batch was empty, so an
+  // empty poll still confirms the count on-screen matches reality.
+  updateLiveEventCount();
 }
 
 async function init(){
@@ -1735,6 +2119,36 @@ async function init(){
   document.getElementById("tour-back").onclick = () => advanceTour(-1);
   document.getElementById("tour-skip").onclick = exitTour;
   document.getElementById("tour-shade").onclick = exitTour;
+
+  // LIVE connection pill: manual refresh button re-runs the same fetch
+  // as the 15 s auto-refresh (status + workspace snapshot + event tail).
+  // 300 ms spin animation on click as a "yes, we heard you" tell.
+  const liveRefresh = document.getElementById("live-refresh");
+  if(liveRefresh){
+    liveRefresh.onclick = () => {
+      liveRefresh.classList.remove("spin-once");
+      void liveRefresh.offsetWidth;
+      liveRefresh.classList.add("spin-once");
+      pollLiveStatus();
+      refreshLiveWorkspace();
+      if(livePolling) pollLive();
+    };
+  }
+  // Workspace panel show-all toggle.
+  const wsToggle = document.getElementById("workspace-toggle");
+  if(wsToggle){
+    wsToggle.onclick = () => {
+      workspaceShowAll = !workspaceShowAll;
+      // Re-render from the last fetched state; simplest is to trigger
+      // the same fetch path (LIVE) or a no-op in replay -- the tick
+      // summary click will re-populate anyway.
+      const info = modeInfo(currentMode);
+      if(info.kind === "live") refreshLiveWorkspace();
+      // For replay the user has to re-click the tick_summary row to
+      // see the toggle change; that's fine -- their previous selection
+      // was already the whole payload (max 5 thoughts).
+    };
+  }
   document.addEventListener("keydown", (e) => {
     if(e.key !== "Escape") return;
     if(tourActive){ exitTour(); return; }

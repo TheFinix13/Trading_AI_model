@@ -273,6 +273,13 @@ def build_timeline(cache_dir: Path) -> tuple[list[dict], dict]:
             "workspace_thought_count": int(
                 ts_row.get("workspace_thought_count", 0)
             ),
+            # Compact per-tick preview of the squad's head so the /v2
+            # workspace panel can update on click of a tick_summary row
+            # in historical replays. Absent on older caches -> empty list.
+            "thoughts_top5": (
+                list(ts_row.get("thoughts_top5") or [])
+                if isinstance(ts_row.get("thoughts_top5"), list) else []
+            ),
         })
 
     events.sort(key=lambda e: _parse_ts(e["t"]) if e["t"] else datetime.min)

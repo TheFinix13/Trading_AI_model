@@ -201,6 +201,78 @@ def test_proposal_that_passes_sentinel_recorded_in_summary(
     assert row["players_who_proposed"] == ["isagi_yoichi"]
 
 
+def test_tick_summary_includes_thoughts_top5_field(tmp_path: Path):
+    """v0.40: every tick_summary row now carries ``thoughts_top5`` --
+    a compact top-5 highest-confidence peek into that tick's workspace.
+
+    Empty on first bars where no proposer has published yet, but the
+    field must always be present (empty list) so the /v2 UI's replay
+    click path can key off it unconditionally.
+    """
+    engine, hist = _build_engine(tmp_path)
+    engine.on_bar("EURUSD", hist[201], bar_index=201, next_bar=hist[202])
+    rows = _read_events_jsonl(engine.out_dir)
+    assert len(rows) == 1
+    row = rows[0]
+    assert "thoughts_top5" in row, (
+        "tick_summary rows must always include thoughts_top5"
+    )
+    assert isinstance(row["thoughts_top5"], list)
+    # Field cardinality: at most 5 entries (top 5 by confidence).
+    assert len(row["thoughts_top5"]) <= 5
+    # Each entry has compact shape only (no full read dict here --
+    # that's what workspace_snapshot.json is for).
+    for t in row["thoughts_top5"]:
+        for k in ("agent_id", "symbol", "narrative", "confidence"):
+            assert k in t, f"missing {k!r} in thoughts_top5 entry: {t!r}"
+
+
+def test_thoughts_top5_sorted_by_confidence_desc(tmp_path: Path):
+    """When more than 5 thoughts land on the same tick, thoughts_top5
+    keeps the 5 highest confidences; ordering inside is confidence
+    desc so the UI can render them top-first without re-sorting."""
+    from agent.squad.types import Thought
+    engine, hist = _build_engine(tmp_path)
+    # Advance state to just past warmup so on_bar runs the full path.
+    engine.tick_id = 5
+    engine.bars_seen["EURUSD"] = 300
+    engine.last_bar_times["EURUSD"] = hist[201].time.isoformat()
+    # Seed 8 thoughts on this tick with monotonically increasing
+    # confidences so the top-5 slice is deterministic.
+    for i, conf in enumerate([0.10, 0.25, 0.90, 0.55, 0.72, 0.33, 0.99, 0.15]):
+        engine.workspace.publish(Thought(
+            schema_version=1,
+            agent_id=f"seed_{i:02d}",
+            tick_id=engine.tick_id,
+            timestamp=hist[201].time,
+            symbol="EURUSD",
+            narrative=f"seed {i}",
+            tags=[],
+            confidence_in_thought=conf,
+            expected_action=None,
+            coordinate=None,
+            decision_horizon=hist[201].time + timedelta(hours=24),
+            ttl_ticks=6,
+            references=[],
+            read=None,
+        ))
+    from agent.squad.engine import TickResult
+    engine._emit_tick_summary(
+        symbol="EURUSD",
+        bar_time_iso=hist[201].time.isoformat(),
+        eligible=[],
+        result=TickResult(),
+    )
+    rows = _read_events_jsonl(engine.out_dir)
+    top = rows[-1]["thoughts_top5"]
+    assert len(top) == 5
+    confs = [t["confidence"] for t in top]
+    assert confs == sorted(confs, reverse=True), (
+        f"top-5 must be confidence-desc: {confs}"
+    )
+    assert top[0]["confidence"] >= 0.99 - 1e-6
+
+
 def test_tick_summary_does_not_count_toward_trade_tally(tmp_path: Path):
     """build_timeline sees the tick_summary row but _summarise MUST
     NOT double-count it as a proposal / block / trade / goal."""

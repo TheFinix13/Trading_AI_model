@@ -42,6 +42,10 @@ SOURCE_FILES: tuple[tuple[str, str], ...] = (
 STATE_FILE = "state.json"
 KILL_FILE = "kill.txt"
 POLL_HEARTBEAT_FILE = "poll_heartbeat.txt"
+# Rolling snapshot of the last N workspace thoughts, written by
+# ``agent.squad.engine.SquadEngine._write_workspace_snapshot`` on every
+# H4 bar close. Read by :func:`live_workspace` for the /v2 dashboard.
+WORKSPACE_SNAPSHOT_FILE = "workspace_snapshot.json"
 
 # Replay-cache naming knowledge (mirrors squad_events._CACHE_FILES /
 # list_matches). Kept here so cache selection is self-contained without
@@ -382,4 +386,34 @@ def live_status(out_dir: Path, stale_after_s: float = 120.0) -> dict:
         ),
         "cursors": state.get("cursors"),
         "kill": kill_reason,
+    }
+
+
+def live_workspace(out_dir: Path) -> dict:
+    """Read the latest workspace snapshot for the /v2 LIVE panel.
+
+    Returns a dict shaped like the on-disk file with an extra ``exists``
+    boolean so the API can distinguish "snapshot not written yet" from
+    "empty workspace". Fails open: on any read or JSON error we return
+    ``{"exists": False, "thoughts": []}`` rather than 500 the UI.
+    """
+    out_dir = Path(out_dir)
+    path = out_dir / WORKSPACE_SNAPSHOT_FILE
+    if not path.exists():
+        return {"exists": False, "thoughts": []}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"exists": False, "thoughts": []}
+    if not isinstance(payload, dict):
+        return {"exists": False, "thoughts": []}
+    thoughts = payload.get("thoughts")
+    if not isinstance(thoughts, list):
+        thoughts = []
+    return {
+        "exists": True,
+        "as_of": payload.get("as_of"),
+        "tick_id": int(payload.get("tick_id") or 0),
+        "thought_count": int(payload.get("thought_count") or 0),
+        "thoughts": thoughts,
     }
