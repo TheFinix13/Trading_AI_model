@@ -631,6 +631,49 @@ on desktop + mobile before adding new surfaces, would violate the
 escalation protocol's brand / architecture / money categories. Held
 pending explicit CEO direction in the next session.
 
+## D050 · 2026-07-21 · ceo · [SPRINT]
+
+**Sprint 1 (Access) kick-off green-lit — single executor, three lane-personas.**
+
+Kicks off tonight. Executor structure: one coherent worker with strict
+lane discipline splitting into three internal personas — (1) Auth
+Developer (encrypted credential storage + single-user token auth),
+(2) Broker Integrations (MT5 connection wizard + connection testing),
+(3) Onboarding UX (first-time setup flow /onboarding). Retro's "split
+the executor persona for money-adjacent sprints" (Sprint 0 §Retro #6)
+implemented as strict internal-lane discipline rather than parallel
+subagents (files bottleneck on pages.py + serve_platform.py). Lane
+serialisation: Auth → Broker → Onboarding, but each lane's design
+stage can run in parallel with the previous lane's build stage.
+
+## D051 · 2026-07-21 · ceo · [FOUNDING]
+
+**Finance activation deferred to first genuine spend decision.**
+
+Finance persona stays at `active: false` on the roster until a Sprint
+1+ feature surfaces a required purchase (broker sandbox account,
+paid market-data subscription, domain, hosting, mailer, monitoring
+SaaS). At that moment the requesting persona files a
+`[BLOCKER][SPEND]` escalation entry pointing at the shortlist; Finance
+activates, produces vendor comparison + spend memo per role doc; CEO
+ratifies before any card is charged. Company card + spending limit
+setup deferred to that first-spend moment.
+
+## D052 · 2026-07-21 · ceo · [ARCH]
+
+**Sprint 1 auth scope = MINIMAL: single-user install, bring-your-own broker.**
+
+No user database. No signup flow. No email verification. No password
+reset. No multi-tenant story. Model: one install = one user;
+credentials for that user's MT5 account stored encrypted at rest
+(OS keychain via `keyring` library preferred; encrypted-file fallback
+with user passphrase); single install-scoped `auth_token` generated
+on first setup and stored the same way. Sandbox / demo MT5 is
+default; live MT5 requires explicit user opt-in through the
+onboarding flow. Real user accounts + multi-tenancy = later sprint
+(Stickiness / Compliance) after we see one install working end-to-end
+first.
+
 ## Template for subsequent entries
 
 ```markdown

@@ -980,6 +980,27 @@
       "role": "ceo",
       "decision": "Sprint 1 kick-off held pending explicit CEO green-light.",
       "context": "Higher-stakes lane (money-adjacent, auth-adjacent); retro recommended executor-split. CEO input required on (a) decomposition, (b) Finance activation timing, (c) dogfood-before-continue."
+    },
+    {
+      "id": "D050",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Sprint 1 (Access) green-lit -- single executor, three lane-personas.",
+      "context": "Auth Developer -> Broker Integrations -> Onboarding UX. Lane serialisation with parallel design/build overlap allowed."
+    },
+    {
+      "id": "D051",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Finance activation deferred to first genuine spend decision.",
+      "context": "Persona stays inactive until a Sprint 1+ feature files [BLOCKER][SPEND]. At that point Finance activates, produces vendor shortlist + spend memo, CEO ratifies."
+    },
+    {
+      "id": "D052",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Sprint 1 auth scope = MINIMAL: single-user install, bring-your-own broker.",
+      "context": "OS keychain (keyring lib) preferred, encrypted-file passphrase fallback. Sandbox default; live MT5 opt-in via onboarding flow. No user DB, no signup flow. Multi-tenant = later sprint."
     }
   ],
   "sprint_verdicts": [
