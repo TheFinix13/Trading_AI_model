@@ -4,8 +4,8 @@
     "founded": "2026-07-21",
     "mission": "The first AI trading platform that trades like a football team.",
     "one_liner": "Watch our striker squad find setups on real markets \u2014 every decision explained, every risk gated.",
-    "current_sprint_id": "sprint-1-access",
-    "generated_at": "2026-07-21T19:40:00Z",
+    "current_sprint_id": "sprint-2-real-trading",
+    "generated_at": "2026-07-22T00:40:00Z",
     "schema_version": "1.0.0"
   },
   "roles": [
@@ -220,6 +220,18 @@
       "verdict": "COMPLETE",
       "feature_ids": ["F006", "F007", "F008"],
       "day_count": 1,
+      "day_target": 13
+    },
+    {
+      "id": "sprint-2-real-trading",
+      "name": "Real-Trading",
+      "goal": "Ship the scaffolding for live-order placement default-OFF: auth hardening, kill-switches, risk budget, trade-approval mode + live-mode toggle, SSE alerts. Zero diffs on agent/live/ or agent/risk/ or agent/squad/.",
+      "started_at": "2026-07-21",
+      "target_end": "2026-08-04",
+      "actual_end": null,
+      "verdict": "IN_PROGRESS",
+      "feature_ids": ["F009", "F010", "F011", "F012", "F013", "F014"],
+      "day_count": 0,
       "day_target": 13
     }
   ],
@@ -955,6 +967,140 @@
         "tests/platform/test_onboarding_api.py",
         "tests/platform/test_onboarding_page.py"
       ]
+    },
+    {
+      "id": "F009",
+      "title": "Auth hardening -- rate limit + session expiry + token rotation",
+      "priority": "P0",
+      "sprint_id": "sprint-2-real-trading",
+      "current_stage": "spec",
+      "current_owner_role": "backend",
+      "reviewers": ["ux_researcher", "cto", "backend", "qa", "security", "legal", "ceo"],
+      "auth": true,
+      "credentials": true,
+      "created_at": "2026-07-22T00:40:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
+         "deliverable": "company/sprints/sprint-2-real-trading/F009-auth-hardening.md",
+         "note": "Spec locked. Sprint 1 carry-over (D062) -- rate limiter + session expiry + token rotation."}
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-2-real-trading/F009-auth-hardening.md"
+      ]
+    },
+    {
+      "id": "F010",
+      "title": "Claim-register audit pre-commit hook",
+      "priority": "P0",
+      "sprint_id": "sprint-2-real-trading",
+      "current_stage": "spec",
+      "current_owner_role": "backend",
+      "reviewers": ["cto", "backend", "qa", "ceo"],
+      "created_at": "2026-07-22T00:40:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
+         "deliverable": "company/sprints/sprint-2-real-trading/F010-claim-register-audit.md",
+         "note": "Spec locked. Sprint 1 carry-over (D062) -- automates review-chain \u00a76.3 audit."}
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-2-real-trading/F010-claim-register-audit.md"
+      ]
+    },
+    {
+      "id": "F011",
+      "title": "Kill-switches infrastructure (per-symbol + global, hot-reload)",
+      "priority": "P0",
+      "sprint_id": "sprint-2-real-trading",
+      "current_stage": "spec",
+      "current_owner_role": "backend",
+      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "ceo"],
+      "auth": true,
+      "created_at": "2026-07-22T00:40:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
+         "deliverable": "company/sprints/sprint-2-real-trading/F011-kill-switches.md",
+         "note": "Spec locked. Read-only view + write admin + /settings/kill-switches. is_killed() is the 2nd of 4 live-mode-off checks (F013)."}
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-2-real-trading/F011-kill-switches.md"
+      ]
+    },
+    {
+      "id": "F012",
+      "title": "Risk budget hard-cap + broker connection health + /risk dashboard",
+      "priority": "P0",
+      "sprint_id": "sprint-2-real-trading",
+      "current_stage": "spec",
+      "current_owner_role": "backend",
+      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "ceo"],
+      "auth": true,
+      "created_at": "2026-07-22T00:40:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
+         "deliverable": "company/sprints/sprint-2-real-trading/F012-risk-budget-and-broker-health.md",
+         "note": "Spec locked. 3-tier max-loss caps + broker probe with 30s cache + /risk dashboard. can_send_order() is the 3rd of 4 live-mode-off checks."}
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-2-real-trading/F012-risk-budget-and-broker-health.md"
+      ]
+    },
+    {
+      "id": "F013",
+      "title": "Trade approval mode + /approvals queue + live-mode toggle",
+      "priority": "P0",
+      "sprint_id": "sprint-2-real-trading",
+      "current_stage": "spec",
+      "current_owner_role": "backend",
+      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
+      "auth": true,
+      "credentials": true,
+      "legal_relevant": true,
+      "created_at": "2026-07-22T00:40:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
+         "deliverable": "company/sprints/sprint-2-real-trading/F013-trade-approval-and-live-mode.md",
+         "note": "Spec locked. Central Real-Trading feature. Contains the P0 test_live_mode_off_invariant.py pin. Live-mode default OFF, ceremony to enable, 1-click to disable."}
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-2-real-trading/F013-trade-approval-and-live-mode.md"
+      ]
+    },
+    {
+      "id": "F014",
+      "title": "SSE alerts stream + Telegram bridge",
+      "priority": "P0",
+      "sprint_id": "sprint-2-real-trading",
+      "current_stage": "spec",
+      "current_owner_role": "backend",
+      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "ceo"],
+      "auth": true,
+      "created_at": "2026-07-22T00:40:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
+         "deliverable": "company/sprints/sprint-2-real-trading/F014-sse-alerts-and-telegram.md",
+         "note": "Spec locked. In-process event bus + SSE endpoint + Telegram bridge reusing existing bot_token. No real Telegram calls in tests (httpx mocked)."}
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-2-real-trading/F014-sse-alerts-and-telegram.md"
+      ]
     }
   ],
   "decisions": [
@@ -1412,6 +1558,55 @@
       "role": "ceo",
       "decision": "Sprint 2 ships the SCAFFOLDING for live orders, not the switch that starts sending them.",
       "context": "Every safety layer lands as new product-branch code running default-OFF. Sprint 2 does not modify agent/live/, agent/risk/, or agent/squad/, and does not connect the squad to real broker order placement. Live-mode-off invariant test proves no order can send from clean install without explicit user toggle."
+    },
+    {
+      "id": "D066",
+      "date": "2026-07-22",
+      "role": "cpo",
+      "decision": "Sprint 2 opened with 6 P0 feature specs locked (F009 auth hardening, F010 claim-register audit, F011 kill-switches, F012 risk budget + broker health, F013 trade approval + live-mode, F014 SSE alerts + Telegram).",
+      "context": "See company/sprints/sprint-2-real-trading/ README + F009 through F014 specs. Build order is strictly serial (safety-first). F013 contains the P0 test_live_mode_off_invariant.py pin. Live-mode default OFF, ceremony to enable, 1-click to disable. D065 SCAFFOLDING-only invariant + D062 carry-overs both honoured."
+    },
+    {
+      "id": "D067",
+      "date": "2026-07-22",
+      "role": "cpo",
+      "decision": "F009 spec locked: rate limiter + session expiry + token rotation.",
+      "context": "See company/sprints/sprint-2-real-trading/F009-auth-hardening.md. New module agent/platform/rate_limiter.py (token-bucket, 60 req/min per install-token by default), auth.py additions (record_session_activity, is_session_expired, rotate_install_token, POST /api/auth/rotate). Config in platform.toml [rate_limit] + [session]."
+    },
+    {
+      "id": "D068",
+      "date": "2026-07-22",
+      "role": "cpo",
+      "decision": "F010 spec locked: claim-register audit + pre-commit hook + install script + CI-equivalent test.",
+      "context": "See company/sprints/sprint-2-real-trading/F010-claim-register-audit.md. scripts/check_claim_register.py walks agent/platform/*.py via AST, cross-references company/legal/claim_register.md, fails commit on unregistered public claims. scripts/git-hooks/pre-commit + scripts/install_git_hooks.py opt-in installer. tests/platform/test_claim_register_audit.py catches misses even without hook installed."
+    },
+    {
+      "id": "D069",
+      "date": "2026-07-22",
+      "role": "cpo",
+      "decision": "F011 spec locked: kill-switches (global + per-symbol) with hot-reload + /settings/kill-switches.",
+      "context": "See company/sprints/sprint-2-real-trading/F011-kill-switches.md. agent/platform/kill_switches.py (read-only, mtime-cache) + kill_switch_admin.py (write path, audit log). KILL_SWITCHES_PAGE at /settings/kill-switches. is_killed() is the 2nd check in the 4-gate live-order pathway. Mirrors v1 kill.txt protocol shape without importing from agent/live/."
+    },
+    {
+      "id": "D070",
+      "date": "2026-07-22",
+      "role": "cpo",
+      "decision": "F012 spec locked: risk budget hard-cap (3 tiers) + broker connection health + /risk dashboard.",
+      "context": "See company/sprints/sprint-2-real-trading/F012-risk-budget-and-broker-health.md. risk_budget.py enforces per-day / per-symbol / per-strategy max-loss caps from risk_budget.toml + risk_state.jsonl fill audit. broker_health.py wraps broker_connection.test_connection with 30s cache. RISK_PAGE at /risk polls state every 30s. can_send_order() is the 3rd check in the 4-gate pathway."
+    },
+    {
+      "id": "D071",
+      "date": "2026-07-22",
+      "role": "cpo",
+      "decision": "F013 spec locked: trade approval queue + /approvals + live-mode toggle + P0 live-mode-off invariant test.",
+      "context": "See company/sprints/sprint-2-real-trading/F013-trade-approval-and-live-mode.md. approval_queue.py with in-memory + jsonl audit, 5-min timeout, submit/approve/reject/timeout_reap/can_send_order. Live-mode toggle in keyring under bluelock/live_mode_enabled (default missing == disabled). /settings/live-mode ceremony: checkbox + typed 'ENABLE LIVE MODE' + verbatim Legal disclaimer. /approvals shows pending queue with countdown + approve/reject. tests/security/test_live_mode_off_invariant.py composes the 4-check gate (live_mode + kill_switches + risk_budget + approval_queue) and is the single most important test in the sprint."
+    },
+    {
+      "id": "D072",
+      "date": "2026-07-22",
+      "role": "cpo",
+      "decision": "F014 spec locked: SSE alerts stream + Telegram bridge + /alerts page.",
+      "context": "See company/sprints/sprint-2-real-trading/F014-sse-alerts-and-telegram.md. agent/platform/alerts.py (in-process event bus, thread-safe, 100-event ring buffer). alerts_sse.py (SSE endpoint at /api/alerts/stream, ?token= auth since browsers can't set headers on EventSource). alerts_telegram.py (bridges bus to Telegram via httpx, reuses existing platform.toml bot_token). Six event types: trade_fill / stop_hit / kill_switch_trip / risk_budget_breach / approval_submitted / platform_down."
     }
   ],
   "sprint_verdicts": [
@@ -1434,6 +1629,16 @@
       "blockers_surfaced": [],
       "test_count_delta": "974 -> 1259 (+285)",
       "notes": "Fully autonomous run under the Sprint 1 Executor persona across three internal lanes (Auth Developer, Broker Integrations, Onboarding UX) per D050. Retro amendments to review-chain landed first per D047 (F005-first, spec-lock, claim-register, _BASE_CSS versioning). Sprint duration: 1 wall-clock day (2026-07-21) against a 13-day target -- honest review flag: this compression is only possible because the Executor persona owns every lane; a real 3-persona split would have taken longer."
+    },
+    {
+      "sprint_id": "sprint-2-real-trading",
+      "verdict": "IN_PROGRESS",
+      "actual_end": null,
+      "features_shipped": [],
+      "features_missed": [],
+      "blockers_surfaced": [],
+      "test_count_delta": "1259 -> in-flight",
+      "notes": "Sprint 2 opened 2026-07-22 by the Sprint 2 Executor. Six specs locked (F009-F014) per D064. SCAFFOLDING-only invariant per D065 (agent/live/ and agent/risk/ and agent/squad/ untouched; live-mode default OFF). Build order strictly serial (safety-first): F009 -> F010 -> F011 -> F012 -> F013 -> F014."
     }
   ],
   "kpis": {
@@ -1441,6 +1646,8 @@
     "features_total_sprint_0": 5,
     "features_shipped_sprint_1": 3,
     "features_total_sprint_1": 3,
+    "features_shipped_sprint_2": 0,
+    "features_total_sprint_2": 6,
     "backlog_size": 2,
     "bugs_open": 0,
     "cycle_time_days_p50": null,

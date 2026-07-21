@@ -964,6 +964,101 @@ Sprint 2's own tests must include a "live-mode-off invariant" that
 proves no live order can send from a clean install without the
 explicit user toggle.
 
+## D066 · 2026-07-22 · cpo · [SPRINT]
+
+**Sprint 2 opened with six P0 feature specs locked (F009-F014).**
+
+Kicked off tonight by the Sprint 2 Executor. Six specs at
+`company/sprints/sprint-2-real-trading/`: F009 auth hardening
+(Sprint 1 carry-over), F010 claim-register audit (Sprint 1
+carry-over), F011 kill-switches, F012 risk budget + broker health,
+F013 trade approval + live-mode, F014 SSE alerts + Telegram. Build
+order is strictly serial (safety-first). F013 carries the P0
+`tests/security/test_live_mode_off_invariant.py` pin. D065
+SCAFFOLDING-only invariant + D062 carry-overs both honoured.
+
+## D067 · 2026-07-22 · cpo · [FEATURE]
+
+**F009 spec locked — rate limiter + session expiry + token rotation.**
+
+See `company/sprints/sprint-2-real-trading/F009-auth-hardening.md`.
+New module `agent/platform/rate_limiter.py` (token-bucket, 60 req/
+min per install-token by default, config from `[rate_limit]` in
+`platform.toml`). `auth.py` additions: `record_session_activity`,
+`session_last_activity`, `is_session_expired`, `rotate_install_token`,
+`POST /api/auth/rotate`. Session expiry configurable via
+`[session]` block (default 7 days). Legal review handoff written
+BEFORE QA per D048.
+
+## D068 · 2026-07-22 · cpo · [FEATURE]
+
+**F010 spec locked — claim-register audit script + pre-commit hook.**
+
+See `company/sprints/sprint-2-real-trading/F010-claim-register-audit.md`.
+`scripts/check_claim_register.py` walks `agent/platform/*.py` via
+AST, cross-references `company/legal/claim_register.md`, fails
+commit on any unregistered public claim. `scripts/git-hooks/pre-
+commit` template + `scripts/install_git_hooks.py` opt-in installer.
+`tests/platform/test_claim_register_audit.py` catches misses even
+without the git-hook installed (CI-equivalent).
+
+## D069 · 2026-07-22 · cpo · [FEATURE]
+
+**F011 spec locked — kill-switches (global + per-symbol) with hot-reload + /settings/kill-switches.**
+
+See `company/sprints/sprint-2-real-trading/F011-kill-switches.md`.
+`agent/platform/kill_switches.py` (read-only view, mtime-based cache)
++ `kill_switch_admin.py` (write path, audit log at
+`<config_dir>/kill_events.jsonl`). `KILL_SWITCHES_PAGE` at
+`/settings/kill-switches`. `is_killed()` is the SECOND check in the
+4-gate live-order pathway (after `live_mode_enabled`). Mirrors v1
+`kill.txt` protocol shape without importing from `agent/live/`.
+
+## D070 · 2026-07-22 · cpo · [FEATURE]
+
+**F012 spec locked — risk budget hard-cap (3 tiers) + broker health probe + /risk dashboard.**
+
+See `company/sprints/sprint-2-real-trading/F012-risk-budget-and-
+broker-health.md`. `risk_budget.py` enforces per-day / per-symbol /
+per-strategy max-loss caps from `risk_budget.toml` +
+`risk_state.jsonl` fill audit. `broker_health.py` wraps
+`broker_connection.test_connection` with 30-second cache.
+`RISK_PAGE` at `/risk` polls state every 30 s. `can_send_order()`
+is the THIRD check in the 4-gate pathway.
+
+## D071 · 2026-07-22 · cpo · [FEATURE]
+
+**F013 spec locked — trade approval mode + /approvals + live-mode toggle + P0 live-mode-off invariant.**
+
+See `company/sprints/sprint-2-real-trading/F013-trade-approval-and-
+live-mode.md`. `approval_queue.py` with in-memory queue + jsonl
+audit, 5-minute default timeout, `submit / approve / reject /
+timeout_reap / can_send_order`. Live-mode toggle in keyring under
+`bluelock/live_mode_enabled` (default missing == disabled).
+`/settings/live-mode` ceremony: checkbox + typed
+`"ENABLE LIVE MODE"` + verbatim Legal disclaimer body.
+`/approvals` shows pending queue with countdown + approve / reject
+buttons. **`tests/security/test_live_mode_off_invariant.py`**
+composes the 4-check gate (`live_mode_enabled` + `kill_switches` +
+`risk_budget` + `approval_queue`) — the single most important test
+in the sprint. Legal review (live-mode-warning + approval-queue-
+warning) handoff written BEFORE QA per D048.
+
+## D072 · 2026-07-22 · cpo · [FEATURE]
+
+**F014 spec locked — SSE alerts stream + Telegram bridge + /alerts.**
+
+See `company/sprints/sprint-2-real-trading/F014-sse-alerts-and-
+telegram.md`. `agent/platform/alerts.py` (in-process event bus,
+thread-safe, 100-event ring buffer). `alerts_sse.py` (SSE endpoint
+at `/api/alerts/stream`, `?token=` auth since browsers cannot set
+headers on `EventSource`). `alerts_telegram.py` (bridges bus to
+Telegram via `httpx`, reuses existing `platform.toml` bot_token).
+Six event types: `trade_fill / stop_hit / kill_switch_trip /
+risk_budget_breach / approval_submitted / platform_down`.
+`/alerts` page + test-alert button. No real Telegram calls in
+tests (httpx mocked).
+
 ## Template for subsequent entries
 
 ```markdown
