@@ -528,6 +528,47 @@ default to `None`; a missing repo renders the friendly
 `source_exists=false` empty state. F003 spec updated in-place with
 the derivation note.
 
+## D043 · 2026-07-21 · frontend · [ARCHITECTURE]
+
+**F004 hoisted `.nav` flex-wrap + a 700 px media query into `_BASE_CSS` so every page inherits mobile-responsive nav automatically.**
+
+F004 was baked into F001 / F002 / F003 as they landed, but the
+smoke test surfaced two residual gaps against the F004 spec's
+"all 7 routes clear the 375 px bar" criterion: `V1_PAGE` lacked
+any `@media` block, and `.nav` was not `flex-wrap: wrap` — so
+seven nav pills would force horizontal scroll on any pre-existing
+page. Both fixed at the base-CSS level so HUB / V1 / V2 / HQ get
+the mobile pass "for free" via the existing `__BASE_CSS__`
+substitution. A 62-test smoke suite (`test_mobile_responsive.py`)
+locks the invariants: viewport meta present, at least one mobile
+media query per page, canonical 700 px on Sprint 0 pages, no
+body-level `overflow-x: scroll`, no font-size below 10 px.
+Platform suite 286 → 348.
+
+## D044 · 2026-07-21 · cpo · [FEATURE]
+
+**F004 shipped — 375 px bar cleared across all 7 required routes; ledger advances to features_shipped_sprint_0 = 5.**
+
+CEO signoff captured under end-of-sprint dogfood pass (D005
+cadence) plus the per-feature QA pass. F004 fast-path complete:
+security + legal correctly skipped (no new surface, just
+responsive CSS). See `company/handoffs/F004-qa-to-cpo.json`.
+
+## D045 · 2026-07-21 · cpo · [SPRINT]
+
+**Sprint 0 (Trust Foundation) verdict: COMPLETE. All 5 P0 features shipped in ~4 hours honest wall-clock.**
+
+F005 → F001 → F002 → F003 → F004 landed in a single Sprint 0
+Executor session (2026-07-21 14:00 → 18:00 UTC-ish). Final test
+count 348 platform tests (100 pre-sprint, +248 delta), 42
+review-chain handoff JSONs on tape in `company/handoffs/`, 45
+decision entries in this log, zero blockers surfaced to CEO, zero
+budget spent. HQ dashboard accurate to the minute at close:
+`features_shipped_sprint_0 = 5`. Sprint 1 (Access) is the next
+lane — broker connection wizard, real user accounts, first-time
+setup flow. See `company/sprints/sprint-0-trust-foundation/REPORT.md`
+for the post-mortem and retro suggestions for Sprint 1.
+
 ## Template for subsequent entries
 
 ```markdown

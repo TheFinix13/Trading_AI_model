@@ -1,8 +1,20 @@
 # 00 — The Journey: from ICT trading partner to a validated zone-fade portfolio
 
-**Last updated:** 2026-06-10
+**Last updated:** 2026-07-21
 **Companion:** [CHECKPOINT.md](CHECKPOINT.md) (current-state snapshot, updated at every
 major divergence). Evidence record: [`reviews/`](reviews/).
+
+**2026-07-21 · Sprint 0 (Trust Foundation) complete.** Company scaffold
+(`company/`) landed on the `product` branch; five P0 features (F001
+`/performance`, F002 `/players[/:id]`, F003 `/research`, F004 mobile
+pass, F005 shared skeleton + error helper) shipped in a single
+autonomous executor session. Platform test suite 100 → 348 (+248).
+Sprint verdict COMPLETE, zero blockers, zero spend. Commit range
+`a8f0990..<F004 close-out>`. See
+`company/sprints/sprint-0-trust-foundation/REPORT.md` for the
+post-mortem and Sprint 1 retro suggestions. `product` branch now
+carries the customer-facing surface; `main` still holds the research
+lane and `next-gen` the v2 squad runtime.
 
 This document is the narrative source of truth for how the project got from a
 many-concepts-at-once "AI trading partner" to a small, statistically-validated,
