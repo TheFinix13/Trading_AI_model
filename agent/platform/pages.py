@@ -17,9 +17,16 @@ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);
 a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
 h1{font-size:22px;margin:0 0 2px}
 .sub{color:var(--dim);margin-bottom:20px;font-size:13px}
-.nav{display:flex;gap:14px;margin-bottom:18px;font-size:13px}
-.nav a{padding:4px 12px;border:1px solid var(--border);border-radius:999px}
+.nav{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;font-size:13px}
+.nav a{padding:4px 12px;border:1px solid var(--border);border-radius:999px;
+  white-space:nowrap;line-height:1.6}
 .nav a.here{background:var(--panel);border-color:var(--accent)}
+@media (max-width: 700px){
+  body{padding:16px 14px}
+  .nav{gap:8px;margin-bottom:14px}
+  h1{font-size:19px}
+  #updated{position:static;display:block;margin-bottom:8px}
+}
 .badge{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
   padding:2px 9px;border-radius:999px}
 .badge.alive{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.4)}

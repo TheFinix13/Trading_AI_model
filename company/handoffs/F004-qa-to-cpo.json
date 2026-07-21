@@ -1,0 +1,14 @@
+{
+  "from_role": "qa",
+  "to_role": "cpo",
+  "feature_id": "F004",
+  "timestamp": "2026-07-21T17:58:00Z",
+  "deliverables": [
+    "company/qa/F004-verdict.md"
+  ],
+  "notes": "QA PASS. 62 F004 smoke tests + full 348-test platform suite green. Manual 375 px sweep across all 7 required routes cleared. Ready for CPO signoff -> ship.",
+  "blockers": [],
+  "review_criteria": [
+    "Ready for /hq ledger update advancing F004 to 'signoff' -> 'ship'; features_shipped_sprint_0 = 5"
+  ]
+}

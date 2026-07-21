@@ -1,0 +1,19 @@
+{
+  "from_role": "ui_designer",
+  "to_role": "frontend",
+  "feature_id": "F004",
+  "timestamp": "2026-07-21T17:56:00Z",
+  "deliverables": [
+    "company/design/F001-mocks.md",
+    "company/design/F002-mocks.md",
+    "company/design/F003-mocks.md"
+  ],
+  "notes": "F004 was baked into F001/F002/F003 as they landed -- see each feature's mock file for the 375 px pass. This handoff closes out the horizontal concern: the canonical Sprint 0 breakpoint is @media (max-width: 700px); every P0 route now consumes it. Frontend to (1) hoist .nav flex-wrap into _BASE_CSS so nav pills reflow instead of horizontal-scrolling, (2) add a base-level @media (max-width: 700px) block that pins position:fixed elements inline and tightens body padding, (3) ship a static smoke test that guards these invariants forever.",
+  "blockers": [],
+  "review_criteria": [
+    "Every static page constant contains at least one @media (max-width: Npx) block",
+    ".nav is flex-wrap:wrap so seven pills reflow on 375 px",
+    "No page has body-level overflow-x: scroll",
+    "No font-size < 10 px on any user-visible surface"
+  ]
+}

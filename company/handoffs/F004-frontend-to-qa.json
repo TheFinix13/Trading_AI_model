@@ -1,0 +1,17 @@
+{
+  "from_role": "frontend",
+  "to_role": "qa",
+  "feature_id": "F004",
+  "timestamp": "2026-07-21T17:57:00Z",
+  "deliverables": [
+    "agent/platform/pages.py",
+    "tests/platform/test_mobile_responsive.py"
+  ],
+  "notes": "F004 build closed out. _BASE_CSS now ships (a) .nav flex-wrap so seven pills reflow at 375 px, (b) a base-level @media (max-width: 700px) block that tightens body padding and pins position:fixed #updated inline. Every existing page (HUB, V1, V2, HQ) inherits the new rules automatically via the __BASE_CSS__ substitution. Sprint 0 pages (F001/F002/F003) already ship their own 700 px block on top. Smoke test tests/platform/test_mobile_responsive.py (62 parametrised tests) locks the invariants: viewport meta, breakpoint range 400-900 px, canonical 700 px on Sprint-0 pages, no body-level horizontal scroll, no font-size < 10 px. Platform suite 286 -> 348.",
+  "blockers": [],
+  "review_criteria": [
+    "62 F004 smoke tests green",
+    "No regressions on the 286 pre-F004 platform tests",
+    "Manual 375 px sweep across /, /v1, /v2, /hq, /performance, /players, /players/<id>, /research"
+  ]
+}
