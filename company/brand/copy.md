@@ -140,3 +140,107 @@ match exactly:
 
 Playstyle taglines are set per-bio in `company/roster/players/*.md`
 and referenced by the /players page renderer, not duplicated here.
+
+## §F006 — Security & auth strings (Sprint 1)
+
+Every user-visible string on any auth surface picks from this list.
+Bracketed placeholders (`<fingerprint>`) get replaced at render time.
+
+### Install fingerprint chip
+
+- Label prefix: `Install fingerprint`
+- Configured state: `🔒 <fingerprint>` where `<fingerprint>` is
+  `first8…last8` (from `auth.install_token_fingerprint`).
+- Unconfigured state: `⚠ Not configured yet — visit /onboarding`
+- Error state: `Auth status unavailable`
+- Reassurance line on /hq (below the chip):
+  `Your install token is stored securely on your device.`
+
+### `/onboarding` welcome (bundled into F008)
+
+Auth-related welcome step copy also lives in this section for
+easy Legal review of the whole security narrative:
+
+- Header: `Welcome to Blue Lock Trading`
+- Subhead: `Let's set up your install in five short steps.`
+- Reassurance: `Your credentials never leave your machine.`
+
+### Passphrase step (F008 step 2)
+
+- Prompt: `Set an install passphrase`
+- Explanation: `We use it as a backup lock when your system keychain
+  isn't available.`
+- Reveal toggle: `Show / Hide passphrase`
+- Strength warning:
+  - `Enter at least 12 characters.` — when < 12.
+  - `Your system keychain is available; the passphrase is optional but
+    recommended.` — when the OS keychain is usable.
+- Persistence disclaimer: `Passphrase is never stored on disk in
+  plaintext.`
+
+### Reset install flow (F008 `/settings/reset-install`)
+
+- Title: `Reset this install?`
+- Warning: `This clears your install token and saved broker
+  credentials. You'll go through onboarding again.`
+- Confirm button: `Yes — reset this install`
+- Cancel button: `Keep this install`
+- Success message: `Install reset. Redirecting to onboarding.`
+
+### Errors (auth-related)
+
+- 401 body: `Install token required.` (never echo the token in
+  responses.)
+- Malformed token: `That token doesn't look right — check the copy.`
+- Post-reset load: `Install reset — nothing was leaked.`
+
+## §F007 — Broker connection wizard strings (Sprint 1)
+
+- Header: `Connect your broker`
+- Choose account type: `Which account are we connecting?`
+  - Radio: `Demo / Sandbox account (recommended)` — default
+  - Radio: `Live account (real money)`
+- Server dropdown label: `MT5 server`
+- Login label: `Login (numeric MT5 login)`
+- Password label: `Password`
+- Test connection button: `Test connection`
+- Loading label: `Testing connection…` (uses F005 withStates)
+- Success message: `Connected to <server> — account #<login> in
+  <currency>.`
+- Save button: `Save this connection`
+- Alias label: `Save this as`
+- Delete confirm: `Remove <alias>? The stored password is deleted.`
+
+### Live account confirmation
+
+- Warning header: `You picked a live account`
+- Warning body: (from `company/legal/live-broker-warning.md`, injected
+  verbatim — Brand does not paraphrase Legal text).
+- Confirmation checkbox: `I understand this uses real money.`
+- Confirmation typed field: `Type LIVE to continue:`
+- Wrong-typed error: `Type LIVE (uppercase, no quotes) to continue.`
+
+### Errors (broker)
+
+- Rate-limited: `Too many attempts — wait a minute before retrying.`
+- Bad server: `That server isn't on the approved list. Pick from the
+  dropdown.`
+- Connection failed: `We couldn't connect. Double-check the login and
+  server, then try again.` (Never leaks the password in the message.)
+
+## §F008 — Onboarding strings (Sprint 1)
+
+- Step 1 (welcome): see §F006 welcome above.
+- Step 2 (passphrase): see §F006 passphrase step above.
+- Step 3 (broker): embedded F007 flow.
+- Step 4 (default pairs):
+  - Prompt: `Which pairs should the squad watch first?`
+  - Note: `You can change this later on the /players page.`
+  - Options: `EURUSD` (default on), `GBPUSD`, `USDCAD`
+- Step 5 (confirm):
+  - Header: `Ready to go`
+  - Recap intro: `Here's your setup:`
+  - Complete button: `Finish setup`
+  - Post-finish redirect message: `Setup complete. Taking you to the
+    hub.`
+

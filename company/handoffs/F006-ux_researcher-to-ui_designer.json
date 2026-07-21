@@ -1,0 +1,16 @@
+{
+  "from_role": "ux_researcher",
+  "to_role": "ui_designer",
+  "feature_id": "F006",
+  "timestamp": "2026-07-21T19:44:00Z",
+  "deliverables": [
+    "company/research/F006-user-journey.md"
+  ],
+  "notes": "Single-user segment ratified. JTBD locked: 'prove the platform doesn't hold my password in plaintext BEFORE I type it'. Two UI surfaces are enough (fingerprint chip + auth-status consumer); the actual 'generate token' step lives on F008's welcome page. Mocks must cover configured + not-configured + error + loading states.",
+  "blockers": [],
+  "review_criteria": [
+    "Fingerprint chip design survives colour-blind + screen-reader review",
+    "Not-configured variant is scannable at 375 px mobile",
+    "Copy tokens sourced from company/brand/copy.md \u00a7F006"
+  ]
+}

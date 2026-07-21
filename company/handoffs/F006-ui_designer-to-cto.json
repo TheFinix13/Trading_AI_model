@@ -1,0 +1,17 @@
+{
+  "from_role": "ui_designer",
+  "to_role": "cto",
+  "feature_id": "F006",
+  "timestamp": "2026-07-21T19:46:00Z",
+  "deliverables": [
+    "company/design/F006-mocks.md",
+    "company/brand/copy.md"
+  ],
+  "notes": "Fingerprint chip design locked. Copy tokens live in copy.md \u00a7F006. Backend needs to expose /api/auth/status returning {authenticated, install_fingerprint, keyring_available}. HTTP-layer changes contained to serve_platform.py.",
+  "blockers": [],
+  "review_criteria": [
+    "auth: true + credentials: true feature flags set on F006 row in company_state.json (mandatory security + legal stages)",
+    "modules_touched \u2264 3 (credentials.py, auth.py, serve_platform.py) -- no CEO escalation needed",
+    "tests_expected_delta = 117 (across security + platform suites)"
+  ]
+}

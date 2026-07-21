@@ -1,0 +1,17 @@
+{
+  "from_role": "legal",
+  "to_role": "ceo",
+  "feature_id": "F006",
+  "timestamp": "2026-07-21T20:02:00Z",
+  "deliverables": [
+    "company/legal/F006-secrets-at-rest.md",
+    "company/legal/claim_register.md"
+  ],
+  "notes": "Legal pass. Disclaimer verbatim-ready for /onboarding + /hq consumption. Claim register carries every F006 public accessor with matching code path. No 'zero knowledge' / 'military grade' / 'end to end' overclaim in the copy. Rolling constraint recorded: any new field emitted by credentials.py or auth.py must land in claim_register.md before Legal re-review.",
+  "blockers": [],
+  "review_criteria": [
+    "CEO signs off on F006 -> Sprint 1 first feature shipped",
+    "Ship-in-place -- backend + API, no public deploy this sprint",
+    "F007 build can start immediately (broker lane consumes F006 credentials module)"
+  ]
+}

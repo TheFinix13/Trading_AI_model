@@ -1,0 +1,16 @@
+{
+  "from_role": "cpo",
+  "to_role": "ux_researcher",
+  "feature_id": "F006",
+  "timestamp": "2026-07-21T19:42:00Z",
+  "deliverables": [
+    "company/sprints/sprint-1-access/F006-encrypted-credentials-and-auth.md"
+  ],
+  "notes": "F006 is a security foundation feature. Two modules (credentials.py + auth.py) + a redaction filter + one API route. Single-user install per D052; no multi-user story. UX Researcher confirms the target segment (retail forex trader on their own machine) and the 'password never leaves my machine' framing before UI Designer starts.",
+  "blockers": [],
+  "review_criteria": [
+    "Confirm single-user install is the right scope for the target audience",
+    "Confirm the 'fingerprint chip, not the full token' framing survives an accessibility check",
+    "Identify what F006 does NOT try to solve (feeds F007/F008 spec cross-links)"
+  ]
+}

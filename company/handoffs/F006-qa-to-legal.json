@@ -1,0 +1,16 @@
+{
+  "from_role": "qa",
+  "to_role": "legal",
+  "feature_id": "F006",
+  "timestamp": "2026-07-21T20:00:00Z",
+  "deliverables": [
+    "company/qa/F006-verdict.md"
+  ],
+  "notes": "QA verdict pass. 117 new tests green (52 auth-security + 40 credentials-security + 6 credentials-module + 6 auth-module + 13 auth-api). Full suite 974 -> 1091. Legal to review the secrets-at-rest disclaimer wording + verify no unregistered public field is emitted.",
+  "blockers": [],
+  "review_criteria": [
+    "Confirm F006 entries in company/legal/claim_register.md are complete",
+    "Confirm the secrets-at-rest disclaimer text is verbatim-ready",
+    "Confirm the 'no plaintext credential in logs' rolling constraint is on tape"
+  ]
+}

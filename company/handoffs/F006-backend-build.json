@@ -1,0 +1,22 @@
+{
+  "from_role": "backend",
+  "to_role": "security",
+  "feature_id": "F006",
+  "timestamp": "2026-07-21T19:55:00Z",
+  "deliverables": [
+    "agent/platform/credentials.py",
+    "agent/platform/auth.py",
+    "scripts/serve_platform.py"
+  ],
+  "modules_new": ["agent/platform/credentials.py", "agent/platform/auth.py"],
+  "modules_edited": ["scripts/serve_platform.py"],
+  "endpoints_added": ["/api/auth/status"],
+  "schema_tests_added": 13,
+  "notes": "Build complete. credentials.py implements the OS-keychain-first + encrypted-file fallback described in D052; auth.py generates install tokens, computes fingerprints, and provides constant-time check_request_token(). serve_platform.make_handler() takes a new enforce_install_token kwarg that main() sets to True on non-localhost. Redaction filter mounted at main() start-up so every log line goes through it. Tests: 117 new (40 credentials-security + 52 auth-security + 6 credentials-module + 6 auth-module + 13 auth-api). Full suite 974 -> 1091.",
+  "blockers": [],
+  "review_criteria": [
+    "Verify threat model in company/legal/F006-secrets-at-rest.md is complete",
+    "Confirm no plaintext secret leaves the module in a log line",
+    "Confirm install-token gate on /api/* non-localhost respects the /api/auth/status exemption"
+  ]
+}

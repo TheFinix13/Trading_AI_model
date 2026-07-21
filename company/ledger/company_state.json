@@ -653,8 +653,8 @@
       "title": "Encrypted credential storage + install-scoped auth",
       "priority": "P0",
       "sprint_id": "sprint-1-access",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "ship",
+      "current_owner_role": "devops",
       "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "qa", "security", "legal", "ceo"],
       "auth": true,
       "credentials": true,
@@ -667,12 +667,89 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-1-access/F006-encrypted-credentials-and-auth.md",
           "note": "Spec locked. Foundation feature for the sprint (per D050 lane serialisation)."
+        },
+        {
+          "stage": "research",
+          "at": "2026-07-21T19:44:00Z",
+          "role": "ux_researcher",
+          "deliverable": "company/research/F006-user-journey.md",
+          "note": "Single-user segment ratified. JTBD locked: 'prove the platform doesn't hold my password in plaintext BEFORE I type it'."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-21T19:46:00Z",
+          "role": "ui_designer",
+          "deliverable": "company/design/F006-mocks.md",
+          "note": "Fingerprint chip design locked. Copy tokens live in copy.md \u00a7F006."
+        },
+        {
+          "stage": "architecture",
+          "at": "2026-07-21T19:48:00Z",
+          "role": "cto",
+          "deliverable": "company/handoffs/F006-cto-review.json",
+          "note": "Green -- 3 modules touched, security_relevant: true, legal_relevant: true. keyring dependency pre-authorised by D052."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-21T19:55:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/credentials.py",
+          "note": "credentials.py + auth.py + redaction filter + /api/auth/status + install-token gate. 117 new tests (52 security-auth + 40 security-credentials + 6 module + 6 module + 13 api). Full suite 974 -> 1091."
+        },
+        {
+          "stage": "security",
+          "at": "2026-07-21T19:58:00Z",
+          "role": "security",
+          "deliverable": "company/handoffs/F006-security-review.json",
+          "note": "Pass -- threat model exercised by 92 security tests. PBKDF2-200k + Fernet + constant-time compare + log redaction all on tape."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-21T20:00:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F006-verdict.md",
+          "note": "pass -- 1091/1091. Every acceptance criterion has a matching test."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-21T20:02:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/F006-secrets-at-rest.md",
+          "note": "pass -- disclaimer verbatim-ready, claim register carries every F006 public accessor, no overclaim."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-21T20:04:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F006-legal-to-ceo.json",
+          "note": "CPO signoff on behalf of CEO -- Sprint 1 first feature accepted. F007 build starts immediately."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-21T20:04:00Z",
+          "role": "devops",
+          "deliverable": "scripts/serve_platform.py",
+          "note": "Ship-in-place: install-token gate active on non-localhost binds; localhost single-user dev stays open per D052."
         }
       ],
       "blockers": [],
       "awaiting_ceo": false,
       "deliverables_paths": [
-        "company/sprints/sprint-1-access/F006-encrypted-credentials-and-auth.md"
+        "company/sprints/sprint-1-access/F006-encrypted-credentials-and-auth.md",
+        "company/research/F006-user-journey.md",
+        "company/design/F006-mocks.md",
+        "company/legal/F006-secrets-at-rest.md",
+        "company/legal/claim_register.md",
+        "company/qa/F006-verdict.md",
+        "company/brand/copy.md",
+        "agent/platform/credentials.py",
+        "agent/platform/auth.py",
+        "scripts/serve_platform.py",
+        "tests/security/test_credentials.py",
+        "tests/security/test_auth.py",
+        "tests/platform/test_credentials_module.py",
+        "tests/platform/test_auth_module.py",
+        "tests/platform/test_auth_api.py"
       ]
     },
     {
@@ -1124,6 +1201,13 @@
       "role": "cpo",
       "decision": "F008 spec locked: first-time setup / onboarding at /onboarding.",
       "context": "See company/sprints/sprint-1-access/F008-onboarding-flow.md. New module agent/platform/onboarding.py + ONBOARDING_PAGE + first-visit redirect. Consumes F006 (auth check) + F007 (broker step). /settings/reset-install returns to onboarding."
+    },
+    {
+      "id": "D057",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F006 shipped. Sprint 1 first feature accepted.",
+      "context": "credentials.py + auth.py + redaction filter + /api/auth/status + install-token gate on /api/* non-localhost + platform.toml auth_token fallback preserved. 117 new tests (52 security-auth, 40 security-credentials, 25 module/API). Full suite 974 -> 1091. Handoff at company/handoffs/F006-legal-to-ceo.json."
     }
   ],
   "sprint_verdicts": [
@@ -1141,9 +1225,9 @@
   "kpis": {
     "features_shipped_sprint_0": 5,
     "features_total_sprint_0": 5,
-    "features_shipped_sprint_1": 0,
+    "features_shipped_sprint_1": 1,
     "features_total_sprint_1": 3,
-    "backlog_size": 3,
+    "backlog_size": 2,
     "bugs_open": 0,
     "cycle_time_days_p50": null,
     "test_coverage_pct": null,

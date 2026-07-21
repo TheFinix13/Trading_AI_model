@@ -1,0 +1,28 @@
+{
+  "from_role": "security",
+  "to_role": "qa",
+  "feature_id": "F006",
+  "timestamp": "2026-07-21T19:58:00Z",
+  "scope": "auth + credentials",
+  "verdict": "pass",
+  "findings": [
+    "PBKDF2-SHA256 200k iterations meets 2026 baseline for password-derived keys.",
+    "Fernet = AES-128-CBC + HMAC-SHA256 -- authenticated encryption; tampered ciphertext fails safely.",
+    "Constant-time compare via hmac.compare_digest -- no early-exit leak.",
+    "Alias index stored under a __index__ key inside the same namespace; not a secret itself, treated as public metadata.",
+    "Log redaction covers URL-safe blobs >=24 chars + explicit password= / token= key-values + JSON `password` field."
+  ],
+  "requirements": [],
+  "deliverables": [
+    "tests/security/test_credentials.py",
+    "tests/security/test_auth.py",
+    "company/legal/F006-secrets-at-rest.md"
+  ],
+  "notes": "Threat model exercised by 92 security tests + 25 module/API tests. No requirement to gate ship. QA proceeds. Rolling constraint: any new field emitted by credentials.py or auth.py must gain a claim_register.md entry.",
+  "blockers": [],
+  "review_criteria": [
+    "QA runs the full suite one more time before shipping",
+    "Legal signs off on the disclaimer text",
+    "CPO signoff records the security stage as pass"
+  ]
+}

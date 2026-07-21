@@ -731,6 +731,23 @@ non-exempt route. `/settings/reset-install` clears keyring state and
 returns to onboarding. Onboarding state (current step, completion
 flag) stored in keyring, never in the git-tracked `platform.toml`.
 
+## D057 · 2026-07-21 · cpo · [FEATURE]
+
+**F006 shipped — Sprint 1 first feature accepted.**
+
+Sprint 1 foundation shipped end-to-end in one build stage:
+`agent/platform/credentials.py` (keyring + Fernet fallback with
+PBKDF2-SHA256 200k) + `agent/platform/auth.py` (install-token
+generation, fingerprint, constant-time compare, RedactingFilter for
+logs) + `/api/auth/status` API + install-token gate on `/api/*`
+non-localhost routes. Pre-existing `platform.toml` `auth_token`
+preserved as fallback (D052 backwards-compat). Test count 974 → 1091
+(+117: 52 auth-security + 40 credentials-security + 6 credentials-
+module + 6 auth-module + 13 auth-api). Every acceptance criterion has
+a matching test. Legal disclaimer verbatim-ready at
+`company/legal/F006-secrets-at-rest.md`. Claim register updated.
+Handoff on tape at `company/handoffs/F006-legal-to-ceo.json`.
+
 ## Template for subsequent entries
 
 ```markdown
