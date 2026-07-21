@@ -748,6 +748,31 @@ a matching test. Legal disclaimer verbatim-ready at
 `company/legal/F006-secrets-at-rest.md`. Claim register updated.
 Handoff on tape at `company/handoffs/F006-legal-to-ceo.json`.
 
+## D058 · 2026-07-21 · cpo · [FEATURE]
+
+**F007 shipped — MT5 broker connection wizard accepted.**
+
+Sprint 1 second feature shipped end-to-end. New backend module
+`agent/platform/broker_connection.py` abstracts MT5 login: 12-entry
+`ALLOWED_SERVERS` allow-list, alias regex, 5/min/process rate-limit on
+`test_connection`, Windows-only `MetaTrader5` SDK short-circuits on
+macOS / Linux with a friendly failed-payload rather than an
+ImportError leak. Wizard `BROKER_WIZARD_PAGE` at `/settings/broker` is
+a five-step form (account type → credentials → live-confirmation gate
+→ test → save) with a saved-connections table always visible; uses
+F005 `withStates()` for the in-flight state. Live-account save
+requires both an acknowledgement checkbox AND a typed `LIVE` before
+Continue unlocks; the warning body loads verbatim from
+`/api/broker/live-warning` which reads
+`company/legal/live-broker-warning.md`. Test count 1091 → 1180 (+89:
+16 broker-security + 26 module + 21 API + 16 wizard-page + 10 backend
+guards). Password never appears in any log line, response body, or
+JSON payload — pinned by regression tests. Non-localhost binds gate
+all `/api/broker/*` on F006 install-token; `/api/broker/live-warning`
+intentionally exempt so the Legal warning is readable before setup
+completes. Handoff on tape at
+`company/handoffs/F007-legal-to-ceo.json`.
+
 ## Template for subsequent entries
 
 ```markdown

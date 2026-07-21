@@ -1,0 +1,18 @@
+{
+  "from_role": "backend",
+  "to_role": "security",
+  "feature_id": "F007",
+  "timestamp": "2026-07-21T20:38:00Z",
+  "deliverables": [
+    "agent/platform/broker_connection.py",
+    "scripts/serve_platform.py: /settings/broker, /api/broker/{list,save,test-connection,live-warning}, DELETE /api/broker/<alias>",
+    "tests/platform/test_broker_connection_module.py (26 tests)",
+    "tests/platform/test_broker_api.py (21 tests)"
+  ],
+  "notes": "Module abstracts MT5 login + storage. Uses F006 credentials.store_secret under namespace 'broker_mt5'. Server allow-list, alias regex, rate-limit 5/min/process, MT5 Windows-only short-circuit on macOS/Linux. Password never touches logs; test_connection response never carries the password field.",
+  "blockers": [],
+  "review_criteria": [
+    "Security reviews: password-in-logs regression, allow-list enforcement, rate-limit enforcement, DELETE auth, non-localhost gate on /api/broker/*",
+    "Live-warning route stays open (no install-token gate) because it's read before setup completes"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "from_role": "legal",
+  "to_role": "ceo",
+  "feature_id": "F007",
+  "timestamp": "2026-07-21T20:52:00Z",
+  "deliverables": [
+    "company/legal/live-broker-warning.md",
+    "company/legal/claim_register.md (updated: broker_connection.py fields registered)"
+  ],
+  "notes": "Live-broker warning frames Blue Lock as a single-user hobbyist platform, points to the broker's own risk disclosures rather than restating them, and names the user as the sole responsible party. No solicitation, no return projections. The wizard nowhere claims regulatory status.",
+  "blockers": [],
+  "verdict": "pass",
+  "review_criteria": [
+    "CEO signs off",
+    "Feature F007 stage transitions to shipped"
+  ]
+}

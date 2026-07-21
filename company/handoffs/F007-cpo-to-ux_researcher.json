@@ -1,0 +1,16 @@
+{
+  "from_role": "cpo",
+  "to_role": "ux_researcher",
+  "feature_id": "F007",
+  "timestamp": "2026-07-21T20:20:00Z",
+  "deliverables": [
+    "company/sprints/sprint-1-access/F007-broker-connection-wizard.md"
+  ],
+  "notes": "F007 consumes F006's credentials module. It is a multi-step wizard for MT5 login: choose account type -> credentials -> confirm-live (only for live) -> test connection -> save. Sandbox is the default; live requires an explicit acknowledgement checkbox + typed LIVE confirmation. On macOS / Linux MT5 short-circuits with an unavailable payload -- documented, not a bug.",
+  "blockers": [],
+  "review_criteria": [
+    "Confirm the demo-first default reads as the safe path from a first-time user's POV",
+    "Confirm the live-account confirmation is heavy enough to prevent misclicks but not so heavy it discourages legitimate live users",
+    "Identify what F007 does NOT try to solve (multi-broker portability, order routing, etc. -- feed to Sprint 2 backlog)"
+  ]
+}

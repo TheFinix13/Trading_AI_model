@@ -1,0 +1,17 @@
+{
+  "from_role": "ui_designer",
+  "to_role": "frontend",
+  "feature_id": "F007",
+  "timestamp": "2026-07-21T20:28:00Z",
+  "deliverables": [
+    "company/design/F007-mocks.md"
+  ],
+  "notes": "Additive CSS primitives under _BROKER_CSS. No _BASE_CSS_VERSION bump. Live-confirmation subscreen loads its warning body from /api/broker/live-warning at render time. Saved-connections table always visible below the wizard steps.",
+  "blockers": [],
+  "review_criteria": [
+    "Frontend wires the five-step DOM + JS state machine using F005 withStates() for the test-connection in-flight state",
+    "Password field: type=password + autocomplete=off + no default value",
+    "Server input backed by a <datalist> whose options are strictly from ALLOWED_SERVERS",
+    "Live-confirmation Continue button starts disabled and unlocks only under both gates"
+  ]
+}

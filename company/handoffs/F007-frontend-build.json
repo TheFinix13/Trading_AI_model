@@ -1,0 +1,15 @@
+{
+  "from_role": "frontend",
+  "to_role": "backend",
+  "feature_id": "F007",
+  "timestamp": "2026-07-21T20:32:00Z",
+  "deliverables": [
+    "agent/platform/pages.py: BROKER_WIZARD_PAGE + _BROKER_CSS + _BROKER_TEMPLATE + _server_options()",
+    "tests/platform/test_broker_wizard_page.py (16 tests)"
+  ],
+  "notes": "Wizard shell rendered. Client-side JS talks to /api/broker/test-connection, /api/broker/save, /api/broker/list, /api/broker/<alias>, /api/broker/live-warning. Backend must wire those routes next.",
+  "blockers": [],
+  "review_criteria": [
+    "Test suite has to pin: password type + autocomplete, demo default, live-gate disabled button, allow-listed datalist, mobile media query"
+  ]
+}

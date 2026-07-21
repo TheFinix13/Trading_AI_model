@@ -38,13 +38,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from agent.platform import (  # noqa: E402
-    auth, hq, live_status, paper_loop, performance, players, research,
-    squad_events,
+    auth, broker_connection, hq, live_status, paper_loop, performance,
+    players, research, squad_events,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
-    HQ_PAGE, HUB_PAGE, PERFORMANCE_PAGE, PLAYERS_INDEX_PAGE, RESEARCH_PAGE,
-    V1_PAGE, V2_PAGE, player_detail_page, players_not_found_page,
+    BROKER_WIZARD_PAGE, HQ_PAGE, HUB_PAGE, PERFORMANCE_PAGE,
+    PLAYERS_INDEX_PAGE, RESEARCH_PAGE, V1_PAGE, V2_PAGE, player_detail_page,
+    players_not_found_page,
 )
 
 
@@ -76,11 +77,16 @@ _LIVE_RE = re.compile(
     r"^/api/v2/live/(summary|events|status|workspace|event/(\d+))$")
 _PLAYER_URL_RE = re.compile(r"^/players/([A-Za-z0-9_-]+)/?$")
 _PLAYER_API_RE = re.compile(r"^/api/players/([A-Za-z0-9_-]+)$")
+_BROKER_ALIAS_RE = re.compile(r"^/api/broker/([A-Za-z0-9_.\-]+)$")
+
+# Path to the F007 live-broker warning served over /api/broker/live-warning.
+_LIVE_WARNING_PATH = REPO_ROOT / "company" / "legal" / "live-broker-warning.md"
 
 # F006 install-token gate exempts a small allow-list so the setup /
 # health flow can call the platform before an install token exists.
 _UNAUTHENTICATED_API_PATHS: frozenset[str] = frozenset({
-    "/api/auth/status",       # F006 -- probe whether the install is set up
+    "/api/auth/status",         # F006 -- probe whether the install is set up
+    "/api/broker/live-warning", # F007 -- live-broker legal warning text
 })
 
 
@@ -220,6 +226,20 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
 
             if path == "/api/auth/status":
                 self._json(auth.auth_status())
+                return
+
+            # F007 -- broker wizard routes
+            if path in ("/settings/broker", "/settings/broker/"):
+                self._send(BROKER_WIZARD_PAGE.encode(),
+                           "text/html; charset=utf-8")
+                return
+            if path == "/api/broker/list":
+                self._json({"aliases": broker_connection.list_aliases()})
+                return
+            if path == "/api/broker/live-warning":
+                warn = _load_live_warning()
+                self._send(warn.encode(),
+                           "text/plain; charset=utf-8")
                 return
 
             if path in ("/", "/index.html"):
@@ -384,10 +404,116 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
             else:
                 self._send(b"not found", "text/plain", 404)
 
+        def _read_body_json(self) -> dict | None:
+            """Best-effort JSON body reader. Returns None on any error."""
+            length_header = self.headers.get("Content-Length", "0")
+            try:
+                length = int(length_header)
+            except ValueError:
+                return None
+            if length <= 0 or length > 65536:
+                return None
+            try:
+                raw = self.rfile.read(length)
+            except OSError:
+                return None
+            try:
+                parsed = json.loads(raw.decode("utf-8"))
+            except (ValueError, json.JSONDecodeError):
+                return None
+            return parsed if isinstance(parsed, dict) else None
+
+        def do_POST(self):  # noqa: N802 -- F007 broker APIs
+            path, _, query = self.path.partition("?")
+            params = {}
+            for pair in query.split("&"):
+                k, _, v = pair.partition("=")
+                if k:
+                    params[k] = v
+
+            if not self._authorized(params):
+                self._json({"error": "unauthorized"}, 401)
+                return
+
+            if self._needs_install_gate(path) \
+                    and not self._install_gate_authorized(params):
+                self._json({"error": "install-token required"}, 401)
+                return
+
+            if path == "/api/broker/test-connection":
+                body = self._read_body_json() or {}
+                result = broker_connection.test_connection(
+                    login=body.get("login"),
+                    password=body.get("password"),
+                    server=body.get("server"))
+                # Scrub password from ever hitting the response even
+                # accidentally (test_connection already omits it).
+                result.pop("password", None)
+                self._json(result)
+                return
+            if path == "/api/broker/save":
+                body = self._read_body_json() or {}
+                try:
+                    ok = broker_connection.save_credentials(
+                        alias=body.get("alias", ""),
+                        login=body.get("login"),
+                        password=body.get("password", ""),
+                        server=body.get("server", ""),
+                        account_type=body.get("account_type", "demo"))
+                except ValueError as exc:
+                    self._json({"success": False, "error": str(exc)}, 400)
+                    return
+                except TypeError as exc:
+                    self._json({"success": False, "error": str(exc)}, 400)
+                    return
+                self._json({"success": ok})
+                return
+
+            self._send(b"not found", "text/plain", 404)
+
+        def do_DELETE(self):  # noqa: N802 -- F007 broker APIs
+            path, _, query = self.path.partition("?")
+            params = {}
+            for pair in query.split("&"):
+                k, _, v = pair.partition("=")
+                if k:
+                    params[k] = v
+
+            if not self._authorized(params):
+                self._json({"error": "unauthorized"}, 401)
+                return
+            if self._needs_install_gate(path) \
+                    and not self._install_gate_authorized(params):
+                self._json({"error": "install-token required"}, 401)
+                return
+
+            m = _BROKER_ALIAS_RE.match(path)
+            if m:
+                alias = m.group(1)
+                try:
+                    ok = broker_connection.delete_credentials(alias)
+                except ValueError as exc:
+                    self._json({"success": False, "error": str(exc)}, 400)
+                    return
+                self._json({"success": ok})
+                return
+
+            self._send(b"not found", "text/plain", 404)
+
         def log_message(self, fmt, *args):  # quiet server
             pass
 
     return Handler
+
+
+def _load_live_warning() -> str:
+    """Read the F007 live-broker warning text from disk. Missing file
+    falls back to a minimal safe message rather than raising."""
+    try:
+        return _LIVE_WARNING_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return ("Live trading uses real money and can lose real money. "
+                "Only continue if you have read the docs and are certain.")
 
 
 def main() -> None:

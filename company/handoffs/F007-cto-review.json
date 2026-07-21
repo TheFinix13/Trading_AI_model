@@ -1,0 +1,25 @@
+{
+  "from_role": "cto",
+  "to_role": "backend",
+  "feature_id": "F007",
+  "timestamp": "2026-07-21T20:30:00Z",
+  "deliverables": [
+    "company/handoffs/F007-cto-review.json"
+  ],
+  "notes": "Architecture review green. One new module (broker_connection.py) + edits to pages.py (additive template) + serve_platform.py (new routes) = 3 modules touched, within CTO autonomy. Depends on F006 credentials module (already shipped). MetaTrader5 package is already in requirements.txt; no new dependency. Windows-only nature of the SDK is handled by is_mt5_available() short-circuit -- macOS / Linux dev loop is unblocked.",
+  "verdict": "green",
+  "modules_touched": [
+    "agent/platform/broker_connection.py",
+    "agent/platform/pages.py",
+    "scripts/serve_platform.py"
+  ],
+  "tests_expected_delta": 89,
+  "security_relevant": true,
+  "legal_relevant": true,
+  "blockers": [],
+  "review_criteria": [
+    "No new PyPI dependency introduced (MT5 already in requirements)",
+    "Rate limit is a memory-only counter -- fine for single-user install",
+    "Non-localhost binds gate /api/broker/* through the F006 install-token gate; live-warning route intentionally exempt (read before setup completes)"
+  ]
+}

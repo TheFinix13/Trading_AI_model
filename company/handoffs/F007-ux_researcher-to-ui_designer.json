@@ -1,0 +1,16 @@
+{
+  "from_role": "ux_researcher",
+  "to_role": "ui_designer",
+  "feature_id": "F007",
+  "timestamp": "2026-07-21T20:25:00Z",
+  "deliverables": [
+    "company/research/F007-user-journey.md"
+  ],
+  "notes": "Five-step wizard with Step 2.5 (live-account confirmation) as a conditional gate. Sandbox pre-selected. Saved-connections table sits below and refreshes after each save. Radios must be keyboard-activatable.",
+  "blockers": [],
+  "review_criteria": [
+    "Design each of the five steps + the live-confirmation subscreen on desktop and 375px mobile",
+    "Radio cards must clearly indicate keyboard focus",
+    "Live-confirmation subscreen must render Legal's warning inline; leave no room for the user to miss it"
+  ]
+}

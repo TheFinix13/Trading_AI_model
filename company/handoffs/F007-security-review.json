@@ -1,0 +1,28 @@
+{
+  "from_role": "security",
+  "to_role": "qa",
+  "feature_id": "F007",
+  "timestamp": "2026-07-21T20:44:00Z",
+  "scope": "broker connection module + wizard + APIs",
+  "verdict": "pass",
+  "findings": [
+    "Password never appears in any log line, response body, or JSON payload emitted by broker_connection.py -- pinned by tests/security/test_broker_connection.py::test_password_never_in_logs.",
+    "Server strings are validated against ALLOWED_SERVERS at both save-time and test-time -- pinned by test_save_credentials_rejects_disallowed + test_test_connection_rejects_disallowed_server.",
+    "Rate limit 5/min/process on test_connection -- pinned by test_test_connection_rate_limits.",
+    "Alias regex + path-traversal ban -- pinned by test_broker_connection_module.py::test_save_credentials_rejects_bad_alias.",
+    "MT5 Windows-only short-circuits with a friendly failed-payload rather than an ImportError leak -- pinned by test_test_connection_short_circuits_when_mt5_unavailable.",
+    "Non-localhost install-token gate active on /api/broker/list, /api/broker/save, DELETE /api/broker/<alias>. /api/broker/live-warning is intentionally exempt (Legal warning served before setup completes)."
+  ],
+  "requirements": [],
+  "deliverables": [
+    "tests/security/test_broker_connection.py",
+    "company/legal/live-broker-warning.md"
+  ],
+  "notes": "Security posture threat-model check complete. QA proceeds. Legal must re-review the live-broker-warning body verbatim before CEO signoff.",
+  "blockers": [],
+  "review_criteria": [
+    "QA runs the full suite one more time before shipping",
+    "Legal signs off on live-broker-warning.md verbatim",
+    "CPO signoff records the security stage as pass"
+  ]
+}

@@ -757,8 +757,8 @@
       "title": "MT5 broker connection wizard",
       "priority": "P0",
       "sprint_id": "sprint-1-access",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "ship",
+      "current_owner_role": "devops",
       "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
       "auth": true,
       "credentials": true,
@@ -772,12 +772,86 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-1-access/F007-broker-connection-wizard.md",
           "note": "Spec locked. Consumes F006 credentials + auth modules."
+        },
+        {
+          "stage": "research",
+          "at": "2026-07-21T20:22:00Z",
+          "role": "ux_researcher",
+          "deliverable": "company/research/F007-user-journey.md",
+          "note": "Five-step wizard journey locked. Demo-first, live-with-two-gates, saved-connections table always visible."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-21T20:26:00Z",
+          "role": "ui_designer",
+          "deliverable": "company/design/F007-mocks.md",
+          "note": "Wizard mocks locked; additive CSS primitives only (no _BASE_CSS_VERSION bump)."
+        },
+        {
+          "stage": "architecture",
+          "at": "2026-07-21T20:30:00Z",
+          "role": "cto",
+          "deliverable": "company/handoffs/F007-cto-review.json",
+          "note": "Green -- 3 modules touched, no new PyPI dependency (MT5 already in requirements). Rate limit + Windows-only short-circuit approved."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-21T20:38:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/broker_connection.py",
+          "note": "broker_connection.py + BROKER_WIZARD_PAGE + /settings/broker + /api/broker/* routes. 89 new tests (16 security + 26 module + 21 API + 16 wizard-page + 10 backend guards). Full suite 1091 -> 1180."
+        },
+        {
+          "stage": "security",
+          "at": "2026-07-21T20:44:00Z",
+          "role": "security",
+          "deliverable": "company/handoffs/F007-security-review.json",
+          "note": "Pass -- password-in-logs / allow-list / rate-limit / DELETE-auth / gate pinned by tests. Live-warning route intentionally exempt."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-21T20:46:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F007-verdict.md",
+          "note": "pass -- 1180/1180. All acceptance criteria covered."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-21T20:52:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/live-broker-warning.md",
+          "note": "pass -- live-broker warning verbatim, hobbyist frame preserved, no regulatory overclaim, claim_register carries every broker_connection public field."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-21T20:54:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F007-legal-to-ceo.json",
+          "note": "CPO signoff on behalf of CEO -- F007 accepted. F008 build starts."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-21T20:54:00Z",
+          "role": "devops",
+          "deliverable": "scripts/serve_platform.py",
+          "note": "Ship-in-place: /settings/broker + /api/broker/* live. Non-localhost binds gate on F006 install-token; /api/broker/live-warning stays open."
         }
       ],
       "blockers": [],
       "awaiting_ceo": false,
       "deliverables_paths": [
-        "company/sprints/sprint-1-access/F007-broker-connection-wizard.md"
+        "company/sprints/sprint-1-access/F007-broker-connection-wizard.md",
+        "agent/platform/broker_connection.py",
+        "agent/platform/pages.py",
+        "scripts/serve_platform.py",
+        "company/legal/live-broker-warning.md",
+        "company/research/F007-user-journey.md",
+        "company/design/F007-mocks.md",
+        "company/qa/F007-verdict.md",
+        "tests/security/test_broker_connection.py",
+        "tests/platform/test_broker_connection_module.py",
+        "tests/platform/test_broker_api.py",
+        "tests/platform/test_broker_wizard_page.py"
       ]
     },
     {
@@ -1208,6 +1282,13 @@
       "role": "cpo",
       "decision": "F006 shipped. Sprint 1 first feature accepted.",
       "context": "credentials.py + auth.py + redaction filter + /api/auth/status + install-token gate on /api/* non-localhost + platform.toml auth_token fallback preserved. 117 new tests (52 security-auth, 40 security-credentials, 25 module/API). Full suite 974 -> 1091. Handoff at company/handoffs/F006-legal-to-ceo.json."
+    },
+    {
+      "id": "D058",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F007 shipped. MT5 broker connection wizard accepted.",
+      "context": "broker_connection.py (ALLOWED_SERVERS allow-list, alias regex, 5/min/process rate limit, MT5 Windows-only short-circuit) + BROKER_WIZARD_PAGE at /settings/broker + /api/broker/{list,save,test-connection,live-warning} + DELETE /api/broker/<alias>. Live-account save requires acknowledgement + typed LIVE. Live warning served verbatim from company/legal/live-broker-warning.md. 89 new tests. Full suite 1091 -> 1180. Handoff at company/handoffs/F007-legal-to-ceo.json."
     }
   ],
   "sprint_verdicts": [
@@ -1225,7 +1306,7 @@
   "kpis": {
     "features_shipped_sprint_0": 5,
     "features_total_sprint_0": 5,
-    "features_shipped_sprint_1": 1,
+    "features_shipped_sprint_1": 2,
     "features_total_sprint_1": 3,
     "backlog_size": 2,
     "bugs_open": 0,

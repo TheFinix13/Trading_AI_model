@@ -1,0 +1,16 @@
+{
+  "from_role": "qa",
+  "to_role": "legal",
+  "feature_id": "F007",
+  "timestamp": "2026-07-21T20:48:00Z",
+  "deliverables": [
+    "company/qa/F007-verdict.md"
+  ],
+  "notes": "89 new tests. Full suite 1180 passing. No real credentials in tests. All acceptance criteria met.",
+  "blockers": [],
+  "review_criteria": [
+    "Legal reviews the verbatim live-broker-warning.md served by /api/broker/live-warning",
+    "Legal confirms the wizard nowhere claims Blue Lock is a regulated broker / adviser",
+    "Legal seeds the claim_register.md entries for broker_connection.py public fields"
+  ]
+}
