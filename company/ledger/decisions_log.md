@@ -773,6 +773,68 @@ intentionally exempt so the Legal warning is readable before setup
 completes. Handoff on tape at
 `company/handoffs/F007-legal-to-ceo.json`.
 
+## D059 · 2026-07-21 · cpo · [FEATURE]
+
+**F008 shipped — first-time setup / onboarding flow accepted.**
+
+Sprint 1 final feature shipped end-to-end. New backend module
+`agent/platform/onboarding.py` provides the state machine for the
+first-time setup wizard: `is_first_visit`, `mark_setup_complete`,
+`reset_install` (sweeps both `bluelock` and `broker_mt5` namespaces
+via the F006 credentials layer -- state lives in keyring, never in
+git-tracked `platform.toml`), `get_onboarding_state`,
+`set_current_step`, `set_default_pairs` /
+`get_default_pairs`, and `validate_passphrase` (>=12 chars when
+keychain absent, empty accepted when keychain available).
+
+New `ONBOARDING_PAGE` at `/onboarding` walks five steps
+(welcome → passphrase → broker → pairs → confirm). Welcome step
+carries a verbatim Legal agreement paragraph from
+`company/legal/F008-onboarding-agreement.md`. Broker step opens
+F007's `/settings/broker` in a new tab; Continue re-checks
+`broker_connected` before advancing. Pairs step pre-checks EURUSD.
+
+`RESET_INSTALL_PAGE` at `/settings/reset-install` provides a
+red-styled destructive-action page that clears every stored key and
+returns to `/onboarding`.
+
+Server-side first-visit HTML redirect gate added to
+`scripts/serve_platform.py`: opt-in via `enforce_onboarding_gate`
+parameter on `make_handler` (default False so Sprint 0 tests keep
+the old contract). `main()` flips it on for non-localhost binds
+alongside the F006 install-token gate. All `/api/onboarding/*` routes
+are exempt from the install-token gate because they run before
+setup completes.
+
+Test count 1180 → 1259 (+79: 23 security + 13 module + 22 API + 21
+page). Cold-install cycle verified end-to-end on macOS. Legal
+agreement is on tape at `company/legal/F008-onboarding-agreement.md`.
+Handoff at `company/handoffs/F008-legal-to-ceo.json`.
+
+## D060 · 2026-07-21 · cpo · [SPRINT]
+
+**Sprint 1 (Access) closes COMPLETE — 3/3 P0 features shipped.**
+
+Verdict: **COMPLETE**. 3 of 3 features accepted:
+
+- **F006** (Encrypted credential storage + install-scoped auth) — 117
+  tests, D057.
+- **F007** (MT5 broker connection wizard) — 89 tests, D058.
+- **F008** (First-time setup / onboarding flow) — 79 tests, D059.
+
+Total delta: 974 → 1259 tests (+285). Full suite green. Zero
+commits off `product`. Zero spend triggered. No Cursor attribution.
+Retro protocol amendments landed FIRST per D047 (review-chain
+§3.5 F005-first serialisation, §4.2 spec-lock validation, §5.5
+`_BASE_CSS_VERSION` tag, §6.3 automated Legal claim-register audit).
+
+Sprint duration: 1 wall-clock day (2026-07-21) against a 13-day
+honest-review target. That's a compression only possible because
+the Executor persona ran every lane serially; a real 3-persona
+split with independent scheduling would have taken longer. Honest
+review flag surfaced in the sprint verdict entry so future ratifiers
+can adjust the day_count estimate.
+
 ## Template for subsequent entries
 
 ```markdown

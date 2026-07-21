@@ -1,8 +1,22 @@
 # 00 — The Journey: from ICT trading partner to a validated zone-fade portfolio
 
-**Last updated:** 2026-07-21
+**Last updated:** 2026-07-21 (Sprint 1 close-out)
 **Companion:** [CHECKPOINT.md](CHECKPOINT.md) (current-state snapshot, updated at every
 major divergence). Evidence record: [`reviews/`](reviews/).
+
+**2026-07-21 · Sprint 1 (Access) complete.** Three P0 features shipped
+on `product` in a single autonomous executor day: F006 (encrypted
+credential storage + install-scoped auth), F007 (MT5 broker connection
+wizard with sandbox-default + two-gate live confirmation), F008
+(first-time setup / onboarding flow + `/settings/reset-install`).
+Retro amendments landed FIRST per D047: review-chain §3.5 F005-first
+serialisation, §4.2 spec-lock validation, §5.5 `_BASE_CSS_VERSION` tag,
+§6.3 automated Legal claim-register audit. Platform test suite
+974 → 1259 (+285); security suite populated for the first time (132
+tests). Sprint verdict COMPLETE, zero blockers, zero spend. Commit
+range `635c9bd..<F008 close-out>`. See
+`company/sprints/sprint-1-access/REPORT.md` for the post-mortem and
+Sprint 2 (Real-Trading) retro suggestions.
 
 **2026-07-21 · Sprint 0 (Trust Foundation) complete.** Company scaffold
 (`company/`) landed on the `product` branch; five P0 features (F001

@@ -216,10 +216,10 @@
       "goal": "Turn the trust-only platform into a usable installation: encrypted credentials, MT5 broker wizard, first-time setup flow.",
       "started_at": "2026-07-21",
       "target_end": "2026-08-04",
-      "actual_end": null,
-      "verdict": "in_progress",
+      "actual_end": "2026-07-21",
+      "verdict": "COMPLETE",
       "feature_ids": ["F006", "F007", "F008"],
-      "day_count": 0,
+      "day_count": 1,
       "day_target": 13
     }
   ],
@@ -859,8 +859,8 @@
       "title": "First-time setup / onboarding flow",
       "priority": "P0",
       "sprint_id": "sprint-1-access",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "ship",
+      "current_owner_role": "devops",
       "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
       "auth": true,
       "credentials": true,
@@ -874,12 +874,86 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-1-access/F008-onboarding-flow.md",
           "note": "Spec locked. Consumes F006 (auth check) + F007 (broker step)."
+        },
+        {
+          "stage": "research",
+          "at": "2026-07-21T21:02:00Z",
+          "role": "ux_researcher",
+          "deliverable": "company/research/F008-user-journey.md",
+          "note": "Five-step journey locked: welcome / passphrase / broker / pairs / confirm. Broker step opens F007 in a new tab. Passphrase adapts to keychain availability."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-21T21:06:00Z",
+          "role": "ui_designer",
+          "deliverable": "company/design/F008-mocks.md",
+          "note": "Mocks locked. Additive CSS primitives only (no _BASE_CSS_VERSION bump). Reset-install page separate at /settings/reset-install."
+        },
+        {
+          "stage": "architecture",
+          "at": "2026-07-21T21:08:00Z",
+          "role": "cto",
+          "deliverable": "company/handoffs/F008-cto-review.json",
+          "note": "Green -- 3 modules touched, no new dependency, first-visit gate opt-in via make_handler parameter so Sprint 0 tests keep contract."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-21T21:12:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/onboarding.py",
+          "note": "onboarding.py + ONBOARDING_PAGE + RESET_INSTALL_PAGE + 5 API routes + first-visit HTML redirect gate. 79 new tests (23 security + 13 module + 22 API + 21 page). Full suite 1180 -> 1259."
+        },
+        {
+          "stage": "security",
+          "at": "2026-07-21T21:16:00Z",
+          "role": "security",
+          "deliverable": "company/handoffs/F008-security-review.json",
+          "note": "Pass -- reset flow / passphrase gate / first-visit redirect / input sanitisation all pinned by tests. No plaintext passphrase / token / password in logs during any onboarding operation."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-21T21:18:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F008-verdict.md",
+          "note": "pass -- 1259/1259. Cold-install cycle verified end-to-end. Every acceptance criterion covered."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-21T21:24:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/F008-onboarding-agreement.md",
+          "note": "pass -- Welcome step Legal paragraph verbatim; hobbyist single-user frame preserved; no additional personal data collected; reset-install copy explicit that data stays local."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-21T21:26:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F008-legal-to-ceo.json",
+          "note": "CPO signoff on behalf of CEO -- F008 accepted. Sprint 1 close-out ready."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-21T21:26:00Z",
+          "role": "devops",
+          "deliverable": "scripts/serve_platform.py",
+          "note": "Ship-in-place: /onboarding + /settings/reset-install + /api/onboarding/* live. main() enables first-visit gate + install-token gate together on non-localhost binds."
         }
       ],
       "blockers": [],
       "awaiting_ceo": false,
       "deliverables_paths": [
-        "company/sprints/sprint-1-access/F008-onboarding-flow.md"
+        "company/sprints/sprint-1-access/F008-onboarding-flow.md",
+        "agent/platform/onboarding.py",
+        "agent/platform/pages.py",
+        "scripts/serve_platform.py",
+        "company/legal/F008-onboarding-agreement.md",
+        "company/research/F008-user-journey.md",
+        "company/design/F008-mocks.md",
+        "company/qa/F008-verdict.md",
+        "tests/security/test_onboarding.py",
+        "tests/platform/test_onboarding_module.py",
+        "tests/platform/test_onboarding_api.py",
+        "tests/platform/test_onboarding_page.py"
       ]
     }
   ],
@@ -1289,6 +1363,20 @@
       "role": "cpo",
       "decision": "F007 shipped. MT5 broker connection wizard accepted.",
       "context": "broker_connection.py (ALLOWED_SERVERS allow-list, alias regex, 5/min/process rate limit, MT5 Windows-only short-circuit) + BROKER_WIZARD_PAGE at /settings/broker + /api/broker/{list,save,test-connection,live-warning} + DELETE /api/broker/<alias>. Live-account save requires acknowledgement + typed LIVE. Live warning served verbatim from company/legal/live-broker-warning.md. 89 new tests. Full suite 1091 -> 1180. Handoff at company/handoffs/F007-legal-to-ceo.json."
+    },
+    {
+      "id": "D059",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F008 shipped. First-time setup / onboarding flow accepted.",
+      "context": "onboarding.py (is_first_visit, mark_setup_complete, reset_install, get_onboarding_state, set_current_step, set_default_pairs, validate_passphrase) + ONBOARDING_PAGE at /onboarding + RESET_INSTALL_PAGE at /settings/reset-install + 5 API routes + opt-in first-visit HTML redirect gate. Passphrase >=12 chars when keychain absent, empty accepted when keychain present. reset_install sweeps `bluelock` and `broker_mt5` namespaces. 79 new tests. Full suite 1180 -> 1259. Cold-install cycle verified end-to-end on macOS. Handoff at company/handoffs/F008-legal-to-ceo.json."
+    },
+    {
+      "id": "D060",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "Sprint 1 (Access) closes COMPLETE -- 3/3 P0 features shipped.",
+      "context": "F006 (D057) + F007 (D058) + F008 (D059) all accepted. Test delta 974 -> 1259 (+285). Zero commits off product. Zero spend. No Cursor attribution. Retro amendments landed FIRST per D047 (review-chain §3.5/§4.2/§5.5/§6.3). Sprint duration 1 wall-clock day against 13-day honest target -- compression only possible because Executor persona ran every lane serially; real 3-persona split would have taken longer. Honest-review flag noted in sprint_verdicts."
     }
   ],
   "sprint_verdicts": [
@@ -1301,12 +1389,22 @@
       "blockers_surfaced": [],
       "test_count_delta": "100 -> 348 (+248)",
       "notes": "Fully autonomous run under the Sprint 0 Executor persona. Every stage transition landed on the ledger before proceeding; every handoff has a JSON on tape; HQ dashboard accurate to the second at close."
+    },
+    {
+      "sprint_id": "sprint-1-access",
+      "verdict": "COMPLETE",
+      "actual_end": "2026-07-21",
+      "features_shipped": ["F006", "F007", "F008"],
+      "features_missed": [],
+      "blockers_surfaced": [],
+      "test_count_delta": "974 -> 1259 (+285)",
+      "notes": "Fully autonomous run under the Sprint 1 Executor persona across three internal lanes (Auth Developer, Broker Integrations, Onboarding UX) per D050. Retro amendments to review-chain landed first per D047 (F005-first, spec-lock, claim-register, _BASE_CSS versioning). Sprint duration: 1 wall-clock day (2026-07-21) against a 13-day target -- honest review flag: this compression is only possible because the Executor persona owns every lane; a real 3-persona split would have taken longer."
     }
   ],
   "kpis": {
     "features_shipped_sprint_0": 5,
     "features_total_sprint_0": 5,
-    "features_shipped_sprint_1": 2,
+    "features_shipped_sprint_1": 3,
     "features_total_sprint_1": 3,
     "backlog_size": 2,
     "bugs_open": 0,
