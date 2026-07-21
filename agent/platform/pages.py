@@ -61,9 +61,12 @@ def nav(active: str) -> str:
     """Render the top nav pills; ``active`` marks one pill with .here.
 
     Accepted values: ``hub`` / ``v1`` / ``v2`` / ``hq`` / ``performance`` /
-    ``players`` / ``research``. Unknown values render the nav with no
-    active pill (safe default -- users can still see where they are
-    from the URL).
+    ``players`` / ``research``. New Sprint 1 destinations (``broker``,
+    ``onboarding``) render the nav with no active pill so their
+    dedicated wizard pages don't accidentally advertise themselves as
+    a permanent top-level route. Unknown values render the nav with
+    no active pill (safe default -- users can still see where they
+    are from the URL).
     """
     return _NAV.format(
         hub="here" if active == "hub" else "",
@@ -4012,3 +4015,419 @@ RESEARCH_PAGE = (_RESEARCH_TEMPLATE
                  .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
                  .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
                  .replace("__NAV__", nav('research')))
+
+
+# ---------------------------------------------------------------------------
+# F007 -- Broker connection wizard at /settings/broker
+# ---------------------------------------------------------------------------
+#
+# Multi-step wizard: account type -> credentials -> (live confirmation)
+# -> test connection -> save. Uses F005 withStates() for the in-flight
+# spinner during test-connection. Copy tokens live in copy.md \u00a7F007.
+# All new primitives (.wiz-step / .wiz-radio-card / .wiz-form / etc.)
+# are additive; _BASE_CSS_VERSION does not bump (patch would apply if
+# we later need visual tokens).
+
+_BROKER_CSS = r"""
+.wiz{max-width:640px;margin:0 auto}
+.wiz-step{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:20px 22px;margin-bottom:14px}
+.wiz-step h2{margin:0 0 6px;font-size:16px}
+.wiz-step .lead{color:var(--dim);font-size:13px;margin:0 0 14px}
+.wiz-radio-card{border:1px solid var(--border);border-radius:8px;
+  padding:12px 14px;margin-bottom:10px;cursor:pointer;background:#0f141a}
+.wiz-radio-card:hover{border-color:var(--accent)}
+.wiz-radio-card.selected{border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent) inset}
+.wiz-radio-card .label{font-weight:600;font-size:14px}
+.wiz-radio-card .sub{color:var(--dim);font-size:12px;margin-top:4px}
+.wiz-form{display:grid;gap:10px}
+.wiz-form label{display:block;font-size:12px;color:var(--dim);
+  text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.wiz-form input,.wiz-form select{width:100%;background:#0d1117;
+  color:var(--fg);border:1px solid var(--border);border-radius:6px;
+  padding:8px 10px;font:14px inherit}
+.wiz-form input:focus,.wiz-form select:focus{outline:none;
+  border-color:var(--accent)}
+.wiz-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.wiz-btn{background:var(--accent);color:#000;border:none;
+  border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;
+  font-size:14px}
+.wiz-btn:hover{filter:brightness(1.08)}
+.wiz-btn.secondary{background:transparent;color:var(--fg);
+  border:1px solid var(--border)}
+.wiz-btn:disabled{opacity:0.5;cursor:not-allowed}
+.wiz-warn{background:rgba(210,153,34,.10);
+  border:1px solid rgba(210,153,34,.4);border-left:3px solid var(--amber);
+  border-radius:6px;padding:10px 12px;color:var(--fg);font-size:13px;
+  margin:10px 0}
+.wiz-warn strong{color:var(--amber)}
+.wiz-result{background:#0f141a;border:1px solid var(--border);
+  border-radius:8px;padding:12px 14px;font-size:13px;margin-top:12px}
+.wiz-result.ok{border-left:3px solid var(--green)}
+.wiz-result.fail{border-left:3px solid var(--red)}
+.wiz-alias-row{display:flex;align-items:center;justify-content:space-between;
+  padding:8px 0;border-bottom:1px solid #1c2129}
+.wiz-alias-row:last-child{border-bottom:none}
+.wiz-alias-row .meta{color:var(--dim);font-size:12px}
+.wiz-alias-badge{font-size:11px;padding:1px 8px;border-radius:999px;
+  border:1px solid var(--border);margin-left:6px}
+.wiz-alias-badge.demo{color:var(--green);border-color:rgba(63,185,80,.4);
+  background:rgba(63,185,80,.10)}
+.wiz-alias-badge.live{color:var(--red);border-color:rgba(248,81,73,.4);
+  background:rgba(248,81,73,.10)}
+@media (max-width: 700px){
+  .wiz{padding:0 4px}
+  .wiz-step{padding:16px 14px}
+  .wiz-actions{gap:6px}
+}
+"""
+
+
+_BROKER_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect your broker -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+__SKELETON_CSS__
+__BROKER_CSS__
+</style></head>
+<body>
+__NAV__
+<div class="wrap">
+  <h1>Connect your broker</h1>
+  <div class="sub">Sandbox is the default. Live requires an extra
+  confirmation step.</div>
+
+  <div class="wiz">
+    <section class="wiz-step" id="step-type" data-step="1">
+      <h2>1. Which account are we connecting?</h2>
+      <div class="lead">Pick sandbox / demo unless you know you need
+      the live one. You can always change this later.</div>
+      <div class="wiz-radio-card selected" data-type="demo"
+           tabindex="0" role="radio" aria-checked="true">
+        <div class="label">Demo / Sandbox account (recommended)</div>
+        <div class="sub">No real money at risk. Perfect for
+        evaluating the squad.</div>
+      </div>
+      <div class="wiz-radio-card" data-type="live"
+           tabindex="0" role="radio" aria-checked="false">
+        <div class="label">Live account (real money)</div>
+        <div class="sub">Requires typed confirmation on the next
+        screen.</div>
+      </div>
+      <div class="wiz-actions">
+        <button class="wiz-btn" id="btn-next-type">Next &rarr;</button>
+      </div>
+    </section>
+
+    <section class="wiz-step" id="step-creds" data-step="2" style="display:none">
+      <h2>2. Enter your MT5 credentials</h2>
+      <div class="lead">Your password lives on your device only.
+      The platform server sees it only during the test-connection call.</div>
+      <div class="wiz-form">
+        <div>
+          <label for="in-server">MT5 server (exact name from broker)</label>
+          <input id="in-server" type="text" list="server-suggestions"
+                 autocomplete="off" spellcheck="false" required
+                 placeholder="e.g. Exness-MT5Trial7">
+          <datalist id="server-suggestions">
+            __SERVER_OPTIONS__
+          </datalist>
+        </div>
+        <div>
+          <label for="in-login">Login (numeric MT5 login)</label>
+          <input id="in-login" type="text" inputmode="numeric"
+                 autocomplete="off" spellcheck="false"
+                 pattern="\d{1,20}" required>
+        </div>
+        <div>
+          <label for="in-pw">Password</label>
+          <input id="in-pw" type="password" autocomplete="off"
+                 spellcheck="false" required>
+        </div>
+      </div>
+      <div class="wiz-actions">
+        <button class="wiz-btn secondary" id="btn-back-creds">&larr; Back</button>
+        <button class="wiz-btn" id="btn-next-creds">Next &rarr;</button>
+      </div>
+    </section>
+
+    <section class="wiz-step" id="step-confirm-live" data-step="2.5"
+             style="display:none">
+      <h2>You picked a live account</h2>
+      <div class="wiz-warn" id="live-warning-body"><strong>Warning.</strong>
+      <span id="live-warning-text">Loading warning\u2026</span></div>
+      <div class="wiz-form">
+        <label>
+          <input type="checkbox" id="in-live-ack"> I understand this
+          uses real money.
+        </label>
+        <div>
+          <label for="in-live-typed">Type LIVE to continue:</label>
+          <input id="in-live-typed" type="text" autocomplete="off"
+                 spellcheck="false">
+        </div>
+      </div>
+      <div class="wiz-actions">
+        <button class="wiz-btn secondary" id="btn-back-live">&larr; Back</button>
+        <button class="wiz-btn" id="btn-next-live" disabled>Continue &rarr;</button>
+      </div>
+    </section>
+
+    <section class="wiz-step" id="step-test" data-step="3" style="display:none">
+      <h2>3. Test the connection</h2>
+      <div class="lead">We call your broker with the credentials above
+      and read back the account type + currency.</div>
+      <div class="wiz-actions">
+        <button class="wiz-btn secondary" id="btn-back-test">&larr; Back</button>
+        <button class="wiz-btn" id="btn-run-test">Test connection</button>
+      </div>
+      <div id="test-result"></div>
+    </section>
+
+    <section class="wiz-step" id="step-save" data-step="4" style="display:none">
+      <h2>4. Save the connection</h2>
+      <div class="wiz-form">
+        <div>
+          <label for="in-alias">Save this as</label>
+          <input id="in-alias" type="text" autocomplete="off"
+                 spellcheck="false" placeholder="primary">
+        </div>
+      </div>
+      <div class="wiz-actions">
+        <button class="wiz-btn secondary" id="btn-back-save">&larr; Back</button>
+        <button class="wiz-btn" id="btn-run-save">Save connection</button>
+      </div>
+      <div id="save-result"></div>
+    </section>
+
+    <section class="wiz-step" id="step-list" data-step="5">
+      <h2>Saved connections</h2>
+      <div class="lead">Passwords are never displayed here \u2014 stored
+      encrypted in your OS keychain.</div>
+      <div id="alias-list"></div>
+    </section>
+  </div>
+</div>
+<script>__ERROR_COPY_JS__
+__WITH_STATES_JS__
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+var state = {accountType: "demo"};
+
+function showStep(id){
+  var steps = document.querySelectorAll(".wiz-step");
+  for(var i=0;i<steps.length;i++){ steps[i].style.display = "none"; }
+  document.getElementById(id).style.display = "";
+  document.getElementById("step-list").style.display = "";
+  window.scrollTo(0, 0);
+}
+
+function bindRadioCards(){
+  var cards = document.querySelectorAll("#step-type .wiz-radio-card");
+  cards.forEach(function(c){
+    c.addEventListener("click", function(){
+      cards.forEach(function(x){ x.classList.remove("selected");
+        x.setAttribute("aria-checked", "false"); });
+      c.classList.add("selected");
+      c.setAttribute("aria-checked", "true");
+      state.accountType = c.getAttribute("data-type");
+    });
+    c.addEventListener("keydown", function(e){
+      if(e.key === " " || e.key === "Enter"){ e.preventDefault(); c.click(); }
+    });
+  });
+}
+
+function bindNavigation(){
+  document.getElementById("btn-next-type").addEventListener("click", function(){
+    showStep("step-creds");
+  });
+  document.getElementById("btn-back-creds").addEventListener("click", function(){
+    showStep("step-type");
+  });
+  document.getElementById("btn-next-creds").addEventListener("click", function(){
+    if(state.accountType === "live"){
+      loadLiveWarning();
+      showStep("step-confirm-live");
+    } else {
+      showStep("step-test");
+    }
+  });
+  document.getElementById("btn-back-live").addEventListener("click", function(){
+    showStep("step-creds");
+  });
+  document.getElementById("btn-next-live").addEventListener("click", function(){
+    showStep("step-test");
+  });
+  document.getElementById("btn-back-test").addEventListener("click", function(){
+    if(state.accountType === "live"){ showStep("step-confirm-live"); }
+    else { showStep("step-creds"); }
+  });
+  document.getElementById("btn-back-save").addEventListener("click", function(){
+    showStep("step-test");
+  });
+  document.getElementById("btn-run-test").addEventListener("click", runTest);
+  document.getElementById("btn-run-save").addEventListener("click", runSave);
+  var ack = document.getElementById("in-live-ack");
+  var typed = document.getElementById("in-live-typed");
+  function evalLiveGate(){
+    var ok = (ack.checked === true) && (typed.value.trim() === "LIVE");
+    document.getElementById("btn-next-live").disabled = !ok;
+  }
+  ack.addEventListener("change", evalLiveGate);
+  typed.addEventListener("input", evalLiveGate);
+}
+
+function loadLiveWarning(){
+  fetch("/api/broker/live-warning", {cache:"no-store"}).then(function(r){
+    return r.ok ? r.text() : "Live-broker warning failed to load.";
+  }).then(function(t){
+    document.getElementById("live-warning-text").innerText = t;
+  }).catch(function(){
+    document.getElementById("live-warning-text").innerText =
+      "Live-broker warning failed to load. Please contact the operator.";
+  });
+}
+
+function runTest(){
+  var box = document.getElementById("test-result");
+  box.innerHTML = '<div class="sk-chart" style="height:60px"></div>';
+  var body = JSON.stringify({
+    login: document.getElementById("in-login").value,
+    password: document.getElementById("in-pw").value,
+    server: document.getElementById("in-server").value
+  });
+  fetch("/api/broker/test-connection", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: body,
+    cache: "no-store"
+  }).then(function(r){ return r.json(); })
+    .then(function(data){
+    var cls = data.success ? "ok" : "fail";
+    var out = '<div class="wiz-result '+cls+'">';
+    if(data.success){
+      out += '<b>Connected.</b> Account #'+esc(data.account_number)+
+        ' on '+esc(data.server)+' \u2014 '+esc(data.account_type)+
+        ' ('+esc(data.balance_currency || 'currency n/a')+').';
+      document.getElementById("btn-run-test").disabled = true;
+      showStep("step-save");
+    } else {
+      out += '<b>Not connected.</b> '+esc(data.error_message ||
+        'Unknown error.');
+    }
+    out += '</div>';
+    box.innerHTML = out;
+  }).catch(function(e){
+    box.innerHTML = '<div class="wiz-result fail">Request failed \u2014 '+
+      esc(e && e.message || 'network error')+'</div>';
+  });
+}
+
+function runSave(){
+  var box = document.getElementById("save-result");
+  box.innerHTML = '<div class="sk-chart" style="height:40px"></div>';
+  var alias = (document.getElementById("in-alias").value || "primary").trim();
+  var body = JSON.stringify({
+    alias: alias,
+    login: document.getElementById("in-login").value,
+    password: document.getElementById("in-pw").value,
+    server: document.getElementById("in-server").value,
+    account_type: state.accountType
+  });
+  fetch("/api/broker/save", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: body,
+    cache: "no-store"
+  }).then(function(r){ return r.json(); }).then(function(data){
+    if(data.success){
+      box.innerHTML = '<div class="wiz-result ok"><b>Saved.</b> '+
+        'Your password is encrypted at rest.</div>';
+      refreshAliases();
+    } else {
+      box.innerHTML = '<div class="wiz-result fail"><b>Save failed.</b> '+
+        esc(data.error || 'Unknown error.')+'</div>';
+    }
+  }).catch(function(e){
+    box.innerHTML = '<div class="wiz-result fail">Request failed \u2014 '+
+      esc(e && e.message || 'network error')+'</div>';
+  });
+}
+
+function refreshAliases(){
+  var box = document.getElementById("alias-list");
+  fetch("/api/broker/list", {cache:"no-store"}).then(function(r){
+    return r.json();
+  }).then(function(data){
+    var rows = (data && data.aliases) || [];
+    if(rows.length === 0){
+      box.innerHTML = '<div class="sk-empty">No saved connections yet.'+
+        ' Complete the steps above to add one.</div>';
+      return;
+    }
+    var out = '';
+    for(var i=0;i<rows.length;i++){
+      var r = rows[i];
+      var badge = r.account_type === 'live' ? 'live' : 'demo';
+      out += '<div class="wiz-alias-row">'+
+        '<div><b>'+esc(r.alias)+'</b>'+
+        '<span class="wiz-alias-badge '+badge+'">'+esc(r.account_type)+'</span>'+
+        '<div class="meta">'+esc(r.server)+' \u2014 login '+esc(r.login)+'</div></div>'+
+        '<button class="wiz-btn secondary" data-alias="'+esc(r.alias)+
+        '">Remove</button></div>';
+    }
+    box.innerHTML = out;
+    var btns = box.querySelectorAll("button[data-alias]");
+    for(var j=0;j<btns.length;j++){
+      btns[j].addEventListener("click", function(ev){
+        var alias = ev.currentTarget.getAttribute("data-alias");
+        if(!confirm("Remove " + alias +
+                    "? The stored password is deleted.")) return;
+        fetch("/api/broker/" + encodeURIComponent(alias), {
+          method: "DELETE", cache: "no-store"
+        }).then(function(){ refreshAliases(); });
+      });
+    }
+  }).catch(function(){
+    box.innerHTML = '<div class="sk-error">Could not load saved '+
+      'connections. The page will keep trying.</div>';
+  });
+}
+
+bindRadioCards();
+bindNavigation();
+refreshAliases();
+</script></body></html>"""
+
+
+def _server_options() -> str:
+    """Emit ``<option>`` hints inside the server-suggestion datalist.
+
+    Users type the exact server their broker gave them
+    (e.g. ``Exness-MT5Trial7``); we surface only the allow-listed
+    prefixes so it's clear which brokers are supported. The value we
+    emit is the prefix itself so a click auto-fills the prefix which
+    the user then completes -- we never emit an unvalidated full
+    server string.
+    """
+    from agent.platform.broker_connection import ALLOWED_SERVERS
+    opts = []
+    for prefix in ALLOWED_SERVERS:
+        opts.append(f'<option value="{prefix}">')
+    return "\n            ".join(opts)
+
+
+BROKER_WIZARD_PAGE = (_BROKER_TEMPLATE
+                     .replace("__BASE_CSS__", _BASE_CSS)
+                     .replace("__SKELETON_CSS__", _SKELETON_CSS)
+                     .replace("__BROKER_CSS__", _BROKER_CSS)
+                     .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+                     .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+                     .replace("__SERVER_OPTIONS__", _server_options())
+                     .replace("__NAV__", nav('broker')))
