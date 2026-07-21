@@ -1,0 +1,16 @@
+{
+  "from_role": "qa",
+  "to_role": "legal",
+  "feature_id": "F008",
+  "timestamp": "2026-07-21T21:20:00Z",
+  "deliverables": [
+    "company/qa/F008-verdict.md"
+  ],
+  "notes": "79 new tests. Full suite 1259 passing. Cold-install cycle verified end-to-end on macOS. Every acceptance criterion has a matching test.",
+  "blockers": [],
+  "review_criteria": [
+    "Legal reviews the verbatim F008-onboarding-agreement.md rendered on the Welcome step",
+    "Legal confirms the onboarding flow collects no personal data beyond F007's broker login + password + fallback passphrase (never transmitted after setup)",
+    "Legal signs off on the reset-install warning copy"
+  ]
+}

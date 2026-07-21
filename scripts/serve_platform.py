@@ -38,14 +38,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from agent.platform import (  # noqa: E402
-    auth, broker_connection, hq, live_status, paper_loop, performance,
-    players, research, squad_events,
+    auth, broker_connection, credentials, hq, live_status, onboarding,
+    paper_loop, performance, players, research, squad_events,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
-    BROKER_WIZARD_PAGE, HQ_PAGE, HUB_PAGE, PERFORMANCE_PAGE,
-    PLAYERS_INDEX_PAGE, RESEARCH_PAGE, V1_PAGE, V2_PAGE, player_detail_page,
-    players_not_found_page,
+    BROKER_WIZARD_PAGE, HQ_PAGE, HUB_PAGE, ONBOARDING_PAGE, PERFORMANCE_PAGE,
+    PLAYERS_INDEX_PAGE, RESEARCH_PAGE, RESET_INSTALL_PAGE, V1_PAGE, V2_PAGE,
+    player_detail_page, players_not_found_page,
 )
 
 
@@ -87,6 +87,21 @@ _LIVE_WARNING_PATH = REPO_ROOT / "company" / "legal" / "live-broker-warning.md"
 _UNAUTHENTICATED_API_PATHS: frozenset[str] = frozenset({
     "/api/auth/status",         # F006 -- probe whether the install is set up
     "/api/broker/live-warning", # F007 -- live-broker legal warning text
+    "/api/onboarding/state",    # F008 -- wizard reads state on load
+    "/api/onboarding/passphrase",  # F008 -- setup happens before token exists
+    "/api/onboarding/pairs",    # F008 -- setup happens before token exists
+    "/api/onboarding/complete", # F008 -- setup happens before token exists
+    "/api/onboarding/reset",    # F008 -- reset must work without a token
+})
+
+# F008 first-visit gate. When onboarding is not yet complete, every
+# non-exempt HTML route redirects to /onboarding. HTTP routes that
+# would break the wizard's own lifecycle stay reachable.
+_ONBOARDING_HTML_ALLOWED: frozenset[str] = frozenset({
+    "/onboarding", "/onboarding/",
+    "/settings/reset-install", "/settings/reset-install/",
+    "/settings/broker", "/settings/broker/",  # so wizard step 3 works
+    "/healthz",
 })
 
 
@@ -96,7 +111,8 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                  company_ledger_path: Path | None = None,
                  research_root: Path | None = None,
                  research_manifest_path: Path | None = None,
-                 enforce_install_token: bool = False):
+                 enforce_install_token: bool = False,
+                 enforce_onboarding_gate: bool = False):
     """``auth_token`` enables token auth on every route except /healthz
     (so uptime probes stay simple). main() only passes it through when
     binding non-localhost — on 127.0.0.1 the platform stays open.
@@ -107,6 +123,13 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
     install token stored in the OS keychain OR the pre-Sprint-1
     ``auth_token`` fallback. main() sets this to True only on
     non-localhost binds; localhost single-user dev stays open per D052.
+
+    ``enforce_onboarding_gate`` (F008, Sprint 1): when True, any HTML
+    GET to a non-exempt route redirects to ``/onboarding`` until
+    :func:`onboarding.is_first_visit` returns False. Off by default so
+    unit tests hitting `/hq`, `/players` etc. keep the Sprint 0
+    contract. main() flips this on when binding non-localhost, and the
+    F008 API tests opt in explicitly.
 
     ``company_ledger_path`` overrides the default
     ``<repo_root>/company/ledger/company_state.json`` path used by the
@@ -205,6 +228,32 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 return False
             return True
 
+        def _html_route_needs_onboarding(self, path: str) -> bool:
+            """F008 -- True iff this GET should 302 to /onboarding.
+
+            Only HTML routes are gated: API routes have their own
+            allow-list. The wizard's own routes are exempt so it can
+            drive itself, as is `/settings/broker` (embedded step
+            3 of the wizard).
+
+            The gate is off unless ``enforce_onboarding_gate=True``
+            was passed to :func:`make_handler`. That keeps single-user
+            localhost dev unchanged from the Sprint 0 contract while
+            main() flips it on for real deployments.
+            """
+            if not enforce_onboarding_gate:
+                return False
+            if path.startswith("/api/"):
+                return False
+            if path.startswith("/static/") or path.startswith("/assets/"):
+                return False
+            if path in _ONBOARDING_HTML_ALLOWED:
+                return False
+            try:
+                return onboarding.is_first_visit()
+            except (ValueError, RuntimeError):
+                return False
+
         def do_GET(self):  # noqa: N802
             path, _, query = self.path.partition("?")
             params = {}
@@ -226,6 +275,31 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
 
             if path == "/api/auth/status":
                 self._json(auth.auth_status())
+                return
+
+            # F008 -- onboarding read routes (must precede first-visit
+            # redirect so the wizard can load its own state).
+            if path == "/api/onboarding/state":
+                self._json(onboarding.get_onboarding_state())
+                return
+            if path in ("/onboarding", "/onboarding/"):
+                self._send(ONBOARDING_PAGE.encode(),
+                           "text/html; charset=utf-8")
+                return
+            if path in ("/settings/reset-install",
+                        "/settings/reset-install/"):
+                self._send(RESET_INSTALL_PAGE.encode(),
+                           "text/html; charset=utf-8")
+                return
+
+            # F008 first-visit gate -- HTML routes redirect to
+            # /onboarding until the user completes setup. HTTP API
+            # routes and the broker wizard (referenced from step 3)
+            # stay reachable so the wizard can drive itself.
+            if self._html_route_needs_onboarding(path):
+                self.send_response(302)
+                self.send_header("Location", "/onboarding")
+                self.end_headers()
                 return
 
             # F007 -- broker wizard routes
@@ -440,6 +514,50 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 self._json({"error": "install-token required"}, 401)
                 return
 
+            # F008 -- onboarding write routes (exempt from install
+            # gate; they run before setup completes).
+            if path == "/api/onboarding/state":
+                # Idempotent step-persistence -- the wizard sends this
+                # on every showStep() call so a reload resumes.
+                step = params.get("step")
+                if step:
+                    try:
+                        onboarding.set_current_step(step)
+                    except ValueError:
+                        pass
+                self._json({"ok": True})
+                return
+            if path == "/api/onboarding/passphrase":
+                body = self._read_body_json() or {}
+                pw = body.get("passphrase", "")
+                skipped = bool(body.get("skipped"))
+                ka = credentials.is_keyring_available() if skipped \
+                    else None
+                ok, msg = onboarding.validate_passphrase(
+                    pw, keyring_available=ka)
+                if ok and pw:
+                    credentials.set_encrypted_file_passphrase(pw)
+                self._json({"ok": ok, "message": msg})
+                return
+            if path == "/api/onboarding/pairs":
+                body = self._read_body_json() or {}
+                try:
+                    onboarding.set_default_pairs(body.get("pairs", []))
+                except ValueError as exc:
+                    self._json({"ok": False, "message": str(exc)}, 400)
+                    return
+                self._json({"ok": True,
+                            "pairs": onboarding.get_default_pairs()})
+                return
+            if path == "/api/onboarding/complete":
+                ok = onboarding.mark_setup_complete()
+                self._json({"ok": ok})
+                return
+            if path == "/api/onboarding/reset":
+                ok = onboarding.reset_install()
+                self._json({"ok": ok})
+                return
+
             if path == "/api/broker/test-connection":
                 body = self._read_body_json() or {}
                 result = broker_connection.test_connection(
@@ -561,13 +679,16 @@ def main() -> None:
         make_handler(args.log_root, args.repo_root, args.research_reviews,
                      live_dir=args.live_dir, auth_token=effective_token,
                      company_ledger_path=args.company_ledger,
-                     enforce_install_token=not localhost),
+                     enforce_install_token=not localhost,
+                     enforce_onboarding_gate=not localhost),
     )
     if effective_token:
         print("Auth: token required on all routes except /healthz")
     if not localhost:
         print("F006 install-token gate: enabled on /api/* "
               "(bring your token via X-Bluelock-Token / Bearer / cookie / ?token=)")
+        print("F008 onboarding gate: enabled -- HTML routes redirect "
+              "to /onboarding until setup completes")
     print(f"Platform v{PLATFORM_VERSION} on http://{args.host}:{args.port}")
     print(f"  v1 log root:        {args.log_root}")
     print(f"  v2 research reviews: {args.research_reviews} "

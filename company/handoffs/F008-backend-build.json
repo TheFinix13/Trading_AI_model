@@ -1,0 +1,21 @@
+{
+  "from_role": "backend",
+  "to_role": "security",
+  "feature_id": "F008",
+  "timestamp": "2026-07-21T21:12:00Z",
+  "deliverables": [
+    "agent/platform/onboarding.py",
+    "agent/platform/pages.py: ONBOARDING_PAGE + RESET_INSTALL_PAGE + _ONBOARDING_CSS",
+    "scripts/serve_platform.py: /onboarding + /settings/reset-install + /api/onboarding/{state,passphrase,pairs,complete,reset} + first-visit HTML redirect gate",
+    "tests/security/test_onboarding.py (23 tests)",
+    "tests/platform/test_onboarding_module.py (13 tests)",
+    "tests/platform/test_onboarding_api.py (22 tests)",
+    "tests/platform/test_onboarding_page.py (21 tests)"
+  ],
+  "notes": "Onboarding state stored in the F006 credentials layer (keyring/encrypted-file). Never in platform.toml. reset_install sweeps both `bluelock` and `broker_mt5` namespaces. Passphrase strength gate: >=12 chars when keychain absent, empty accepted when keychain present. First-visit gate is opt-in on make_handler; main() enables it on non-localhost.",
+  "blockers": [],
+  "review_criteria": [
+    "Security reviews: reset flow leaves no state, passphrase strength enforced, no plaintext passphrase / token / broker password in logs during onboarding",
+    "Onboarding routes exempt from install-token gate (they run before setup completes) is documented + tested"
+  ]
+}

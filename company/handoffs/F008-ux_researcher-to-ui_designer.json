@@ -1,0 +1,16 @@
+{
+  "from_role": "ux_researcher",
+  "to_role": "ui_designer",
+  "feature_id": "F008",
+  "timestamp": "2026-07-21T21:03:00Z",
+  "deliverables": [
+    "company/research/F008-user-journey.md"
+  ],
+  "notes": "Five steps: welcome / passphrase / broker / pairs / confirm. Broker step opens F007 wizard in a new tab. Passphrase step adapts to keychain availability. Reset-install page is separate at /settings/reset-install.",
+  "blockers": [],
+  "review_criteria": [
+    "Design each of the five steps + the reset-install page on desktop and 375 px mobile",
+    "Progress stepper should read at a glance which step is current / done / upcoming",
+    "Legal agreement on step 1 must be visible without scrolling past the fold"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "from_role": "cpo",
+  "to_role": "ux_researcher",
+  "feature_id": "F008",
+  "timestamp": "2026-07-21T21:00:00Z",
+  "deliverables": [
+    "company/sprints/sprint-1-access/F008-onboarding-flow.md"
+  ],
+  "notes": "F008 is the sprint's user-facing culmination. Five-step wizard at /onboarding. Consumes F006 (auth + credentials) and F007 (broker step link). Cold-install cycle test via /settings/reset-install is part of the acceptance criteria.",
+  "blockers": [],
+  "review_criteria": [
+    "Confirm the five-step flow reads correctly for a first-time user",
+    "Confirm the passphrase step handles both keychain-present and keychain-absent cases without confusing the user",
+    "Identify what F008 does NOT try to solve (multi-user provisioning, native mobile onboarding, subscription/payment) -- feed to future sprints"
+  ]
+}

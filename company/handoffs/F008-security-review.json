@@ -1,0 +1,28 @@
+{
+  "from_role": "security",
+  "to_role": "qa",
+  "feature_id": "F008",
+  "timestamp": "2026-07-21T21:16:00Z",
+  "scope": "onboarding module + wizard + reset flow",
+  "verdict": "pass",
+  "findings": [
+    "Reset flow sweeps both `bluelock` and `broker_mt5` namespaces via credentials.delete_secret and verifies list_keys returns [] after -- pinned by test_reset_clears_*.",
+    "Passphrase strength floor 12 chars enforced when keychain unavailable -- pinned by test_short_rejected_regardless_of_keychain.",
+    "Empty passphrase only accepted when keychain available -- pinned by test_empty_accepted_when_keychain_present + test_empty_rejected_when_keychain_absent.",
+    "Passphrase never appears in the /api/onboarding/passphrase response body -- pinned by test_passphrase_never_returned_in_response.",
+    "First-visit HTML redirect gate is opt-in on make_handler; enabled by main() on non-localhost binds. When on, /hq, /players, /research etc. redirect to /onboarding until setup completes. /healthz and the wizard's own routes stay reachable.",
+    "onboarding.py inputs sanitised: set_current_step rejects unknown steps, set_default_pairs rejects unknown pairs / empty list / non-strings. All pinned."
+  ],
+  "requirements": [],
+  "deliverables": [
+    "tests/security/test_onboarding.py",
+    "company/legal/F008-onboarding-agreement.md"
+  ],
+  "notes": "Security posture threat-model check complete. QA proceeds. Legal must re-review the F008-onboarding-agreement.md body verbatim before CEO signoff.",
+  "blockers": [],
+  "review_criteria": [
+    "QA runs the full suite one more time before shipping",
+    "Legal signs off on F008-onboarding-agreement.md verbatim",
+    "CPO signoff records the security stage as pass"
+  ]
+}

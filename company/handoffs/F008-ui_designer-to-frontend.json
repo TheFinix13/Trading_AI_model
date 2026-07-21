@@ -1,0 +1,17 @@
+{
+  "from_role": "ui_designer",
+  "to_role": "frontend",
+  "feature_id": "F008",
+  "timestamp": "2026-07-21T21:06:00Z",
+  "deliverables": [
+    "company/design/F008-mocks.md"
+  ],
+  "notes": "Additive CSS primitives under _ONBOARDING_CSS. No _BASE_CSS_VERSION bump. Progress stepper is role=progressbar with aria-label. Passphrase uses type=password + autocomplete=new-password. EURUSD checkbox pre-checked. Reset-install button styled red (destructive).",
+  "blockers": [],
+  "review_criteria": [
+    "Frontend wires the five-step DOM + JS state machine",
+    "Every step transition scrolls the viewport to top",
+    "loadState() on wizard load resumes at the persisted step",
+    "Passphrase field: type=password + autocomplete=new-password + no default value"
+  ]
+}

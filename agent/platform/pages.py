@@ -4431,3 +4431,452 @@ BROKER_WIZARD_PAGE = (_BROKER_TEMPLATE
                      .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
                      .replace("__SERVER_OPTIONS__", _server_options())
                      .replace("__NAV__", nav('broker')))
+
+
+# ---------------------------------------------------------------------------
+# F008 -- Onboarding wizard page
+# ---------------------------------------------------------------------------
+#
+# First-visit redirect target. Walks the user through:
+#   1. Welcome (Legal agreement pass-through)
+#   2. Passphrase (optional if keychain available, mandatory otherwise)
+#   3. Broker (in-page CTA that opens /settings/broker in a new tab)
+#   4. Default pairs (EURUSD default on; GBPUSD, USDCAD optional)
+#   5. Confirm (recap + "Finish setup" button)
+#
+# All CSS is additive under _ONBOARDING_CSS -- no _BASE_CSS_VERSION bump.
+
+_ONBOARDING_CSS = r"""
+.onb{max-width:640px;margin:0 auto}
+.onb-stepper{display:flex;justify-content:space-between;
+  margin:6px 0 18px;font-size:12px;color:var(--dim)}
+.onb-stepper span{flex:1;text-align:center;padding:6px 4px;
+  border-bottom:2px solid var(--border)}
+.onb-stepper span.done{border-bottom-color:var(--green);color:var(--green)}
+.onb-stepper span.current{border-bottom-color:var(--accent);
+  color:var(--fg);font-weight:600}
+.onb-step{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:22px 24px;margin-bottom:14px}
+.onb-step h2{margin:0 0 8px;font-size:17px}
+.onb-step .lead{color:var(--dim);font-size:13px;margin:0 0 14px}
+.onb-form{display:grid;gap:10px}
+.onb-form label{display:block;font-size:12px;color:var(--dim);
+  text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px}
+.onb-form input[type=password],.onb-form input[type=text]{
+  width:100%;background:#0d1117;color:var(--fg);
+  border:1px solid var(--border);border-radius:6px;
+  padding:8px 10px;font:14px inherit}
+.onb-form input:focus{outline:none;border-color:var(--accent)}
+.onb-check{display:flex;align-items:flex-start;gap:8px;padding:6px 0}
+.onb-check input{margin-top:2px}
+.onb-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;
+  justify-content:flex-end}
+.onb-btn{background:var(--accent);color:#000;border:none;
+  border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;
+  font-size:14px}
+.onb-btn:hover{filter:brightness(1.08)}
+.onb-btn.secondary{background:transparent;color:var(--fg);
+  border:1px solid var(--border)}
+.onb-btn:disabled{opacity:0.5;cursor:not-allowed}
+.onb-result{background:#0f141a;border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px;font-size:13px;margin-top:10px}
+.onb-result.ok{border-left:3px solid var(--green)}
+.onb-result.fail{border-left:3px solid var(--red)}
+.onb-recap{background:#0f141a;border:1px solid var(--border);
+  border-radius:8px;padding:12px 14px;margin-bottom:10px;font-size:13px}
+.onb-recap b{color:var(--accent)}
+.onb-agreement{background:rgba(88,166,255,.08);
+  border:1px solid rgba(88,166,255,.25);border-left:3px solid var(--accent);
+  border-radius:6px;padding:10px 12px;font-size:12.5px;
+  color:var(--fg);margin:10px 0}
+@media (max-width: 700px){
+  .onb{padding:0 4px}
+  .onb-step{padding:16px 14px}
+  .onb-stepper{font-size:11px}
+  .onb-actions{gap:6px}
+}
+"""
+
+_ONBOARDING_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Welcome -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+__SKELETON_CSS__
+__ONBOARDING_CSS__
+</style></head>
+<body>
+__NAV__
+<div class="wrap">
+  <h1>Set up your Blue Lock install</h1>
+  <div class="sub">Five short steps. Nothing leaves your machine.</div>
+
+  <div class="onb">
+    <div class="onb-stepper" id="stepper" role="progressbar"
+         aria-label="Onboarding progress">
+      <span data-step="welcome" class="current">1. Welcome</span>
+      <span data-step="passphrase">2. Passphrase</span>
+      <span data-step="broker">3. Broker</span>
+      <span data-step="pairs">4. Pairs</span>
+      <span data-step="confirm">5. Confirm</span>
+    </div>
+
+    <section class="onb-step" id="step-welcome" data-step="welcome">
+      <h2>Welcome</h2>
+      <div class="lead">Blue Lock is a single-user hobbyist trading
+      platform. You install it on your machine. It doesn't send
+      your data anywhere.</div>
+      <div class="onb-agreement">
+        By continuing you agree that Blue Lock Trading Co. is not a
+        regulated broker or investment adviser, that nothing this
+        platform outputs is financial advice, and that any losses
+        incurred through connected broker accounts are your
+        responsibility.
+      </div>
+      <div class="onb-actions">
+        <button class="onb-btn" id="btn-next-welcome">Continue &rarr;</button>
+      </div>
+    </section>
+
+    <section class="onb-step" id="step-passphrase" data-step="passphrase"
+             style="display:none">
+      <h2>Set your fallback passphrase</h2>
+      <div class="lead">Blue Lock stores your broker credentials in
+      your OS keychain when it can. If a keychain isn't available on
+      this machine, we fall back to an encrypted file protected by
+      this passphrase. Leave empty if your keychain works and you
+      want to skip the fallback.</div>
+      <div class="onb-form">
+        <div>
+          <label for="in-passphrase">Passphrase</label>
+          <input id="in-passphrase" type="password"
+                 autocomplete="new-password" spellcheck="false">
+        </div>
+        <div class="onb-check">
+          <input type="checkbox" id="in-noop-passphrase">
+          <label for="in-noop-passphrase">Skip passphrase
+            (my OS keychain is available).</label>
+        </div>
+      </div>
+      <div id="passphrase-result"></div>
+      <div class="onb-actions">
+        <button class="onb-btn secondary" id="btn-back-passphrase">
+          &larr; Back</button>
+        <button class="onb-btn" id="btn-next-passphrase">
+          Continue &rarr;</button>
+      </div>
+    </section>
+
+    <section class="onb-step" id="step-broker" data-step="broker"
+             style="display:none">
+      <h2>Connect a broker</h2>
+      <div class="lead">Blue Lock trades on MT5. You'll open the
+      broker wizard, connect a demo (or live) account, then return
+      here to finish setup.</div>
+      <div class="onb-actions">
+        <button class="onb-btn secondary" id="btn-back-broker">
+          &larr; Back</button>
+        <a class="onb-btn" href="/settings/broker" target="_blank"
+           rel="noopener">Open broker wizard &rarr;</a>
+        <button class="onb-btn" id="btn-next-broker">
+          I've connected a broker &rarr;</button>
+      </div>
+      <div id="broker-status" class="onb-result"></div>
+    </section>
+
+    <section class="onb-step" id="step-pairs" data-step="pairs"
+             style="display:none">
+      <h2>Choose default pairs</h2>
+      <div class="lead">Which FX pairs should the squad watch first?
+      You can change this later on the /players page.</div>
+      <div class="onb-form">
+        <div class="onb-check">
+          <input type="checkbox" id="pair-EURUSD" checked>
+          <label for="pair-EURUSD">EURUSD (default)</label>
+        </div>
+        <div class="onb-check">
+          <input type="checkbox" id="pair-GBPUSD">
+          <label for="pair-GBPUSD">GBPUSD</label>
+        </div>
+        <div class="onb-check">
+          <input type="checkbox" id="pair-USDCAD">
+          <label for="pair-USDCAD">USDCAD</label>
+        </div>
+      </div>
+      <div class="onb-actions">
+        <button class="onb-btn secondary" id="btn-back-pairs">
+          &larr; Back</button>
+        <button class="onb-btn" id="btn-next-pairs">
+          Continue &rarr;</button>
+      </div>
+    </section>
+
+    <section class="onb-step" id="step-confirm" data-step="confirm"
+             style="display:none">
+      <h2>Ready to go</h2>
+      <div class="lead">Here's your setup:</div>
+      <div class="onb-recap" id="recap"></div>
+      <div class="onb-actions">
+        <button class="onb-btn secondary" id="btn-back-confirm">
+          &larr; Back</button>
+        <button class="onb-btn" id="btn-finish">Finish setup</button>
+      </div>
+      <div id="finish-result"></div>
+    </section>
+  </div>
+</div>
+<script>__ERROR_COPY_JS__
+__WITH_STATES_JS__
+var STEP_IDS = ["welcome","passphrase","broker","pairs","confirm"];
+var state = {
+  step: "welcome",
+  passphraseSkipped: false,
+  brokerConnected: false,
+  keyringAvailable: false,
+  defaultPairs: ["EURUSD"]
+};
+
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function showStep(id){
+  state.step = id;
+  var steps = document.querySelectorAll(".onb-step");
+  for(var i=0;i<steps.length;i++){ steps[i].style.display = "none"; }
+  document.getElementById("step-" + id).style.display = "";
+  var pips = document.querySelectorAll("#stepper span");
+  var seen = false;
+  for(var j=0;j<pips.length;j++){
+    pips[j].classList.remove("done");
+    pips[j].classList.remove("current");
+    if(pips[j].getAttribute("data-step") === id){
+      pips[j].classList.add("current"); seen = true;
+    } else if(!seen){
+      pips[j].classList.add("done");
+    }
+  }
+  window.scrollTo(0, 0);
+  fetch("/api/onboarding/state?step=" + encodeURIComponent(id),
+        {method: "POST", cache: "no-store"}).catch(function(){});
+}
+
+function loadState(){
+  fetch("/api/onboarding/state", {cache:"no-store"})
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      state.keyringAvailable = !!data.keyring_available;
+      state.brokerConnected = !!data.broker_connected;
+      state.defaultPairs = data.default_pairs || ["EURUSD"];
+      if(data.completed){
+        window.location.assign("/");
+        return;
+      }
+      showStep(data.step || "welcome");
+      refreshBrokerStatus();
+    })
+    .catch(function(){ showStep("welcome"); });
+}
+
+function bindNav(){
+  document.getElementById("btn-next-welcome")
+    .addEventListener("click", function(){ showStep("passphrase"); });
+  document.getElementById("btn-back-passphrase")
+    .addEventListener("click", function(){ showStep("welcome"); });
+  document.getElementById("btn-next-passphrase")
+    .addEventListener("click", submitPassphrase);
+  document.getElementById("btn-back-broker")
+    .addEventListener("click", function(){ showStep("passphrase"); });
+  document.getElementById("btn-next-broker")
+    .addEventListener("click", function(){
+      refreshBrokerStatus(function(){
+        if(state.brokerConnected){ showStep("pairs"); }
+      });
+    });
+  document.getElementById("btn-back-pairs")
+    .addEventListener("click", function(){ showStep("broker"); });
+  document.getElementById("btn-next-pairs")
+    .addEventListener("click", submitPairs);
+  document.getElementById("btn-back-confirm")
+    .addEventListener("click", function(){ showStep("pairs"); });
+  document.getElementById("btn-finish")
+    .addEventListener("click", finishSetup);
+}
+
+function submitPassphrase(){
+  var box = document.getElementById("passphrase-result");
+  var pw = document.getElementById("in-passphrase").value || "";
+  var skipped = document.getElementById("in-noop-passphrase").checked;
+  var body = JSON.stringify({passphrase: skipped ? "" : pw,
+                              skipped: skipped});
+  fetch("/api/onboarding/passphrase", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: body, cache: "no-store"
+  }).then(function(r){ return r.json(); }).then(function(data){
+    if(data.ok){
+      box.innerHTML = '<div class="onb-result ok">' +
+        esc(data.message || 'Passphrase accepted.') + '</div>';
+      state.passphraseSkipped = !!skipped;
+      showStep("broker");
+    } else {
+      box.innerHTML = '<div class="onb-result fail">' +
+        esc(data.message || 'Passphrase rejected.') + '</div>';
+    }
+  }).catch(function(){
+    box.innerHTML = '<div class="onb-result fail">' +
+      'Could not reach the server.</div>';
+  });
+}
+
+function refreshBrokerStatus(cb){
+  fetch("/api/onboarding/state", {cache:"no-store"})
+    .then(function(r){ return r.json(); }).then(function(data){
+      state.brokerConnected = !!data.broker_connected;
+      var box = document.getElementById("broker-status");
+      if(state.brokerConnected){
+        box.className = "onb-result ok";
+        box.innerHTML = "Broker connection detected.";
+      } else {
+        box.className = "onb-result";
+        box.innerHTML = "No broker connected yet. Complete the " +
+          "wizard tab and click Continue.";
+      }
+      if(cb) cb();
+    }).catch(function(){});
+}
+
+function submitPairs(){
+  var checked = [];
+  ["EURUSD","GBPUSD","USDCAD"].forEach(function(p){
+    if(document.getElementById("pair-" + p).checked){ checked.push(p); }
+  });
+  if(checked.length === 0){
+    alert("Pick at least one pair -- EURUSD is the sensible default.");
+    return;
+  }
+  fetch("/api/onboarding/pairs", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({pairs: checked}),
+    cache: "no-store"
+  }).then(function(r){ return r.json(); }).then(function(data){
+    if(data.ok){
+      state.defaultPairs = data.pairs || checked;
+      renderRecap();
+      showStep("confirm");
+    } else {
+      alert(data.message || "Could not save your pairs.");
+    }
+  });
+}
+
+function renderRecap(){
+  var box = document.getElementById("recap");
+  box.innerHTML =
+    '<div>Passphrase: <b>' +
+      (state.passphraseSkipped ? 'skipped (keychain)' : 'set') +
+    '</b></div>' +
+    '<div>Broker: <b>' +
+      (state.brokerConnected ? 'connected' : 'not connected yet') +
+    '</b></div>' +
+    '<div>Default pairs: <b>' + esc(state.defaultPairs.join(", ")) +
+    '</b></div>';
+}
+
+function finishSetup(){
+  var box = document.getElementById("finish-result");
+  fetch("/api/onboarding/complete", {method: "POST", cache: "no-store"})
+    .then(function(r){ return r.json(); }).then(function(data){
+      if(data.ok){
+        box.innerHTML = '<div class="onb-result ok">Setup complete. ' +
+          'Taking you to the hub.</div>';
+        setTimeout(function(){ window.location.assign("/"); }, 1200);
+      } else {
+        box.innerHTML = '<div class="onb-result fail">' +
+          esc(data.message || 'Could not mark setup complete.') +
+        '</div>';
+      }
+    });
+}
+
+bindNav();
+loadState();
+</script></body></html>"""
+
+
+ONBOARDING_PAGE = (_ONBOARDING_TEMPLATE
+                   .replace("__BASE_CSS__", _BASE_CSS)
+                   .replace("__SKELETON_CSS__", _SKELETON_CSS)
+                   .replace("__ONBOARDING_CSS__", _ONBOARDING_CSS)
+                   .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+                   .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+                   .replace("__NAV__", nav('onboarding')))
+
+
+# ---------------------------------------------------------------------------
+# F008 -- /settings/reset-install confirmation page
+# ---------------------------------------------------------------------------
+
+_RESET_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reset install -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+.onb-step{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:22px 24px;margin:14px 0}
+.onb-btn{background:var(--red);color:#000;border:none;
+  border-radius:6px;padding:8px 16px;font-weight:600;cursor:pointer;
+  font-size:14px}
+.onb-btn.secondary{background:transparent;color:var(--fg);
+  border:1px solid var(--border)}
+.wiz-warn{background:rgba(210,153,34,.10);
+  border:1px solid rgba(210,153,34,.4);border-left:3px solid var(--amber);
+  border-radius:6px;padding:10px 12px;color:var(--fg);font-size:13px;
+  margin:10px 0}
+</style></head>
+<body>
+__NAV__
+<div class="wrap">
+  <h1>Reset your Blue Lock install</h1>
+  <div class="sub">This clears your install token and saved broker
+  connections, then sends you back through setup.</div>
+
+  <div class="onb-step">
+    <div class="wiz-warn"><strong>Warning.</strong> This deletes every
+    saved broker alias, your install token, and the passphrase-fallback
+    file (if any). It cannot be undone. Nothing is sent anywhere -- the
+    keys are simply removed from your keychain / config file.</div>
+
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <a class="onb-btn secondary" href="/">&larr; Cancel</a>
+      <button class="onb-btn" id="btn-reset">Reset install</button>
+    </div>
+    <div id="reset-result" style="margin-top:12px"></div>
+  </div>
+</div>
+<script>
+document.getElementById("btn-reset").addEventListener("click", function(){
+  if(!confirm("Really reset your install? This cannot be undone.")) return;
+  fetch("/api/onboarding/reset", {method: "POST", cache: "no-store"})
+    .then(function(r){ return r.json(); }).then(function(data){
+      var box = document.getElementById("reset-result");
+      if(data.ok){
+        box.innerHTML = "Reset complete. Taking you back to setup.";
+        setTimeout(function(){
+          window.location.assign("/onboarding");
+        }, 1000);
+      } else {
+        box.innerHTML = "Reset failed. " +
+          (data.message || 'Unknown error.');
+      }
+    });
+});
+</script></body></html>"""
+
+
+RESET_INSTALL_PAGE = (_RESET_TEMPLATE
+                      .replace("__BASE_CSS__", _BASE_CSS)
+                      .replace("__NAV__", nav('reset')))

@@ -1,0 +1,25 @@
+{
+  "from_role": "cto",
+  "to_role": "backend",
+  "feature_id": "F008",
+  "timestamp": "2026-07-21T21:08:00Z",
+  "deliverables": [
+    "company/handoffs/F008-cto-review.json"
+  ],
+  "notes": "Architecture review green. One new module (onboarding.py) + edits to pages.py (additive templates) + serve_platform.py (new routes + first-visit gate). 3 modules touched, within CTO autonomy. No new PyPI dependency -- consumes F006 credentials for storage. First-visit redirect gate is opt-in via enforce_onboarding_gate parameter on make_handler -- default off so Sprint 0 tests keep the old contract; main() flips it on for non-localhost binds.",
+  "verdict": "green",
+  "modules_touched": [
+    "agent/platform/onboarding.py",
+    "agent/platform/pages.py",
+    "scripts/serve_platform.py"
+  ],
+  "tests_expected_delta": 79,
+  "security_relevant": true,
+  "legal_relevant": true,
+  "blockers": [],
+  "review_criteria": [
+    "First-visit gate defaults off in make_handler -- keeps Sprint 0 unit tests unchanged",
+    "main() explicitly flips both install-token gate AND onboarding gate on for non-localhost binds",
+    "All /api/onboarding/* routes exempt from the install-token gate because they run before an install token exists"
+  ]
+}

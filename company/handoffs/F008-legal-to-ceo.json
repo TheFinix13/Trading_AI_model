@@ -1,0 +1,18 @@
+{
+  "from_role": "legal",
+  "to_role": "ceo",
+  "feature_id": "F008",
+  "timestamp": "2026-07-21T21:24:00Z",
+  "deliverables": [
+    "company/legal/F008-onboarding-agreement.md",
+    "company/legal/claim_register.md (already carries onboarding.py fields)"
+  ],
+  "notes": "F008 agreement text preserves the hobbyist single-user frame from D019/D052, names the user as sole responsible party, and does not restate broker regulatory disclosures. No personal data collected beyond F007's broker login/password + fallback passphrase (never transmitted). Reset-install warning explicitly says the data stays local ('Nothing is sent anywhere').",
+  "blockers": [],
+  "verdict": "pass",
+  "review_criteria": [
+    "CEO signs off",
+    "Feature F008 stage transitions to shipped",
+    "Sprint 1 close-out ready"
+  ]
+}
