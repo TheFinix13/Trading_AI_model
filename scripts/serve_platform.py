@@ -38,13 +38,35 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from agent.platform import (  # noqa: E402
-    hq, live_status, paper_loop, performance, players, squad_events,
+    hq, live_status, paper_loop, performance, players, research,
+    squad_events,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
-    HQ_PAGE, HUB_PAGE, PERFORMANCE_PAGE, PLAYERS_INDEX_PAGE,
+    HQ_PAGE, HUB_PAGE, PERFORMANCE_PAGE, PLAYERS_INDEX_PAGE, RESEARCH_PAGE,
     V1_PAGE, V2_PAGE, player_detail_page, players_not_found_page,
 )
+
+
+def _derive_research_root(reviews_dir: Path) -> Path | None:
+    """Climb up from `--research-reviews` until we find a directory
+    that looks like the finance-research-experiments repo root.
+
+    The default `research_reviews` path is
+    ``.../finance-research-experiments/programs/M001_multi_agent_ensemble/reviews``,
+    so we look up to three parents deep. Returns None when the reviews
+    dir doesn't exist -- the F003 page falls back to the friendly
+    empty state (`source_exists=False`).
+    """
+    if not reviews_dir or not reviews_dir.exists():
+        return None
+    for candidate in (reviews_dir,
+                      *(reviews_dir.parents)[:5]):
+        if candidate.name == "finance-research-experiments":
+            return candidate
+        if (candidate / "experiments").is_dir() and (candidate / "programs").is_dir():
+            return candidate
+    return None
 
 PLATFORM_VERSION = "0.2.0"
 
@@ -59,7 +81,9 @@ _PLAYER_API_RE = re.compile(r"^/api/players/([A-Za-z0-9_-]+)$")
 def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                  live_dir: Path | None = None,
                  auth_token: str | None = None,
-                 company_ledger_path: Path | None = None):
+                 company_ledger_path: Path | None = None,
+                 research_root: Path | None = None,
+                 research_manifest_path: Path | None = None):
     """``auth_token`` enables token auth on every route except /healthz
     (so uptime probes stay simple). main() only passes it through when
     binding non-localhost — on 127.0.0.1 the platform stays open.
@@ -68,8 +92,15 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
     ``<repo_root>/company/ledger/company_state.json`` path used by the
     /hq dashboard. Tests pass a fixture path; production leaves it
     None so `hq.hq_state()` picks up the shipped ledger.
+
+    ``research_root`` is the root of the sibling
+    `finance-research-experiments` checkout (or None when it isn't on
+    this machine -- F003 renders a friendly empty state).
+    ``research_manifest_path`` overrides the default
+    ``<repo_root>/company/research/publication_manifest.json``.
     """
     started_at = time.time()
+    derived_research_root = research_root or _derive_research_root(reviews_dir)
 
     class Handler(BaseHTTPRequestHandler):
         _set_cookie: str | None = None
@@ -184,6 +215,19 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                         self._json({"error": "unknown striker"}, 404)
                     else:
                         self._json(payload)
+            elif path == "/research":
+                # F003: /research verdict timeline (CPO-gated).
+                self._send(RESEARCH_PAGE.encode(),
+                           "text/html; charset=utf-8")
+            elif path == "/api/research/verdicts":
+                # F003: CPO-gated allow-list of published verdicts.
+                # Backend parses every canonical REPORT.md on tape but
+                # only emits entries the publication_manifest.json
+                # explicitly allows. Missing research repo -> friendly
+                # source_exists=False payload, never a 500.
+                self._json(research.get_state(
+                    research_root=derived_research_root,
+                    manifest_path=research_manifest_path))
             elif path == "/api/hq/state":
                 # HQ dashboard state -- reads company/ledger/company_state.json
                 # (or company_ledger_path override in tests). Missing /

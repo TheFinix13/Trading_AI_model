@@ -1,0 +1,17 @@
+{
+  "from_role": "cpo",
+  "to_role": "ux_researcher",
+  "feature_id": "F003",
+  "timestamp": "2026-07-21T17:40:00Z",
+  "deliverables": [
+    "company/sprints/sprint-0-trust-foundation/F003-research-page.md"
+  ],
+  "notes": "F003 spec pre-registered. Anti-marketing marketing: the receipt trail of failed experiments must land before the successes so a sceptical prospect can audit us in ~2 minutes. CPO signoff gates publication (D007); backend parses more than what appears on /research. Please deliver the user journey memo, JTBD for the sceptical prospect, and a spec for the FDR/pre-registration explainer.",
+  "blockers": [],
+  "review_criteria": [
+    "Target segment identified (default: sceptical prospect from Sprint 0's audience)",
+    "Content order rationale (why dead-first is the trust move)",
+    "Non-goals stated so scope does not creep into a live equity claim",
+    "FDR explainer copy tested for 'stranger-friendly' readability"
+  ]
+}

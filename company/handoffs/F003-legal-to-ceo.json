@@ -1,0 +1,15 @@
+{
+  "from_role": "legal",
+  "to_role": "ceo",
+  "feature_id": "F003",
+  "timestamp": "2026-07-21T17:53:00Z",
+  "deliverables": [
+    "company/legal/F003-disclaimer-review.md",
+    "company/legal/disclaimers.md"
+  ],
+  "notes": "Legal PASS. Anti-cherry-pick claim substantiated (3 of 6 shipped entries non-passing). FDR explainer prose accurate against research repo's fdr_protocol doc. Claim register updated for F003. Three rolling constraints logged: cherry-pick guardrail (>=33 % non-passing), whole-portfolio claim ban, and new-verdict-kind Legal handshake. Ready for CEO signoff -> ship.",
+  "blockers": [],
+  "review_criteria": [
+    "Ready for /hq ledger update advancing F003 to 'signoff' -> 'ship'"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "from_role": "ux_researcher",
+  "to_role": "ui_designer",
+  "feature_id": "F003",
+  "timestamp": "2026-07-21T17:42:00Z",
+  "deliverables": [
+    "company/research/F003-user-journey.md"
+  ],
+  "notes": "Target segment: 'the sceptical prospect' -- someone who has already found /performance and is looking for reasons to distrust it. Their JTBD is 'help me falsify this before I trust it'. Content order MUST be dead-first: the receipt trail comes before any 'alive' verdict; that inversion is the entire trust move. FDR + pre-registration explainer is a collapsed <details> block so it doesn't dominate first-scroll but is one click away.",
+  "blockers": [],
+  "review_criteria": [
+    "Timeline shape: newest at top, month sticky headers, verdict pill leftmost",
+    "'Dead' and 'stopped' cards must be visually equivalent to 'alive' cards -- no down-weighting",
+    "FDR explainer: <details>, keyboard-toggleable, native HTML",
+    "Mobile 375 px: cards stack, month headers stay sticky, verdict pill wraps above title"
+  ]
+}

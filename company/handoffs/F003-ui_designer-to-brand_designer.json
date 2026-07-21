@@ -1,0 +1,17 @@
+{
+  "from_role": "ui_designer",
+  "to_role": "brand_designer",
+  "feature_id": "F003",
+  "timestamp": "2026-07-21T17:44:00Z",
+  "deliverables": [
+    "company/design/F003-mocks.md"
+  ],
+  "notes": "Mocks locked. Two new primitives (.verdict-card, .date-header sticky month heading); the rest reuse HQ/F001/F002 tokens. Five verdict-pill colour families cover the 14 kinds our parser emits. Need brand-approved copy for: (1) the anti-marketing preamble, (2) the FDR explainer prose, (3) the closing disclaimer, (4) verdict_label strings for each entry in publication_manifest.json.",
+  "blockers": [],
+  "review_criteria": [
+    "Preamble avoids marketing verbs: no 'discover', 'transform', 'accelerate'",
+    "FDR explainer readable at 8th-grade reading level -- no PhD jargon",
+    "Verdict labels: short (<= 24 chars), state-not-outcome ('Alive -- sole survivor', not 'Winner')",
+    "Closing disclaimer aligns with company/legal/disclaimers.md::research-verdict"
+  ]
+}

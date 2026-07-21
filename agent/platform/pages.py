@@ -3743,3 +3743,257 @@ def players_not_found_page(known_ids: list[str]) -> str:
             .replace("__PLAYERS_CSS__", _PLAYERS_CSS)
             .replace("__NAV__", nav('players'))
             .replace("__KNOWN_LINKS__", links))
+
+
+# ---------------------------------------------------------------------------
+# F003 -- /research verdict timeline
+# ---------------------------------------------------------------------------
+#
+# Read-only view over the CPO-gated publication manifest. Every entry on
+# this page has been explicitly allow-listed in
+# company/research/publication_manifest.json (D007). Backend parses more
+# than what appears here; publication requires a manual CPO signoff row.
+#
+# The page reuses F001/F002 primitives (.source-hint, .disclaimer,
+# .kpi-tile via the headline-stat block) and adds two F003-owned
+# primitives: .verdict-card and .date-header (sticky month heading).
+# The FDR explainer is a native <details> block -- keyboard-toggleable,
+# accessible, and it degrades gracefully when JS is off.
+
+_RESEARCH_CSS = r"""
+.research-header{margin-bottom:18px}
+.research-header h1{margin:0 0 6px;font-size:22px}
+.research-header .preamble{color:var(--dim);font-size:13.5px;line-height:1.55;
+  max-width:820px}
+.research-header .signoff{margin-top:8px;font-size:12px;color:var(--dim)}
+.date-header{position:sticky;top:0;background:var(--bg);
+  padding:10px 0 6px;margin:22px 0 10px;border-bottom:1px solid var(--border);
+  font-size:13px;font-weight:600;letter-spacing:.03em;color:var(--dim);
+  text-transform:uppercase;z-index:2}
+.verdict-card{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:16px 18px;margin-bottom:14px}
+.verdict-card .top{display:flex;align-items:baseline;flex-wrap:wrap;gap:10px;
+  margin-bottom:8px}
+.verdict-card .top .title{font-size:16px;font-weight:600;color:var(--fg);
+  line-height:1.3}
+.verdict-card .top .date{font-size:12px;color:var(--dim);
+  font-variant-numeric:tabular-nums;margin-left:auto}
+.verdict-card .cid{font-size:11.5px;color:var(--dim);margin-bottom:8px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.verdict-card .summary{font-size:13.5px;line-height:1.6;color:var(--fg);
+  margin:0 0 12px}
+.verdict-card .headline{background:var(--bg);border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px;font-size:12.5px;color:var(--fg);
+  font-variant-numeric:tabular-nums;margin:0 0 10px}
+.verdict-card .headline .k{color:var(--dim);text-transform:uppercase;
+  font-size:10.5px;letter-spacing:.05em;font-weight:600;margin-right:8px}
+.verdict-card .link{font-size:12.5px}
+.verdict-card .link a{color:var(--accent);text-decoration:none}
+.verdict-card .link a:hover{text-decoration:underline}
+.verdict-pill{display:inline-block;padding:2px 10px;border-radius:99px;
+  border:1px solid var(--border);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.06em;font-weight:600;color:var(--dim)}
+.verdict-pill.alive_survivor,.verdict-pill.pass,.verdict-pill.pass_thin,
+.verdict-pill.combined_alive{border-color:rgba(63,185,80,.55);color:#7ee787}
+.verdict-pill.complete,.verdict-pill.stage_1_complete,
+.verdict-pill.in_progress{border-color:rgba(88,166,255,.55);color:#79c0ff}
+.verdict-pill.dead,.verdict-pill.fail{border-color:rgba(248,81,73,.55);
+  color:#ff9992}
+.verdict-pill.stopped,.verdict-pill.stopped_at_stage_1,
+.verdict-pill.parked,.verdict-pill.parked_low_yield,
+.verdict-pill.unknown{border-color:rgba(139,148,158,.55);color:#8b949e}
+.fdr-explainer{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:12px 16px;margin:22px 0 14px}
+.fdr-explainer summary{cursor:pointer;color:var(--fg);font-size:13.5px;
+  font-weight:600;list-style:none}
+.fdr-explainer summary::-webkit-details-marker{display:none}
+.fdr-explainer summary::before{content:"▸ ";color:var(--dim)}
+.fdr-explainer[open] summary::before{content:"▾ ";color:var(--dim)}
+.fdr-explainer .body{margin-top:10px;color:var(--fg);font-size:13px;
+  line-height:1.6}
+.fdr-explainer .body p{margin:0 0 8px}
+.fdr-explainer .body p:last-child{margin:0}
+@media (max-width: 700px){
+  .verdict-card .top{align-items:flex-start;flex-direction:column}
+  .verdict-card .top .date{margin-left:0}
+}
+"""
+
+
+_RESEARCH_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Research verdicts -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+__SKELETON_CSS__
+__RESEARCH_CSS__
+</style></head>
+<body>
+__NAV__
+<div class="wrap">
+  <div class="research-header">
+    <h1>Research verdicts</h1>
+    <div class="preamble">We publish the experiments that failed.
+    This is the receipt trail for the ones that worked -- and the
+    ones that didn't. Every verdict below was pre-registered before
+    the numbers came in; no cherry-picks, no back-fills.</div>
+    <div class="signoff" id="signoff"></div>
+  </div>
+  <div class="source-hint" id="source-hint" style="display:none"></div>
+  <div id="timeline"></div>
+
+  <details class="fdr-explainer">
+    <summary>How pre-registration and BH-FDR keep us honest</summary>
+    <div class="body">
+      <p><b>Pre-registration</b> means the verdict criteria are
+      written down (in a PROTOCOL.md file) before the numbers come
+      in. If we don't hit the pre-committed number, the campaign is
+      dead. No follow-up "we found something interesting instead"
+      story -- the stopped and dead entries on this page exist
+      precisely because a pre-registered rule was triggered.</p>
+      <p><b>BH-FDR at q = 0.10</b> means the Benjamini-Hochberg
+      false-discovery-rate correction is applied across each
+      campaign's family of hypotheses. If we test 8 candidate
+      widenings and 1 comes back significant at the raw p-value,
+      BH-FDR asks whether that one is likely a real effect or a
+      lucky coincidence given the eight tries. Many candidates
+      pass raw p-values and fail BH-FDR -- and that is a feature of
+      the method, not a bug.</p>
+      <p>The "dead" and "fail" cards on this page are the receipt
+      trail. Read them first if you want to trust the "alive" ones.</p>
+    </div>
+  </details>
+
+  <div class="disclaimer" role="note" id="verdict-disclaimer">
+    <p>Every verdict below is the result of a pre-registered
+    experiment on historical market data. "Alive" and "dead" refer
+    to whether a mechanism passed the study's specific promotion
+    criteria -- not to whether it would work on future markets.
+    False-discovery-rate corrections are applied across each
+    experiment family; individual "alive" verdicts do not compose
+    into a portfolio-level claim.</p>
+  </div>
+</div>
+<script>__ERROR_COPY_JS__
+__WITH_STATES_JS__
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function monthLabelFromDate(d){
+  var m = String(d).match(/(\d{4})-(\d{2})/);
+  if(!m) return "Undated";
+  var monthNames = ["January","February","March","April","May","June",
+                    "July","August","September","October","November","December"];
+  var y = m[1], mo = parseInt(m[2],10)-1;
+  return monthNames[mo] + " " + y;
+}
+function pillClass(kind){
+  var known = ["alive_survivor","pass","pass_thin","combined_alive",
+               "complete","stage_1_complete","in_progress",
+               "dead","fail",
+               "stopped","stopped_at_stage_1","parked","parked_low_yield",
+               "unknown"];
+  return known.indexOf(kind) >= 0 ? kind : "unknown";
+}
+function researchSkeleton(box){
+  var html = '';
+  for(var i=0;i<3;i++){
+    html += '<div class="sk-tile" style="min-height:120px;margin-bottom:14px">'+
+            '<span class="sk sk-line short"></span>'+
+            '<span class="sk sk-line med"></span>'+
+            '<span class="sk sk-line"></span>'+
+            '<span class="sk sk-line"></span></div>';
+  }
+  box.innerHTML = html;
+}
+function renderResearch(data){
+  var entries = (data && data.entries) || [];
+  var out = '';
+  var lastMonth = null;
+  for(var i=0;i<entries.length;i++){
+    var e = entries[i];
+    var monthLabel = monthLabelFromDate(e.date || "");
+    if(monthLabel !== lastMonth){
+      out += '<div class="date-header">'+esc(monthLabel)+'</div>';
+      lastMonth = monthLabel;
+    }
+    var kind = pillClass(e.verdict_kind);
+    out += '<article class="verdict-card">';
+    out += '<div class="top">';
+    out += '<span class="verdict-pill '+kind+'">'+esc(e.verdict_label || kind)+'</span>';
+    out += '<span class="title">'+esc(e.title || e.campaign_id || "")+'</span>';
+    out += '<span class="date">'+esc(e.date || "")+'</span>';
+    out += '</div>';
+    out += '<div class="cid">'+esc(e.campaign_id || "")+'</div>';
+    if(e.summary){
+      out += '<p class="summary">'+esc(e.summary)+'</p>';
+    }
+    if(e.headline_stat){
+      out += '<div class="headline"><span class="k">HEADLINE</span>'+
+             esc(e.headline_stat)+'</div>';
+    }
+    if(e.report_path){
+      out += '<div class="link"><a href="#" data-path="'+esc(e.report_path)+
+             '" onclick="return false;">read full report ('+
+             esc(e.report_path)+') &rarr;</a></div>';
+    }
+    out += '</article>';
+  }
+  document.getElementById("timeline").innerHTML = out;
+
+  var hint = document.getElementById("source-hint");
+  hint.style.display = "";
+  var head = "<span class='k'>SOURCE</span>";
+  if(data.source_exists){
+    hint.innerHTML = head + esc(data.published_total) + " of " +
+      esc(data.all_candidates) + " candidate reports published.";
+  } else {
+    hint.innerHTML = head + "Research repo not on this machine -- " +
+      "see docs/RUNBOOK_demo_launch.md for setup.";
+  }
+  var sign = document.getElementById("signoff");
+  if(data.cpo_signoff_by){
+    sign.innerHTML = "&#x25B8; Approved for publication by " +
+      esc(data.cpo_signoff_by) + " &middot; " +
+      esc(data.cpo_signoff_at || "");
+  } else {
+    sign.innerHTML = "&#x25B8; Publication manifest not signed off yet.";
+  }
+}
+function refresh(){
+  return withStates(document.getElementById("timeline"), function(){
+    return fetch("/api/research/verdicts", {cache:"no-store"}).then(function(r){
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      return r.json();
+    });
+  }, renderResearch, {
+    skeleton: researchSkeleton,
+    isEmpty: function(d){ return !d || !d.entries || d.entries.length === 0; },
+    emptyKey: (d) => (d && d.unconfigured) ? "not_configured" : "no_data_yet",
+    emptyMessage: function(d){
+      if(d && d.unconfigured){
+        return "The publication manifest is not on tape yet. " +
+          "CPO signoff pending.";
+      }
+      if(d && !d.source_exists){
+        return "Research repo not configured on this machine. " +
+          "See docs/RUNBOOK_demo_launch.md \u00A77b.";
+      }
+      return "No published verdicts yet.";
+    }
+  });
+}
+refresh();
+setInterval(refresh, 60000);
+</script></body></html>"""
+
+
+RESEARCH_PAGE = (_RESEARCH_TEMPLATE
+                 .replace("__BASE_CSS__", _BASE_CSS)
+                 .replace("__SKELETON_CSS__", _SKELETON_CSS)
+                 .replace("__RESEARCH_CSS__", _RESEARCH_CSS)
+                 .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+                 .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+                 .replace("__NAV__", nav('research')))

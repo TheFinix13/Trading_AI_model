@@ -5,7 +5,7 @@
     "mission": "The first AI trading platform that trades like a football team.",
     "one_liner": "Watch our striker squad find setups on real markets \u2014 every decision explained, every risk gated.",
     "current_sprint_id": "sprint-0-trust-foundation",
-    "generated_at": "2026-07-21T14:12:00Z",
+    "generated_at": "2026-07-21T17:54:00Z",
     "schema_version": "1.0.0"
   },
   "roles": [
@@ -400,8 +400,8 @@
       "title": "Public /research route (anti-marketing marketing)",
       "priority": "P0",
       "sprint_id": "sprint-0-trust-foundation",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "ship",
+      "current_owner_role": "devops",
       "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "marketing", "cto", "frontend", "backend", "qa", "legal", "ceo"],
       "created_at": "2026-07-21T14:00:00Z",
       "age_in_stage_days": 0,
@@ -412,12 +412,87 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-0-trust-foundation/F003-research-page.md",
           "note": "Spec locked; renders Phase AC verdicts read-only from research repo."
+        },
+        {
+          "stage": "research",
+          "at": "2026-07-21T17:42:00Z",
+          "role": "ux_researcher",
+          "deliverable": "company/research/F003-user-journey.md",
+          "note": "'Sceptical prospect' JTBD -- 'help me falsify this before I trust it'. Dead-first ordering ratified as the trust move. FDR explainer specified as native <details>."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-21T17:44:00Z",
+          "role": "ui_designer",
+          "deliverable": "company/design/F003-mocks.md",
+          "note": "Timeline layout with sticky month headers. Two new primitives (.verdict-card, .date-header); rest reuse HQ/F001/F002 tokens. Five verdict-pill colour families cover 14 verdict_kind values."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-21T17:46:00Z",
+          "role": "brand_designer",
+          "deliverable": "company/brand/copy.md",
+          "note": "Anti-marketing preamble + FDR explainer prose + six verdict_label/brand_summary/headline_stat strings locked. Copy reads at ~7th-grade level per Flesch."
+        },
+        {
+          "stage": "architecture",
+          "at": "2026-07-21T17:48:00Z",
+          "role": "cpo",
+          "deliverable": "company/research/publication_manifest.json",
+          "note": "CPO-gated publication manifest signed off. Six entries approved: three alive_survivor (E001, E004, E007), one dead (E022), one fail (E024), one stopped (phase_ac_pitch_assignment) -- 50 % receipt-trail ratio."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-21T17:50:00Z",
+          "role": "frontend",
+          "deliverable": "agent/platform/research.py",
+          "note": "Backend parses REPORT.md files under sibling repo experiments/ + programs/**/experiments/; only manifest-allow-listed rows emitted. RESEARCH_PAGE consumes F005 withStates() helper. 46 new tests (23 module + 17 page + 6 api). Platform suite 240 -> 286."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-21T17:52:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F003-verdict.md",
+          "note": "pass -- 46 new tests + full platform suite green. Cold start, missing sibling repo, missing manifest, mobile 375 px, FDR explainer accessibility, and read-only invariant all clean."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-21T17:53:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/F003-disclaimer-review.md",
+          "note": "pass -- anti-cherry-pick claim substantiated (3 of 6 non-passing). FDR explainer prose accurate. Three rolling constraints logged (cherry-pick guardrail, portfolio claim ban, new-verdict-kind handshake)."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-21T17:54:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F003-legal-to-ceo.json",
+          "note": "CPO signoff -- security correctly skipped (public page, no auth, no user data)."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-21T17:54:00Z",
+          "role": "devops",
+          "deliverable": "scripts/serve_platform.py",
+          "note": "Ship-in-place: /research + /api/research/verdicts live in local dev server; missing sibling repo -> friendly source_exists=false payload."
         }
       ],
       "blockers": [],
       "awaiting_ceo": false,
       "deliverables_paths": [
-        "company/sprints/sprint-0-trust-foundation/F003-research-page.md"
+        "company/sprints/sprint-0-trust-foundation/F003-research-page.md",
+        "company/research/F003-user-journey.md",
+        "company/research/publication_manifest.json",
+        "company/design/F003-mocks.md",
+        "company/qa/F003-verdict.md",
+        "company/legal/F003-disclaimer-review.md",
+        "company/legal/disclaimers.md",
+        "agent/platform/research.py",
+        "agent/platform/pages.py",
+        "scripts/serve_platform.py",
+        "tests/platform/test_research_module.py",
+        "tests/platform/test_research_page.py",
+        "tests/platform/test_research_api.py"
       ]
     },
     {
@@ -743,10 +818,80 @@
       "role": "cpo",
       "decision": "F002 shipped -- 10 bio routes live; ledger advances to features_shipped_sprint_0 = 3.",
       "context": "CEO signoff under D005 end-of-sprint cadence plus per-feature legal + QA passes. See company/handoffs/F002-legal-to-ceo.json."
+    },
+    {
+      "id": "D033",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F003 handed off from spec to UX Researcher; security stage skipped, legal stage required (anti-cherry-pick + FDR framing).",
+      "context": "Public read-only verdict timeline has no auth surface, but the anti-marketing marketing thesis needs Legal to substantiate every public claim. See company/handoffs/F003-cpo-to-ux_researcher.json."
+    },
+    {
+      "id": "D034",
+      "date": "2026-07-21",
+      "role": "ux_researcher",
+      "decision": "F003 target segment = 'sceptical prospect'; content order flipped to dead-first as the trust move.",
+      "context": "JTBD: 'help me falsify this before I trust it'. Dead / stopped / fail cards visually equivalent to alive cards -- no down-weighting. FDR explainer is a native <details> block, collapsed by default. Non-goals: no live equity claim on this page; no per-experiment PROTOCOL.md rendering. See company/research/F003-user-journey.md."
+    },
+    {
+      "id": "D035",
+      "date": "2026-07-21",
+      "role": "ui_designer",
+      "decision": "F003 mocks: timeline with sticky month headers; two new primitives (.verdict-card, .date-header); rest reuse HQ/F001/F002 tokens.",
+      "context": "Five verdict-pill colour families cover the 14 kinds the parser emits (alive_survivor/pass/complete + dead/fail + stopped/parked + in_progress + unknown). Mobile 700 px breakpoint: verdict pill wraps above title, date drops to a new line. See company/design/F003-mocks.md."
+    },
+    {
+      "id": "D036",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F003 publication_manifest.json signed off with six approved entries.",
+      "context": "Per D007 CPO-gate. Six entries: E001_concept_ablation (alive), E004_walk_forward (alive), E007_impulse_origin_bounce (alive), E022_structure_aware_tp_snap (dead), E024_near_tp_stall_exit (fail), phase_ac_pitch_assignment (stopped). 3 of 6 non-passing preserves the receipt-trail thesis. See company/research/publication_manifest.json."
+    },
+    {
+      "id": "D037",
+      "date": "2026-07-21",
+      "role": "frontend",
+      "decision": "F003 backend module (agent/platform/research.py) walks two disk regions: experiments/ + programs/**/experiments/.",
+      "context": "REPORT.md is canonical -- REPORT 2.md drift copies are skipped. campaign_id extracted from the full parent-directory name (e.g. 'E001_concept_ablation') so it matches publication_manifest.json keys. Verdict-line regex is multiline-flagged to catch 'Status: complete' mid-line."
+    },
+    {
+      "id": "D038",
+      "date": "2026-07-21",
+      "role": "frontend",
+      "decision": "F003 build complete -- /research + /api/research/verdicts live, 46 new tests green.",
+      "context": "RESEARCH_PAGE consumes the F005 withStates() helper. Missing sibling repo -> source_exists=false payload (never a 500); missing manifest -> unconfigured=true empty state. Test counts: module 23 + page 17 + api 6 = 46. Platform suite 240 -> 286. See company/handoffs/F003-frontend-to-qa.json."
+    },
+    {
+      "id": "D039",
+      "date": "2026-07-21",
+      "role": "qa",
+      "decision": "F003 QA verdict = pass; three regression-risk items flagged forward.",
+      "context": "46 new tests green + full platform suite green. Manual verification: cold start + missing repo + missing manifest + mobile 375 px + FDR explainer accessibility + read-only invariant. Regression risks: sibling repo REPORT.md format drift, manifest / disk mismatch (entry without matching REPORT.md silently dropped), publication side-channel via list_all(). See company/qa/F003-verdict.md."
+    },
+    {
+      "id": "D040",
+      "date": "2026-07-21",
+      "role": "legal",
+      "decision": "F003 legal review = pass; claim register updated; three rolling constraints logged.",
+      "context": "Anti-cherry-pick claim substantiated (3 of 6 non-passing). FDR explainer prose cross-checked against research repo's fdr_protocol doc. Rolling constraints: (1) cherry-pick guardrail -- <33 % non-passing triggers re-review, (2) whole-portfolio claim ban, (3) new verdict_kind requires legal handshake. See company/legal/F003-disclaimer-review.md."
+    },
+    {
+      "id": "D041",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F003 shipped -- /research live; ledger advances to features_shipped_sprint_0 = 4.",
+      "context": "CEO signoff under D005 end-of-sprint cadence plus per-feature legal + QA passes. Ship-in-place because DevOps is on standby. See company/handoffs/F003-legal-to-ceo.json."
+    },
+    {
+      "id": "D042",
+      "date": "2026-07-21",
+      "role": "frontend",
+      "decision": "[SPEC-EXTENSION] serve_platform.make_handler() gains research_root + research_manifest_path kwargs.",
+      "context": "F003 spec did not pin how the sibling repo's location is discovered. Chose to derive research_root from --research-reviews' parents (the review-cache dir sits three levels deep inside the repo). New kwargs default to None; missing repo renders the friendly source_exists=false empty state. F003 spec file updated in-place with the derivation note."
     }
   ],
   "kpis": {
-    "features_shipped_sprint_0": 3,
+    "features_shipped_sprint_0": 4,
     "features_total_sprint_0": 5,
     "backlog_size": 4,
     "bugs_open": 0,

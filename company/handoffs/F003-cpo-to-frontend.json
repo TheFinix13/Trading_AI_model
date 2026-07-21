@@ -1,0 +1,18 @@
+{
+  "from_role": "cpo",
+  "to_role": "frontend",
+  "feature_id": "F003",
+  "timestamp": "2026-07-21T17:48:00Z",
+  "deliverables": [
+    "company/research/publication_manifest.json"
+  ],
+  "notes": "Publication manifest signed off. Six entries approved for publication: E001_concept_ablation (alive_survivor), E004_walk_forward (alive_survivor), E007_impulse_origin_bounce (alive_survivor), E022_structure_aware_tp_snap (dead), E024_near_tp_stall_exit (fail_at_stage_1), phase_ac_pitch_assignment (stopped_at_stage_1). Dead / fail / stopped are 3-of-6 on purpose -- this is the receipt trail. Build the /research route, RESEARCH_PAGE, and /api/research/verdicts endpoint against agent.platform.research.get_state().",
+  "blockers": [],
+  "review_criteria": [
+    "Backend module is read-only (agent.platform.research imports no filesystem writers)",
+    "Missing sibling repo -> friendly source_exists=false payload, never a 500",
+    "Missing manifest -> unconfigured=true empty state",
+    "Newest verdict first (sort by date descending)",
+    "60-second poll interval on /api/research/verdicts"
+  ]
+}

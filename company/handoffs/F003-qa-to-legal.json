@@ -1,0 +1,17 @@
+{
+  "from_role": "qa",
+  "to_role": "legal",
+  "feature_id": "F003",
+  "timestamp": "2026-07-21T17:52:00Z",
+  "deliverables": [
+    "company/qa/F003-verdict.md"
+  ],
+  "notes": "QA PASS. 46 F003 tests green (23 module + 17 page + 6 API); full platform suite 286 green. Manual verification of cold start, missing repo, missing manifest, mobile 375 px, FDR explainer accessibility, and read-only invariant all clean. Handing to Legal for the anti-cherry-pick / FDR disclaimer review. Special ask: confirm the phrase 'False-discovery-rate corrections are applied across each experiment family; individual \"alive\" verdicts do not compose into a portfolio-level claim' is defensible.",
+  "blockers": [],
+  "review_criteria": [
+    "Anti-cherry-pick claim is truthful (three of six shipped entries are dead / fail / stopped)",
+    "FDR explainer prose does not overstate the correction's strength",
+    "Every shipped entry has a canonical REPORT.md on tape (no imaginary evidence)",
+    "Closing disclaimer aligned with company/legal/disclaimers.md::research-verdict"
+  ]
+}

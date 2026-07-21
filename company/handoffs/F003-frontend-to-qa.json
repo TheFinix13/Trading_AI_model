@@ -1,0 +1,24 @@
+{
+  "from_role": "frontend",
+  "to_role": "qa",
+  "feature_id": "F003",
+  "timestamp": "2026-07-21T17:50:00Z",
+  "deliverables": [
+    "agent/platform/research.py",
+    "agent/platform/pages.py",
+    "scripts/serve_platform.py",
+    "tests/platform/test_research_module.py",
+    "tests/platform/test_research_page.py",
+    "tests/platform/test_research_api.py"
+  ],
+  "notes": "Built. Backend parses REPORT.md files under sibling repo's experiments/ and programs/**/experiments/ trees; only manifest-allow-listed entries are emitted. Frontend reuses F005 withStates() helper (skeleton / error / empty / retry). 46 F003 tests green; full platform suite 286 green (240 before). Ready for QA verdict.",
+  "blockers": [],
+  "review_criteria": [
+    "GET /research renders (200 HTML)",
+    "GET /api/research/verdicts returns 200 with CPO-gated 6-entry payload against the shipped manifest + sibling repo",
+    "Missing sibling repo -> source_exists=false, no 500",
+    "Mobile 375 px viewport passes: cards stack, verdict pill wraps above title",
+    "Empty state copy verbatim from company/brand/error_copy.md",
+    "No writes to sibling research repo under any code path"
+  ]
+}

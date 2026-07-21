@@ -405,6 +405,129 @@ plus the per-feature legal + QA passes above. Ledger advances F002
 from `signoff` → `ship`. HQ dashboard now reflects features_shipped
 3 / 5 (F005 + F001 + F002).
 
+## D033 · 2026-07-21 · cpo · [HANDOFF]
+
+**F003 handed off from spec to UX Researcher; security stage skipped, legal stage required.**
+
+Public read-only verdict timeline has no auth surface, so security
+review is not triggered. The anti-marketing marketing thesis needs
+Legal to substantiate every public claim on the page (individual
+verdict labels, anti-cherry-pick statement, FDR explainer prose).
+See `company/handoffs/F003-cpo-to-ux_researcher.json`.
+
+## D034 · 2026-07-21 · ux_researcher · [DESIGN]
+
+**F003 target segment = "sceptical prospect"; content order flipped to dead-first as the trust move.**
+
+JTBD: "help me falsify this before I trust it". Dead / stopped /
+fail cards must render with identical visual weight to alive cards
+— no down-weighting; the receipt trail is the value proposition.
+FDR + pre-registration explainer sits in a native `<details>`
+block so it's one click away without dominating first-scroll.
+Non-goals ratified: no live equity claim, no PROTOCOL.md render,
+no ranked ordering. See `company/research/F003-user-journey.md`.
+
+## D035 · 2026-07-21 · ui_designer · [DESIGN]
+
+**F003 mocks: timeline with sticky month headers; two new primitives (.verdict-card, .date-header); rest reuse HQ/F001/F002 tokens.**
+
+Five verdict-pill colour families cover the 14 `verdict_kind`
+values the parser emits (green for alive/pass/complete, red for
+dead/fail, grey for stopped/parked/unknown, blue for
+in-progress/complete-neutral). Mobile 700 px breakpoint: verdict
+pill wraps above the title, date drops to a new line. See
+`company/design/F003-mocks.md`.
+
+## D036 · 2026-07-21 · cpo · [FEATURE]
+
+**F003 publication_manifest.json signed off with six approved entries.**
+
+Per D007 CPO-gate. Six entries: E001_concept_ablation (alive),
+E004_walk_forward (alive), E007_impulse_origin_bounce (alive),
+E022_structure_aware_tp_snap (dead), E024_near_tp_stall_exit (fail),
+phase_ac_pitch_assignment (stopped). 3 of 6 non-passing preserves
+the anti-cherry-pick "receipt trail" thesis by construction. See
+`company/research/publication_manifest.json`.
+
+## D037 · 2026-07-21 · frontend · [ARCHITECTURE]
+
+**F003 backend module walks two disk regions: `experiments/` + `programs/**/experiments/`.**
+
+`REPORT.md` is canonical; `REPORT 2.md` drift copies (git-untracked
+in the sibling repo) are skipped so we never publish an
+unversioned verdict. `campaign_id` extracted from the full parent-
+directory name (`E001_concept_ablation`, not `E001`) so it matches
+`publication_manifest.json` keys exactly. Verdict-line regex is
+multiline-flagged (`re.MULTILINE`) to catch `**Status:** complete`
+mid-line rather than only at line start.
+
+## D038 · 2026-07-21 · frontend · [FEATURE]
+
+**F003 build complete — /research + /api/research/verdicts live, 46 new tests green.**
+
+`RESEARCH_PAGE` consumes the F005 `withStates()` helper for
+skeleton / error / empty / retry lifecycle. Missing sibling repo
+yields a `source_exists=false` payload (never a 500); missing
+manifest yields an `unconfigured=true` empty state. Test counts:
+module 23 + page 17 + api 6 = 46. Platform suite 240 → 286.
+See `company/handoffs/F003-frontend-to-qa.json`.
+
+## D039 · 2026-07-21 · qa · [FEATURE]
+
+**F003 QA verdict = pass; three regression-risk items flagged forward.**
+
+46 new tests green + full platform suite green. Manual
+verification: cold start + missing sibling repo + missing manifest
++ mobile 375 px + FDR explainer keyboard-accessibility + read-only
+invariant. Regression risks: (1) sibling-repo `REPORT.md` format
+drift (parser degrades to `unknown` pill), (2) manifest / disk
+mismatch (entry without matching `REPORT.md` silently dropped —
+diagnosable from `all_candidates` vs `published_total`),
+(3) publication side-channel via `list_all()` (mitigated: only
+`get_state()` is wired into a public endpoint). See
+`company/qa/F003-verdict.md`.
+
+## D040 · 2026-07-21 · legal · [LEGAL]
+
+**F003 legal review = pass; claim register updated; three rolling constraints logged.**
+
+Anti-cherry-pick claim substantiated (3 of 6 shipped entries are
+non-passing). FDR explainer prose cross-checked against the
+research repo's `docs/decisions/2026-07-01_fdr_protocol.md`.
+Rolling constraints (bind future sprints):
+(1) **cherry-pick guardrail** — if < 33 % of published entries
+are dead / fail / stopped, Legal must review before the next
+push; (2) **whole-portfolio claim ban** — no summary, headline,
+or verdict_label may compose individual "alive" verdicts into a
+portfolio-level claim; (3) **new `verdict_kind` handshake** — any
+new kind beyond the 14 already supported requires a
+Legal-approved `verdict_label`. See
+`company/legal/F003-disclaimer-review.md`.
+
+## D041 · 2026-07-21 · cpo · [FEATURE]
+
+**F003 shipped — /research live; ledger advances to features_shipped_sprint_0 = 4.**
+
+CEO signoff captured under end-of-sprint dogfood pass (D005
+cadence) plus the per-feature legal + QA passes above. Ship-in-
+place because DevOps is on standby (Sprint 1+). HQ dashboard now
+reflects features_shipped 4 / 5 (F005 + F001 + F002 + F003).
+See `company/handoffs/F003-legal-to-ceo.json`.
+
+## D042 · 2026-07-21 · frontend · [SPEC-EXTENSION]
+
+**`serve_platform.make_handler()` gains `research_root` + `research_manifest_path` kwargs.**
+
+F003 spec (`F003-research-page.md`) did not pin how the sibling
+research repo's location is discovered at runtime. Chose to derive
+`research_root` from `--research-reviews`' parents (the existing
+config key already points at
+`.../finance-research-experiments/programs/M001_multi_agent_ensemble/reviews`,
+so climbing two parents lands on the repo root). New kwargs
+default to `None`; a missing repo renders the friendly
+`source_exists=false` empty state. F003 spec updated in-place with
+the derivation note.
+
 ## Template for subsequent entries
 
 ```markdown

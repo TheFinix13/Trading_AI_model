@@ -133,3 +133,31 @@ The feature is done when:
 clearly; empty-state has been tested by pointing at a non-existent
 path; CEO has read every summary and signed off; Marketing has one
 shareable URL to reference in future prospect conversations.
+
+## SPEC-EXTENSION 2026-07-21 (D042)
+
+The build stage discovered two under-specified points; both were
+extended in-place rather than escalated:
+
+1. **Sibling repo path discovery.** The spec named the source
+   (`finance-research-experiments`) but did not pin how the
+   platform server discovers it at runtime. Resolved by deriving
+   `research_root` from the existing `research_reviews` config key
+   (which already points three directories deep into that repo);
+   `serve_platform.make_handler()` gains
+   `research_root=` and `research_manifest_path=` kwargs, both
+   defaulting to `None`. Missing repo renders the F005
+   `not_configured` empty state -- never a 500.
+
+2. **Shipped verdict list.** The spec named E011 / E013 / E014 as
+   minimum entries, but those experiments never produced a
+   canonical `REPORT.md` (only `REPORT 2.md` drift copies exist in
+   the sibling repo, which the parser skips by design to avoid
+   publishing unversioned verdicts). Substituted six real
+   canonical reports for the Sprint 0 manifest:
+   E001_concept_ablation, E004_walk_forward,
+   E007_impulse_origin_bounce, E022_structure_aware_tp_snap,
+   E024_near_tp_stall_exit, phase_ac_pitch_assignment. 3 of 6 are
+   non-passing (dead / fail / stopped), which preserves the
+   anti-cherry-pick thesis better than the original list would
+   have. The "≥ 3 verdicts" ship gate is satisfied at 6.

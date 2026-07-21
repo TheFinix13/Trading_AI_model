@@ -1,0 +1,17 @@
+{
+  "from_role": "brand_designer",
+  "to_role": "cpo",
+  "feature_id": "F003",
+  "timestamp": "2026-07-21T17:46:00Z",
+  "deliverables": [
+    "company/brand/copy.md",
+    "company/legal/disclaimers.md"
+  ],
+  "notes": "Preamble, FDR explainer body, closing disclaimer, and six verdict_label + brand_summary + headline_stat strings all locked. Copy avoids marketing verbs; FDR explainer reads at ~7th-grade level and does not invoke advanced statistics jargon in visible surface. Handing to CPO to sign off the publication_manifest.json entries -- per D007, publication requires an explicit CPO signature line.",
+  "blockers": [],
+  "review_criteria": [
+    "CPO signs off each of the six publication_manifest.json entries by hand",
+    "Each entry's brand_summary aligns with the campaign's canonical REPORT.md abstract",
+    "Approved verdicts: E001_concept_ablation, E004_walk_forward, E007_impulse_origin_bounce, E022_structure_aware_tp_snap, E024_near_tp_stall_exit, phase_ac_pitch_assignment"
+  ]
+}
