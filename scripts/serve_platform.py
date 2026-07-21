@@ -38,7 +38,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from agent.platform import (  # noqa: E402
-    hq, live_status, paper_loop, performance, players, research,
+    auth, hq, live_status, paper_loop, performance, players, research,
     squad_events,
 )
 from agent.platform.config import load_config  # noqa: E402
@@ -77,16 +77,30 @@ _LIVE_RE = re.compile(
 _PLAYER_URL_RE = re.compile(r"^/players/([A-Za-z0-9_-]+)/?$")
 _PLAYER_API_RE = re.compile(r"^/api/players/([A-Za-z0-9_-]+)$")
 
+# F006 install-token gate exempts a small allow-list so the setup /
+# health flow can call the platform before an install token exists.
+_UNAUTHENTICATED_API_PATHS: frozenset[str] = frozenset({
+    "/api/auth/status",       # F006 -- probe whether the install is set up
+})
+
 
 def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                  live_dir: Path | None = None,
                  auth_token: str | None = None,
                  company_ledger_path: Path | None = None,
                  research_root: Path | None = None,
-                 research_manifest_path: Path | None = None):
+                 research_manifest_path: Path | None = None,
+                 enforce_install_token: bool = False):
     """``auth_token`` enables token auth on every route except /healthz
     (so uptime probes stay simple). main() only passes it through when
     binding non-localhost — on 127.0.0.1 the platform stays open.
+
+    ``enforce_install_token`` (F006, Sprint 1): when True, every
+    ``/api/*`` route (except a small allow-list -- see
+    ``_UNAUTHENTICATED_API_PATHS``) requires either the presented
+    install token stored in the OS keychain OR the pre-Sprint-1
+    ``auth_token`` fallback. main() sets this to True only on
+    non-localhost binds; localhost single-user dev stays open per D052.
 
     ``company_ledger_path`` overrides the default
     ``<repo_root>/company/ledger/company_state.json`` path used by the
@@ -139,6 +153,52 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                     return True
             return False
 
+        def _install_gate_authorized(self, params: dict) -> bool:
+            """F006 auth gate for /api/* routes.
+
+            Accepts:
+              - X-Bluelock-Token header
+              - Authorization: Bearer
+              - platform_token cookie
+              - ?token= query param
+            All are compared in constant time. The pre-Sprint-1
+            ``platform.toml`` ``auth_token`` remains a valid fallback so
+            the deployed VM's config keeps working (D052).
+            """
+            header_token = (self.headers.get("X-Bluelock-Token")
+                            or "").strip() or None
+            authz = self.headers.get("Authorization", "")
+            bearer = None
+            if authz.startswith("Bearer "):
+                bearer = authz[len("Bearer "):].strip() or None
+            cookies = self.headers.get("Cookie", "")
+            cookie_token = None
+            for part in cookies.split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == "platform_token" and v:
+                    cookie_token = v
+                    break
+            query_token = params.get("token")
+            # Any of the four positions can carry the token.
+            if auth.check_request_token(header_value=header_token,
+                                        cookie_value=cookie_token,
+                                        query_value=query_token,
+                                        fallback_token=auth_token):
+                return True
+            if bearer and auth.check_request_token(
+                    header_value=bearer, fallback_token=auth_token):
+                return True
+            return False
+
+        def _needs_install_gate(self, path: str) -> bool:
+            if not enforce_install_token:
+                return False
+            if not path.startswith("/api/"):
+                return False
+            if path in _UNAUTHENTICATED_API_PATHS:
+                return False
+            return True
+
         def do_GET(self):  # noqa: N802
             path, _, query = self.path.partition("?")
             params = {}
@@ -150,6 +210,16 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
             if path != "/healthz" and not self._authorized(params):
                 self._json({"error": "unauthorized — pass ?token= or "
                                      "Authorization: Bearer"}, 401)
+                return
+
+            if self._needs_install_gate(path) \
+                    and not self._install_gate_authorized(params):
+                self._json({"error": "install-token required",
+                            "hint": "send X-Bluelock-Token header"}, 401)
+                return
+
+            if path == "/api/auth/status":
+                self._json(auth.auth_status())
                 return
 
             if path in ("/", "/index.html"):
@@ -353,14 +423,25 @@ def main() -> None:
         print("WARNING: binding non-localhost without --auth-token — "
               "anyone on the network can read the dashboards")
 
+    # F006 (per D048 + D052): mount the log-redaction filter early so any
+    # accidental log line goes through it before hitting stdout / stderr.
+    # Enforce the install-token gate on /api/* only for non-localhost
+    # binds; localhost single-user dev stays open per D052.
+    auth.install_redacting_filter("")
+    auth.install_redacting_filter("agent.platform")
+
     server = ThreadingHTTPServer(
         (args.host, args.port),
         make_handler(args.log_root, args.repo_root, args.research_reviews,
                      live_dir=args.live_dir, auth_token=effective_token,
-                     company_ledger_path=args.company_ledger),
+                     company_ledger_path=args.company_ledger,
+                     enforce_install_token=not localhost),
     )
     if effective_token:
         print("Auth: token required on all routes except /healthz")
+    if not localhost:
+        print("F006 install-token gate: enabled on /api/* "
+              "(bring your token via X-Bluelock-Token / Bearer / cookie / ?token=)")
     print(f"Platform v{PLATFORM_VERSION} on http://{args.host}:{args.port}")
     print(f"  v1 log root:        {args.log_root}")
     print(f"  v2 research reviews: {args.research_reviews} "
