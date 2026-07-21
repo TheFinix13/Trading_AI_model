@@ -29,6 +29,7 @@ dependencies = [
     "dukascopy-python>=4.0",
     "httpx>=0.27",
     "shap>=0.45",
+    "keyring>=25.0",  # Sprint 1 F006 (per D052) -- OS-keychain credential storage.
 ]
 
 [project.optional-dependencies]

@@ -674,6 +674,22 @@ onboarding flow. Real user accounts + multi-tenancy = later sprint
 (Stickiness / Compliance) after we see one install working end-to-end
 first.
 
+## D053 · 2026-07-21 · cto · [ARCH]
+
+**Retro amendments landed in `company/protocols/review-chain.md` (§3.5, §4.2, §5.5, §6.3) + claim register seeded + `_BASE_CSS_VERSION="1.0.0"` + `keyring` dependency added.**
+
+Per D047 the four Sprint 1 retro improvements land as protocol
+amendments in this sprint's first commit. §3.5 formalises
+shared-primitive-first serialisation (F006 plays the role for
+Sprint 1). §4.2 adds a spec-lock validation step at the start of
+`build`. §5.5 pins `_BASE_CSS_VERSION` semver in code + tests. §6.3
+introduces `company/legal/claim_register.md` seeded with F001/F002/F003
+public fields. Also adds `keyring>=25.0` to `requirements.txt` +
+`pyproject.toml` per D052's pre-authorisation ("OS keychain via
+`keyring` library preferred"). Three new tests pin the version pin
+(974 total, was 971). See handoff at
+`company/handoffs/sprint-1-retro-cto-to-cpo.json`.
+
 ## Template for subsequent entries
 
 ```markdown

@@ -7,6 +7,14 @@ SVG football field and plays back the squad event timeline served by
 """
 from __future__ import annotations
 
+# Sprint 1 (D047 retro §5.5): `_BASE_CSS` carries a semantic version so
+# any layout / typography / class-name change is a deliberate release
+# step. Bump major on layout/typography/class-name breaks, minor on
+# additive tokens, patch on bug-fix / typo / a11y correction.
+# `tests/platform/test_pages_shared_states.py` pins this string so an
+# accidental drift fails the suite.
+_BASE_CSS_VERSION = "1.0.0"
+
 _BASE_CSS = """
 :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#e6edf3;
   --dim:#8b949e; --accent:#58a6ff; --green:#3fb950; --red:#f85149;

@@ -36,6 +36,28 @@ from agent.platform import pages  # noqa: E402
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+class TestBaseCssVersion:
+    """Sprint 1 D047 §5.5 -- `_BASE_CSS_VERSION` is pinned here so
+    an unversioned edit to `_BASE_CSS` fails the suite."""
+
+    def test_version_constant_present(self):
+        assert hasattr(pages, "_BASE_CSS_VERSION"), (
+            "agent/platform/pages.py must expose _BASE_CSS_VERSION")
+
+    def test_version_is_semver_string(self):
+        v = pages._BASE_CSS_VERSION
+        assert isinstance(v, str) and v.count(".") == 2, (
+            f"_BASE_CSS_VERSION must be semver X.Y.Z, got {v!r}")
+        for part in v.split("."):
+            assert part.isdigit(), f"non-numeric semver part in {v!r}"
+
+    def test_version_pinned_to_current(self):
+        assert pages._BASE_CSS_VERSION == "1.0.0", (
+            "bumping _BASE_CSS_VERSION requires updating this pin (per "
+            "review-chain §5.5); layout/typography/class-name break = "
+            "major, additive token = minor, patch = a11y/typo")
+
+
 class TestSkeletonCss:
 
     def test_shimmer_keyframes_defined(self):

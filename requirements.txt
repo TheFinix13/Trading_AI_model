@@ -26,3 +26,9 @@ dukascopy-python>=4.0
 httpx>=0.27
 shap>=0.45
 MetaTrader5>=5.0.45 ; sys_platform == 'win32'
+# Sprint 1 F006 (per D052) -- OS-keychain-first credential storage.
+# `keyring` uses the OS native store (macOS Keychain / Windows Credential
+# Manager / Freedesktop Secret Service) with a Python fallback. Zero-cost,
+# BSD-3, mature (10+ years). No new SaaS relationship.
+keyring>=25.0
+

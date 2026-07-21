@@ -1,0 +1,25 @@
+{
+  "from_role": "cto",
+  "to_role": "cpo",
+  "feature_id": null,
+  "scope": "sprint-1-retro-amendments",
+  "timestamp": "2026-07-21T19:35:00Z",
+  "deliverables": [
+    "company/protocols/review-chain.md",
+    "company/legal/claim_register.md",
+    "agent/platform/pages.py",
+    "tests/platform/test_pages_shared_states.py",
+    "requirements.txt",
+    "pyproject.toml",
+    "company/sprints/sprint-1-access/README.md"
+  ],
+  "notes": "Four retro amendments per D047 land as one commit. §3.5 shared-primitive-first serialisation (F006 plays that role for Sprint 1); §4.2 spec-lock validation at start of build stage; §5.5 _BASE_CSS_VERSION='1.0.0' pinned in tests; §6.3 claim_register.md seeded with F001/F002/F003 public fields + F006/F007/F008 stubs. Also adds keyring>=25.0 dependency (pre-authorised by D052). Test count 971 -> 974. Sprint 1 open for CPO to author F006 spec.",
+  "blockers": [],
+  "review_criteria": [
+    "Confirm each retro amendment's location in review-chain.md is correct",
+    "Confirm claim_register.md seed covers every current public accessor",
+    "Confirm _BASE_CSS_VERSION test pins the string (currently '1.0.0')",
+    "Confirm keyring is imported clean on macOS/Linux; Windows path via keyring's own backend",
+    "Confirm no writes to any Sprint 0 shipped module functional bodies"
+  ]
+}
