@@ -35,13 +35,15 @@ _NAV = """<div class="nav">
 <a href="/" class="{hub}">Hub</a>
 <a href="/v1" class="{v1}">v1 · Zones agent (live demo)</a>
 <a href="/v2" class="{v2}">v2 · Squad pitch (sim)</a>
+<a href="/hq" class="{hq}">HQ · Blue Lock Trading Co.</a>
 </div>"""
 
 
 def nav(active: str) -> str:
     return _NAV.format(hub="here" if active == "hub" else "",
                        v1="here" if active == "v1" else "",
-                       v2="here" if active == "v2" else "")
+                       v2="here" if active == "v2" else "",
+                       hq="here" if active == "hq" else "")
 
 
 # The hub is rewritten from a static two-tile page into a live overview:
@@ -174,6 +176,16 @@ __NAV__
     a wall, winning trades as goals. Historical walk-forward replays
     also available on this page.</p>
     <div class="summary" id="tile-v2-summary">&hellip;</div>
+  </a>
+  <a class="tile" href="/hq">
+    <h2>HQ &middot; Blue Lock Trading Co.
+        <span class="badge sim" id="tile-hq-badge">company</span></h2>
+    <p>See how the product is being built. Kanban of features by stage,
+    role grid across all 17 seats (Executive / Design / Engineering /
+    Business), decisions log, blockers panel, sprint KPIs. Reads live
+    from <code>company/ledger/company_state.json</code>. This is the
+    company running around the trading agent &mdash; not a black box.</p>
+    <div class="summary" id="tile-hq-summary">&hellip;</div>
   </a>
 </div>
 
@@ -531,12 +543,49 @@ function renderFooter(health, v1){
     " \u00b7 code on <code>next-gen</code> branch";
 }
 
+function renderHqTile(hq){
+  const badgeEl = document.getElementById("tile-hq-badge");
+  const summaryEl = document.getElementById("tile-hq-summary");
+  if(!summaryEl || !badgeEl) return;
+  if(hq.__auth__){
+    setBadge("tile-hq-badge","stale","auth required");
+    summaryEl.innerText = "pass ?token= in URL to see company state";
+    return;
+  }
+  if(hq.__error__ && hq.__error__ !== "HTTP 404"){
+    setBadge("tile-hq-badge","down","api error");
+    summaryEl.innerText = "/api/hq/state: " + hq.__error__;
+    return;
+  }
+  const meta = hq.meta || {};
+  const kpis = hq.kpis || {};
+  if(meta.unconfigured){
+    setBadge("tile-hq-badge","no-data","not configured");
+    summaryEl.innerText = meta.unconfigured_reason || "ledger not on disk";
+    return;
+  }
+  setBadge("tile-hq-badge","sim","company");
+  const shipped = kpis.features_shipped_sprint_0 || 0;
+  const total = kpis.features_total_sprint_0 || 0;
+  const active = kpis.active_roles || 0;
+  const totalRoles = kpis.total_roles || 0;
+  const bl = (hq.blockers || []).length;
+  const blSuffix = bl > 0
+    ? (" \u00b7 " + bl + " blocker" + (bl === 1 ? "" : "s"))
+    : "";
+  summaryEl.innerText =
+    "sprint 0 \u00b7 " + shipped + "/" + total + " features shipped" +
+    " \u00b7 " + active + "/" + totalRoles + " roles active" +
+    blSuffix;
+}
+
 async function refreshAll(){
-  const [v1, v2, evs, health] = await Promise.all([
+  const [v1, v2, evs, health, hq] = await Promise.all([
     fetchJson("/api/v1/status"),
     fetchJson("/api/v2/live/status"),
     fetchJson("/api/v2/live/events?cursor=0&limit=5"),
     fetchJson("/healthz"),
+    fetchJson("/api/hq/state"),
   ]);
   const evsTotal = (evs && !evs.__auth__ && !evs.__error__)
     ? (evs.total != null ? evs.total : (evs.events || []).length) : null;
@@ -544,6 +593,7 @@ async function refreshAll(){
   renderV2Kpi(v2, evsTotal);
   renderSysKpi(health, v1);
   renderActivity(evs);
+  renderHqTile(hq);
   renderFooter(health, v1);
   document.getElementById("updated").innerText =
     "updated " + new Date().toLocaleTimeString();
@@ -2165,3 +2215,484 @@ init();
 V2_PAGE = (_V2_TEMPLATE
            .replace("__BASE_CSS__", _BASE_CSS)
            .replace("__NAV__", nav('v2')))
+
+
+# ---------------------------------------------------------------------------
+# /hq  -- Blue Lock Trading Co. dashboard
+# ---------------------------------------------------------------------------
+#
+# Reads /api/hq/state (backed by company/ledger/company_state.json via
+# agent.platform.hq.hq_state()) and renders a live company dashboard:
+# header + KPI strip + sprint Kanban + role grid + decisions log +
+# blockers panel + footer. Same raw-template + __PLACEHOLDER__ trick as
+# _V2_TEMPLATE so the inline JS can use backticks / braces without
+# f-string doubling; framework-free, no CDN, matches the platform's
+# dark theme via _BASE_CSS tokens.
+_HQ_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blue Lock Trading Co. -- HQ</title><style>__BASE_CSS__
+.hq-header{display:flex;justify-content:space-between;align-items:flex-start;
+  gap:16px;flex-wrap:wrap;margin-bottom:18px}
+.hq-header .hq-title h1{margin:0 0 4px;font-size:22px}
+.hq-header .hq-title .mission{color:var(--dim);font-size:13.5px;
+  max-width:720px;line-height:1.55}
+.hq-header .hq-sprint{display:flex;flex-direction:column;align-items:flex-end;
+  gap:6px;font-size:12.5px;color:var(--dim);font-variant-numeric:tabular-nums;
+  min-width:180px}
+.hq-header .hq-sprint .sprint-badge{background:rgba(188,140,255,.12);
+  color:var(--purple);border:1px solid rgba(188,140,255,.4);
+  padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.hq-header .hq-sprint .day-counter{font-variant-numeric:tabular-nums}
+.kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;
+  margin-bottom:20px}
+@media (max-width: 1100px){.kpi-strip{grid-template-columns:repeat(3,1fr)}}
+@media (max-width: 700px){.kpi-strip{grid-template-columns:repeat(2,1fr)}}
+.kpi-tile{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:12px 14px}
+.kpi-tile .k{font-size:11px;color:var(--dim);text-transform:uppercase;
+  letter-spacing:.05em;font-weight:600;margin-bottom:6px}
+.kpi-tile .v{font-size:22px;font-variant-numeric:tabular-nums;color:var(--fg);
+  font-weight:600;line-height:1}
+.kpi-tile .foot{font-size:11px;color:var(--dim);margin-top:6px}
+.section{margin-bottom:22px}
+.section h2{margin:0 0 10px;font-size:15px;display:flex;align-items:baseline;
+  gap:10px;flex-wrap:wrap}
+.section h2 .aux{font-size:11.5px;color:var(--dim);font-weight:400}
+.kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+@media (max-width: 1100px){.kanban{grid-template-columns:repeat(2,1fr)}}
+@media (max-width: 700px){.kanban{grid-template-columns:1fr}}
+.kanban-col{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:12px;min-height:120px}
+.kanban-col h3{margin:0 0 10px;font-size:11.5px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--dim);display:flex;justify-content:space-between;
+  align-items:baseline}
+.kanban-col h3 .count{color:var(--fg);font-weight:700;
+  font-variant-numeric:tabular-nums}
+.feature-card{background:#0d1117;border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:12.5px}
+.feature-card:last-child{margin-bottom:0}
+.feature-card .title{font-weight:600;color:var(--fg);
+  display:flex;justify-content:space-between;align-items:flex-start;gap:8px;
+  margin-bottom:6px}
+.feature-card .title .fid{color:var(--dim);font-size:11px;font-weight:500;
+  font-variant-numeric:tabular-nums}
+.feature-card .meta{color:var(--dim);font-size:11.5px;
+  display:flex;flex-wrap:wrap;gap:8px 12px;align-items:baseline}
+.feature-card .meta .owner{color:var(--fg)}
+.prio{font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;
+  letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;
+  vertical-align:middle}
+.prio.p0{background:rgba(248,81,73,.15);color:var(--red);
+  border:1px solid rgba(248,81,73,.4)}
+.prio.p1{background:rgba(210,153,34,.15);color:var(--amber);
+  border:1px solid rgba(210,153,34,.4)}
+.prio.p2{background:rgba(139,148,158,.15);color:var(--dim);
+  border:1px solid var(--border)}
+.roles-tier{margin-bottom:16px}
+.roles-tier h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--dim);font-weight:600}
+.role-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:10px}
+.role-tile{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:10px 12px;font-size:12.5px;
+  display:flex;flex-direction:column;gap:4px;transition:opacity .2s}
+.role-tile.idle{opacity:.3}
+.role-tile .role-title{font-weight:600;color:var(--fg);
+  display:flex;align-items:center;gap:8px}
+.role-tile .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.role-tile .status-dot.active{background:var(--green);
+  box-shadow:0 0 6px rgba(63,185,80,.6)}
+.role-tile .status-dot.idle{background:var(--dim)}
+.role-tile .persona{color:var(--purple);font-size:11.5px;font-style:italic}
+.role-tile .task{color:var(--dim);font-size:11.5px;line-height:1.4;
+  overflow:hidden;text-overflow:ellipsis;display:-webkit-box;
+  -webkit-line-clamp:2;-webkit-box-orient:vertical}
+.role-tile .throughput{color:var(--dim);font-size:11px;
+  font-variant-numeric:tabular-nums;margin-top:2px}
+.decisions-log{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:14px 16px}
+.decisions-log .row{display:grid;
+  grid-template-columns:max-content max-content 1fr;
+  gap:10px;padding:6px 0;border-bottom:1px solid #1c2129;
+  font-size:12.5px;align-items:baseline}
+.decisions-log .row:last-child{border-bottom:none}
+.decisions-log .row .date{color:var(--dim);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.decisions-log .row .role{color:var(--accent);font-weight:600;white-space:nowrap;
+  font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.decisions-log .row .decision{color:var(--fg)}
+.decisions-log .row .decision .did{color:var(--dim);font-size:11px;
+  margin-right:6px;font-variant-numeric:tabular-nums}
+.decisions-log .empty,.kanban-col .empty,.role-grid .empty{color:var(--dim);
+  font-style:italic;font-size:12px;padding:4px 0}
+.blockers{background:var(--panel);border:2px solid var(--red);
+  border-radius:10px;padding:14px 16px}
+.blockers.empty-state{border-color:var(--border);border-width:1px}
+.blockers h2{margin:0 0 10px;color:var(--red);font-size:15px}
+.blockers.empty-state h2{color:var(--fg)}
+.blockers .row{display:grid;
+  grid-template-columns:max-content max-content 1fr;gap:10px;
+  padding:6px 0;border-bottom:1px solid #2b1a1c;font-size:12.5px;
+  align-items:baseline}
+.blockers .row:last-child{border-bottom:none}
+.blockers .row .fid{color:var(--red);font-weight:600;
+  font-variant-numeric:tabular-nums;font-size:11.5px}
+.blockers .row .raised-by{color:var(--dim);font-size:11px;
+  text-transform:uppercase;letter-spacing:.05em}
+.blockers .row .summary{color:var(--fg)}
+.blockers .row .rec{color:var(--dim);font-size:11.5px;margin-top:2px;
+  grid-column:1 / -1;padding-left:0}
+.blockers .empty-msg{color:var(--dim);font-size:13px;font-style:italic}
+.hq-footer{margin-top:24px;padding-top:12px;border-top:1px solid var(--border);
+  font-size:11.5px;color:var(--dim);text-align:center;line-height:1.7}
+.hq-footer code{background:#0d1117;padding:1px 6px;border-radius:4px;
+  font-size:11px;color:var(--fg)}
+#hq-updated{position:fixed;top:14px;right:20px;font-size:12px;color:var(--dim)}
+.unconfigured-banner{background:rgba(210,153,34,.12);
+  border-left:4px solid var(--amber);padding:10px 14px;border-radius:6px;
+  margin-bottom:18px;font-size:13px;color:var(--fg)}
+.unconfigured-banner code{background:#0d1117;padding:1px 6px;border-radius:4px;
+  font-size:12px;color:var(--dim)}
+</style></head><body>
+__NAV__
+<div id="hq-updated">loading&hellip;</div>
+
+<div class="hq-header">
+  <div class="hq-title">
+    <h1>Blue Lock Trading Co. &mdash; HQ</h1>
+    <div class="mission" id="hq-mission">&hellip;</div>
+  </div>
+  <div class="hq-sprint">
+    <div class="sprint-badge" id="hq-sprint-badge">&hellip;</div>
+    <div class="day-counter" id="hq-day-counter">&hellip;</div>
+  </div>
+</div>
+
+<div id="hq-unconfigured"></div>
+
+<div class="kpi-strip" id="kpi-strip"></div>
+
+<div class="section">
+  <h2>Sprint Kanban <span class="aux">features by stage; owner + age
+      in current stage</span></h2>
+  <div class="kanban" id="kanban"></div>
+</div>
+
+<div class="section">
+  <h2>Role grid <span class="aux">17 roles across 4 tiers; active in
+      colour, standby dimmed</span></h2>
+  <div id="role-grid"></div>
+</div>
+
+<div class="section">
+  <h2>Blockers panel <span class="aux">features awaiting CEO
+      attention</span></h2>
+  <div class="blockers empty-state" id="blockers">
+    <h2>Blockers</h2>
+    <div class="empty-msg">loading&hellip;</div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Decisions log <span class="aux">most recent decisions from the
+      ledger</span></h2>
+  <div class="decisions-log" id="decisions-log">
+    <div class="empty">loading&hellip;</div>
+  </div>
+</div>
+
+<div class="hq-footer" id="hq-footer">&hellip;</div>
+
+<script>
+function esc(x){ const d=document.createElement("div");
+  d.innerText=String(x==null?"":x); return d.innerHTML; }
+
+// Kanban stage -> column mapping. The review chain has 10 stages
+// (spec / research / design / architecture / build / qa / security /
+// legal / signoff / ship) but users want 5 columns for scannability;
+// we bucket them here. Stages after "ship" collapse to Ship (shipped,
+// done -> Ship).
+const STAGE_TO_COLUMN = {
+  "spec": "Backlog",
+  "research": "Design",
+  "design": "Design",
+  "architecture": "Design",
+  "build": "Build",
+  "qa": "Review",
+  "security": "Review",
+  "legal": "Review",
+  "signoff": "Review",
+  "ship": "Ship",
+  "shipped": "Ship",
+  "done": "Ship"
+};
+const KANBAN_COLS = ["Backlog", "Design", "Build", "Review", "Ship"];
+
+// Tier order for the role grid; matches company/README.md.
+const TIER_ORDER = ["executive", "design", "engineering", "business"];
+const TIER_LABELS = {
+  "executive": "Executive",
+  "design": "Design",
+  "engineering": "Engineering",
+  "business": "Business"
+};
+
+async function fetchJson(url){
+  try {
+    const r = await fetch(url);
+    if(r.status === 401) return {__auth__: true};
+    if(!r.ok) return {__error__: "HTTP " + r.status};
+    return await r.json();
+  } catch(e){ return {__error__: String((e && e.message) || e)}; }
+}
+
+function daysSinceIso(iso){
+  if(!iso) return null;
+  const t = new Date(String(iso).replace(" ","T"));
+  if(isNaN(t)) return null;
+  return Math.max(0, Math.floor((Date.now() - t.getTime()) / 86400000));
+}
+function daysUntilIso(iso){
+  if(!iso) return null;
+  const t = new Date(String(iso).replace(" ","T"));
+  if(isNaN(t)) return null;
+  return Math.ceil((t.getTime() - Date.now()) / 86400000);
+}
+
+function renderHeader(hq){
+  const meta = hq.meta || {};
+  const sprint = (hq.sprints || [])[0] || {};
+  document.getElementById("hq-mission").innerText =
+    meta.one_liner || meta.mission || "";
+  const badge = document.getElementById("hq-sprint-badge");
+  if(sprint.id){
+    badge.innerText = "SPRINT \u00B7 " + (sprint.name || sprint.id)
+      .toUpperCase();
+  } else {
+    badge.innerText = "NO SPRINT";
+  }
+  const dayCounter = document.getElementById("hq-day-counter");
+  if(sprint.started_at && sprint.day_target){
+    const dayCount = daysSinceIso(sprint.started_at);
+    const day = (dayCount == null ? 0 : dayCount) + 1;
+    dayCounter.innerText = "day " + day + " of " + sprint.day_target;
+  } else {
+    dayCounter.innerText = "\u2014";
+  }
+}
+
+function renderUnconfigured(hq){
+  const box = document.getElementById("hq-unconfigured");
+  const meta = hq.meta || {};
+  if(hq.__auth__){
+    box.innerHTML = '<div class="unconfigured-banner">Auth required '+
+      '\u2014 pass <code>?token=</code> in the URL to see the '+
+      'company state.</div>';
+    return true;
+  }
+  if(hq.__error__){
+    box.innerHTML = '<div class="unconfigured-banner">HQ API error: '+
+      esc(hq.__error__) + ' \u2014 the platform server may be '+
+      'restarting.</div>';
+    return true;
+  }
+  if(meta.unconfigured){
+    box.innerHTML = '<div class="unconfigured-banner">Company ledger '+
+      'not yet configured on this server. Reason: <code>'+
+      esc(meta.unconfigured_reason || "unknown") + '</code>. See '+
+      '<code>company/README.md</code> for the charter.</div>';
+    return true;
+  }
+  box.innerHTML = "";
+  return false;
+}
+
+function renderKpiStrip(hq){
+  const el = document.getElementById("kpi-strip");
+  const k = hq.kpis || {};
+  const tiles = [
+    {k: "Features shipped", v: (k.features_shipped_sprint_0 || 0) +
+      " / " + (k.features_total_sprint_0 || 0),
+     foot: "sprint 0"},
+    {k: "Backlog", v: k.backlog_size == null ? "\u2014" : k.backlog_size,
+     foot: "open features"},
+    {k: "Bugs open", v: k.bugs_open == null ? "\u2014" : k.bugs_open,
+     foot: "QA ledger"},
+    {k: "Cycle time p50", v: k.cycle_time_days_p50 == null ? "n/a"
+      : (k.cycle_time_days_p50 + " d"),
+     foot: "spec \u2192 ship"},
+    {k: "Test coverage", v: k.test_coverage_pct == null ? "n/a"
+      : (k.test_coverage_pct + " %"),
+     foot: "pytest tests/"},
+    {k: "Active roles", v: (k.active_roles || 0) + " / " +
+      (k.total_roles || 0),
+     foot: "17 seats total"}
+  ];
+  el.innerHTML = tiles.map(t =>
+    '<div class="kpi-tile">'+
+      '<div class="k">' + esc(t.k) + '</div>'+
+      '<div class="v">' + esc(t.v) + '</div>'+
+      '<div class="foot">' + esc(t.foot) + '</div>'+
+    '</div>').join("");
+}
+
+function renderKanban(hq){
+  const el = document.getElementById("kanban");
+  const buckets = {};
+  for(const c of KANBAN_COLS) buckets[c] = [];
+  for(const f of (hq.features || [])){
+    const col = STAGE_TO_COLUMN[f.current_stage] || "Backlog";
+    buckets[col].push(f);
+  }
+  el.innerHTML = KANBAN_COLS.map(col => {
+    const items = buckets[col] || [];
+    const cards = items.length ? items.map(f => {
+      const prio = (f.priority || "P2").toLowerCase();
+      const owner = f.current_owner_role || "\u2014";
+      const age = f.age_in_stage_days == null ? "0d"
+        : (f.age_in_stage_days + "d");
+      return '<div class="feature-card">'+
+        '<div class="title">'+
+          '<span>' + esc(f.title || "(untitled)") + '</span>'+
+          '<span class="fid">' + esc(f.id || "") + '</span>'+
+        '</div>'+
+        '<div class="meta">'+
+          '<span class="prio ' + prio + '">' + esc(f.priority || "") +
+            '</span>'+
+          '<span class="owner">' + esc(owner) + '</span>'+
+          '<span>' + esc(age) + ' in stage</span>'+
+          '<span>stage: ' + esc(f.current_stage || "\u2014") + '</span>'+
+        '</div>'+
+      '</div>';
+    }).join("") : '<div class="empty">no features here</div>';
+    return '<div class="kanban-col">'+
+      '<h3><span>' + esc(col) + '</span>'+
+      '<span class="count">' + items.length + '</span></h3>'+
+      cards +
+    '</div>';
+  }).join("");
+}
+
+function renderRoleGrid(hq){
+  const el = document.getElementById("role-grid");
+  const byTier = {};
+  for(const t of TIER_ORDER) byTier[t] = [];
+  for(const r of (hq.roles || [])){
+    const t = r.tier || "business";
+    (byTier[t] || byTier.business).push(r);
+  }
+  el.innerHTML = TIER_ORDER.map(tier => {
+    const roles = byTier[tier] || [];
+    if(!roles.length) return "";
+    return '<div class="roles-tier">'+
+      '<h3>' + esc(TIER_LABELS[tier] || tier) +
+        ' <span class="aux">(' + roles.length + ')</span></h3>'+
+      '<div class="role-grid">'+
+      roles.map(r => {
+        const active = !!r.active;
+        const throughput = r.throughput_last_7d == null ? 0
+          : r.throughput_last_7d;
+        return '<div class="role-tile ' + (active ? "" : "idle") + '">'+
+          '<div class="role-title">'+
+            '<span class="status-dot ' + (active ? "active" : "idle") +
+              '"></span>'+
+            '<span>' + esc(r.title || r.id) + '</span>'+
+          '</div>'+
+          (r.persona_name ?
+            '<div class="persona">' + esc(r.persona_name) + '</div>'
+            : '') +
+          '<div class="task">' + esc(r.current_task || "\u2014") +
+            '</div>'+
+          '<div class="throughput">' + throughput +
+            ' feature' + (throughput === 1 ? "" : "s") +
+            ' owned last 7 d</div>'+
+        '</div>';
+      }).join("") +
+      '</div>'+
+    '</div>';
+  }).join("");
+}
+
+function renderBlockers(hq){
+  const el = document.getElementById("blockers");
+  const blockers = hq.blockers || [];
+  if(!blockers.length){
+    el.className = "blockers empty-state";
+    el.innerHTML = '<h2>Blockers</h2>'+
+      '<div class="empty-msg">No blockers. Company is executing.</div>';
+    return;
+  }
+  el.className = "blockers";
+  el.innerHTML = '<h2>Blockers awaiting CEO</h2>'+
+    blockers.map(b =>
+      '<div class="row">'+
+        '<span class="fid">' + esc(b.feature_id || "") + '</span>'+
+        '<span class="raised-by">' + esc(b.raised_by || "") + '</span>'+
+        '<span class="summary">' + esc(b.summary || "") + '</span>'+
+        (b.recommendation
+          ? ('<div class="rec">Recommendation: ' +
+             esc(b.recommendation) + '</div>')
+          : "") +
+      '</div>').join("");
+}
+
+function renderDecisions(hq){
+  const el = document.getElementById("decisions-log");
+  const decisions = hq.decisions || [];
+  if(!decisions.length){
+    el.innerHTML = '<div class="empty">no decisions logged yet</div>';
+    return;
+  }
+  el.innerHTML = decisions.slice().reverse().map(d =>
+    '<div class="row">'+
+      '<span class="date">' + esc(d.date || "") + '</span>'+
+      '<span class="role">' + esc(d.role || "") + '</span>'+
+      '<span class="decision">'+
+        '<span class="did">' + esc(d.id || "") + '</span>'+
+        esc(d.decision || "") +
+      '</span>'+
+    '</div>').join("");
+}
+
+function renderFooter(hq){
+  const meta = hq.meta || {};
+  const path = "company/ledger/company_state.json";
+  document.getElementById("hq-footer").innerHTML =
+    'updated ' + esc(new Date().toLocaleTimeString()) +
+    ' \u00b7 generated from <code>' + esc(path) + '</code>' +
+    ' \u00b7 schema v' + esc(meta.schema_version || "?") +
+    ' \u00b7 founded ' + esc(meta.founded || "\u2014");
+}
+
+async function refresh(){
+  const hq = await fetchJson("/api/hq/state");
+  document.getElementById("hq-updated").innerText =
+    "updated " + new Date().toLocaleTimeString();
+  const blocked = renderUnconfigured(hq);
+  renderHeader(hq);
+  if(blocked){
+    // Still render everything else so the shell isn't blank.
+    renderKpiStrip({kpis: {}});
+    renderKanban({features: []});
+    renderRoleGrid({roles: []});
+    renderBlockers({blockers: []});
+    renderDecisions({decisions: []});
+    renderFooter({meta: {}});
+    return;
+  }
+  renderKpiStrip(hq);
+  renderKanban(hq);
+  renderRoleGrid(hq);
+  renderBlockers(hq);
+  renderDecisions(hq);
+  renderFooter(hq);
+}
+refresh();
+setInterval(refresh, 30000);
+</script></body></html>"""
+
+HQ_PAGE = (_HQ_TEMPLATE
+           .replace("__BASE_CSS__", _BASE_CSS)
+           .replace("__NAV__", nav('hq')))

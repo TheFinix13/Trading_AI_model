@@ -37,9 +37,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from agent.platform import live_status, paper_loop, squad_events  # noqa: E402
+from agent.platform import hq, live_status, paper_loop, squad_events  # noqa: E402
 from agent.platform.config import load_config  # noqa: E402
-from agent.platform.pages import HUB_PAGE, V1_PAGE, V2_PAGE  # noqa: E402
+from agent.platform.pages import HQ_PAGE, HUB_PAGE, V1_PAGE, V2_PAGE  # noqa: E402
 
 PLATFORM_VERSION = "0.2.0"
 
@@ -51,10 +51,17 @@ _LIVE_RE = re.compile(
 
 def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                  live_dir: Path | None = None,
-                 auth_token: str | None = None):
+                 auth_token: str | None = None,
+                 company_ledger_path: Path | None = None):
     """``auth_token`` enables token auth on every route except /healthz
     (so uptime probes stay simple). main() only passes it through when
-    binding non-localhost — on 127.0.0.1 the platform stays open."""
+    binding non-localhost — on 127.0.0.1 the platform stays open.
+
+    ``company_ledger_path`` overrides the default
+    ``<repo_root>/company/ledger/company_state.json`` path used by the
+    /hq dashboard. Tests pass a fixture path; production leaves it
+    None so `hq.hq_state()` picks up the shipped ledger.
+    """
     started_at = time.time()
 
     class Handler(BaseHTTPRequestHandler):
@@ -119,6 +126,15 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 self._send(V1_PAGE.encode(), "text/html; charset=utf-8")
             elif path == "/v2":
                 self._send(V2_PAGE.encode(), "text/html; charset=utf-8")
+            elif path == "/hq":
+                self._send(HQ_PAGE.encode(), "text/html; charset=utf-8")
+            elif path == "/api/hq/state":
+                # HQ dashboard state -- reads company/ledger/company_state.json
+                # (or company_ledger_path override in tests). Missing /
+                # malformed ledger returns a well-shaped skeleton payload
+                # with meta.unconfigured=True so the dashboard renders a
+                # friendly "not configured" state instead of a 500.
+                self._json(hq.hq_state(ledger_path=company_ledger_path))
             elif path == "/api/v1/status":
                 self._json(live_status.collect_status(log_root, repo_root))
             elif path == "/api/v2/matches":
@@ -224,6 +240,10 @@ def main() -> None:
                     help="require this token on all routes when binding "
                          "non-localhost (?token=, Bearer header, or the "
                          "cookie set on first tokened visit)")
+    ap.add_argument("--company-ledger", type=Path, default=None,
+                    help="override path to company/ledger/company_state.json "
+                         "(the /hq dashboard's data source); defaults to the "
+                         "shipped ledger under the repo root")
     args = ap.parse_args()
 
     # Auth only bites on non-localhost binds; local browsing stays open.
@@ -236,7 +256,8 @@ def main() -> None:
     server = ThreadingHTTPServer(
         (args.host, args.port),
         make_handler(args.log_root, args.repo_root, args.research_reviews,
-                     live_dir=args.live_dir, auth_token=effective_token),
+                     live_dir=args.live_dir, auth_token=effective_token,
+                     company_ledger_path=args.company_ledger),
     )
     if effective_token:
         print("Auth: token required on all routes except /healthz")
