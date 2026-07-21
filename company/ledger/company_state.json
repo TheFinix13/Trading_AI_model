@@ -1377,6 +1377,27 @@
       "role": "cpo",
       "decision": "Sprint 1 (Access) closes COMPLETE -- 3/3 P0 features shipped.",
       "context": "F006 (D057) + F007 (D058) + F008 (D059) all accepted. Test delta 974 -> 1259 (+285). Zero commits off product. Zero spend. No Cursor attribution. Retro amendments landed FIRST per D047 (review-chain §3.5/§4.2/§5.5/§6.3). Sprint duration 1 wall-clock day against 13-day honest target -- compression only possible because Executor persona ran every lane serially; real 3-persona split would have taken longer. Honest-review flag noted in sprint_verdicts."
+    },
+    {
+      "id": "D061",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Sprint 1 formally signed off -- 3/3 features accepted, no security regressions.",
+      "context": "Post-sprint verification: product @ 3a4e93d, 1258+1 skipped tests, 170 security tests, credential-leak grep clean (only fake test strings + public MT5 server allowlist entries)."
+    },
+    {
+      "id": "D062",
+      "date": "2026-07-21",
+      "role": "cto",
+      "decision": "Sprint 1 retro carry-overs ratified; three deferred security controls scoped into Sprint 2.",
+      "context": "Deferred: per-install-token rate limit, session expiry/token rotation, automated claim-register audit hook (§6.3 pre-commit script). Sprint 2 mandatory inclusions alongside Real-Trading features."
+    },
+    {
+      "id": "D063",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Sprint 2 (Real-Trading) kick-off held pending explicit CEO green-light.",
+      "context": "Largest threat-model shift in product lifetime: paper -> live-order pathway. CEO input required on (a) live-orders-at-all, (b) trade-approval-mode strictness, (c) Finance activation timing, (d) whether Sprint 2 also addresses Sprint 1's three deferred security controls."
     }
   ],
   "sprint_verdicts": [

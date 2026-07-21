@@ -835,6 +835,60 @@ split with independent scheduling would have taken longer. Honest
 review flag surfaced in the sprint verdict entry so future ratifiers
 can adjust the day_count estimate.
 
+## D061 · 2026-07-21 · ceo · [SPRINT]
+
+**Sprint 1 (Access) formally signed off — 3/3 features accepted, no security regressions.**
+
+Independent post-sprint verification: `product` @ `3a4e93d` pushed to
+origin (9 sprint commits from `635c9bd` through `3a4e93d`); full
+`.venv/bin/python -m pytest -q` reports **1258 passed + 1 skipped**
+(matches executor's 1259 count when the skipped test is included);
+`tests/security/*` populated with 170 tests, all green (executor
+undercounted at 132 — actual is larger, no controls missing).
+Credential-leak grep across the sprint diff finds only fake test
+strings (`pw12345`, `s3cret-password-xyz`, `hunter2super…`) and the
+allowlisted public MT5 server names (`Exness-MT5Demo` /
+`Exness-MT5Trial7`) — zero real-credential material committed.
+`RedactingFilter` present in `agent/platform/auth.py`; `keyring`
+primary + `Fernet` fallback both live in `credentials.py`. Ledger
+`sprints[1].verdict = "COMPLETE"`; `/hq` Kanban shows F006/F007/F008
+in ship; blockers panel empty. Access lane is on record.
+
+## D062 · 2026-07-21 · cto · [ARCH]
+
+**Ratified retro carry-overs from Sprint 1 REPORT §Retro; deferred security controls scoped into Sprint 2.**
+
+Sprint 1 shipped the auth surface but deferred three security controls
+to Sprint 2 per the honest-review flag: (a) per-install-token rate
+limit on all `/api/*` non-localhost, (b) session expiry / token
+rotation (currently install-token is permanent), (c) automated
+claim-register audit hook (§6.3 registered in the protocol but the
+pre-commit script is not yet written). These are Sprint 2's mandatory
+inclusions alongside the pre-registered Real-Trading features. The
+Executor persona's honest-review flag on `sprint_verdicts[1]` —
+"1 wall-clock day only possible because the Executor persona owns
+every lane; a real 3-persona split would take longer" — is retained
+as evidence of process discipline, not as a defect. Sprint-length
+calibration deferred to CEO gate D063.
+
+## D063 · 2026-07-21 · ceo · [SPRINT]
+
+**Sprint 2 (Real-Trading) kick-off held pending explicit CEO green-light.**
+
+Sprint 2 is the largest threat-model shift in the product's lifetime:
+it introduces the pathway from paper trading to live-order placement.
+Every previous sprint has been read-only or credentials-at-rest;
+Sprint 2 can move real money. CEO input required on (a) whether the
+squad ever places real orders vs stays shadow-only forever (this is
+the ship-or-hold call on the whole product's animating premise),
+(b) how strict the trade-approval mode should be (per-trade
+human-in-loop / daily-risk-budget / no-live-mode-at-all), (c) whether
+to activate Finance persona now for the first potential spend (paid
+alerts channel, monitoring, hosting), (d) whether to also address
+Sprint 1's three deferred security controls in Sprint 2 or move them
+to a hardening sprint. Held pending explicit CEO direction in the
+next session — no autonomous dispatch.
+
 ## Template for subsequent entries
 
 ```markdown
