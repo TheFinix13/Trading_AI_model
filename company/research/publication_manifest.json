@@ -1,0 +1,61 @@
+{
+  "$schema_note": "F003 -- publication allow-list for the public /research page. CPO owns this file per D007. Every entry that ships to the public page requires an explicit `publish: true` row here plus a Legal-approved brand_summary. Adding an entry is a D### decision. Removing an entry is a D### decision.",
+  "cpo_signoff_by": "cpo",
+  "cpo_signoff_at": "2026-07-21T17:45:00Z",
+  "entries": [
+    {
+      "campaign_id": "E001_concept_ablation",
+      "publish": true,
+      "verdict_kind": "alive_survivor",
+      "verdict_label": "Alive -- sole survivor of 7 candidates",
+      "brand_summary": "We ran seven of the most-marketed price-action concepts through the same ablation grid on EUR/USD 2015-2025 with a false-discovery-rate correction at 5%. Six failed. One -- supply/demand-zone touches -- survived, and gating it against the daily trend sharpened the edge further. Every part of the platform that trades today descends from this funnel.",
+      "headline_stat": "1 of 7 concepts passed BH-FDR at 5%; 6 dropped from further work.",
+      "report_commit_sha_hint": null
+    },
+    {
+      "campaign_id": "E004_walk_forward",
+      "publish": true,
+      "verdict_kind": "alive_survivor",
+      "verdict_label": "Alive -- primary EUR/USD deployment evidence",
+      "brand_summary": "Walk-forward re-tested the zone_d1_against configuration on seven consecutive out-of-sample windows on EUR/USD. All seven windows passed with a median trade expectancy of +11.34 pips. The live agent's canonical H4 EUR/USD cell (weapon: zone_d1_against) is deployed on the strength of this evidence.",
+      "headline_stat": "7 of 7 out-of-sample windows passed; median +11.34 pips/trade.",
+      "report_commit_sha_hint": null
+    },
+    {
+      "campaign_id": "E007_impulse_origin_bounce",
+      "publish": true,
+      "verdict_kind": "stopped_at_stage_1",
+      "verdict_label": "Stopped at Stage 1 by its own stop rule",
+      "brand_summary": "Impulse-origin bounce candidate was pre-registered with a hard stop rule at Stage 1 -- if the effect was smaller than the pre-committed threshold, work would stop immediately rather than shopping for a rescue. The effect was smaller than the threshold. Work stopped. The receipt-trail is the point: pre-registration only works if you actually stop when the number tells you to.",
+      "headline_stat": "Stage 1 stop rule triggered; no Stage 2 work performed.",
+      "report_commit_sha_hint": null
+    },
+    {
+      "campaign_id": "E022_structure_aware_tp_snap",
+      "publish": true,
+      "verdict_kind": "dead",
+      "verdict_label": "Dead",
+      "brand_summary": "Snap take-profit to nearby swing structure was tested as an exit improvement layer. It did not clear its promotion criterion. The proposal was rejected and the exit stack was left unchanged. Failed exits are documented here so they aren't accidentally re-proposed six months from now.",
+      "headline_stat": "Did not clear the pre-registered promotion criterion.",
+      "report_commit_sha_hint": null
+    },
+    {
+      "campaign_id": "E024_near_tp_stall_exit",
+      "publish": true,
+      "verdict_kind": "dead",
+      "verdict_label": "Dead -- Stage 2 cancelled per PROTOCOL stop rule",
+      "brand_summary": "Near-TP stall exit was a proposed additive exit signal. Stage 1 measured expectancy across three symbols; Stage 2 was pre-committed to run only if the Stage 1 verdict was positive on at least one symbol. It was not. Stage 2 was cancelled per the PROTOCOL's own stop rule; no live change followed.",
+      "headline_stat": "0 of 3 symbols met the Stage 1 promotion bar.",
+      "report_commit_sha_hint": null
+    },
+    {
+      "campaign_id": "phase_ac_pitch_assignment",
+      "publish": true,
+      "verdict_kind": "fail",
+      "verdict_label": "Fails pre-registered AC.2 primary criterion",
+      "brand_summary": "Phase AC asked whether widening one striker's tradeable pair set improved the whole squad's decision quality. The pre-registered criterion was a +0.02 lift in squad mean TQS; the observed effect was -0.006 with a 95% confidence interval spanning zero (p = 0.861). The recommendation is to keep the current baseline. No trading change follows.",
+      "headline_stat": "A2 - A1 = -0.006 TQS; 95% CI [-0.017, +0.005]; p(delta <= 0) = 0.861.",
+      "report_commit_sha_hint": null
+    }
+  ]
+}
