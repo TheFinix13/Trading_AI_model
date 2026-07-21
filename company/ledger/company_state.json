@@ -1,0 +1,422 @@
+{
+  "meta": {
+    "company_name": "Blue Lock Trading Co.",
+    "founded": "2026-07-21",
+    "mission": "The first AI trading platform that trades like a football team.",
+    "one_liner": "Watch our striker squad find setups on real markets \u2014 every decision explained, every risk gated.",
+    "current_sprint_id": "sprint-0-trust-foundation",
+    "generated_at": "2026-07-21T14:12:00Z",
+    "schema_version": "1.0.0"
+  },
+  "roles": [
+    {
+      "id": "ceo",
+      "title": "CEO",
+      "tier": "executive",
+      "persona_name": "The Ego",
+      "active": true,
+      "current_task": "Sprint 0 sign-off & founding-team review",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "cto",
+      "title": "CTO",
+      "tier": "executive",
+      "persona_name": "The Anri",
+      "active": true,
+      "current_task": "Architecture review of HQ dashboard route",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "cpo",
+      "title": "Head of Product",
+      "tier": "executive",
+      "persona_name": "Noel Noa",
+      "active": true,
+      "current_task": "Sprint 0 charter authored; F001\u2013F005 specs locked",
+      "throughput_last_7d": 5,
+      "features_owned_now": ["F001", "F002", "F003", "F004", "F005"],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "ux_researcher",
+      "title": "UX Researcher",
+      "tier": "design",
+      "persona_name": null,
+      "active": true,
+      "current_task": "Awaiting handoff on F001 (spec \u2192 research)",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "ui_designer",
+      "title": "UI Designer",
+      "tier": "design",
+      "persona_name": null,
+      "active": true,
+      "current_task": "Awaiting research memo on F001",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "brand_designer",
+      "title": "Brand / Content Designer",
+      "tier": "design",
+      "persona_name": null,
+      "active": true,
+      "current_task": "Founding copy library seed at company/brand/copy.md (planned)",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "frontend",
+      "title": "Frontend Engineer",
+      "tier": "engineering",
+      "persona_name": null,
+      "active": true,
+      "current_task": "HQ_PAGE dashboard drafted, awaiting Sprint 0 build kickoff",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "backend",
+      "title": "Backend Engineer",
+      "tier": "engineering",
+      "persona_name": null,
+      "active": true,
+      "current_task": "agent/platform/hq.py drafted for HQ dashboard data",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "ai_ml_engineer",
+      "title": "AI / ML Engineer",
+      "tier": "engineering",
+      "persona_name": "11-striker roster steward",
+      "active": false,
+      "current_task": "Standby \u2014 F002 needs striker stats; will activate mid-Sprint 0",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "devops",
+      "title": "DevOps Engineer",
+      "tier": "engineering",
+      "persona_name": null,
+      "active": false,
+      "current_task": "Standby \u2014 Sprint 0 ships locally; DevOps activates Sprint 1+",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "qa",
+      "title": "QA Engineer",
+      "tier": "engineering",
+      "persona_name": null,
+      "active": true,
+      "current_task": "QA plans pending for F001\u2013F005; 3 HQ dashboard tests drafted",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "security",
+      "title": "Security Engineer",
+      "tier": "engineering",
+      "persona_name": null,
+      "active": false,
+      "current_task": "Standby \u2014 Sprint 0 features are non-auth-touching",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "marketing",
+      "title": "Marketing",
+      "tier": "business",
+      "persona_name": null,
+      "active": true,
+      "current_task": "F003 (research page) copy framing to review post-build",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "sales",
+      "title": "Sales",
+      "tier": "business",
+      "persona_name": null,
+      "active": false,
+      "current_task": "Standby \u2014 activates Sprint 6 (Sales sprint)",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "support",
+      "title": "Customer Support",
+      "tier": "business",
+      "persona_name": null,
+      "active": false,
+      "current_task": "Standby \u2014 activates when first user signs up (Sprint 1+)",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "legal",
+      "title": "Legal",
+      "tier": "business",
+      "persona_name": null,
+      "active": true,
+      "current_task": "F001 disclaimer draft pending; F003 verdict-page IP note pending",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "finance",
+      "title": "Finance",
+      "tier": "business",
+      "persona_name": null,
+      "active": false,
+      "current_task": "Standby \u2014 no spend authorised yet; activates when first shopping list surfaces",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0
+    }
+  ],
+  "sprints": [
+    {
+      "id": "sprint-0-trust-foundation",
+      "name": "Trust Foundation",
+      "goal": "Ship the 5 features that turn the prototype into something showable to prospects.",
+      "started_at": "2026-07-21",
+      "target_end": "2026-08-04",
+      "feature_ids": ["F001", "F002", "F003", "F004", "F005"],
+      "day_count": 0,
+      "day_target": 14
+    }
+  ],
+  "features": [
+    {
+      "id": "F001",
+      "title": "Public /performance route",
+      "priority": "P0",
+      "sprint_id": "sprint-0-trust-foundation",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "legal", "ceo"],
+      "created_at": "2026-07-21T14:00:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-21T14:00:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-0-trust-foundation/F001-performance-page.md",
+          "note": "Spec locked by founding-team pass."
+        }
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-0-trust-foundation/F001-performance-page.md"
+      ]
+    },
+    {
+      "id": "F002",
+      "title": "Character bio routes /players/:id",
+      "priority": "P0",
+      "sprint_id": "sprint-0-trust-foundation",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "ai_ml_engineer", "cto", "frontend", "backend", "qa", "legal", "ceo"],
+      "created_at": "2026-07-21T14:00:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-21T14:00:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-0-trust-foundation/F002-player-bios.md",
+          "note": "Spec locked; IP note flagged for Legal."
+        }
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-0-trust-foundation/F002-player-bios.md"
+      ]
+    },
+    {
+      "id": "F003",
+      "title": "Public /research route (anti-marketing marketing)",
+      "priority": "P0",
+      "sprint_id": "sprint-0-trust-foundation",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "marketing", "cto", "frontend", "backend", "qa", "legal", "ceo"],
+      "created_at": "2026-07-21T14:00:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-21T14:00:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-0-trust-foundation/F003-research-page.md",
+          "note": "Spec locked; renders Phase AC verdicts read-only from research repo."
+        }
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-0-trust-foundation/F003-research-page.md"
+      ]
+    },
+    {
+      "id": "F004",
+      "title": "Mobile-responsive pass at 375px viewport",
+      "priority": "P0",
+      "sprint_id": "sprint-0-trust-foundation",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["ui_designer", "frontend", "qa", "cpo", "ceo"],
+      "created_at": "2026-07-21T14:00:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-21T14:00:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-0-trust-foundation/F004-mobile-responsive.md",
+          "note": "Spec locked; covers hub + /v1 + /v2 + /hq + /performance + /players + /research."
+        }
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-0-trust-foundation/F004-mobile-responsive.md"
+      ]
+    },
+    {
+      "id": "F005",
+      "title": "Loading skeletons + friendly error-state recovery",
+      "priority": "P0",
+      "sprint_id": "sprint-0-trust-foundation",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["ui_designer", "brand_designer", "frontend", "qa", "cpo", "ceo"],
+      "created_at": "2026-07-21T14:00:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-21T14:00:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-0-trust-foundation/F005-loading-skeletons-error-states.md",
+          "note": "Spec locked; horizontal concern across every fetch on every page."
+        }
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-0-trust-foundation/F005-loading-skeletons-error-states.md"
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "id": "D001",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Founded Blue Lock Trading Co.",
+      "context": "See company/README.md. Kicks off Sprint 0. CEO (Fiyin) retains ultimate authority; 'The Ego' persona is the executor."
+    },
+    {
+      "id": "D002",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "Sprint 0 scope locked: F001\u2013F005 (Trust Foundation).",
+      "context": "See company/sprints/sprint-0-trust-foundation/README.md. Target end 2026-08-04. Exit gates: 5 P0 features shipped, tests green, HQ dashboard reflects final state."
+    },
+    {
+      "id": "D003",
+      "date": "2026-07-21",
+      "role": "cto",
+      "decision": "HQ dashboard route (/hq) and API (/api/hq/state) architecture green-lit.",
+      "context": "New module agent/platform/hq.py (read-only over company/ledger/company_state.json). HUB_PAGE gains a 4th tile linking to /hq. 3 platform tests added. See PROTOCOL and agent/platform/pages.py for details."
+    },
+    {
+      "id": "D004",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "Ten of 17 roles active for Sprint 0; seven on standby.",
+      "context": "Active: CEO, CTO, CPO, UX Researcher, UI Designer, Brand Designer, Frontend, Backend, QA, Marketing, Legal. Standby: AI/ML (activates for F002 stats), DevOps, Security, Sales, Support, Finance."
+    },
+    {
+      "id": "D005",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Dogfood cadence for Sprint 0 = end-of-sprint only.",
+      "context": "No fixed day-7 mid-sprint gate; CPO has autonomy to schedule ad-hoc walk-throughs if a feature crosses into review stage early."
+    },
+    {
+      "id": "D006",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "F002 ships all 10 strikers with retired / standby pills.",
+      "context": "Historical record (including Kunigami retired and Sae disabled-by-default) is part of the Blue Lock metaphor's credibility. UI Designer + Brand Designer own the pill design + copy so it reads as narrative history."
+    },
+    {
+      "id": "D007",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "F003 verdict summaries are CPO-gated, never auto-published.",
+      "context": "Backend parser may stage summaries in company/research/, but publication to /research requires an explicit CPO signoff entry in the decisions log. The /research page is anti-marketing marketing precisely because a human curates the narrative."
+    },
+    {
+      "id": "D008",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Brand copy library at company/brand/copy.md and company/brand/error_copy.md.",
+      "context": "Brand Designer owns these files as Sprint 0 deliverables produced during F001 and F005 design stages. Every user-facing string cites a line in copy.md (or logs an inline exception)."
+    },
+    {
+      "id": "D009",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Finance stays at zero-authority-spend through Sprint 0.",
+      "context": "First shopping list surfaces in Sprint 2 (market-data / broker sandbox) or Sprint 6 (domain / hosting / mailer). CEO ratifies before any spend; Finance produces vendor shortlist + spend memo."
+    },
+    {
+      "id": "D010",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "HQ dashboard inherits default auth: open on localhost, token-gated on public.",
+      "context": "Mirrors /, /v1, /v2. Revisit in Sprint 2 (Access) when per-user auth lands \u2014 the Finance section on /hq may need admin-only gating then."
+    }
+  ],
+  "kpis": {
+    "features_shipped_sprint_0": 0,
+    "features_total_sprint_0": 5,
+    "backlog_size": 5,
+    "bugs_open": 0,
+    "cycle_time_days_p50": null,
+    "test_coverage_pct": null,
+    "active_roles": 11,
+    "total_roles": 17
+  },
+  "blockers": []
+}

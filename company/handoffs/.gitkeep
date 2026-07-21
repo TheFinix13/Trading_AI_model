@@ -1,0 +1,9 @@
+# Handoff artefacts land here — one JSON per role-to-role handoff.
+
+Filename convention: `<feature_id>-<from_role>-to-<to_role>.json`
+Rework loops append `-r2`, `-r3`, ... — never overwrite.
+
+Full schema and worked example: `../protocols/persona-handoff.md`.
+
+This `.gitkeep` marker keeps the directory in Git while it's empty.
+Delete once real handoff files land.
