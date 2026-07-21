@@ -1,0 +1,17 @@
+{
+  "from_role": "cpo",
+  "to_role": "ux_researcher",
+  "feature_id": "F001",
+  "timestamp": "2026-07-21T16:45:00Z",
+  "deliverables": [
+    "company/sprints/sprint-0-trust-foundation/F001-performance-page.md"
+  ],
+  "notes": "F001 is THE trust-foundation feature -- if this bar fails, Sprint 0 fails. Target user is the retail forex trader evaluating an AI product; the framing to validate is 'trust in 10 seconds'. Data comes from v1 daily-log [TRADE CLOSED] lines + v2 squad_live/events.jsonl close events -- no new backend infrastructure beyond a parser module.",
+  "blockers": [],
+  "review_criteria": [
+    "Confirm target segment is retail forex trader (not journalist / not existing user)",
+    "Confirm 'trust in 10 seconds' survives a CEO-as-proxy dogfood",
+    "Colour-blind palette + screen-reader labels land in this iteration",
+    "One adjacent user need (per-striker attribution) is explicitly excluded"
+  ]
+}

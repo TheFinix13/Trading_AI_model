@@ -1,0 +1,17 @@
+{
+  "from_role": "ux_researcher",
+  "to_role": "ui_designer",
+  "feature_id": "F001",
+  "timestamp": "2026-07-21T16:50:00Z",
+  "deliverables": [
+    "company/research/F001-user-journey.md"
+  ],
+  "notes": "Target = retail forex trader evaluating an AI product. The three-questions-above-the-fold framing (how long, up/down, worst-loss) drives KPI tile ordering. Explicit non-goal: per-striker attribution belongs to F002. Watch for: cold-start empty state feeling scary; Sharpe appearing too early below the 30-day floor; monotone-up early curves reading as 'no risk'.",
+  "blockers": [],
+  "review_criteria": [
+    "Above-the-fold answers the three JTBD questions",
+    "Colour-blind palette (green/red equity with zero-line dashed grey)",
+    "SVG has aria-label; skeleton has role=progressbar",
+    "Mobile mock at 375 px produced alongside desktop"
+  ]
+}

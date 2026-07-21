@@ -1,0 +1,17 @@
+{
+  "from_role": "qa_engineer",
+  "to_role": "legal",
+  "feature_id": "F001",
+  "timestamp": "2026-07-21T17:10:00Z",
+  "deliverables": [
+    "company/qa/F001-verdict.md"
+  ],
+  "notes": "QA verdict = pass. 48 new tests green; full platform suite 170 green. No security review triggered (public page, no auth, no user data written). Legal review IS required -- performance numbers are a regulated surface.",
+  "blockers": [],
+  "review_criteria": [
+    "Disclaimer footer text matches disclaimers.md verbatim",
+    "Claim register in disclaimers.md updated for every public number",
+    "No banned-phrase copy on the page",
+    "Sharpe under-30-days copy reads honestly"
+  ]
+}

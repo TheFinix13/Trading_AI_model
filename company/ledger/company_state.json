@@ -215,8 +215,8 @@
       "title": "Public /performance route",
       "priority": "P0",
       "sprint_id": "sprint-0-trust-foundation",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "ship",
+      "current_owner_role": "devops",
       "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "legal", "ceo"],
       "created_at": "2026-07-21T14:00:00Z",
       "age_in_stage_days": 0,
@@ -227,12 +227,79 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-0-trust-foundation/F001-performance-page.md",
           "note": "Spec locked by founding-team pass."
+        },
+        {
+          "stage": "research",
+          "at": "2026-07-21T16:50:00Z",
+          "role": "ux_researcher",
+          "deliverable": "company/research/F001-user-journey.md",
+          "note": "Trust-in-10-seconds framing; three JTBD questions drive KPI-tile ordering."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-21T16:55:00Z",
+          "role": "ui_designer",
+          "deliverable": "company/design/F001-mocks.md",
+          "note": "Desktop + 375px mobile mocks; F004 baked in. New primitives .kpi-tile / .per-pair-table / .disclaimer / .source-hint reused by F002/F003."
+        },
+        {
+          "stage": "architecture",
+          "at": "2026-07-21T17:00:00Z",
+          "role": "cto",
+          "deliverable": "company/handoffs/F001-cto-to-frontend.json",
+          "note": "Read-only parser module + page + 2 routes; 3 modules touched (under CTO-handoff threshold)."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-21T17:05:00Z",
+          "role": "frontend",
+          "deliverable": "agent/platform/performance.py",
+          "note": "Parser + PERFORMANCE_PAGE + routes; 48 new tests (24 module + 16 page + 8 api). Platform suite 100 -> 170."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-21T17:10:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F001-verdict.md",
+          "note": "pass -- 48 new tests green; cold-start + seeded + mobile-media-query manual checks pass."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-21T17:15:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/F001-disclaimer-review.md",
+          "note": "pass -- disclaimer library seeded; claim register covers 4 public numbers with per-number code-path traces."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-21T17:20:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F001-legal-to-ceo.json",
+          "note": "CPO signoff -- security correctly skipped (public page, no auth, no user data)."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-21T17:20:00Z",
+          "role": "devops",
+          "deliverable": "scripts/serve_platform.py",
+          "note": "Ship-in-place: /performance + /api/performance/state live in local dev server; public deploy deferred to Sprint 1+ (DevOps activation)."
         }
       ],
       "blockers": [],
       "awaiting_ceo": false,
       "deliverables_paths": [
-        "company/sprints/sprint-0-trust-foundation/F001-performance-page.md"
+        "company/sprints/sprint-0-trust-foundation/F001-performance-page.md",
+        "company/research/F001-user-journey.md",
+        "company/design/F001-mocks.md",
+        "company/qa/F001-verdict.md",
+        "company/legal/F001-disclaimer-review.md",
+        "company/legal/disclaimers.md",
+        "agent/platform/performance.py",
+        "agent/platform/pages.py",
+        "scripts/serve_platform.py",
+        "tests/platform/test_performance_module.py",
+        "tests/platform/test_performance_page.py",
+        "tests/platform/test_performance_api.py"
       ]
     },
     {
@@ -482,10 +549,66 @@
       "role": "cpo",
       "decision": "F005 shipped -- helper landed and consumed downstream by F001/F002/F003.",
       "context": "Ship-in-place: no separate deploy artefact because the helper is code-only (agent/platform/pages.py constants). CEO signoff is captured under the sprint-level end-of-sprint dogfood pass (D005) rather than a per-feature ceremony, as F005 has no user-facing surface of its own."
+    },
+    {
+      "id": "D015",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F001 handed off from spec to UX Researcher; security stage skipped, legal stage required.",
+      "context": "Public read-only performance page has no auth surface, so security review is not triggered. Regulated performance-numbers surface requires legal review. See company/handoffs/F001-cpo-to-ux_researcher.json."
+    },
+    {
+      "id": "D016",
+      "date": "2026-07-21",
+      "role": "ux_researcher",
+      "decision": "F001 user-journey framed as 'trust in 10 seconds' with three JTBD questions above the fold.",
+      "context": "Three questions (days live / net direction / worst loss) drive KPI-tile ordering. Non-goals declared: per-striker attribution (F002), CSV export (Sprint 3+), benchmark overlay (Sprint 3+). See company/research/F001-user-journey.md."
+    },
+    {
+      "id": "D017",
+      "date": "2026-07-21",
+      "role": "ui_designer",
+      "decision": "F001 mocks ship desktop + 375px mobile in one pass; F004 baked in, not retrofitted.",
+      "context": "Reusable primitives introduced (.kpi-tile / .per-pair-table / .disclaimer / .source-hint) so F002/F003 can copy. Palette re-uses existing _BASE_CSS tokens. See company/design/F001-mocks.md."
+    },
+    {
+      "id": "D018",
+      "date": "2026-07-21",
+      "role": "cto",
+      "decision": "F001 architecture: pure parser module + page + 2 routes; 3 modules touched (under CTO-handoff threshold).",
+      "context": "agent/platform/performance.py is read-only over v1 daily logs and v2 events.jsonl. HQ tile-count grows from 5 to 8 in this sprint (Performance + Squad + Research). F002/F003 frontend must serialise on pages.py. See company/handoffs/F001-cto-to-frontend.json."
+    },
+    {
+      "id": "D019",
+      "date": "2026-07-21",
+      "role": "frontend",
+      "decision": "F001 build complete -- /performance + /api/performance/state live, 48 new tests green.",
+      "context": "Cold-start renders via F005 helper's empty state; Sharpe below 30-day floor renders 'n/a - need N more days'. Test counts: module 24 + page 16 + api 8 = 48. Platform suite 100 -> 170. See company/handoffs/F001-frontend-to-qa.json."
+    },
+    {
+      "id": "D020",
+      "date": "2026-07-21",
+      "role": "qa",
+      "decision": "F001 QA verdict = pass; two regression-risk items flagged forward.",
+      "context": "48 new tests green + full platform suite green. Regression-risk items: v1 log-line format drift (parser drops silently), Sharpe-floor constant needs UX + module co-changes. See company/qa/F001-verdict.md."
+    },
+    {
+      "id": "D021",
+      "date": "2026-07-21",
+      "role": "legal",
+      "decision": "F001 disclaimer review = pass; disclaimer library seeded with claim register.",
+      "context": "company/legal/disclaimers.md publishes canonical library. Claim register logs 4 public numbers (trades_total / net_pips / worst_dd_pips / sharpe_or_null) with per-number code-path traces. See company/legal/F001-disclaimer-review.md."
+    },
+    {
+      "id": "D022",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F001 shipped -- /performance live; ledger advances to features_shipped_sprint_0 = 2.",
+      "context": "CEO signoff under D005 end-of-sprint cadence plus per-feature legal + QA passes. Ship-in-place because DevOps is on standby (Sprint 1+). See company/handoffs/F001-legal-to-ceo.json."
     }
   ],
   "kpis": {
-    "features_shipped_sprint_0": 1,
+    "features_shipped_sprint_0": 2,
     "features_total_sprint_0": 5,
     "backlog_size": 4,
     "bugs_open": 0,

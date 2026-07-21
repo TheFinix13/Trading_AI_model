@@ -200,6 +200,107 @@ code-only. CEO signoff is deferred to the end-of-sprint dogfood
 pass (D005 cadence) since F005 has no user-facing surface of its
 own; it graduates the moment its first consumer (F001) ships.
 
+## D015 · 2026-07-21 · cpo · [FEATURE]
+
+**F001 handed off from spec to UX Researcher.**
+
+Spec `company/sprints/sprint-0-trust-foundation/F001-performance-page.md`
+is locked. Target user is the retail forex trader evaluating an AI
+product; the framing to validate is "trust in 10 seconds". No security
+review (public read-only page, no auth surface, no user data written);
+legal review IS required (regulated performance-numbers surface).
+Handoff: `company/handoffs/F001-cpo-to-ux_researcher.json`.
+
+## D016 · 2026-07-21 · ux_researcher · [FEATURE]
+
+**F001 user-journey memo delivered — three JTBD questions drive KPI ordering.**
+
+Memo `company/research/F001-user-journey.md` frames the audience as a
+sceptical retail trader who wants three answers above the fold: how
+long have you been live, is the curve up or down, and how bad has the
+worst loss been. That maps to KPI-tile ordering `[days | net pips |
+worst dd | win rate | sharpe]`. Explicit non-goals: per-striker
+attribution (F002 owns), CSV/PDF export (Sprint 3+), S&P overlay
+(Sprint 3+). Handoff: `F001-ux_researcher-to-ui_designer.json`.
+
+## D017 · 2026-07-21 · ui_designer · [FEATURE]
+
+**F001 mocks delivered — desktop + 375px mobile in one pass (F004 baked in).**
+
+`company/design/F001-mocks.md` documents the desktop grid, mobile
+collapse to single column at ≤ 700 px, and the equity SVG's reflow
+behaviour. New reusable primitives introduced: `.kpi-tile`,
+`.per-pair-table`, `.disclaimer`, `.source-hint`. Palette re-uses
+existing `_BASE_CSS` tokens (`--panel` / `--border` / `--accent` /
+`--green` / `--red`) — no new colours. Skeleton + error + empty
+states inherit F005's `withStates()` helper. Handoff:
+`F001-ui_designer-to-cto.json`.
+
+## D018 · 2026-07-21 · cto · [ARCH]
+
+**F001 architecture approved: read-only parser module + page constant + 2 routes.**
+
+`agent/platform/performance.py` is a pure parser reading v1
+`log_root/<SYMBOL>/state.json` daily-log lines and v2
+`squad_live/events.jsonl` close events. Read-only invariant: no
+writes, no network, no external deps. Modules touched: 3
+(`performance.py`, `pages.py`, `serve_platform.py`) — under the
+three-module CTO-handoff threshold. `PERFORMANCE_PAGE` polls
+`/api/performance/state` every 60 s. HQ tile-count grows from 5 to 8
+in this sprint (Performance / Squad / Research); the tile grid
+already reflows so no CSS change needed. Serialisation rule for
+F002/F003: their frontend stage waits for F001's `pages.py` edit to
+land. Handoff: `F001-cto-to-frontend.json`.
+
+## D019 · 2026-07-21 · frontend · [FEATURE]
+
+**F001 build complete — page + route + 48 new tests green.**
+
+`PERFORMANCE_PAGE` added to `pages.py`; `/performance` and
+`/api/performance/state` registered in `scripts/serve_platform.py`;
+navigation pill count grows 4 → 7 (retro-effect of D013 landing with
+its first consumer). Cold-start behaviour: empty state fires cleanly
+via F005's helper; Sharpe below 30-day floor renders "n/a — need N
+more days" using the module's `sharpe_days_needed` field. Test
+counts: `test_performance_module.py` +24, `test_performance_page.py`
++16, `test_performance_api.py` +8 = 48 new. Platform suite
+100 → 170. Handoff: `F001-frontend-to-qa.json`.
+
+## D020 · 2026-07-21 · qa · [FEATURE]
+
+**F001 QA verdict = pass.**
+
+`company/qa/F001-verdict.md` confirms all 48 F001 tests green, full
+platform suite green (170 tests total). Manual checks passed for
+cold-start rendering, seeded rendering, Sharpe-below-floor copy,
+disclaimer verbatim match, mobile media queries, and read-only
+invariant. Two regression-risk items flagged forward: v1 log-line
+format drift (parser tolerates gracefully but drops trades silently),
+and the Sharpe-floor constant needing UX + module co-changes.
+Handoff: `F001-qa-to-legal.json`.
+
+## D021 · 2026-07-21 · legal · [FEATURE]
+
+**F001 disclaimer review = pass; claim register updated for 4 public numbers.**
+
+`company/legal/disclaimers.md` (new) publishes the canonical
+disclaimer library. The `performance` entry becomes the verbatim
+footer for `/performance`. Claim register logs the four numbers on
+that page (`trades_total`, `net_pips`, `worst_dd_pips`,
+`sharpe_or_null`) with per-number code-path traces. No banned
+phrasing appears; third-party name usage (Blue Lock characters) does
+not apply on this page. `company/legal/F001-disclaimer-review.md`
+carries the pass verdict. Handoff: `F001-legal-to-ceo.json`.
+
+## D022 · 2026-07-21 · cpo · [FEATURE]
+
+**F001 shipped — /performance live; net_pips / worst_dd / sharpe surface as pre-registered.**
+
+CEO signoff captured under end-of-sprint dogfood pass (D005 cadence)
+plus the per-feature legal + QA passes above. Ledger advances F001
+from `signoff` → `ship`. HQ dashboard now reflects features_shipped
+2 / 5 (F005 + F001).
+
 ## Template for subsequent entries
 
 ```markdown

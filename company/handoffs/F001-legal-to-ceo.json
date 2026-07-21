@@ -1,0 +1,15 @@
+{
+  "from_role": "legal",
+  "to_role": "ceo",
+  "feature_id": "F001",
+  "timestamp": "2026-07-21T17:15:00Z",
+  "deliverables": [
+    "company/legal/F001-disclaimer-review.md",
+    "company/legal/disclaimers.md"
+  ],
+  "notes": "Disclaimer review = pass. Claim register updated for 4 public numbers (trades_total, net_pips, worst_dd_pips, sharpe_or_null). No banned phrasing appears on the page. Third-party name usage does not apply on this page (F002 owns that surface). Feature ready for CEO signoff -> ship.",
+  "blockers": [],
+  "review_criteria": [
+    "Ready for /hq ledger update advancing F001 to 'signoff' -> 'ship'"
+  ]
+}

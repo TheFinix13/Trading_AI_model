@@ -1,0 +1,17 @@
+{
+  "from_role": "ui_designer",
+  "to_role": "cto",
+  "feature_id": "F001",
+  "timestamp": "2026-07-21T16:55:00Z",
+  "deliverables": [
+    "company/design/F001-mocks.md"
+  ],
+  "notes": "Mocks reuse the existing _BASE_CSS tokens (--panel / --border / --accent / --green / --red); no new palette. Reused F005 helpers: withStates, _SKELETON_CSS, _ERROR_COPY_JS. New components introduced: .kpi-tile, .per-pair-table, .disclaimer, .source-hint, #equity-svg. All primitives are copy-pasteable into F002/F003 pages.",
+  "blockers": [],
+  "review_criteria": [
+    "Backend module (agent/platform/performance.py) is a pure parser -- no writes, no network beyond local filesystem",
+    "Route wiring uses the existing scripts/serve_platform.py pattern (path match on the URL, JSON serialisation via json.dumps)",
+    "Single-file bottleneck on pages.py respected: F001 build serialises against F002/F003 pages.py edits",
+    "Test count grows by 40+ (module + page + api)"
+  ]
+}

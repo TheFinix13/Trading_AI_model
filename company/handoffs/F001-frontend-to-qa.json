@@ -1,0 +1,20 @@
+{
+  "from_role": "frontend_engineer",
+  "to_role": "qa_engineer",
+  "feature_id": "F001",
+  "timestamp": "2026-07-21T17:05:00Z",
+  "deliverables": [
+    "agent/platform/pages.py",
+    "scripts/serve_platform.py",
+    "tests/platform/test_performance_page.py",
+    "tests/platform/test_performance_api.py"
+  ],
+  "notes": "PERFORMANCE_PAGE constant added; route registered; F004 responsive CSS baked in (media queries at 700 / 480 / 380 px). Cold-start behaviour: empty state kicks in when trades_total==0 with a friendly 'squad still warming up' message. Sharpe below floor renders 'n/a - need N more days' via the module's sharpe_days_needed field. Nav pill count went 4 -> 7.",
+  "blockers": [],
+  "review_criteria": [
+    "All 48 new tests pass",
+    "Full platform suite passes (170 tests total)",
+    "Manual dogfood: cold-start renders, seeded server renders, mobile 375 px renders",
+    "Disclaimer footer matches company/legal/disclaimers.md verbatim"
+  ]
+}

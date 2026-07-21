@@ -37,9 +37,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from agent.platform import hq, live_status, paper_loop, squad_events  # noqa: E402
+from agent.platform import (  # noqa: E402
+    hq, live_status, paper_loop, performance, squad_events,
+)
 from agent.platform.config import load_config  # noqa: E402
-from agent.platform.pages import HQ_PAGE, HUB_PAGE, V1_PAGE, V2_PAGE  # noqa: E402
+from agent.platform.pages import (  # noqa: E402
+    HQ_PAGE, HUB_PAGE, PERFORMANCE_PAGE, V1_PAGE, V2_PAGE,
+)
 
 PLATFORM_VERSION = "0.2.0"
 
@@ -128,6 +132,17 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 self._send(V2_PAGE.encode(), "text/html; charset=utf-8")
             elif path == "/hq":
                 self._send(HQ_PAGE.encode(), "text/html; charset=utf-8")
+            elif path == "/performance":
+                self._send(PERFORMANCE_PAGE.encode(),
+                           "text/html; charset=utf-8")
+            elif path == "/api/performance/state":
+                # F001: performance data plane. Reads v1 daily-log
+                # [TRADE CLOSED] lines + v2 shadow-paper close events;
+                # returns derived stats + equity curve. Missing data
+                # sources degrade to shaped-empty payload -- never a
+                # 500.
+                self._json(performance.get_state(
+                    log_root=log_root, live_dir=live_dir))
             elif path == "/api/hq/state":
                 # HQ dashboard state -- reads company/ledger/company_state.json
                 # (or company_ledger_path override in tests). Missing /

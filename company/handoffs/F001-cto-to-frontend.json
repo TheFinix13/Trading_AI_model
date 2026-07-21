@@ -1,0 +1,18 @@
+{
+  "from_role": "cto",
+  "to_role": "frontend_engineer",
+  "feature_id": "F001",
+  "timestamp": "2026-07-21T17:00:00Z",
+  "deliverables": [
+    "agent/platform/performance.py",
+    "tests/platform/test_performance_module.py"
+  ],
+  "notes": "Architecture approved: parser module reads v1 [TRADE CLOSED] logs + v2 events.jsonl and returns a dict. Frontend engineer owns pages.py additions + route wiring + page/api tests. Serialisation on pages.py is mandatory -- F001 lands before F002/F003 kick off their frontend stage. HQ tile-count grows from 5 to 8 (add Performance / Squad / Research); the tile grid already reflows so no CSS change needed there.",
+  "blockers": [],
+  "review_criteria": [
+    "PERFORMANCE_PAGE uses withStates()",
+    "Route /performance + /api/performance/state added; no other routes touched",
+    "HUB / nav updated in one commit alongside the page",
+    "Every polled endpoint is idempotent read-only"
+  ]
+}

@@ -2979,3 +2979,319 @@ setInterval(refresh, 30000);
 HQ_PAGE = (_HQ_TEMPLATE
            .replace("__BASE_CSS__", _BASE_CSS)
            .replace("__NAV__", nav('hq')))
+
+
+# ---------------------------------------------------------------------------
+# /performance -- F001, public equity curve + KPI tiles + per-pair breakdown
+# ---------------------------------------------------------------------------
+#
+# Renders GET /api/performance/state as: (a) an inline SVG equity curve
+# (no chart lib -- framework-free per CTO), (b) 4-5 headline KPI tiles
+# (days_live, net_pips, worst_dd_pips, win_rate_pct, sharpe_or_null),
+# (c) a per-pair breakdown table, (d) a source-hint caption naming
+# where the numbers came from, (e) a Legal-authored disclaimer footer.
+#
+# Loading / error / empty states all use the F005 withStates() helper
+# so the page stays alive during network flakiness. Mobile media
+# queries (@media (max-width: 700px)) collapse the KPI grid to a
+# single column and the equity SVG reflows to full width -- F004
+# baked in, not retrofit.
+
+_PERFORMANCE_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Performance -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+__SKELETON_CSS__
+.perf-header{margin-bottom:18px}
+.perf-header h1{margin:0 0 6px;font-size:22px}
+.perf-header .preamble{color:var(--dim);font-size:13.5px;line-height:1.55;
+  max-width:820px}
+.source-hint{margin:12px 0 18px;padding:10px 14px;
+  background:rgba(88,166,255,.06);border:1px solid rgba(88,166,255,.28);
+  border-radius:8px;font-size:12.5px;color:var(--fg);line-height:1.55}
+.source-hint .k{color:var(--dim);text-transform:uppercase;font-size:11px;
+  letter-spacing:.05em;font-weight:600;margin-right:8px}
+.kpi-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;
+  margin-bottom:18px}
+@media (max-width: 1100px){.kpi-grid{grid-template-columns:repeat(3,1fr)}}
+@media (max-width: 700px){.kpi-grid{grid-template-columns:1fr}}
+.kpi-tile{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:14px 16px;min-height:88px}
+.kpi-tile .k{font-size:11px;color:var(--dim);text-transform:uppercase;
+  letter-spacing:.05em;font-weight:600;margin-bottom:6px}
+.kpi-tile .v{font-size:24px;font-variant-numeric:tabular-nums;color:var(--fg);
+  font-weight:600;line-height:1.1}
+.kpi-tile .v.ok{color:var(--green)} .kpi-tile .v.bad{color:var(--red)}
+.kpi-tile .foot{font-size:11px;color:var(--dim);margin-top:8px;line-height:1.4}
+.equity-wrap{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:16px 18px;margin-bottom:18px}
+.equity-wrap h2{margin:0 0 10px;font-size:15px;display:flex;
+  justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px}
+.equity-wrap h2 .aux{font-size:11.5px;color:var(--dim);font-weight:400}
+#equity-svg{display:block;width:100%;height:280px}
+@media (max-width: 700px){#equity-svg{height:220px}}
+.equity-empty{color:var(--dim);font-style:italic;padding:40px 8px;
+  text-align:center;font-size:13px}
+.per-pair-wrap{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:16px 18px;margin-bottom:18px;
+  overflow-x:auto}
+.per-pair-wrap h2{margin:0 0 10px;font-size:15px}
+.per-pair-table{width:100%;border-collapse:collapse;font-size:12.5px;
+  min-width:520px}
+.per-pair-table th{text-align:left;padding:6px 10px;color:var(--dim);
+  font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+  border-bottom:1px solid var(--border)}
+.per-pair-table td{padding:6px 10px;border-bottom:1px solid #1c2129;
+  font-variant-numeric:tabular-nums}
+.per-pair-table td.sym{font-weight:700;color:var(--fg)}
+.per-pair-table td.pos{color:var(--green)} .per-pair-table td.neg{color:var(--red)}
+.per-pair-table tr:last-child td{border-bottom:none}
+.disclaimer{margin-top:24px;padding:14px 16px;border-radius:8px;
+  background:rgba(139,148,158,.04);border:1px solid var(--border);
+  font-size:12px;color:var(--dim);line-height:1.55}
+.disclaimer .lead{color:var(--fg);font-weight:600;margin-bottom:6px}
+#updated{position:fixed;top:14px;right:20px;font-size:12px;color:var(--dim)}
+</style></head><body>
+__NAV__
+<div id="updated">loading&hellip;</div>
+
+<div class="perf-header">
+  <h1>How we're doing</h1>
+  <div class="preamble">This is the demo-account P&amp;L for our live
+  zones agent and the paper equity curve for the striker squad,
+  updated bar-by-bar. Every number here is a real number the platform
+  wrote to disk &mdash; no back-tests, no cherry-picks.</div>
+</div>
+
+<div class="source-hint" id="source-hint">
+  <span class="k">Source</span><span id="source-hint-text">&hellip;</span>
+</div>
+
+<div id="perf-body">
+  <!-- withStates() fills this in on load; skeleton renders first -->
+</div>
+
+<div class="disclaimer">
+  <div class="lead">Past performance is not indicative of future
+  results.</div>
+  These numbers are from a demo (paper-money) MetaTrader&nbsp;5
+  account. The v1 zones agent places real orders on that demo
+  account; the v2 striker squad runs in shadow-paper mode and never
+  sends orders to the broker. No real capital is at risk. Nothing on
+  this page is investment advice or a solicitation. The Sharpe
+  metric (when shown) is a raw daily-pip Sharpe annualised by
+  &radic;252 &mdash; use it as a sanity ratio, not a target.
+</div>
+
+<script>
+__ERROR_COPY_JS__
+__WITH_STATES_JS__
+
+async function fetchJson(url){
+  try{
+    const r = await fetch(url);
+    if(r.status === 401) return {__auth__: true};
+    if(!r.ok) return {__error__: "HTTP " + r.status};
+    return await r.json();
+  } catch(e){ return {__error__: String(e && e.message || e)}; }
+}
+
+function fmtPips(v){
+  if(v == null || isNaN(v)) return "\u2014";
+  const n = Number(v);
+  const sign = n >= 0 ? "+" : "";
+  if(Math.abs(n) >= 1000){
+    return sign + Math.round(n).toLocaleString();
+  }
+  return sign + n.toFixed(1);
+}
+function fmtPct(v){
+  if(v == null || isNaN(v)) return "\u2014";
+  return Number(v).toFixed(1) + " %";
+}
+function fmtSharpe(v, needed){
+  if(v == null){
+    if(needed == null) return "n/a";
+    return "n/a \u2014 need " + needed + " more days";
+  }
+  return Number(v).toFixed(2);
+}
+function pipSpan(pips, extraCls){
+  const cls = (pips == null || pips == 0) ? "" :
+    (pips > 0 ? "pos" : "neg");
+  return '<td class="' + cls + (extraCls ? ' ' + extraCls : '') + '">' +
+    _esc(fmtPips(pips)) + '</td>';
+}
+
+function performanceSkeleton(){
+  // Tuned to the final layout so no shift when data lands.
+  return (
+    '<div class="kpi-grid">'+
+      '<div class="sk-tile"><div class="sk sk-line short"></div>'+
+        '<div class="sk sk-line"></div><div class="sk sk-line short"></div></div>'.repeat(5)+
+    '</div>'+
+    '<div class="equity-wrap">'+
+      '<div class="sk sk-line short" style="margin-bottom:10px"></div>'+
+      '<div class="sk-chart" role="progressbar" aria-label="Loading equity curve"></div>'+
+    '</div>'+
+    '<div class="per-pair-wrap">'+
+      '<div class="sk sk-line short" style="margin-bottom:10px"></div>'+
+      '<div class="sk-row"><div class="sk sk-line"></div>'+
+        '<div class="sk sk-line"></div><div class="sk sk-line"></div></div>'+
+      '<div class="sk-row"><div class="sk sk-line"></div>'+
+        '<div class="sk sk-line"></div><div class="sk sk-line"></div></div>'+
+      '<div class="sk-row"><div class="sk sk-line"></div>'+
+        '<div class="sk sk-line"></div><div class="sk sk-line"></div></div>'+
+    '</div>'
+  );
+}
+
+function renderEquityCurve(curve){
+  if(!curve || !curve.length){
+    return '<div class="equity-empty">'+
+      _esc("No shadow-paper data yet -- the squad is still warming up.") +
+      '</div>';
+  }
+  // Simple SVG polyline. 800x260 viewBox scales to container width.
+  const W = 800, H = 260, PAD_L = 40, PAD_R = 12, PAD_T = 16, PAD_B = 26;
+  const innerW = W - PAD_L - PAD_R, innerH = H - PAD_T - PAD_B;
+  const n = curve.length;
+  const ys = curve.map(p => Number(p.cum_pips) || 0);
+  let ymin = Math.min(0, ...ys), ymax = Math.max(0, ...ys);
+  if(ymin === ymax){ ymin -= 1; ymax += 1; }
+  const yScale = v => PAD_T + innerH -
+    ((v - ymin) / (ymax - ymin)) * innerH;
+  const xScale = i => PAD_L + (n === 1 ? innerW / 2
+                                       : (i / (n - 1)) * innerW);
+  const pts = curve.map((p, i) => xScale(i).toFixed(1) + "," +
+    yScale(Number(p.cum_pips) || 0).toFixed(1)).join(" ");
+  const zeroY = yScale(0).toFixed(1);
+  const finalY = yScale(ys[ys.length - 1]).toFixed(1);
+  const finalV = ys[ys.length - 1];
+  const strokeCls = finalV >= 0 ? "var(--green)" : "var(--red)";
+  return (
+    '<svg id="equity-svg" viewBox="0 0 ' + W + ' ' + H +
+      '" preserveAspectRatio="none" aria-label="Equity curve">'+
+      '<line x1="' + PAD_L + '" y1="' + zeroY + '" x2="' +
+        (W - PAD_R) + '" y2="' + zeroY + '" '+
+        'stroke="var(--border)" stroke-dasharray="4 4" '+
+        'stroke-width="1"/>'+
+      '<polyline fill="none" stroke="' + strokeCls +
+        '" stroke-width="2" points="' + pts + '"/>'+
+      '<circle cx="' + xScale(n - 1).toFixed(1) + '" cy="' + finalY +
+        '" r="4" fill="' + strokeCls + '"/>'+
+      '<text x="' + PAD_L + '" y="' + (H - 6) + '" '+
+        'fill="var(--dim)" font-size="11" font-family="ui-monospace,'+
+        'SFMono-Regular,Menlo,monospace">' +
+        _esc(String(curve[0].ts || "").slice(0, 10)) + '</text>'+
+      '<text x="' + (W - PAD_R) + '" y="' + (H - 6) + '" '+
+        'fill="var(--dim)" font-size="11" text-anchor="end" '+
+        'font-family="ui-monospace,SFMono-Regular,Menlo,monospace">' +
+        _esc(String(curve[curve.length - 1].ts || "").slice(0, 10)) +
+      '</text>'+
+    '</svg>'
+  );
+}
+
+function renderKpiGrid(state){
+  const net = state.net_pips;
+  const netCls = net > 0 ? " ok" : net < 0 ? " bad" : "";
+  const dd = state.worst_dd_pips;
+  return (
+    '<div class="kpi-grid">'+
+      '<div class="kpi-tile"><div class="k">Days live</div>'+
+        '<div class="v">' + _esc(state.days_live) + '</div>'+
+        '<div class="foot">' + _esc(state.trades_total) +
+        ' closed trade' + (state.trades_total === 1 ? '' : 's') +
+        ' on tape</div></div>'+
+      '<div class="kpi-tile"><div class="k">Net pips</div>'+
+        '<div class="v' + netCls + '">' + _esc(fmtPips(net)) + '</div>'+
+        '<div class="foot">sum across every closed trade</div></div>'+
+      '<div class="kpi-tile"><div class="k">Worst drawdown</div>'+
+        '<div class="v bad">' + _esc(fmtPips(-Math.abs(dd || 0))) + '</div>'+
+        '<div class="foot">peak-to-trough on the equity curve</div></div>'+
+      '<div class="kpi-tile"><div class="k">Win rate</div>'+
+        '<div class="v">' + _esc(fmtPct(state.win_rate_pct)) + '</div>'+
+        '<div class="foot">wins / total closed trades</div></div>'+
+      '<div class="kpi-tile"><div class="k">Sharpe</div>'+
+        '<div class="v">' + _esc(fmtSharpe(state.sharpe_or_null,
+          state.sharpe_days_needed)) + '</div>'+
+        '<div class="foot">daily pip Sharpe &middot; annualised '+
+        '(needs &ge; 30 days)</div></div>'+
+    '</div>'
+  );
+}
+
+function renderPerPair(perPair){
+  if(!perPair || !perPair.length){
+    return '<div class="per-pair-wrap"><h2>By pair</h2>'+
+      '<div class="equity-empty">No trades on any pair yet.</div></div>';
+  }
+  const rows = perPair.map(r =>
+    '<tr>'+
+      '<td class="sym">' + _esc(r.symbol) + '</td>'+
+      '<td>' + _esc(r.trades) + '</td>'+
+      '<td>' + _esc(r.wins) + '</td>'+
+      pipSpan(r.net_pips) +
+      pipSpan(r.avg_pips) +
+      pipSpan(r.best_pips) +
+      pipSpan(r.worst_pips) +
+    '</tr>').join("");
+  return (
+    '<div class="per-pair-wrap"><h2>By pair</h2>'+
+      '<table class="per-pair-table">'+
+        '<thead><tr>'+
+          '<th>Pair</th><th>Trades</th><th>Wins</th>'+
+          '<th>Net pips</th><th>Avg pips</th>'+
+          '<th>Best trade</th><th>Worst trade</th>'+
+        '</tr></thead>'+
+        '<tbody>' + rows + '</tbody>'+
+      '</table></div>'
+  );
+}
+
+function renderPerformance(state, box){
+  if(!state){ return "empty"; }
+  const emptyOverall = (state.trades_total || 0) === 0 &&
+                       (!state.equity_curve || !state.equity_curve.length);
+  document.getElementById("source-hint-text").innerText =
+    state.source_hint || "\u2014";
+  box.innerHTML =
+    renderKpiGrid(state) +
+    '<div class="equity-wrap">'+
+      '<h2>Equity curve <span class="aux">cumulative pips across '+
+      'every closed trade &middot; newest at right</span></h2>'+
+      renderEquityCurve(state.equity_curve) +
+    '</div>' +
+    renderPerPair(state.per_pair);
+  if(emptyOverall) return "empty";
+}
+
+async function refresh(){
+  const box = document.getElementById("perf-body");
+  await withStates(
+    box,
+    () => fetchJson("/api/performance/state"),
+    renderPerformance,
+    {
+      skeletonHtml: performanceSkeleton(),
+      emptyCopyKey: "no_data_yet",
+      emptyMessage: "No shadow-paper data yet -- the squad is still "+
+                    "warming up. Come back after the next H4 bar close.",
+      retryLabel: "Try again"
+    }
+  );
+  document.getElementById("updated").innerText =
+    "updated " + new Date().toLocaleTimeString();
+}
+refresh();
+setInterval(refresh, 60000);
+</script></body></html>"""
+
+PERFORMANCE_PAGE = (_PERFORMANCE_TEMPLATE
+                    .replace("__BASE_CSS__", _BASE_CSS)
+                    .replace("__SKELETON_CSS__", _SKELETON_CSS)
+                    .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+                    .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+                    .replace("__NAV__", nav('performance')))
