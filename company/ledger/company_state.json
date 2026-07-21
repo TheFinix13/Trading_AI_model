@@ -1398,6 +1398,20 @@
       "role": "ceo",
       "decision": "Sprint 2 (Real-Trading) kick-off held pending explicit CEO green-light.",
       "context": "Largest threat-model shift in product lifetime: paper -> live-order pathway. CEO input required on (a) live-orders-at-all, (b) trade-approval-mode strictness, (c) Finance activation timing, (d) whether Sprint 2 also addresses Sprint 1's three deferred security controls."
+    },
+    {
+      "id": "D064",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Sprint 2 green-lit -- cautious-live pathway, 6-feature scope, safety-first ordering.",
+      "context": "Shadow default + live opt-in with heavy friction (approval queue + risk budget + kill-switches). Comprehensive scope: F009 auth hardening (carry-over) + F010 claim-register hook (carry-over) + F011 kill-switches + F012 risk budget + connection health + F013 trade approval + F014 SSE alerts. Finance stays dormant."
+    },
+    {
+      "id": "D065",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Sprint 2 ships the SCAFFOLDING for live orders, not the switch that starts sending them.",
+      "context": "Every safety layer lands as new product-branch code running default-OFF. Sprint 2 does not modify agent/live/, agent/risk/, or agent/squad/, and does not connect the squad to real broker order placement. Live-mode-off invariant test proves no order can send from clean install without explicit user toggle."
     }
   ],
   "sprint_verdicts": [

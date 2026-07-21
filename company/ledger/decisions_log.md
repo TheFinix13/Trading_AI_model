@@ -889,6 +889,81 @@ Sprint 1's three deferred security controls in Sprint 2 or move them
 to a hardening sprint. Held pending explicit CEO direction in the
 next session — no autonomous dispatch.
 
+## D064 · 2026-07-21 · ceo · [SPRINT]
+
+**Sprint 2 (Real-Trading) green-lit — cautious-live pathway, six-feature scope, safety-first ordering.**
+
+Kick-off tonight. Three CEO calls locked:
+
+1. **Live orders posture** = shadow default + live opt-in with heavy
+   friction. Users flip a switch to enable; every live order goes
+   through human-in-loop approval; per-day risk budget hard-cap
+   enforces max daily loss; kill-switches always available. Rejected
+   both extremes (shadow-forever = kills the product's animating
+   premise; auto-live = unacceptable legal surface without maturity).
+
+2. **Sprint 2 scope** = comprehensive; six features covering
+   Real-Trading core + Sprint 1's three deferred security controls +
+   Sprint 1's §6.3 audit hook automation. The CEO's directive was
+   "include everything that will make this product both usable and
+   functional and efficient" — Real-Trading without the safety layer
+   is not usable; new auth pathways without hardening are not
+   functional; manual claim-register audits are not efficient.
+
+3. **Finance activation** = dormant until a `[BLOCKER][SPEND]` fires.
+   All Sprint 2 features achievable without external paid services
+   (SSE alerts self-hosted; Telegram already available for
+   notifications; no monitoring SaaS purchased). Company card
+   conversation continues to defer.
+
+Feature set (safety-first ordering):
+
+- **F009** — Auth hardening: per-install-token rate limit on `/api/*`
+  non-localhost + session expiry + token rotation. Sprint 1
+  carry-over per D062.
+- **F010** — Claim-register audit pre-commit hook: implements the
+  §6.3 script registered in D047; audits every public field in
+  `agent/platform/*.py` against `company/legal/claim_register.md`.
+  Sprint 1 carry-over per D062.
+- **F011** — Kill-switches infrastructure: per-symbol + global
+  kill-file support with hot-reload on the platform; `/settings/
+  kill-switches` UI to toggle from the platform (mirrors the
+  existing v1 kill-file protocol). Prerequisite for F013.
+- **F012** — Risk budget hard-cap + broker connection health:
+  per-day, per-symbol, per-strategy max-loss caps; live risk
+  dashboard at `/risk` showing exposure / margin / worst-case /
+  MT5-connection-alive. Prerequisite for F013.
+- **F013** — Trade approval mode: human-in-loop confirmation queue
+  at `/approvals`; every squad-proposed live order (when live-mode
+  is enabled) surfaces here with rationale, risk numbers, and
+  timeout; user approves / rejects / lets-timeout. This is the
+  central Real-Trading feature.
+- **F014** — SSE alerts stream at `/api/alerts/stream`: trade fills,
+  stop hits, kill-switch trips, risk-budget breaches, platform down.
+  Telegram bridge reuses existing `bot_token` in `platform.toml`.
+
+## D065 · 2026-07-21 · ceo · [ARCH]
+
+**Sprint 2 ships the SCAFFOLDING for live orders, not the switch that starts sending them.**
+
+Every safety layer, approval queue, kill-switch, and alert lands as
+new `product`-branch code that runs in default-OFF mode. The user
+must explicitly flip a live-mode toggle in the UI to enable live
+order-sending. Sprint 2 does NOT:
+
+- Modify `agent/live/*` or `agent/risk/*` (v1 zones live agent on
+  `main` stays untouched, its kill-file protocol unaffected)
+- Modify `agent/squad/*` (next-gen shadow-runtime stays untouched)
+- Connect the squad to real broker order placement
+- Enable live-mode by default anywhere
+
+The connection between Sprint 2's safety-layer scaffolding and the
+squad actually placing live orders is a **separate integration**
+that requires a future CEO decision — not Sprint 2's business.
+Sprint 2's own tests must include a "live-mode-off invariant" that
+proves no live order can send from a clean install without the
+explicit user toggle.
+
 ## Template for subsequent entries
 
 ```markdown
