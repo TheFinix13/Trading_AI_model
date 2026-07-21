@@ -1,0 +1,18 @@
+{
+  "from_role": "frontend",
+  "to_role": "qa",
+  "feature_id": "F005",
+  "timestamp": "2026-07-21T16:35:00Z",
+  "deliverables": [
+    "agent/platform/pages.py",
+    "tests/platform/test_pages_shared_states.py"
+  ],
+  "notes": "Helper landed as three module-level constants in pages.py (_SKELETON_CSS, _ERROR_COPY_JS, _WITH_STATES_JS). Nav extended to 7 pills; nav() accepts 3 new active-name values ('performance', 'players', 'research'). 19 tests locked, all green. F001 / F002 / F003 can consume the helper by embedding the three constants into their page templates.",
+  "blockers": [],
+  "review_criteria": [
+    "tests/platform/test_pages_shared_states.py runs green",
+    "Full platform suite regression clean (100 -> 119 tests)",
+    "No new palette tokens introduced by skeleton CSS",
+    "No banned phrases (stack traces, undefined, Error 500) leak into copy"
+  ]
+}

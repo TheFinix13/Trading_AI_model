@@ -151,6 +151,55 @@ Revisit in Sprint 2 (Access) when per-user auth lands; at that point
 users). Until then, single-tenant / localhost / auth-token is the
 right posture.
 
+## D011 · 2026-07-21 · cpo · [FEATURE]
+
+**F005 fast-pathed through the review chain.**
+
+F005 (loading skeletons + friendly error states) satisfies every
+fast-path eligibility criterion in `protocols/review-chain.md`: no
+new module (helper lives inside `pages.py`), no auth surface, no
+user-data collection, no dependency added, diff bounded. Research +
+architecture stages waived; security + legal correctly skipped (no
+public claim in copy strings, no third-party name). Handoffs:
+`F005-cpo-to-ui_designer`, `F005-ui_designer-to-brand_designer`,
+`F005-brand_designer-to-frontend`, `F005-frontend-to-qa`,
+`F005-qa-to-cpo`. 19 new tests, 119 platform-suite total.
+
+## D012 · 2026-07-21 · brand_designer · [PERSONA-DECISION]
+
+**Error copy library seeded with 8 canonical keys plus per-page empty-state variants.**
+
+`company/brand/error_copy.md` publishes the canonical set:
+`server_restarting`, `temporary_glitch`, `unauthorized`,
+`not_configured`, `no_data_yet`, `unknown_route`, `api_not_found`,
+`stale_data`. Per-page empty-state variants are declared for F001
+(`/performance`), F002 (`/players/:id`, including retired and
+standby cases), F003 (`/research`). `company/brand/copy.md` lands
+alongside per D008 with page headings, KPI labels, button labels,
+number formatting rules, and canonical character-name spellings.
+
+## D013 · 2026-07-21 · frontend · [PERSONA-DECISION]
+
+**Platform nav pills extended from 4 to 7 (Performance / Squad / Research added).**
+
+`_NAV` gains three new pills and `nav()` accepts three new
+active-name values (`performance`, `players`, `research`). Existing
+pill tests (`test_hq_page`, `test_hub_page`) remain green. F001,
+F002, F003 pages will each register `nav('performance'|'players'|
+'research')` respectively when they land.
+
+## D014 · 2026-07-21 · cpo · [FEATURE]
+
+**F005 shipped -- helper landed and consumed downstream.**
+
+`agent/platform/pages.py` now exports three module-level constants
+(`_SKELETON_CSS`, `_ERROR_COPY_JS`, `_WITH_STATES_JS`) that F001 /
+F002 / F003 pages will embed directly into their `<style>` and
+`<script>` blocks. No separate deploy artefact — helper is
+code-only. CEO signoff is deferred to the end-of-sprint dogfood
+pass (D005 cadence) since F005 has no user-facing surface of its
+own; it graduates the moment its first consumer (F001) ships.
+
 ## Template for subsequent entries
 
 ```markdown

@@ -1,0 +1,19 @@
+{
+  "from_role": "brand_designer",
+  "to_role": "frontend",
+  "feature_id": "F005",
+  "timestamp": "2026-07-21T16:26:00Z",
+  "deliverables": [
+    "company/brand/copy.md",
+    "company/brand/error_copy.md"
+  ],
+  "notes": "Copy library seeded per D008. error_copy.md has 8 canonical keys + per-page empty-state variants. copy.md carries the platform-wide brand rules (tone, headings, buttons, numbers formatting, character-name spellings). Frontend: implement the withStates() helper in pages.py as three constants (_SKELETON_CSS + _ERROR_COPY_JS + _WITH_STATES_JS) and extend _NAV to include 3 new pills (Performance / Squad / Research). Every consuming page pastes the three constants into its <style> and <script> blocks.",
+  "blockers": [],
+  "review_criteria": [
+    "withStates() takes (box, fetcher, renderer, opts) and branches on outcome",
+    "Renderer returning 'empty' swaps to empty-state affordance",
+    "Retry button re-invokes fetcher then re-renders",
+    "Default skeleton helper covers KPI + chart + rows layout (F001 baseline)",
+    "Nav extension keeps existing pill tests green"
+  ]
+}

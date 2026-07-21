@@ -1,0 +1,17 @@
+{
+  "from_role": "cpo",
+  "to_role": "ui_designer",
+  "feature_id": "F005",
+  "timestamp": "2026-07-21T16:20:00Z",
+  "deliverables": [
+    "company/sprints/sprint-0-trust-foundation/F005-loading-skeletons-error-states.md"
+  ],
+  "notes": "Fast-path per review-chain.md eligibility (polish, no auth, no new user data). F005 is a horizontal concern: F001/F002/F003 build stages consume its helper. Ship the helper FIRST (this stage's design output pins dimensions to the KPI tile / chart / row / card containers so no layout shift happens when data lands).",
+  "blockers": [],
+  "review_criteria": [
+    "Skeleton dimensions pinned to container, not content (avoids layout shift)",
+    "Skeleton uses only --panel + a slightly-lighter shade -- no new palette",
+    "Error state distinct from empty state (different left-border colour)",
+    "Retry button labelled 'Try again' per Brand copy"
+  ]
+}

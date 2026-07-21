@@ -36,14 +36,297 @@ _NAV = """<div class="nav">
 <a href="/v1" class="{v1}">v1 · Zones agent (live demo)</a>
 <a href="/v2" class="{v2}">v2 · Squad pitch (sim)</a>
 <a href="/hq" class="{hq}">HQ · Blue Lock Trading Co.</a>
+<a href="/performance" class="{performance}">Performance</a>
+<a href="/players" class="{players}">Squad</a>
+<a href="/research" class="{research}">Research</a>
 </div>"""
 
 
 def nav(active: str) -> str:
-    return _NAV.format(hub="here" if active == "hub" else "",
-                       v1="here" if active == "v1" else "",
-                       v2="here" if active == "v2" else "",
-                       hq="here" if active == "hq" else "")
+    """Render the top nav pills; ``active`` marks one pill with .here.
+
+    Accepted values: ``hub`` / ``v1`` / ``v2`` / ``hq`` / ``performance`` /
+    ``players`` / ``research``. Unknown values render the nav with no
+    active pill (safe default -- users can still see where they are
+    from the URL).
+    """
+    return _NAV.format(
+        hub="here" if active == "hub" else "",
+        v1="here" if active == "v1" else "",
+        v2="here" if active == "v2" else "",
+        hq="here" if active == "hq" else "",
+        performance="here" if active == "performance" else "",
+        players="here" if active == "players" else "",
+        research="here" if active == "research" else "",
+    )
+
+
+# ---------------------------------------------------------------------------
+# F005 -- shared loading / error / empty-state helpers
+# ---------------------------------------------------------------------------
+#
+# Every page's fetch() must have three states (loading, error, empty)
+# per the F005 spec. Rather than re-implement per page, we ship a
+# single `withStates(box, fetcher, renderer, opts?)` helper below and
+# the matching skeleton / error / empty CSS. F001, F002, F003 all
+# consume this; the pattern becomes hard to forget.
+#
+# Copy strings originate from `company/brand/error_copy.md` -- the
+# JS-side CANONICAL_ERROR_COPY mirrors that document. When Brand
+# revises the copy library, this constant tracks the change.
+
+_SKELETON_CSS = r"""
+/* F005: skeleton placeholders + error / empty-state affordances.
+ * Shimmer uses only --panel and a slightly lighter shade so no new
+ * palette tokens are introduced. Elements the caller can pin size
+ * to (KPI tile, card row, chart, table row) get consistent looking
+ * placeholders so there's no layout shift when data lands. */
+@keyframes shimmer {
+  0%   { background-position: -200px 0; }
+  100% { background-position: calc(200px + 100%) 0; }
+}
+.sk {
+  background: linear-gradient(90deg,
+    var(--panel) 0%, #21262d 40%, var(--panel) 80%);
+  background-size: 200px 100%;
+  background-repeat: no-repeat;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: 6px;
+  display: inline-block;
+  color: transparent;
+}
+.sk-line { height: 12px; width: 100%; margin: 6px 0; }
+.sk-line.short { width: 40%; }
+.sk-line.med { width: 65%; }
+.sk-tile {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-height: 72px;
+}
+.sk-tile .sk-line { display: block; }
+.sk-chart {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  height: 220px;
+  position: relative;
+  overflow: hidden;
+}
+.sk-chart::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(88,166,255,.06) 50%, transparent 100%);
+  background-size: 220px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+.sk-row {
+  display: flex; gap: 10px; padding: 6px 0;
+  border-bottom: 1px solid #1c2129;
+}
+.sk-row .sk-line { flex: 1; }
+.sk-error, .sk-empty {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px;
+  color: var(--fg);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.sk-error { border-left: 3px solid var(--amber); }
+.sk-empty { border-left: 3px solid var(--dim); }
+.sk-error .msg, .sk-empty .msg { color: var(--fg); }
+.sk-error .foot, .sk-empty .foot {
+  color: var(--dim); font-size: 11.5px; margin-top: 8px;
+}
+.sk-error .retry, .sk-empty .retry {
+  margin-top: 10px;
+  background: #21262d;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.sk-error .retry:hover, .sk-empty .retry:hover {
+  border-color: var(--accent); color: var(--accent);
+}
+"""
+
+# The CANONICAL_ERROR_COPY object mirrors company/brand/error_copy.md
+# keys. Frontend picks a key from a fetch outcome (network / 5xx /
+# 401 / etc.), then looks up the user-facing string here. Overriding
+# per-call happens via opts.errorCopy in withStates().
+_ERROR_COPY_JS = r"""
+const CANONICAL_ERROR_COPY = {
+  "server_restarting":
+    "Couldn't reach the platform server \u2014 it might be " +
+    "restarting. Try again in a moment.",
+  "temporary_glitch":
+    "Something didn't come through this time. That's usually a " +
+    "hiccup \u2014 one more try often works.",
+  "unauthorized":
+    "This view is protected \u2014 add a token to the URL " +
+    "(?token=\u2026) or ask the operator for one.",
+  "not_configured":
+    "Not set up on this server yet. The operator can point this " +
+    "page at the data by reading the runbook.",
+  "no_data_yet":
+    "No data yet \u2014 the squad is watching the market. Come " +
+    "back after the next H4 bar close.",
+  "unknown_route":
+    "That page doesn't exist. Check the URL, or head back to the hub.",
+  "api_not_found":
+    "The data we need isn't available on this server. The page " +
+    "will keep what it has and try again.",
+  "stale_data":
+    "The numbers you're seeing haven't updated in a while \u2014 " +
+    "the backing data source may be paused. The page will keep trying."
+};
+
+const DEFAULT_ERROR_MAP = {
+  "network":       "server_restarting",
+  "http_5xx":      "temporary_glitch",
+  "http_401":      "unauthorized",
+  "http_404":      "api_not_found",
+  "json_parse":    "temporary_glitch",
+  "unconfigured":  "not_configured"
+};
+"""
+
+# The withStates() helper wraps a fetch promise with the three-state
+# lifecycle. Callers pass:
+#   box       -- the DOM element to render into (already sized in CSS
+#                so there's no layout shift when data lands).
+#   fetcher   -- () => Promise<any>. Should return {__error__: "..."}
+#                or {__auth__: true} on failure (the fetchJson helper
+#                convention already used throughout the platform).
+#   renderer  -- (data, box) => void. Called on success with the payload
+#                and the box element. If it returns the string "empty",
+#                the helper swaps in the empty-state affordance.
+#   opts      -- optional:
+#                  skeletonHtml : string  (defaults to a generic KPI +
+#                                          chart + rows layout)
+#                  emptyCopyKey : string  (which canonical empty-copy
+#                                          key to use; default 'no_data_yet')
+#                  emptyMessage : string  (override text if key insufficient)
+#                  errorCopy    : object  (per-call override of the
+#                                          fetch-outcome -> copy key map)
+#                  retryLabel   : string  ('Try again' by default)
+#
+# On failure: the box is replaced with an error affordance including
+# a retry button that re-invokes fetcher and re-runs the same
+# renderer. State is idempotent -- calling withStates() again on the
+# same box replaces its content cleanly.
+_WITH_STATES_JS = r"""
+function classifyFetchOutcome(result){
+  if(result && result.__auth__)   return "http_401";
+  if(!result || result.__error__ == null) return null;
+  const err = String(result.__error__ || "");
+  const m = err.match(/^HTTP\s+(\d+)/i);
+  if(m){
+    const code = parseInt(m[1], 10);
+    if(code === 401) return "http_401";
+    if(code === 404) return "http_404";
+    if(code >= 500)  return "http_5xx";
+    return "http_5xx";
+  }
+  if(/JSON|parse|unexpected token/i.test(err)) return "json_parse";
+  return "network";
+}
+function skeletonHtml(){
+  // Generic three-block skeleton: a header line, a tile grid, and a
+  // chart placeholder. Callers pass opts.skeletonHtml for anything
+  // custom (per-page mocks pin specific dimensions).
+  return (
+    '<div class="sk sk-line med" aria-hidden="true"></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,'+
+      'minmax(180px,1fr));gap:12px;margin:12px 0">'+
+      '<div class="sk-tile"><div class="sk sk-line short"></div>'+
+        '<div class="sk sk-line"></div></div>'+
+      '<div class="sk-tile"><div class="sk sk-line short"></div>'+
+        '<div class="sk sk-line"></div></div>'+
+      '<div class="sk-tile"><div class="sk sk-line short"></div>'+
+        '<div class="sk sk-line"></div></div>'+
+    '</div>'+
+    '<div class="sk-chart" role="progressbar" aria-label="Loading"></div>'
+  );
+}
+function _esc(x){
+  const d = document.createElement("div");
+  d.innerText = String(x == null ? "" : x);
+  return d.innerHTML;
+}
+function renderErrorState(box, copyKey, retryLabel, onRetry){
+  const msg = CANONICAL_ERROR_COPY[copyKey] ||
+              CANONICAL_ERROR_COPY["temporary_glitch"];
+  box.innerHTML =
+    '<div class="sk-error">'+
+      '<div class="msg">'+_esc(msg)+'</div>'+
+      '<button class="retry" type="button">'+_esc(retryLabel)+'</button>'+
+    '</div>';
+  const btn = box.querySelector(".retry");
+  if(btn && typeof onRetry === "function") btn.addEventListener("click", onRetry);
+}
+function renderEmptyState(box, copyKey, override, retryLabel, onRetry){
+  const msg = override || CANONICAL_ERROR_COPY[copyKey] ||
+              CANONICAL_ERROR_COPY["no_data_yet"];
+  const retryHtml = retryLabel
+    ? '<button class="retry" type="button">'+_esc(retryLabel)+'</button>'
+    : "";
+  box.innerHTML =
+    '<div class="sk-empty">'+
+      '<div class="msg">'+_esc(msg)+'</div>'+
+      retryHtml+
+    '</div>';
+  const btn = box.querySelector(".retry");
+  if(btn && typeof onRetry === "function") btn.addEventListener("click", onRetry);
+}
+async function withStates(box, fetcher, renderer, opts){
+  opts = opts || {};
+  const errorCopy = Object.assign({}, DEFAULT_ERROR_MAP, opts.errorCopy || {});
+  const skel = opts.skeletonHtml || skeletonHtml();
+  const retryLabel = opts.retryLabel || "Try again";
+  box.innerHTML = skel;
+  let result;
+  try { result = await fetcher(); }
+  catch(e){ result = {__error__: String((e && e.message) || e)}; }
+  // Backend-signalled "unconfigured" -- payload came back 200 but the
+  // module returned a skeleton (e.g. missing ledger). Treat as a
+  // dedicated copy key so operators see the runbook hint.
+  const meta = (result && result.meta) || {};
+  if(meta.unconfigured){
+    renderErrorState(box, errorCopy["unconfigured"] || "not_configured",
+      retryLabel, () => withStates(box, fetcher, renderer, opts));
+    return;
+  }
+  const kind = classifyFetchOutcome(result);
+  if(kind){
+    renderErrorState(box, errorCopy[kind] || "temporary_glitch",
+      retryLabel, () => withStates(box, fetcher, renderer, opts));
+    return;
+  }
+  // Success -- delegate to the caller's renderer. If it returns
+  // "empty" the helper swaps in the empty-state affordance (with an
+  // optional retry, since data can appear later).
+  let verdict = null;
+  try { verdict = renderer(result, box); }
+  catch(e){
+    renderErrorState(box, "temporary_glitch", retryLabel,
+      () => withStates(box, fetcher, renderer, opts));
+    return;
+  }
+  if(verdict === "empty"){
+    renderEmptyState(box, opts.emptyCopyKey || "no_data_yet",
+      opts.emptyMessage, opts.retryLabel || "Try again",
+      () => withStates(box, fetcher, renderer, opts));
+  }
+}
+"""
 
 
 # The hub is rewritten from a static two-tile page into a live overview:

@@ -1,0 +1,17 @@
+{
+  "from_role": "ui_designer",
+  "to_role": "brand_designer",
+  "feature_id": "F005",
+  "timestamp": "2026-07-21T16:22:00Z",
+  "deliverables": [
+    "company/design/F005-mocks.md"
+  ],
+  "notes": "Mocks pin skeleton dimensions to KPI-tile / chart / row containers so no layout shift when data lands. Two states + one empty state per component. Brand: please stand up the error copy library at company/brand/error_copy.md with 8 canonical keys (server_restarting, temporary_glitch, unauthorized, not_configured, no_data_yet, unknown_route, api_not_found, stale_data) plus per-page empty-state variants for F001/F002/F003.",
+  "blockers": [],
+  "review_criteria": [
+    "Every canonical key from mocks has a phrasing in error_copy.md",
+    "Retry-button label = 'Try again' (not 'Retry')",
+    "Empty-state copy per-page (F001/F002/F003 variants distinct from error)",
+    "Zero banned phrases (Error 500, undefined, stack traces, Failed to fetch)"
+  ]
+}
