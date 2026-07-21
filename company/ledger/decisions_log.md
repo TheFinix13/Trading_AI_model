@@ -690,6 +690,47 @@ public fields. Also adds `keyring>=25.0` to `requirements.txt` +
 (974 total, was 971). See handoff at
 `company/handoffs/sprint-1-retro-cto-to-cpo.json`.
 
+## D054 · 2026-07-21 · cpo · [FEATURE]
+
+**F006 spec locked — encrypted credential storage + install-scoped auth.**
+
+See `company/sprints/sprint-1-access/F006-encrypted-credentials-and-auth.md`.
+Two new backend modules (`agent/platform/credentials.py` +
+`agent/platform/auth.py`), a Python logging redaction filter, a new
+`/api/auth/status` route, and an auth gate that fires on `/api/*`
+non-localhost binds only. Zero rotation of the deployed VM's
+pre-existing `platform.toml` `auth_token` — install-token is
+additive per D052. Foundation feature for Sprint 1; F007 and F008
+consume it.
+
+## D055 · 2026-07-21 · cpo · [FEATURE]
+
+**F007 spec locked — MT5 broker connection wizard.**
+
+See `company/sprints/sprint-1-access/F007-broker-connection-wizard.md`.
+New backend module (`agent/platform/broker_connection.py`) + new
+`BROKER_WIZARD_PAGE` at `/settings/broker` + four HTTP APIs
+(`/api/broker/test-connection`, `/save`, `/list`, `/delete`). MT5 is
+Windows-only; macOS/Linux surface a "MT5 not on this platform"
+affordance instead of a hard failure. Sandbox default per D052; live
+requires "I understand" checkbox + typed "LIVE" confirmation +
+inline Legal warning drafted in `company/legal/live-broker-warning.md`.
+Rate-limited to 5 test-connection attempts per minute per install
+token. Server allow-list enforced.
+
+## D056 · 2026-07-21 · cpo · [FEATURE]
+
+**F008 spec locked — first-time setup / onboarding flow.**
+
+See `company/sprints/sprint-1-access/F008-onboarding-flow.md`. New
+backend module (`agent/platform/onboarding.py`) + new
+`ONBOARDING_PAGE` at `/onboarding` with 5 steps (welcome →
+passphrase → broker → default pairs → confirm). First-visit redirect
+JS on every page + server-side belt-and-braces redirect from every
+non-exempt route. `/settings/reset-install` clears keyring state and
+returns to onboarding. Onboarding state (current step, completion
+flag) stored in keyring, never in the git-tracked `platform.toml`.
+
 ## Template for subsequent entries
 
 ```markdown

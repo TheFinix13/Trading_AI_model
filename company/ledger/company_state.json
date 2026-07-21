@@ -4,8 +4,8 @@
     "founded": "2026-07-21",
     "mission": "The first AI trading platform that trades like a football team.",
     "one_liner": "Watch our striker squad find setups on real markets \u2014 every decision explained, every risk gated.",
-    "current_sprint_id": "sprint-0-trust-foundation",
-    "generated_at": "2026-07-21T17:54:00Z",
+    "current_sprint_id": "sprint-1-access",
+    "generated_at": "2026-07-21T19:40:00Z",
     "schema_version": "1.0.0"
   },
   "roles": [
@@ -135,10 +135,10 @@
       "title": "Security Engineer",
       "tier": "engineering",
       "persona_name": null,
-      "active": false,
-      "current_task": "Standby \u2014 Sprint 0 features are non-auth-touching",
+      "active": true,
+      "current_task": "Sprint 1 mandatory reviewer on F006/F007/F008 per D048",
       "throughput_last_7d": 0,
-      "features_owned_now": [],
+      "features_owned_now": ["F006", "F007", "F008"],
       "features_reviewed_last_7d": 0
     },
     {
@@ -209,6 +209,18 @@
       "feature_ids": ["F001", "F002", "F003", "F004", "F005"],
       "day_count": 0,
       "day_target": 14
+    },
+    {
+      "id": "sprint-1-access",
+      "name": "Access",
+      "goal": "Turn the trust-only platform into a usable installation: encrypted credentials, MT5 broker wizard, first-time setup flow.",
+      "started_at": "2026-07-21",
+      "target_end": "2026-08-04",
+      "actual_end": null,
+      "verdict": "in_progress",
+      "feature_ids": ["F006", "F007", "F008"],
+      "day_count": 0,
+      "day_target": 13
     }
   ],
   "features": [
@@ -635,6 +647,89 @@
         "agent/platform/pages.py",
         "tests/platform/test_pages_shared_states.py"
       ]
+    },
+    {
+      "id": "F006",
+      "title": "Encrypted credential storage + install-scoped auth",
+      "priority": "P0",
+      "sprint_id": "sprint-1-access",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "qa", "security", "legal", "ceo"],
+      "auth": true,
+      "credentials": true,
+      "created_at": "2026-07-21T19:40:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-21T19:40:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-1-access/F006-encrypted-credentials-and-auth.md",
+          "note": "Spec locked. Foundation feature for the sprint (per D050 lane serialisation)."
+        }
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-1-access/F006-encrypted-credentials-and-auth.md"
+      ]
+    },
+    {
+      "id": "F007",
+      "title": "MT5 broker connection wizard",
+      "priority": "P0",
+      "sprint_id": "sprint-1-access",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
+      "auth": true,
+      "credentials": true,
+      "broker_connection": true,
+      "created_at": "2026-07-21T19:40:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-21T19:40:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-1-access/F007-broker-connection-wizard.md",
+          "note": "Spec locked. Consumes F006 credentials + auth modules."
+        }
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-1-access/F007-broker-connection-wizard.md"
+      ]
+    },
+    {
+      "id": "F008",
+      "title": "First-time setup / onboarding flow",
+      "priority": "P0",
+      "sprint_id": "sprint-1-access",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
+      "auth": true,
+      "credentials": true,
+      "first_visit_redirect": true,
+      "created_at": "2026-07-21T19:40:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-21T19:40:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-1-access/F008-onboarding-flow.md",
+          "note": "Spec locked. Consumes F006 (auth check) + F007 (broker step)."
+        }
+      ],
+      "blockers": [],
+      "awaiting_ceo": false,
+      "deliverables_paths": [
+        "company/sprints/sprint-1-access/F008-onboarding-flow.md"
+      ]
     }
   ],
   "decisions": [
@@ -1001,6 +1096,34 @@
       "role": "ceo",
       "decision": "Sprint 1 auth scope = MINIMAL: single-user install, bring-your-own broker.",
       "context": "OS keychain (keyring lib) preferred, encrypted-file passphrase fallback. Sandbox default; live MT5 opt-in via onboarding flow. No user DB, no signup flow. Multi-tenant = later sprint."
+    },
+    {
+      "id": "D053",
+      "date": "2026-07-21",
+      "role": "cto",
+      "decision": "Retro amendments landed (review-chain \u00a73.5 / \u00a74.2 / \u00a75.5 / \u00a76.3) + claim_register seeded + `_BASE_CSS_VERSION=1.0.0` + `keyring>=25.0` dependency added.",
+      "context": "Per D047 the four Sprint 1 retro improvements land as protocol amendments in this sprint's first commit. Test count 971 -> 974."
+    },
+    {
+      "id": "D054",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F006 spec locked: encrypted credential storage + install-scoped auth.",
+      "context": "See company/sprints/sprint-1-access/F006-encrypted-credentials-and-auth.md. New modules agent/platform/credentials.py + agent/platform/auth.py; installs redaction filter; /api/auth/status route; auth gate on /api/* non-localhost. Sprint 1 foundation feature."
+    },
+    {
+      "id": "D055",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F007 spec locked: MT5 broker connection wizard at /settings/broker.",
+      "context": "See company/sprints/sprint-1-access/F007-broker-connection-wizard.md. New module agent/platform/broker_connection.py + BROKER_WIZARD_PAGE. Consumes F006 credentials + auth. Sandbox default per D052; live requires typed confirmation."
+    },
+    {
+      "id": "D056",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F008 spec locked: first-time setup / onboarding at /onboarding.",
+      "context": "See company/sprints/sprint-1-access/F008-onboarding-flow.md. New module agent/platform/onboarding.py + ONBOARDING_PAGE + first-visit redirect. Consumes F006 (auth check) + F007 (broker step). /settings/reset-install returns to onboarding."
     }
   ],
   "sprint_verdicts": [
@@ -1018,11 +1141,13 @@
   "kpis": {
     "features_shipped_sprint_0": 5,
     "features_total_sprint_0": 5,
-    "backlog_size": 4,
+    "features_shipped_sprint_1": 0,
+    "features_total_sprint_1": 3,
+    "backlog_size": 3,
     "bugs_open": 0,
     "cycle_time_days_p50": null,
     "test_coverage_pct": null,
-    "active_roles": 11,
+    "active_roles": 12,
     "total_roles": 17
   },
   "blockers": []
