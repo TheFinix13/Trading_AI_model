@@ -1,0 +1,25 @@
+{
+  "from_role": "brand_designer",
+  "to_role": "ai_ml_engineer",
+  "feature_id": "F002",
+  "timestamp": "2026-07-21T17:28:00Z",
+  "deliverables": [
+    "company/roster/players/isagi.md",
+    "company/roster/players/bachira.md",
+    "company/roster/players/rin.md",
+    "company/roster/players/chigiri.md",
+    "company/roster/players/reo.md",
+    "company/roster/players/nagi.md",
+    "company/roster/players/barou.md",
+    "company/roster/players/karasu.md",
+    "company/roster/players/sae.md",
+    "company/roster/players/kunigami.md"
+  ],
+  "notes": "10 stranger-friend bios written. Each carries a header meta block (id, canon_player, playstyle_tag, status, tier, weapon, symbols, home_tf, signature_blurb) and three H2 sections (## Playstyle prose / ## Signature setup / ## Evolution history). Zero uses of 'ensemble' or 'aggregator'. Sae marked as disabled by default; Kunigami marked as retired-from-proposing.",
+  "blockers": [],
+  "review_criteria": [
+    "Bios accurately describe actual behaviour in agent/squad/agents/*",
+    "Coaching notes from the last 30 days reflected where relevant",
+    "AI/ML confirms weapon strings match roster.py naming"
+  ]
+}

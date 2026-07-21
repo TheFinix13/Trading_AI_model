@@ -1,0 +1,16 @@
+{
+  "from_role": "ux_researcher",
+  "to_role": "ui_designer",
+  "feature_id": "F002",
+  "timestamp": "2026-07-21T17:24:00Z",
+  "deliverables": [
+    "company/research/F002-user-journey.md"
+  ],
+  "notes": "JTBD ordering locked (who / setup / behaviour / recent / evolution). Non-goals ratified: no editable notes, no per-character P&L chart, no comparison view. Accessibility spelled out: colour + text on status pills; aria-label on setup diagrams. Sae/Kunigami low-data risk explicitly framed (source_hint copy handles it).",
+  "blockers": [],
+  "review_criteria": [
+    "Index card grid + one bio-detail mock at both desktop and 375px",
+    "Status pill styling for active / standby / retired distinct without relying on colour alone",
+    "Reuse F001's .kpi-tile / .disclaimer / .source-hint primitives"
+  ]
+}

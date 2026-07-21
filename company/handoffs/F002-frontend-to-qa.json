@@ -1,0 +1,22 @@
+{
+  "from_role": "frontend_engineer",
+  "to_role": "qa_engineer",
+  "feature_id": "F002",
+  "timestamp": "2026-07-21T17:32:00Z",
+  "deliverables": [
+    "agent/platform/players.py",
+    "agent/platform/pages.py",
+    "scripts/serve_platform.py",
+    "tests/platform/test_players_module.py",
+    "tests/platform/test_players_page.py",
+    "tests/platform/test_players_api.py"
+  ],
+  "notes": "Backend + frontend built. PLAYERS_INDEX_PAGE + player_detail_page(id, name) factory + players_not_found_page(known_ids) shipped. Routes: /players, /players/<id> (case-insensitive, canon-variant, trailing-slash), /api/players/list (alias /api/players), /api/players/<id>. Test count: 170 -> 240 (+70).",
+  "blockers": [],
+  "review_criteria": [
+    "All 70 new tests pass",
+    "Full platform suite passes",
+    "Manual: 10 bio pages render at 375px and desktop",
+    "Manual: 404 shell lists all 10 valid slugs"
+  ]
+}

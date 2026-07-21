@@ -1,0 +1,17 @@
+{
+  "from_role": "qa_engineer",
+  "to_role": "legal",
+  "feature_id": "F002",
+  "timestamp": "2026-07-21T17:34:00Z",
+  "deliverables": [
+    "company/qa/F002-verdict.md"
+  ],
+  "notes": "QA verdict = pass. 70 new tests green + full platform suite green. Security stage skipped (public page, no auth surface, no user-data write). Legal review IS required -- character-name usage triggers the IP disclaimer surface.",
+  "blockers": [],
+  "review_criteria": [
+    "IP disclaimer verbatim on every user-facing page (/players + 10 detail pages)",
+    "Character-name spellings match company/brand/copy.md::spellings",
+    "No copyrighted imagery reproduced",
+    "Fallback naming plan documented (blue-lock-ip-notice.md)"
+  ]
+}

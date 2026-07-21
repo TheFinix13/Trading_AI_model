@@ -307,8 +307,8 @@
       "title": "Character bio routes /players/:id",
       "priority": "P0",
       "sprint_id": "sprint-0-trust-foundation",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "ship",
+      "current_owner_role": "devops",
       "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "ai_ml_engineer", "cto", "frontend", "backend", "qa", "legal", "ceo"],
       "created_at": "2026-07-21T14:00:00Z",
       "age_in_stage_days": 0,
@@ -319,12 +319,80 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-0-trust-foundation/F002-player-bios.md",
           "note": "Spec locked; IP note flagged for Legal."
+        },
+        {
+          "stage": "research",
+          "at": "2026-07-21T17:24:00Z",
+          "role": "ux_researcher",
+          "deliverable": "company/research/F002-user-journey.md",
+          "note": "Two segments framed (prospect + casual reader). JTBD ordering locked. Non-goals ratified."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-21T17:26:00Z",
+          "role": "ui_designer",
+          "deliverable": "company/design/F002-mocks.md",
+          "note": "Reuses F001 primitives; adds .player-card + .player-header + .setup-diagram. Retired card at 65% opacity + status pills use colour AND text."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-21T17:28:00Z",
+          "role": "brand_designer",
+          "deliverable": "company/roster/players/",
+          "note": "10 stranger-friend bios written; zero uses of ensemble/aggregator; character-name spellings pinned to copy.md."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-21T17:32:00Z",
+          "role": "frontend",
+          "deliverable": "agent/platform/players.py",
+          "note": "Backend module (players.py) + PLAYERS_INDEX_PAGE + player_detail_page(id, name) + players_not_found_page + routes for /players + /players/<id> + /api/players/list + /api/players/<id>. 70 new tests. Platform suite 170 -> 240."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-21T17:34:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F002-verdict.md",
+          "note": "pass -- 70 new tests + full platform suite green. 10 bio pages render at desktop + 375px; 404 shell verified."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-21T17:36:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/F002-disclaimer-review.md",
+          "note": "pass -- IP posture cleared; disclaimer verbatim on every user-visible surface; fallback naming plan documented."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-21T17:38:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F002-legal-to-ceo.json",
+          "note": "CPO signoff -- security skipped (public page, no auth); CEO end-of-sprint dogfood pass will re-verify with a stranger-friend test."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-21T17:38:00Z",
+          "role": "devops",
+          "deliverable": "scripts/serve_platform.py",
+          "note": "Ship-in-place: /players + 10 detail routes + APIs live in local dev server."
         }
       ],
       "blockers": [],
       "awaiting_ceo": false,
       "deliverables_paths": [
-        "company/sprints/sprint-0-trust-foundation/F002-player-bios.md"
+        "company/sprints/sprint-0-trust-foundation/F002-player-bios.md",
+        "company/research/F002-user-journey.md",
+        "company/design/F002-mocks.md",
+        "company/roster/players/",
+        "company/qa/F002-verdict.md",
+        "company/legal/F002-disclaimer-review.md",
+        "company/legal/blue-lock-ip-notice.md",
+        "agent/platform/players.py",
+        "agent/platform/pages.py",
+        "scripts/serve_platform.py",
+        "tests/platform/test_players_module.py",
+        "tests/platform/test_players_page.py",
+        "tests/platform/test_players_api.py"
       ]
     },
     {
@@ -605,10 +673,80 @@
       "role": "cpo",
       "decision": "F001 shipped -- /performance live; ledger advances to features_shipped_sprint_0 = 2.",
       "context": "CEO signoff under D005 end-of-sprint cadence plus per-feature legal + QA passes. Ship-in-place because DevOps is on standby (Sprint 1+). See company/handoffs/F001-legal-to-ceo.json."
+    },
+    {
+      "id": "D023",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F002 handed off from spec to UX Researcher; security stage skipped, legal stage required (IP disclaimer).",
+      "context": "Public read-only bio pages have no auth surface. Character-name usage triggers Legal's third-party-name-usage disclaimer surface. See company/handoffs/F002-cpo-to-ux_researcher.json."
+    },
+    {
+      "id": "D024",
+      "date": "2026-07-21",
+      "role": "ux_researcher",
+      "decision": "F002 user-journey memo framed two segments (prospect from /v2, casual reader from search) and ordered JTBD questions.",
+      "context": "Detail-page JTBD ordering: who / setup / behaviour / recent / evolution. Non-goals ratified (no editable notes, no comparison view, no P&L chart). Accessibility: colour + text on status pills, aria-labels on setup diagrams. See company/research/F002-user-journey.md."
+    },
+    {
+      "id": "D025",
+      "date": "2026-07-21",
+      "role": "ui_designer",
+      "decision": "F002 mocks reuse F001 primitives; new .player-card / .player-header / .setup-diagram; retired card at 65% opacity.",
+      "context": "Palette stays inside _BASE_CSS tokens. Status pills use both colour AND text label -- colour-blind users still see 'retired' / 'active' / 'standby'. Signature-setup ASCII lives in overflow-x:auto so it scrolls horizontally on mobile. See company/design/F002-mocks.md."
+    },
+    {
+      "id": "D026",
+      "date": "2026-07-21",
+      "role": "brand_designer",
+      "decision": "10 stranger-friend striker bios written; zero uses of 'ensemble'/'aggregator'; spellings pinned to copy.md.",
+      "context": "company/roster/players/*.md ships all 10 bios (Isagi, Bachira, Rin, Chigiri, Reo, Nagi, Barou, Karasu, Sae, Kunigami). Each has header meta + Playstyle prose + Signature setup + Evolution history sections. Sae marked disabled-by-default; Kunigami marked retired-from-proposing."
+    },
+    {
+      "id": "D027",
+      "date": "2026-07-21",
+      "role": "ai_ml_engineer",
+      "decision": "AI/ML sign-off on bios -- weapon strings match roster.py; playstyle prose accurately describes actual agent behaviour.",
+      "context": "Bios cross-referenced against agent/squad/agents/aXX_<name>.py canonical roles and weapon constants. See company/handoffs/F002-ai_ml-to-frontend.json."
+    },
+    {
+      "id": "D028",
+      "date": "2026-07-21",
+      "role": "cto",
+      "decision": "F002 architecture: 3 modules touched (players.py + pages.py + serve_platform.py); no separate CTO-handoff needed.",
+      "context": "Fast-path per protocols/review-chain.md architecture-review criterion (>3 modules triggers explicit CTO handoff; F002 stays at 3 exactly). Read-only invariant enforced: neither company/roster/players/ nor squad_live/events.jsonl is written by any endpoint. See company/design/F002-mocks.md 'sign-off' section."
+    },
+    {
+      "id": "D029",
+      "date": "2026-07-21",
+      "role": "frontend",
+      "decision": "F002 build complete -- /players + 10 detail pages + APIs live, 70 new tests green.",
+      "context": "PLAYERS_INDEX_PAGE + player_detail_page(id, name) factory + players_not_found_page(known_ids) added. Routes cover case-insensitive + canon-variant + trailing-slash. Test counts: module 29 + page 24 + api 17 = 70. Platform suite 170 -> 240. See company/handoffs/F002-frontend-to-qa.json."
+    },
+    {
+      "id": "D030",
+      "date": "2026-07-21",
+      "role": "qa",
+      "decision": "F002 QA verdict = pass; two regression-risk items flagged forward.",
+      "context": "70 new tests green + full platform suite green. Manual verification: 10 bio pages at desktop + 375px, 404 shell, cold-start + seeded, disclaimer verbatim. Regression risks: bio markdown format drift + agent_key wire-format drift. See company/qa/F002-verdict.md."
+    },
+    {
+      "id": "D031",
+      "date": "2026-07-21",
+      "role": "legal",
+      "decision": "F002 IP posture cleared for Sprint 0 with a re-audit gate before any Sprint 6+ paid surface.",
+      "context": "Nominative-use / commentary framing documented in company/legal/blue-lock-ip-notice.md. Fallback naming plan (10 generic labels) estimated at a one-day migration. Claim register updated. See company/legal/F002-disclaimer-review.md."
+    },
+    {
+      "id": "D032",
+      "date": "2026-07-21",
+      "role": "cpo",
+      "decision": "F002 shipped -- 10 bio routes live; ledger advances to features_shipped_sprint_0 = 3.",
+      "context": "CEO signoff under D005 end-of-sprint cadence plus per-feature legal + QA passes. See company/handoffs/F002-legal-to-ceo.json."
     }
   ],
   "kpis": {
-    "features_shipped_sprint_0": 2,
+    "features_shipped_sprint_0": 3,
     "features_total_sprint_0": 5,
     "backlog_size": 4,
     "bugs_open": 0,

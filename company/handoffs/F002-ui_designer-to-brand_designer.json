@@ -1,0 +1,17 @@
+{
+  "from_role": "ui_designer",
+  "to_role": "brand_designer",
+  "feature_id": "F002",
+  "timestamp": "2026-07-21T17:26:00Z",
+  "deliverables": [
+    "company/design/F002-mocks.md"
+  ],
+  "notes": "Mocks reuse F001's palette + primitives. New F002-owned primitives: .player-card (with retired variant at 65% opacity), .player-header, .setup-diagram (overflow-x:auto). All 10 bios need the stranger-friend copy pass from Brand -- especially Sae/Karasu/Kunigami where the ledger has little live data to lean on.",
+  "blockers": [],
+  "review_criteria": [
+    "10 stranger-friend copy passes (one per striker)",
+    "playstyle_tag <= 60 chars per striker",
+    "signature_blurb 1-2 sentences per striker",
+    "character-name spellings match company/brand/copy.md::spellings"
+  ]
+}

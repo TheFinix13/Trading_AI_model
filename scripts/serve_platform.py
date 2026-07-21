@@ -38,11 +38,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from agent.platform import (  # noqa: E402
-    hq, live_status, paper_loop, performance, squad_events,
+    hq, live_status, paper_loop, performance, players, squad_events,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
-    HQ_PAGE, HUB_PAGE, PERFORMANCE_PAGE, V1_PAGE, V2_PAGE,
+    HQ_PAGE, HUB_PAGE, PERFORMANCE_PAGE, PLAYERS_INDEX_PAGE,
+    V1_PAGE, V2_PAGE, player_detail_page, players_not_found_page,
 )
 
 PLATFORM_VERSION = "0.2.0"
@@ -51,6 +52,8 @@ _MATCH_RE = re.compile(
     r"^/api/v2/match/([A-Za-z0-9_.-]+)/(summary|events|event/(\d+))$")
 _LIVE_RE = re.compile(
     r"^/api/v2/live/(summary|events|status|workspace|event/(\d+))$")
+_PLAYER_URL_RE = re.compile(r"^/players/([A-Za-z0-9_-]+)/?$")
+_PLAYER_API_RE = re.compile(r"^/api/players/([A-Za-z0-9_-]+)$")
 
 
 def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
@@ -143,6 +146,44 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 # 500.
                 self._json(performance.get_state(
                     log_root=log_root, live_dir=live_dir))
+            elif path in ("/players", "/players/"):
+                # F002: /players index -- ten-striker card grid.
+                self._send(PLAYERS_INDEX_PAGE.encode(),
+                           "text/html; charset=utf-8")
+            elif (pu := _PLAYER_URL_RE.match(path)):
+                # F002: /players/<id> detail page. Unknown id -> 404
+                # shell that lists the ten valid slugs as links.
+                raw = pu.group(1)
+                canonical = players.normalize_id(raw)
+                if canonical is None:
+                    self._send(
+                        players_not_found_page(
+                            list(players.valid_ids())).encode(),
+                        "text/html; charset=utf-8", 404)
+                else:
+                    row = next((r for r in players.roster_meta()
+                                if r["id"] == canonical), None)
+                    display_name = (row["name"] if row else canonical)
+                    self._send(
+                        player_detail_page(canonical, display_name).encode(),
+                        "text/html; charset=utf-8")
+            elif path in ("/api/players/list", "/api/players"):
+                # F002: index API -- ten-row roster payload.
+                self._json(players.list_state(live_dir=live_dir))
+            elif (pa := _PLAYER_API_RE.match(path)):
+                # F002: detail API -- one striker's full payload.
+                raw = pa.group(1)
+                canonical = players.normalize_id(raw)
+                if canonical is None:
+                    self._json({"error": "unknown striker",
+                                "valid_ids": list(players.valid_ids())}, 404)
+                else:
+                    payload = players.get_player(
+                        canonical, live_dir=live_dir)
+                    if payload is None:
+                        self._json({"error": "unknown striker"}, 404)
+                    else:
+                        self._json(payload)
             elif path == "/api/hq/state":
                 # HQ dashboard state -- reads company/ledger/company_state.json
                 # (or company_ledger_path override in tests). Missing /

@@ -1,0 +1,16 @@
+{
+  "from_role": "legal",
+  "to_role": "ceo",
+  "feature_id": "F002",
+  "timestamp": "2026-07-21T17:36:00Z",
+  "deliverables": [
+    "company/legal/F002-disclaimer-review.md",
+    "company/legal/blue-lock-ip-notice.md",
+    "company/legal/disclaimers.md"
+  ],
+  "notes": "IP posture cleared for Sprint 0. Nominative-use / commentary framing documented; disclaimer verbatim on every user-facing surface; fallback naming plan (10 generic labels) documented and estimated at a one-day migration. Re-audit before any Sprint 6+ paid or public-marketing surface. Ready for CEO signoff -> ship.",
+  "blockers": [],
+  "review_criteria": [
+    "Ready for /hq ledger update advancing F002 to 'signoff' -> 'ship'"
+  ]
+}

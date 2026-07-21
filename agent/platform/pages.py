@@ -3295,3 +3295,451 @@ PERFORMANCE_PAGE = (_PERFORMANCE_TEMPLATE
                     .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
                     .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
                     .replace("__NAV__", nav('performance')))
+
+
+# ---------------------------------------------------------------------------
+# F002 -- /players index and /players/<id> detail
+# ---------------------------------------------------------------------------
+#
+# Index page shows the ten strikers as a card grid. Detail page shows
+# one striker's playstyle prose, career stats, signature setup, recent
+# activity, evolution history, and the IP disclaimer footer. Both pages
+# consume F005's withStates() helper for skeleton/error/empty states.
+#
+# Mobile media queries collapse the card grid and the stats grid to
+# single-column below 480 px. Signature setup ASCII lives in a <pre>
+# with overflow-x:auto so the diagram scrolls horizontally instead of
+# wrapping.
+#
+# The IP disclaimer copy is authoritative in company/legal/disclaimers.md
+# under `third-party-name-usage`; changes require a Legal-owned bump.
+
+_PLAYERS_CSS = r"""
+.players-header{margin-bottom:18px}
+.players-header h1{margin:0 0 6px;font-size:22px}
+.players-header .preamble{color:var(--dim);font-size:13.5px;line-height:1.55;
+  max-width:820px}
+.players-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;
+  margin-bottom:18px}
+@media (max-width: 1100px){.players-grid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width: 700px){.players-grid{grid-template-columns:1fr}}
+.player-card{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:14px 16px;display:block;text-decoration:none;
+  color:var(--fg);transition:border-color .15s ease}
+.player-card:hover{border-color:var(--accent)}
+.player-card.retired{opacity:.65}
+.player-card .name{display:flex;justify-content:space-between;align-items:baseline;
+  gap:8px}
+.player-card .name .n{font-size:17px;font-weight:600}
+.player-card .name .num{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums}
+.player-card .tag{color:var(--dim);font-size:12.5px;margin:4px 0 10px;line-height:1.45}
+.player-card .stats{display:flex;gap:14px;font-variant-numeric:tabular-nums;
+  font-size:12.5px;color:var(--dim);flex-wrap:wrap}
+.player-card .stats b{color:var(--fg);font-weight:600}
+.status-pill{display:inline-block;padding:2px 8px;border-radius:99px;
+  border:1px solid var(--border);font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.06em;font-weight:600;color:var(--dim)}
+.status-pill.active{border-color:rgba(63,185,80,.55);color:#7ee787}
+.status-pill.standby{border-color:rgba(88,166,255,.55);color:#79c0ff}
+.status-pill.retired{border-color:rgba(139,148,158,.55);color:#8b949e}
+.player-detail{max-width:960px;margin:0 auto}
+.player-header{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:18px 22px;margin-bottom:18px}
+.player-header .name-row{display:flex;justify-content:space-between;align-items:baseline;
+  gap:12px;flex-wrap:wrap}
+.player-header h1{margin:0;font-size:28px;line-height:1.15}
+.player-header .num{font-size:14px;color:var(--dim);font-variant-numeric:tabular-nums}
+.player-header .tag{color:var(--dim);font-size:14px;margin:6px 0 10px}
+.player-header .meta{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;
+  color:var(--dim);margin-top:8px}
+.player-header .meta b{color:var(--fg);font-weight:600}
+.player-header .blurb{margin-top:14px;color:var(--fg);font-size:14px;
+  line-height:1.55}
+.section{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:16px 18px;margin-bottom:18px}
+.section h2{margin:0 0 12px;font-size:15px;letter-spacing:.02em}
+.section .prose p{margin:0 0 10px;line-height:1.65;font-size:14px}
+.section .prose p:last-child{margin-bottom:0}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media (max-width: 1100px){.stat-grid{grid-template-columns:repeat(3,1fr)}}
+@media (max-width: 700px){.stat-grid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width: 480px){.stat-grid{grid-template-columns:1fr}}
+.stat-tile{background:var(--bg);border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px}
+.stat-tile .k{font-size:10.5px;color:var(--dim);text-transform:uppercase;
+  letter-spacing:.05em;font-weight:600;margin-bottom:4px}
+.stat-tile .v{font-size:18px;font-variant-numeric:tabular-nums;color:var(--fg);
+  font-weight:600;line-height:1.1}
+.stat-tile .v.ok{color:var(--green)} .stat-tile .v.bad{color:var(--red)}
+.setup-diagram{background:var(--bg);border:1px solid var(--border);
+  border-radius:8px;padding:12px 14px;overflow-x:auto}
+.setup-diagram pre{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:12.5px;line-height:1.35;color:var(--dim);white-space:pre}
+.activity-list{list-style:none;padding:0;margin:0}
+.activity-list li{display:flex;gap:12px;padding:8px 0;
+  border-bottom:1px solid var(--border);font-size:12.5px;
+  font-variant-numeric:tabular-nums;color:var(--fg);flex-wrap:wrap}
+.activity-list li:last-child{border-bottom:none}
+.activity-list .ts{color:var(--dim);min-width:130px}
+.activity-list .pnl.ok{color:var(--green)} .activity-list .pnl.bad{color:var(--red)}
+.evolution-list{padding-left:20px;margin:0;color:var(--fg);font-size:13.5px;
+  line-height:1.6}
+.disclaimer{margin-top:12px;padding:14px 16px;background:var(--panel);
+  border:1px solid var(--border);border-radius:10px;font-size:12px;
+  color:var(--dim);line-height:1.55}
+.disclaimer p{margin:0}
+.back-link{display:inline-block;margin-bottom:14px;color:var(--dim);
+  text-decoration:none;font-size:12.5px}
+.back-link:hover{color:var(--accent)}
+"""
+
+
+_PLAYERS_INDEX_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Squad -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+__SKELETON_CSS__
+__PLAYERS_CSS__
+</style></head>
+<body>
+__NAV__
+<div class="wrap">
+  <div class="players-header">
+    <h1>The squad</h1>
+    <div class="preamble">Ten specialists, one pitch. Each striker owns
+    a specific trading playstyle. Click any card to read their bio
+    and see what they have done recently.</div>
+  </div>
+  <div class="source-hint" id="source-hint" style="display:none"></div>
+  <div id="grid"></div>
+  <div class="disclaimer" role="note">
+    <p><b>Blue Lock is a manga / anime by Yusuke Nomura and Muneyuki
+    Kaneshiro, published by Kodansha.</b> Characters here are named
+    as homage to describe our AI agents' trading playstyles; no
+    affiliation, endorsement, or commercial arrangement is claimed.</p>
+  </div>
+</div>
+<script>__ERROR_COPY_JS__
+__WITH_STATES_JS__
+function pipSpan(n){
+  var cls = n > 0 ? "ok" : (n < 0 ? "bad" : "");
+  var sign = n > 0 ? "+" : "";
+  return '<b class="'+cls+'">'+sign+n.toFixed(1)+'</b>';
+}
+function playersSkeleton(box){
+  var html = '<div class="players-grid">';
+  for(var i=0;i<10;i++){
+    html += '<div class="sk-tile"><span class="sk sk-line med"></span>'+
+            '<span class="sk sk-line short"></span>'+
+            '<span class="sk sk-line"></span></div>';
+  }
+  html += '</div>';
+  box.innerHTML = html;
+}
+function renderPlayers(data){
+  var players = (data && data.players) || [];
+  var out = '<div class="players-grid">';
+  for(var i=0;i<players.length;i++){
+    var p = players[i];
+    var cls = "player-card";
+    if(p.status === "retired") cls += " retired";
+    var sym = (p.symbols || []).join(", ");
+    var blurb = p.signature_blurb || p.playstyle_tag || "";
+    out += '<a class="'+cls+'" href="/players/'+encodeURIComponent(p.id)+'">';
+    out += '<div class="name"><span class="n">'+p.name+'</span>'+
+           '<span class="num">Tier '+p.tier+'</span></div>';
+    out += '<div class="tag">'+p.playstyle_tag+'</div>';
+    out += '<div class="tag" style="margin-top:-6px">'+blurb+'</div>';
+    out += '<div class="stats">';
+    out += '<span>Props <b>'+(p.proposals|0)+'</b></span>';
+    out += '<span>Wins <b>'+(p.wins|0)+'</b></span>';
+    out += '<span>Net '+pipSpan(+p.net_pips || 0)+'</span>';
+    out += '<span class="status-pill '+p.status+'">'+p.status+'</span>';
+    out += '</div>';
+    out += '<div class="tag" style="margin-top:8px;font-size:11px">'+sym+'</div>';
+    out += '</a>';
+  }
+  out += '</div>';
+  var box = document.getElementById("grid");
+  box.innerHTML = out;
+  var hint = document.getElementById("source-hint");
+  hint.style.display = "";
+  hint.innerHTML = '<span class="k">SOURCE</span>' +
+    'roster of ' + players.length + ' strikers -- bios shipped in-tree.';
+}
+function refresh(){
+  return withStates(document.getElementById("grid"), function(){
+    return fetch("/api/players/list", {cache:"no-store"}).then(function(r){
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      return r.json();
+    });
+  }, renderPlayers, {
+    skeleton: playersSkeleton,
+    isEmpty: function(d){ return !d || !d.players || d.players.length === 0; },
+    emptyKey: "no_data_yet",
+    emptyMessage: "No strikers available yet."
+  });
+}
+refresh();
+setInterval(refresh, 60000);
+</script></body></html>"""
+
+
+_PLAYER_DETAIL_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__PLAYER_NAME__ -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+__SKELETON_CSS__
+__PLAYERS_CSS__
+</style></head>
+<body>
+__NAV__
+<div class="wrap player-detail">
+  <a class="back-link" href="/players">&larr; Back to the squad</a>
+  <div id="detail"></div>
+  <div class="disclaimer" role="note">
+    <p><b>Blue Lock is a manga / anime by Yusuke Nomura and Muneyuki
+    Kaneshiro, published by Kodansha.</b> Characters here are named
+    as homage to describe our AI agents' trading playstyles; no
+    affiliation, endorsement, or commercial arrangement is claimed.</p>
+  </div>
+</div>
+<script>__ERROR_COPY_JS__
+__WITH_STATES_JS__
+var PLAYER_ID = "__PLAYER_ID__";
+function pipSpan(n){
+  var cls = n > 0 ? "ok" : (n < 0 ? "bad" : "");
+  var sign = n > 0 ? "+" : "";
+  return '<b class="'+cls+'">'+sign+n.toFixed(1)+'</b>';
+}
+function esc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function detailSkeleton(box){
+  var html = '<div class="player-header">'+
+    '<span class="sk sk-line med"></span>'+
+    '<span class="sk sk-line short"></span>'+
+    '<span class="sk sk-line"></span></div>'+
+    '<div class="section">'+
+    '<h2>Career stats</h2>'+
+    '<div class="stat-grid">';
+  for(var i=0;i<8;i++){
+    html += '<div class="sk-tile"><span class="sk sk-line short"></span>'+
+            '<span class="sk sk-line"></span></div>';
+  }
+  html += '</div></div>';
+  box.innerHTML = html;
+}
+function proseHtml(text){
+  if(!text) return '<p class="dim">Bio not yet written.</p>';
+  var paras = String(text).split(/\n\s*\n/);
+  var out = "";
+  for(var i=0;i<paras.length;i++){
+    var p = paras[i].trim();
+    if(p) out += '<p>'+esc(p)+'</p>';
+  }
+  return out;
+}
+function renderPlayer(data){
+  var s = data.stats || {};
+  var html = '';
+  html += '<div class="player-header">';
+  html += '<div class="name-row"><h1>'+esc(data.name)+'</h1>'+
+    '<span class="num">'+esc(data.canon_player)+'</span></div>';
+  html += '<div class="tag">'+esc(data.playstyle_tag)+'</div>';
+  html += '<div class="meta">'+
+    '<span class="status-pill '+esc(data.status)+'">'+esc(data.status)+'</span>'+
+    '<span>Tier <b>'+esc(data.tier)+'</b></span>'+
+    '<span>Home TF <b>'+esc(data.home_tf)+'</b></span>'+
+    '<span>Symbols <b>'+esc((data.symbols || []).join(", "))+'</b></span>'+
+    '<span>Weapon <b>'+esc(data.weapon)+'</b></span>'+
+    '</div>';
+  if(data.signature_blurb){
+    html += '<div class="blurb">'+esc(data.signature_blurb)+'</div>';
+  }
+  html += '</div>';
+
+  html += '<div class="source-hint"><span class="k">SOURCE</span>'+
+          esc(data.source_hint || "")+'</div>';
+
+  var netCls = (+s.net_pips > 0) ? "ok" : ((+s.net_pips < 0) ? "bad" : "");
+  var netSign = (+s.net_pips > 0) ? "+" : "";
+  var bestCls = (+s.best_trade_pips > 0) ? "ok" : "";
+  var worstCls = (+s.worst_trade_pips < 0) ? "bad" : "";
+  html += '<div class="section"><h2>Career stats</h2><div class="stat-grid">';
+  html += '<div class="stat-tile"><div class="k">Proposals</div>'+
+          '<div class="v">'+(s.proposals|0)+'</div></div>';
+  html += '<div class="stat-tile"><div class="k">Trades</div>'+
+          '<div class="v">'+(s.trades|0)+'</div></div>';
+  html += '<div class="stat-tile"><div class="k">Wins</div>'+
+          '<div class="v ok">'+(s.wins|0)+'</div></div>';
+  html += '<div class="stat-tile"><div class="k">Win rate</div>'+
+          '<div class="v">'+((+s.win_rate_pct||0).toFixed(1))+'%</div></div>';
+  html += '<div class="stat-tile"><div class="k">Net pips</div>'+
+          '<div class="v '+netCls+'">'+netSign+((+s.net_pips||0).toFixed(1))+'</div></div>';
+  html += '<div class="stat-tile"><div class="k">Avg pips</div>'+
+          '<div class="v">'+((+s.avg_pips||0).toFixed(2))+'</div></div>';
+  html += '<div class="stat-tile"><div class="k">Best trade</div>'+
+          '<div class="v '+bestCls+'">'+((+s.best_trade_pips||0).toFixed(1))+'p</div></div>';
+  html += '<div class="stat-tile"><div class="k">Worst trade</div>'+
+          '<div class="v '+worstCls+'">'+((+s.worst_trade_pips||0).toFixed(1))+'p</div></div>';
+  html += '<div class="stat-tile"><div class="k">Best pair</div>'+
+          '<div class="v">'+esc(s.best_pair || "-")+'</div></div>';
+  html += '<div class="stat-tile"><div class="k">Days active</div>'+
+          '<div class="v">'+(s.days_active|0)+'</div></div>';
+  html += '</div></div>';
+
+  html += '<div class="section"><h2>Playstyle</h2>'+
+          '<div class="prose">'+proseHtml(data.playstyle_prose)+'</div></div>';
+
+  if(data.signature_setup){
+    html += '<div class="section"><h2>Signature setup</h2>'+
+            '<div class="setup-diagram" role="img" aria-label="'+
+            esc(data.playstyle_tag)+' signature setup">'+
+            '<pre>'+esc(stripFence(data.signature_setup))+'</pre></div></div>';
+  }
+
+  var activity = data.recent_activity || [];
+  html += '<div class="section"><h2>Recent activity</h2>';
+  if(activity.length === 0){
+    html += '<p class="dim">No recent activity yet.</p>';
+  } else {
+    html += '<ul class="activity-list">';
+    for(var i=0;i<activity.length;i++){
+      var a = activity[i];
+      html += '<li><span class="ts">'+esc(a.t)+'</span>'+
+              '<span>'+esc(a.type)+'</span>'+
+              '<span>'+esc(a.symbol || "")+'</span>';
+      if(a.dir) html += '<span>'+esc(a.dir)+'</span>';
+      if(a.pnl_pips !== undefined){
+        var cls = a.pnl_pips > 0 ? "ok" : (a.pnl_pips < 0 ? "bad" : "");
+        var sign = a.pnl_pips > 0 ? "+" : "";
+        html += '<span class="pnl '+cls+'">'+sign+
+                a.pnl_pips.toFixed(1)+'p</span>';
+      }
+      html += '</li>';
+    }
+    html += '</ul>';
+  }
+  html += '</div>';
+
+  html += '<div class="section"><h2>Evolution history</h2>';
+  var evo = data.evolution || [];
+  if(evo.length === 0){
+    html += '<p class="dim">No evolution recorded yet.</p>';
+  } else {
+    html += '<ul class="evolution-list">';
+    for(var i=0;i<evo.length;i++){
+      html += '<li>'+esc(evo[i].note)+'</li>';
+    }
+    html += '</ul>';
+  }
+  html += '</div>';
+
+  document.getElementById("detail").innerHTML = html;
+}
+function stripFence(s){
+  s = String(s).replace(/^```[a-zA-Z]*\s*\n?/, "").replace(/\n?```\s*$/,"");
+  return s;
+}
+function refresh(){
+  return withStates(document.getElementById("detail"), function(){
+    return fetch("/api/players/" + encodeURIComponent(PLAYER_ID),
+                 {cache:"no-store"}).then(function(r){
+      if(!r.ok) throw new Error("HTTP "+r.status);
+      return r.json();
+    });
+  }, renderPlayer, {
+    skeleton: detailSkeleton,
+    isEmpty: function(d){ return !d || !d.id; },
+    emptyKey: "no_data_yet",
+    emptyMessage: "This striker has no live data yet."
+  });
+}
+refresh();
+setInterval(refresh, 60000);
+</script></body></html>"""
+
+
+PLAYERS_INDEX_PAGE = (_PLAYERS_INDEX_TEMPLATE
+                      .replace("__BASE_CSS__", _BASE_CSS)
+                      .replace("__SKELETON_CSS__", _SKELETON_CSS)
+                      .replace("__PLAYERS_CSS__", _PLAYERS_CSS)
+                      .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+                      .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+                      .replace("__NAV__", nav('players')))
+
+
+def player_detail_page(player_id: str, player_name: str) -> str:
+    """Return the /players/<id> detail page with per-player title +
+    pinned PLAYER_ID constant embedded. ``player_id`` is trusted (the
+    route handler is expected to normalise it via
+    ``agent.platform.players.normalize_id`` before this call).
+
+    ``player_name`` is the display-cased name (e.g. ``"Isagi"``);
+    the callee uses it only in the browser <title>.
+    """
+    safe_id = str(player_id or "").replace('"', '').replace("'", "")
+    safe_name = str(player_name or "").replace("<", "").replace(">", "")
+    return (_PLAYER_DETAIL_TEMPLATE
+            .replace("__BASE_CSS__", _BASE_CSS)
+            .replace("__SKELETON_CSS__", _SKELETON_CSS)
+            .replace("__PLAYERS_CSS__", _PLAYERS_CSS)
+            .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+            .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+            .replace("__NAV__", nav('players'))
+            .replace("__PLAYER_ID__", safe_id)
+            .replace("__PLAYER_NAME__", safe_name))
+
+
+_PLAYERS_404_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Striker not found -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+__PLAYERS_CSS__
+.notfound{max-width:640px;margin:60px auto;padding:24px}
+.notfound h1{margin:0 0 12px;font-size:22px}
+.notfound p{color:var(--dim);line-height:1.55}
+.notfound .known{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.notfound .known a{background:var(--panel);border:1px solid var(--border);
+  padding:6px 12px;border-radius:6px;color:var(--fg);text-decoration:none;
+  font-size:12.5px}
+.notfound .known a:hover{border-color:var(--accent)}
+</style></head>
+<body>
+__NAV__
+<div class="wrap notfound">
+  <h1>Striker not found</h1>
+  <p>The URL you followed does not match any of our ten strikers.
+  Here is the full squad:</p>
+  <div class="known">__KNOWN_LINKS__</div>
+  <p><a href="/players">&larr; Back to the squad index</a></p>
+</div>
+</body></html>"""
+
+
+def players_not_found_page(known_ids: list[str]) -> str:
+    """Return the 404 shell listing the ten valid striker slugs.
+
+    ``known_ids`` is the sequence to render as links, in roster order.
+    The template does not depend on ``pages.py``'s knowledge of the
+    roster -- the caller supplies it so a future rename of the roster
+    module doesn't recouple this file to it.
+    """
+    ids = list(known_ids) if known_ids else []
+    if not ids:
+        links = '<span class="dim">roster unavailable</span>'
+    else:
+        links = "".join(
+            '<a href="/players/{i}">{i}</a>'.format(i=x) for x in ids
+        )
+    return (_PLAYERS_404_TEMPLATE
+            .replace("__BASE_CSS__", _BASE_CSS)
+            .replace("__PLAYERS_CSS__", _PLAYERS_CSS)
+            .replace("__NAV__", nav('players'))
+            .replace("__KNOWN_LINKS__", links))

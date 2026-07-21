@@ -301,6 +301,110 @@ plus the per-feature legal + QA passes above. Ledger advances F001
 from `signoff` → `ship`. HQ dashboard now reflects features_shipped
 2 / 5 (F005 + F001).
 
+## D023 · 2026-07-21 · cpo · [FEATURE]
+
+**F002 handed off from spec to UX Researcher.**
+
+Public read-only bio pages have no auth surface, so security review is
+not triggered. Character-name usage triggers the third-party-name-usage
+disclaimer surface, so legal review IS required. Handoff:
+`company/handoffs/F002-cpo-to-ux_researcher.json`.
+
+## D024 · 2026-07-21 · ux_researcher · [FEATURE]
+
+**F002 user-journey memo — two audience segments + JTBD ordering.**
+
+Memo `company/research/F002-user-journey.md` frames two distinct
+segments (prospect from `/v2`, casual reader from search) and orders
+the bio-page JTBD as who → setup → behaviour → recent → evolution.
+Non-goals ratified (no editable notes, no comparison, no P&L chart).
+Accessibility hard rules: colour + text on status pills; aria-label on
+setup diagrams. Handoff: `F002-ux_researcher-to-ui_designer.json`.
+
+## D025 · 2026-07-21 · ui_designer · [FEATURE]
+
+**F002 mocks — reuse F001 primitives, add three F002-owned ones.**
+
+`company/design/F002-mocks.md` documents the index card grid and the
+detail-page layout at desktop + 375 px. New primitives: `.player-card`
+(with `.retired` at 65 % opacity), `.player-header`, `.setup-diagram`
+(`overflow-x: auto` so ASCII art scrolls on mobile). Status pills use
+colour AND text, so colour-blind users still see the label. Handoff:
+`F002-ui_designer-to-brand_designer.json`.
+
+## D026 · 2026-07-21 · brand_designer · [FEATURE]
+
+**Ten stranger-friend striker bios written under `company/roster/players/`.**
+
+One markdown per striker (`isagi.md`, ..., `kunigami.md`) with header
+meta + Playstyle prose + Signature setup + Evolution history sections.
+Zero uses of "ensemble" or "aggregator" in any bio. Sae marked
+disabled-by-default (Phase AE pending); Kunigami marked
+retired-from-proposing (G7 §11.12). Character-name spellings match
+`company/brand/copy.md::spellings`. Handoff:
+`F002-brand_designer-to-ai_ml.json`.
+
+## D027 · 2026-07-21 · ai_ml_engineer · [FEATURE]
+
+**AI/ML sign-off on ten bios — weapon strings and playstyle prose match live behaviour.**
+
+Bios cross-referenced against `agent/squad/agents/aXX_<name>.py`
+canonical roles and weapon constants. Handoff:
+`F002-ai_ml-to-frontend.json`.
+
+## D028 · 2026-07-21 · cto · [ARCH]
+
+**F002 architecture: three modules touched — no separate CTO handoff needed.**
+
+`agent/platform/players.py` (parser + stats), `agent/platform/pages.py`
+(three new page constants + one factory), and
+`scripts/serve_platform.py` (six new route branches). Fast-path per
+`protocols/review-chain.md` architecture-review criterion — >3 modules
+triggers an explicit CTO handoff; F002 stays at 3 exactly. Read-only
+invariant enforced: neither `company/roster/players/` nor
+`squad_live/events.jsonl` is written by any endpoint.
+
+## D029 · 2026-07-21 · frontend · [FEATURE]
+
+**F002 build complete — /players + 10 detail routes + APIs live; 70 new tests green.**
+
+`PLAYERS_INDEX_PAGE` + `player_detail_page(id, name)` factory +
+`players_not_found_page(known_ids)` shipped. Routes cover
+case-insensitive, canon-variant, and trailing-slash forms. Test
+counts: module 29 + page 24 + api 17 = 70 new. Platform suite
+170 → 240. Handoff: `F002-frontend-to-qa.json`.
+
+## D030 · 2026-07-21 · qa · [FEATURE]
+
+**F002 QA verdict = pass; two regression-risk items flagged forward.**
+
+`company/qa/F002-verdict.md` records 70 new tests green + full platform
+suite green. Manual verification: 10 bio pages at desktop and 375 px,
+404 shell, cold-start + seeded, disclaimer verbatim. Regression risks:
+bio markdown format drift (silently drops sections) and agent_key wire-
+format drift (empties stats). Handoff: `F002-qa-to-legal.json`.
+
+## D031 · 2026-07-21 · legal · [FEATURE]
+
+**F002 IP posture cleared for Sprint 0 with re-audit gate at first paid surface.**
+
+Nominative-use / commentary framing documented in
+`company/legal/blue-lock-ip-notice.md`. Fallback naming plan (ten
+generic labels) estimated at a one-day migration. Claim register
+updated with F002 entries (character-name spellings, playstyle_tag
+copy, status pill, stats numbers, recent-activity list). See
+`company/legal/F002-disclaimer-review.md`. Handoff:
+`F002-legal-to-ceo.json`.
+
+## D032 · 2026-07-21 · cpo · [FEATURE]
+
+**F002 shipped — 10 bio routes live; ledger advances to features_shipped_sprint_0 = 3.**
+
+CEO signoff captured under end-of-sprint dogfood pass (D005 cadence)
+plus the per-feature legal + QA passes above. Ledger advances F002
+from `signoff` → `ship`. HQ dashboard now reflects features_shipped
+3 / 5 (F005 + F001 + F002).
+
 ## Template for subsequent entries
 
 ```markdown

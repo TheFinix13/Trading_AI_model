@@ -1,0 +1,17 @@
+{
+  "from_role": "cpo",
+  "to_role": "ux_researcher",
+  "feature_id": "F002",
+  "timestamp": "2026-07-21T17:22:00Z",
+  "deliverables": [
+    "company/sprints/sprint-0-trust-foundation/F002-player-bios.md"
+  ],
+  "notes": "F002 ships the human face of the platform. Two distinct user segments arrive here (prospect who came from /v2, and casual reader who arrived from search). Per D006, all 10 strikers ship with clear retired / standby pills -- Kunigami retired, Sae disabled-by-default. IP disclaimer footer required on every user-visible surface (Legal has drafted the exact text in blue-lock-ip-notice.md).",
+  "blockers": [],
+  "review_criteria": [
+    "Stranger-friend test survives for every one of the 10 bios",
+    "Retired / standby pills read as narrative history, not apology",
+    "Non-goals ratified (no editable notes, no comparison view, no character images)",
+    "Accessibility: colour-blind status pills + aria-labels on setup diagrams"
+  ]
+}

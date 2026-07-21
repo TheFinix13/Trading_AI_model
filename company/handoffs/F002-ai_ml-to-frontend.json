@@ -1,0 +1,26 @@
+{
+  "from_role": "ai_ml_engineer",
+  "to_role": "frontend_engineer",
+  "feature_id": "F002",
+  "timestamp": "2026-07-21T17:30:00Z",
+  "deliverables": [
+    "company/roster/players/isagi.md",
+    "company/roster/players/bachira.md",
+    "company/roster/players/rin.md",
+    "company/roster/players/chigiri.md",
+    "company/roster/players/reo.md",
+    "company/roster/players/nagi.md",
+    "company/roster/players/barou.md",
+    "company/roster/players/karasu.md",
+    "company/roster/players/sae.md",
+    "company/roster/players/kunigami.md"
+  ],
+  "notes": "AI/ML sign-off: weapon strings match roster.py; playstyle prose matches actual behaviour in agent/squad/agents/*. Backend engineer produces agent/platform/players.py; frontend engineer produces the two PAGE constants and the route wiring. Serialisation rule: F002 pages.py edits happen AFTER F001 lands (serialised by the shared-file bottleneck; verified done).",
+  "blockers": [],
+  "review_criteria": [
+    "Modules touched stays <= 3 (players.py, pages.py, serve_platform.py)",
+    "Read-only invariant enforced (backend never writes bios or events.jsonl)",
+    "Route wiring covers case-insensitive + canon-variant + trailing-slash forms",
+    "404 shell lists all 10 valid slugs"
+  ]
+}
