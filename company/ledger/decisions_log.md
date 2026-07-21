@@ -569,6 +569,68 @@ lane — broker connection wizard, real user accounts, first-time
 setup flow. See `company/sprints/sprint-0-trust-foundation/REPORT.md`
 for the post-mortem and retro suggestions for Sprint 1.
 
+## D046 · 2026-07-21 · ceo · [SPRINT]
+
+**Sprint 0 (Trust Foundation) formally signed off — 5/5 features accepted.**
+
+Independent post-sprint verification: `product` branch pushed to
+origin at commit `64a58ff` with 9 sprint commits above the founding
+line (`e6a99fa`); `.venv/bin/python -m pytest -q` reports 971 passed
++ 1 skipped (946 non-vaults + 24 vaults + 1 skipped, matches the
+executor's 971 claim); ledger `sprints[0].verdict = "COMPLETE"`;
+`kpis.features_shipped_sprint_0 = 5`; `/hq` Kanban shows 5 features
+in `ship`, 0 in every other column; blockers panel empty. Trust
+Foundation is on the record. Sprint 1 (Access) is next. Retro
+improvements ratified in D047 + D048.
+
+## D047 · 2026-07-21 · cto · [ARCH]
+
+**Ratified retro protocol improvements from Sprint 0 REPORT §Retro (points 1, 2, 4, 5).**
+
+Formalises four ops-level improvements the Sprint 0 Executor
+surfaced in the post-mortem: (1) F005-first serialisation stays the
+default pattern for any sprint that introduces shared UI primitives;
+(2) new spec-lock step in the review chain — persona in the `build`
+stage must diff the spec against on-disk state before starting
+(prevents the F003 issue where the spec referenced non-existent
+`REPORT.md` filenames); (4) Legal claim register audit automated as
+a pre-commit hook — any `agent/platform/performance.py` public field
+without a matching entry in `company/legal/claim_register.md` fails
+the commit; (5) `_BASE_CSS` version tag bumped whenever its content
+changes (major bump on layout / typography / class-name breaks). All
+four land as amendments to `company/protocols/review-chain.md` in
+Sprint 1's first commit.
+
+## D048 · 2026-07-21 · ceo · [ARCH]
+
+**Ratified retro protocol improvement #3 — mandatory security tests for auth-adjacent features from Sprint 1 onwards.**
+
+The Sprint 0 Executor's retro flagged that Sprint 1's broker
+connection wizard, real user accounts, and first-time setup flow all
+touch auth or credentials — a step-change in threat surface vs
+Sprint 0's read-only public routes. Ruling: from Sprint 1 forward,
+any feature whose spec labels it `auth: true` or `credentials: true`
+requires a `tests/security/test_<feature>.py` module with at least
+(a) auth-bypass negative tests, (b) credential-storage-at-rest
+tests, (c) input-fuzz tests on any user-supplied credential field.
+Security persona activates as a mandatory reviewer (no longer
+conditional) for all such features. Security review handoff written
+BEFORE the QA handoff, not after — earlier catch.
+
+## D049 · 2026-07-21 · ceo · [SPRINT]
+
+**Sprint 1 kick-off timing deferred to explicit CEO green-light (Fiyin).**
+
+Sprint 0 shipped in a single ~4-hour executor pass; Sprint 1 is
+higher-stakes (money-adjacent, auth-adjacent) and the retro
+recommended splitting the executor persona into narrower roles for
+this lane. Kicking off Sprint 1 immediately without CEO input on
+(a) executor decomposition, (b) whether Finance activates now vs
+at first shopping-list moment, and (c) whether to dogfood Sprint 0
+on desktop + mobile before adding new surfaces, would violate the
+escalation protocol's brand / architecture / money categories. Held
+pending explicit CEO direction in the next session.
+
 ## Template for subsequent entries
 
 ```markdown

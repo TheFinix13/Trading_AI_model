@@ -952,6 +952,34 @@
       "role": "cpo",
       "decision": "Sprint 0 (Trust Foundation) verdict: COMPLETE. All 5 P0 features shipped in ~4 hours honest wall-clock.",
       "context": "F005 -> F001 -> F002 -> F003 -> F004 landed in a single Sprint 0 Executor session. Final test count 348 platform tests (up from 100 pre-sprint), 42 review-chain handoff JSONs, 45 decision entries in the ledger. HQ dashboard now reflects 5/5 features_shipped. Sprint 1 (Access) is the next lane: broker connection wizard + real user accounts + first-time setup flow. See company/sprints/sprint-0-trust-foundation/REPORT.md for the post-mortem."
+    },
+    {
+      "id": "D046",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Sprint 0 formally signed off -- 5/5 features accepted.",
+      "context": "Independent post-sprint verification: 971 tests green (946 non-vaults + 24 vaults + 1 skipped), ledger sprints[0].verdict=COMPLETE, /hq Kanban 5/5 in ship, blockers empty. Trust Foundation on record."
+    },
+    {
+      "id": "D047",
+      "date": "2026-07-21",
+      "role": "cto",
+      "decision": "Ratified retro protocol improvements #1/#2/#4/#5 (F005-first, spec-lock, Legal audit, _BASE_CSS versioning).",
+      "context": "Amendments land in company/protocols/review-chain.md as Sprint 1's first commit."
+    },
+    {
+      "id": "D048",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Mandatory security tests for auth-adjacent features from Sprint 1 onwards.",
+      "context": "auth:true or credentials:true features require tests/security/test_<feature>.py with (a) auth-bypass, (b) credential-storage-at-rest, (c) input-fuzz. Security persona = mandatory reviewer, handoff BEFORE QA."
+    },
+    {
+      "id": "D049",
+      "date": "2026-07-21",
+      "role": "ceo",
+      "decision": "Sprint 1 kick-off held pending explicit CEO green-light.",
+      "context": "Higher-stakes lane (money-adjacent, auth-adjacent); retro recommended executor-split. CEO input required on (a) decomposition, (b) Finance activation timing, (c) dogfood-before-continue."
     }
   ],
   "sprint_verdicts": [
