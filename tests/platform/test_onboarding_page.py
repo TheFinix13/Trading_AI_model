@@ -118,8 +118,8 @@ class TestSharedPrimitives:
         assert "var(--panel)" in ONBOARDING_PAGE
         assert "var(--accent)" in ONBOARDING_PAGE
 
-    def test_base_css_version_stays_1_0_0(self):
-        assert _BASE_CSS_VERSION == "1.0.0"
+    def test_base_css_version_stays_1_1_0(self):
+        assert _BASE_CSS_VERSION == "1.1.0"
 
 
 class TestMobileCare:

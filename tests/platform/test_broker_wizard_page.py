@@ -127,8 +127,8 @@ class TestSharedPrimitives:
         assert "var(--accent)" in BROKER_WIZARD_PAGE
         assert 'class="nav"' in BROKER_WIZARD_PAGE
 
-    def test_base_css_version_still_1_0_0(self):
-        assert _BASE_CSS_VERSION == "1.0.0"
+    def test_base_css_version_still_1_1_0(self):
+        assert _BASE_CSS_VERSION == "1.1.0"
 
 
 class TestApiWiring:

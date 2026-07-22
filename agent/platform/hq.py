@@ -63,6 +63,9 @@ def _empty_kpis() -> dict:
         "test_coverage_pct": None,
         "active_roles": 0,
         "total_roles": 0,
+        "intake_items_open": 0,
+        "experiments_in_flight": 0,
+        "published_findings_last_30d": 0,
     }
 
 
@@ -83,6 +86,8 @@ def _skeleton(reason: str, generated_at: str) -> dict:
         "decisions": [],
         "kpis": _empty_kpis(),
         "blockers": [],
+        "intake": [],
+        "experiments": [],
     }
 
 
@@ -212,6 +217,8 @@ def hq_state(ledger_path: Path | None = None) -> dict:
     sprints = list(payload.get("sprints") or [])
     features = [dict(f) for f in (payload.get("features") or [])]
     decisions = list(payload.get("decisions") or [])
+    intake = list(payload.get("intake") or [])
+    experiments = list(payload.get("experiments") or [])
     kpis = dict(_empty_kpis())
     kpis.update(payload.get("kpis") or {})
 
@@ -226,6 +233,12 @@ def hq_state(ledger_path: Path | None = None) -> dict:
             1 for f in features
             if f.get("current_stage") not in ("ship", "shipped", "done"))
 
+    kpis["intake_items_open"] = _count_open_intake(intake, kpis)
+    kpis["experiments_in_flight"] = _count_experiments_in_flight(
+        experiments, kpis)
+    kpis["published_findings_last_30d"] = _count_published_findings_30d(
+        experiments, kpis)
+
     return {
         "meta": meta,
         "roles": roles,
@@ -235,4 +248,72 @@ def hq_state(ledger_path: Path | None = None) -> dict:
         "decisions_total": len(decisions),
         "kpis": kpis,
         "blockers": ceo_blockers,
+        "intake": intake,
+        "experiments": experiments,
     }
+
+
+def _count_open_intake(intake: list[dict], kpis: dict) -> int:
+    """R&D pulse: count intake items that haven't reached ``closed``.
+
+    Preferred pattern (same as ``active_roles`` / ``total_roles``):
+    trust the ledger's recorded value if the persona owning the intake
+    queue already computed it; otherwise derive at render time so a
+    stale ledger doesn't lie to the dashboard.
+    """
+    recorded = kpis.get("intake_items_open")
+    if recorded not in (None, 0):
+        return int(recorded)
+    return sum(1 for i in intake
+               if str(i.get("status") or "").lower() != "closed")
+
+
+def _count_experiments_in_flight(experiments: list[dict],
+                                 kpis: dict) -> int:
+    """R&D pulse: experiments whose status is not closed/shipped/done.
+
+    ``closed-negative`` also counts as "not in flight" -- the campaign
+    landed, even if the answer was unwelcome.
+    """
+    recorded = kpis.get("experiments_in_flight")
+    if recorded not in (None, 0):
+        return int(recorded)
+    terminal_prefixes = ("closed", "shipped", "done")
+    in_flight = 0
+    for e in experiments:
+        status = str(e.get("status") or "").lower()
+        if not status:
+            continue
+        if any(status == p or status.startswith(p + "-")
+               for p in terminal_prefixes):
+            continue
+        in_flight += 1
+    return in_flight
+
+
+def _count_published_findings_30d(experiments: list[dict],
+                                  kpis: dict) -> int:
+    """R&D pulse: condensed findings that have shipped in the last 30d.
+
+    The ledger's ``condensed_finding_status: "published"`` on an
+    experiment is the flag; ``condensed_finding_published_at`` (ISO
+    date) gates the 30-day window when present. If the ledger has
+    already recorded ``kpis.published_findings_last_30d`` explicitly
+    that takes precedence.
+    """
+    recorded = kpis.get("published_findings_last_30d")
+    if recorded not in (None, 0):
+        return int(recorded)
+    now = datetime.now(timezone.utc)
+    count = 0
+    for e in experiments:
+        if str(e.get("condensed_finding_status") or "") != "published":
+            continue
+        published_at = e.get("condensed_finding_published_at")
+        if not published_at:
+            count += 1
+            continue
+        days = _iso_days_ago(published_at, now=now)
+        if days is not None and days <= 30:
+            count += 1
+    return count

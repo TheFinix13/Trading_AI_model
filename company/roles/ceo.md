@@ -31,6 +31,15 @@ every other role when the review chain deadlocks.
   wrong, the CEO can pull the plan and rewrite it. Nobody else can.
 - Publish a public post-mortem on any Sprint that fails its exit gates.
   Failed sprints are learning material, not shame.
+- **Retain authority on brand-defining research.** Any research
+  finding whose publication would change the platform's public
+  positioning ("Blue Lock does not, in fact, beat X" or "the
+  striker metaphor obscures a real limitation") requires CEO
+  framing sign-off. Day-to-day research authority is delegated to
+  Research Lead → CTO co-sign per
+  `protocols/literature-standards.md` §7. Findings that clear
+  Research Lead + CTO without brand implication ship without CEO
+  involvement.
 
 ## Deliverable templates
 
@@ -74,5 +83,12 @@ every other role when the review chain deadlocks.
   Sprint 3 before Sprint 1 completes).
 - Any change that touches `agent/live/` or the running live squad.
 - Any request from another workspace that could bleed into this repo.
+- A negative research finding materially contradicts a live claim
+  on any public page. CEO decides the correction timing + tone
+  with Legal + Research Lead. Falls under `literature-standards.md`
+  §9 non-negotiable #5 (no memory-holing of negatives).
+- Research Lead needs external peer review budget (per
+  `literature-standards.md` §7). Finance surfaces vendor + rate;
+  CEO authorises.
 
 If none of the above apply, the persona decides and logs the decision.

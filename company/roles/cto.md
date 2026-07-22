@@ -21,6 +21,15 @@ passing), and the "never touch the running live squad" invariant.
   engine, or the sentinel rules ships only with CTO + CEO co-sign.
 - Own the test suite. Test count only goes up. A feature that lands
   without new tests fails architecture review.
+- **Research rigour oversight.** Any code path that publishes a claim
+  to the outside world (`/performance`, `/players/<id>`, `/research`,
+  Sprint 4+ landing surface, whitepapers) requires CTO sign-off on
+  the reproducibility of the claim: seed committed, artefact
+  versioned, commit SHA on the number. Codified in
+  `protocols/literature-standards.md` §3. CTO also flags features
+  as `research_relevant: true` in the architecture-review JSON when
+  the feature emits a testable user-behaviour hypothesis, triggering
+  Research Lead review at the conditional stage.
 - Own the platform. HTTP handlers, page templates, JSON schemas,
   ledger contract. Additive changes only unless the CEO explicitly
   authorises a schema break.
@@ -59,6 +68,7 @@ passing), and the "never touch the running live squad" invariant.
 | Modules crossed per feature | p50 ≤ 2, p95 ≤ 4 |
 | Incidents on the live squad caused by a merged change | 0 |
 | Weekly architecture note published | every week a sprint is active |
+| Public claims shipped with a linked PROTOCOL commit + SHA | 100 % |
 
 ## Escalation triggers (CTO → CEO)
 
@@ -71,3 +81,7 @@ passing), and the "never touch the running live squad" invariant.
 - A dependency needs to be added (new PyPI package).
 - The platform config file (`platform.toml`) gains a new key that
   materially changes behaviour.
+- A `research_relevant: true` feature has been shipped without a
+  `company/handoffs/<F###>-research-review.json` verdict from
+  Research Lead. This is a process-failure escalation, not a bug —
+  the review chain glue leaked.

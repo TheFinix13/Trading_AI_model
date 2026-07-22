@@ -20,7 +20,7 @@ When a persona decides autonomously, it:
 
 ## Mandatory escalation (never decide autonomously)
 
-The five non-negotiables. Any decision matching any of these MUST
+The six non-negotiables. Any decision matching any of these MUST
 escalate — the persona **halts**, writes a blocker with
 `awaiting_ceo: true`, and waits.
 
@@ -105,6 +105,15 @@ enable a real-broker connection under any circumstances. If a
 prospect / user / persona asks for it, the request is logged and
 escalated — the CEO's answer will always be "not on this repo".
 
+### 6. Suppression of a research negative
+
+Any decision that would result in a completed research study NOT
+being published — because the answer was unwelcome — is a hard
+escalation. Research Lead surfaces the finding; CEO decides the
+publication path (immediate, delayed with reason, or archived with
+reason). "Never published" is not an option per
+`literature-standards.md` §9 non-negotiable #5.
+
 ## Discretionary escalation (persona should escalate if uncertain)
 
 Beyond the five non-negotiables, personas SHOULD escalate when:
@@ -185,6 +194,8 @@ a role would exceed its budget on a single feature, it escalates.
 | Support | 15 decisions | FAQ answers, SLA calls (within policy) |
 | Legal | 3 decisions | Almost everything escalates |
 | Finance | 0 decisions | **Every spend escalates by construction** |
+| Research Lead | 10 decisions | Campaign scoping, PROTOCOL revisions pre-compute, finding-promotion gates, negative-publication timing |
+| User Advocate | 15 decisions | Intake classification suggestions (CPO retains final), notify-message tone, retention-window calls within Legal policy |
 
 Budgets are soft — a persona over budget is a signal, not a
 violation. Systematic over-budget is a sign the role's autonomy

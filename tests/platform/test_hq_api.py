@@ -24,7 +24,8 @@ from scripts.serve_platform import make_handler  # noqa: E402
 
 
 REQUIRED_KEYS = {"meta", "roles", "sprints", "features",
-                 "decisions", "kpis", "blockers"}
+                 "decisions", "kpis", "blockers",
+                 "intake", "experiments"}
 
 
 def _get_json(url: str) -> tuple[int, dict]:
@@ -118,7 +119,9 @@ class TestConfiguredContract:
         for key in ("features_shipped_sprint_0", "features_total_sprint_0",
                     "backlog_size", "bugs_open",
                     "cycle_time_days_p50", "test_coverage_pct",
-                    "active_roles", "total_roles"):
+                    "active_roles", "total_roles",
+                    "intake_items_open", "experiments_in_flight",
+                    "published_findings_last_30d"):
             assert key in kpis, f"missing kpi key: {key!r}"
 
     def test_features_carry_frontend_fields(self, configured_server):
@@ -164,7 +167,68 @@ class TestUnconfiguredContract:
         assert body["sprints"] == []
         assert body["decisions"] == []
         assert body["blockers"] == []
+        assert body["intake"] == []
+        assert body["experiments"] == []
         assert set(body["kpis"].keys()) >= {
             "features_shipped_sprint_0", "features_total_sprint_0",
             "backlog_size", "bugs_open", "active_roles", "total_roles",
+            "intake_items_open", "experiments_in_flight",
+            "published_findings_last_30d",
         }
+
+
+class TestRdPulseContract:
+    """The three R&D-pulse additions from D081: top-level `intake` and
+    `experiments` arrays plus three new KPI counters. The dashboard JS
+    reads all of these -- rename or drop = broken UI.
+    """
+
+    @pytest.fixture()
+    def rd_server(self, tmp_path: Path):
+        ledger = tmp_path / "company_state.json"
+        ledger.write_text(json.dumps({
+            "meta": {"company_name": "Blue Lock Trading Co.",
+                     "founded": "2026-07-21",
+                     "current_sprint_id": "sprint-2"},
+            "roles": [], "sprints": [], "features": [], "decisions": [],
+            "kpis": {"intake_items_open": 1,
+                     "experiments_in_flight": 1,
+                     "published_findings_last_30d": 0},
+            "blockers": [],
+            "intake": [
+                {"id": "I001", "classification": "PROCESS",
+                 "priority": "P2", "status": "triaged",
+                 "summary": "flag"},
+            ],
+            "experiments": [
+                {"id": "E-live", "status": "in-flight",
+                 "hypothesis": "hyp"},
+                {"id": "M001-PhaseAC", "status": "closed-negative"},
+            ],
+        }), encoding="utf-8")
+        srv = _make_server(tmp_path, ledger)
+        try:
+            yield f"http://127.0.0.1:{srv.server_address[1]}"
+        finally:
+            srv.shutdown()
+
+    def test_intake_array_reachable(self, rd_server):
+        _, body = _get_json(rd_server + "/api/hq/state")
+        assert isinstance(body["intake"], list)
+        assert len(body["intake"]) == 1
+        assert body["intake"][0]["id"] == "I001"
+        assert body["intake"][0]["classification"] == "PROCESS"
+
+    def test_experiments_array_reachable(self, rd_server):
+        _, body = _get_json(rd_server + "/api/hq/state")
+        assert isinstance(body["experiments"], list)
+        assert len(body["experiments"]) == 2
+        assert {e["id"] for e in body["experiments"]} == {
+            "E-live", "M001-PhaseAC"}
+
+    def test_rd_kpi_counters_pass_through(self, rd_server):
+        _, body = _get_json(rd_server + "/api/hq/state")
+        k = body["kpis"]
+        assert k["intake_items_open"] == 1
+        assert k["experiments_in_flight"] == 1
+        assert k["published_findings_last_30d"] == 0

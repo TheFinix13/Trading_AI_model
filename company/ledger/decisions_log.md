@@ -1392,6 +1392,129 @@ Sprint verdict card:
 `company/ledger/company_state.json::sprint_verdicts[2]`. Full
 post-mortem: `company/sprints/sprint-2-real-trading/REPORT.md`.
 
+## D081 · 2026-07-22 · ceo · [CHARTER]
+
+**Company charter elevated to real-product / real-users / literature-
+standard R&D operation.**
+
+CEO directive 2026-07-22: "we are making a real product trying to make
+real money and have real users who can give feedback to this products
+reliability and credibility. we will keep adding useful features that
+make performance and usability better, and keep researching on to make
+the products performance better and credible by literature standards."
+
+Three operating principles now govern every internal decision:
+
+1. Real product for real users — every design anticipates a public
+   population, financial consequence, and privacy obligation.
+2. Closed feedback loop — every user-facing signal enters the intake
+   queue with an `I###` and exits with a status.
+3. Literature-standard research — pre-registration, FDR budgets,
+   reproducibility (fixed seeds + versioned artefacts + commit SHAs),
+   honest negatives, real citations.
+
+`company/README.md` §Operating principles carries the primary text.
+Two new protocols land alongside: `protocols/rd-loop.md` +
+`protocols/literature-standards.md`.
+
+## D082 · 2026-07-22 · ceo · [ROLE]
+
+**Research Lead role activated — was implicit under CTO's remit; now
+explicit.**
+
+Persona: "The Anri Junior". Tier: executive-adjacent (reports dual to
+CTO on rigour + CPO on product implications; keeps CEO informed on
+major campaign verdicts). Owns:
+
+- The active-research portfolio (`finance-research-experiments/`
+  E0xx + M001).
+- Pre-registration discipline enforcement per
+  `literature-standards.md` §1.
+- Cross-repo bridge (research findings graduating to product require
+  Research Lead sign-off).
+- `/research` page verdict manifest (per D007; now formalised).
+
+Role doc: `company/roles/research_lead.md`. Autonomy budget: 10
+decisions per sprint (added to `escalation.md` autonomy table).
+
+## D083 · 2026-07-22 · ceo · [ROLE]
+
+**User Advocate role added — new business-tier role for feedback intake
++ voice-of-user + privacy hygiene.**
+
+No Blue Lock persona — this role stays professional. Owns feedback
+intake channels (currently F013 approval-queue signal, F014 alert
+stream, dogfood observations; Sprint 4+ `/feedback` route + surveys +
+in-product prompts), weekly triage brief for CPO, user cohort
+tracking (once real users exist), voice-of-user report each sprint
+retro, consent + privacy hygiene (works with Legal + Security on
+GDPR / CCPA).
+
+Role doc: `company/roles/user_advocate.md`. Autonomy budget: 15
+decisions per sprint.
+
+## D084 · 2026-07-22 · ceo · [SPRINT]
+
+**`/feedback` route deferred to Sprint 4 (Polish).**
+
+Rationale: the infrastructure for a feedback loop already exists as
+of Sprint 2 close-out — F013 approval-queue rejections and F014 alert
+stream both emit user-facing signal a User Advocate can drain. A
+formal `/feedback` public form is a Polish deliverable, not a
+Real-Trading blocker. Sprint 4 spec-work owns the concrete design;
+until then, dogfood observations from CEO / personas fill the intake
+queue.
+
+## D085 · 2026-07-22 · cpo · [PROTOCOL]
+
+**R&D loop protocol adopted.**
+
+`company/protocols/rd-loop.md`. Defines intake channels (§1), CPO
+weekly triage cadence Monday morning (§3, on-arrival for P0),
+routing rules by classification (§4), the
+finance-research-experiments cross-repo bridge (§5), loop closure
+criteria (§6), ledger link via `[INTAKE]`-prefix decisions and a
+top-level `intake` array in `company_state.json` (§7).
+
+CPO owns the weekly drain; Research Lead files `[RESEARCH-QUESTION]`
+pre-registrations; User Advocate files the intake items and runs the
+notify handshake on closure.
+
+## D086 · 2026-07-22 · cto · [PROTOCOL]
+
+**Literature-standards protocol adopted.**
+
+`company/protocols/literature-standards.md`. Codifies what already
+runs in `finance-research-experiments`:
+
+- Pre-registration before compute (§1) — PROTOCOL commit predates
+  results commit; amendments in-file with prior stays preserved.
+- FDR budget per campaign (§2) — Benjamini-Hochberg at pre-declared
+  q, usually q=0.10; no p-hacking, no post-hoc metric selection, no
+  double-dipping data, no post-freeze retuning.
+- Reproducibility (§3) — fixed seeds, versioned artefacts, commit
+  SHAs on every result, venv'd runs.
+- Honest negatives (§4) — Phase AC is the canonical company negative;
+  every negative goes to `company/rd/findings/`.
+- Product-side experiments (§5) — F013 approval-rate is the worked
+  example (hypothesis: ≥ 30 % of proposed live orders reviewed within
+  timeout; measurement via `approval_queue` logs; reported after 30 d
+  of live-mode data).
+- Citation discipline (§6) — real authors + year + venue + DOI/URL;
+  fabricated citations fail Legal review.
+- Peer review (§7) — internal review is table-stakes; external
+  review triggers on public whitepapers, investment-grade claims,
+  or named-alternative-method comparisons.
+- Non-negotiables that pull a claim (§9): missing pre-reg, no
+  multiple-testing correction, cannot reproduce, fabricated citation,
+  suppressed negative.
+
+CTO owns the reproducibility audit; Research Lead owns pre-reg + FDR
+enforcement; Legal owns citation + non-negotiables enforcement.
+Codified as `escalation.md` §6 (suppression of a research negative)
+and `review-chain.md` §7b (`research` conditional stage gated by
+`research_relevant: true`).
+
 ## Template for subsequent entries
 
 ```markdown

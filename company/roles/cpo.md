@@ -24,6 +24,11 @@ was consciously deferred by the CPO.
   scope cut than a missed sprint.
 - Own the handoff to UX Research. CPO writes the spec; UX Researcher
   validates the underlying user need before design starts.
+- **Manage the intake queue.** Every Monday, drain the R&D-loop
+  intake queue per `protocols/rd-loop.md` §3: classify every new
+  `I###` item as `[BUG]`/`[FEATURE-REQUEST]`/`[RESEARCH-QUESTION]`/
+  `[PERFORMANCE]`/`[POLISH]`/`[OUT-OF-SCOPE]`, assign priority,
+  route per §4. P0 items drain on-arrival, not weekly.
 - Break design-vs-engineering ties on *product questions* (does this
   feature meet the user story?). CTO breaks ties on *engineering
   questions*. CEO breaks ties on everything else.
@@ -45,6 +50,10 @@ was consciously deferred by the CPO.
 - **Sprint retrospective** at
   `company/sprints/<sprint_id>/RETRO.md` — five bullets: shipped,
   cut, learned, changing, keeping.
+- **Weekly intake triage decision** — Mondays, per intake item, a
+  one-line update to the item's front matter (`classification`,
+  `priority`, `route`, `linked_features`) and — for P0/P1 items —
+  a `D###` bullet in `decisions_log.md` with the `[INTAKE]` prefix.
 
 ## Review chain
 
@@ -62,6 +71,9 @@ was consciously deferred by the CPO.
 | Sprint retrospectives published | 100 % |
 | Scope-cut warnings raised before day 10 (not day 13) | ≥ 90 % |
 | Features that pass QA on first attempt | ≥ 70 % (measures spec quality) |
+| Weekly intake drain executed | 100 % of weeks with open queue |
+| P0 intake items acknowledged within 4 h | 100 % |
+| Intake items closed with a status (shipped/declined/deferred) | 100 % of items ≥ 30 d old |
 
 ## Escalation triggers (CPO → CEO)
 
@@ -74,3 +86,6 @@ was consciously deferred by the CPO.
 - A feature reveals a strategic gap not in any planned sprint (e.g.
   users need a feature that isn't in Sprints 0–6) — flag for CEO,
   don't quietly add it.
+- Intake volume exceeds triage bandwidth (> 20 items / week for two
+  consecutive weeks). Signal that the loop needs more hands (User
+  Advocate + Support scaling) or narrower intake surface.

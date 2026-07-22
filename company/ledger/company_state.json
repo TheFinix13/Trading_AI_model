@@ -6,7 +6,13 @@
     "one_liner": "Watch our striker squad find setups on real markets \u2014 every decision explained, every risk gated.",
     "current_sprint_id": "sprint-2-real-trading",
     "generated_at": "2026-07-22T03:25:00Z",
-    "schema_version": "1.0.0"
+    "schema_version": "1.0.0",
+    "charter_elevated_at": "2026-07-22T00:40:00Z",
+    "operating_principles": [
+      "real-product-real-users",
+      "closed-feedback-loop",
+      "literature-standard-research"
+    ]
   },
   "roles": [
     {
@@ -195,6 +201,34 @@
       "throughput_last_7d": 0,
       "features_owned_now": [],
       "features_reviewed_last_7d": 0
+    },
+    {
+      "id": "research_lead",
+      "title": "Research Lead",
+      "tier": "executive-adjacent",
+      "persona_name": "The Anri Junior",
+      "active": true,
+      "activated_at": "2026-07-22",
+      "current_task": "Portfolio index + first condensed finding (Phase AC negative) staging",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0,
+      "reports_to": ["cto", "cpo"],
+      "keeps_informed": ["ceo"]
+    },
+    {
+      "id": "user_advocate",
+      "title": "User Advocate",
+      "tier": "business",
+      "persona_name": null,
+      "active": true,
+      "activated_at": "2026-07-22",
+      "current_task": "Intake queue bootstrapped; I001 filed against Sprint 1's honest-review flag",
+      "throughput_last_7d": 0,
+      "features_owned_now": [],
+      "features_reviewed_last_7d": 0,
+      "reports_to": ["cpo"],
+      "coordinates_with": ["support", "legal", "research_lead", "marketing"]
     }
   ],
   "sprints": [
@@ -1874,6 +1908,48 @@
       "role": "ceo",
       "decision": "Sprint 2 (Real-Trading) verdict: COMPLETE.",
       "context": "Six P0 features shipped in a single autonomous executor day (2026-07-21 -> 2026-07-22, against a 13-day target -- honest-review flag continued from Sprint 1). All six landed as SCAFFOLDING per D065: default-OFF at every layer, no live pathway wired to approval_queue.submit(...). Features: F009 (auth hardening: rate limit + session expiry + rotation), F010 (claim-register audit + pre-commit hook), F011 (kill-switches), F012 (risk budget + broker health + /risk), F013 (trade approval + /approvals + live-mode toggle with 3-part ceremony), F014 (SSE alerts + Telegram bridge + /alerts). **P0 invariant on tape**: tests/security/test_live_mode_off_invariant.py composes all four gates and pins no live order unless live_mode_enabled AND not kill_switches.is_killed() AND risk_budget.can_send_order() AND approval_queue.can_send_order(). Six cases green. **Invariant #2 verified**: git diff --stat c56e561 -- agent/live agent/risk agent/squad scripts/run_squad_live.py scripts/run_live.py returns empty. v1 zones live agent (main) and squad paper runtime (next-gen) byte-identical to sprint-start. Test delta: 1259 -> 1482 (+223). Security 132 -> 204 (+72). Zero blockers. Zero spend. Zero commits off product. Zero Cursor attribution. Commit range 242ac98..1303ca4 (close-out: ecf6331). Retro suggestions for Sprint 3 (Stickiness): wire the 4-gate composition to squad's live-order path (NOT Sprint 3 work; acceptance test on tape); strategy marketplace; character seasons; match highlights (paid infra -- first legit [BLOCKER][SPEND] candidate); community. Sprint-length calibration: continue single-Executor with day_target ~5-7, or split for real with day_target 11-13."
+    },
+    {
+      "id": "D081",
+      "date": "2026-07-22",
+      "role": "ceo",
+      "decision": "[CHARTER] Company charter elevated to real-product / real-users / literature-standard R&D operation.",
+      "context": "CEO directive 2026-07-22 elevates every internal decision under three operating principles: (1) real product for real users -- every design anticipates a public population, financial consequence, and privacy obligation; (2) closed feedback loop -- every user-facing signal enters the intake queue with an I### and exits with a status; (3) literature-standard research -- pre-registration, FDR budgets, reproducibility (fixed seeds + versioned artefacts + commit SHAs), honest negatives, real citations. Primary text in company/README.md. Two new protocols land alongside: protocols/rd-loop.md + protocols/literature-standards.md. meta.charter_elevated_at + meta.operating_principles recorded on this ledger."
+    },
+    {
+      "id": "D082",
+      "date": "2026-07-22",
+      "role": "ceo",
+      "decision": "[ROLE] Research Lead role activated -- was implicit under CTO's remit; now explicit.",
+      "context": "Persona 'The Anri Junior'. Tier executive-adjacent (reports dual to CTO on rigour + CPO on product implications; keeps CEO informed on major campaign verdicts). Owns the active-research portfolio (finance-research-experiments/ E0xx + M001), pre-registration discipline enforcement per literature-standards.md \u00a71, cross-repo bridge (research findings graduating to product require Research Lead sign-off), and the /research page verdict manifest (per D007; now formalised). Role doc: company/roles/research_lead.md. Autonomy budget 10 decisions per sprint (added to escalation.md autonomy table)."
+    },
+    {
+      "id": "D083",
+      "date": "2026-07-22",
+      "role": "ceo",
+      "decision": "[ROLE] User Advocate role added -- new business-tier role for feedback intake + voice-of-user + privacy hygiene.",
+      "context": "No Blue Lock persona -- this role stays professional. Owns feedback intake channels (currently F013 approval-queue signal, F014 alert stream, dogfood observations; Sprint 4+ /feedback route + surveys + in-product prompts), weekly triage brief for CPO, user cohort tracking (once real users exist), voice-of-user report each sprint retro, consent + privacy hygiene (works with Legal + Security on GDPR/CCPA). Role doc: company/roles/user_advocate.md. Autonomy budget 15 decisions per sprint."
+    },
+    {
+      "id": "D084",
+      "date": "2026-07-22",
+      "role": "ceo",
+      "decision": "[SPRINT] /feedback route deferred to Sprint 4 (Polish).",
+      "context": "The infrastructure for a feedback loop already exists as of Sprint 2 close-out -- F013 approval-queue rejections and F014 alert stream both emit user-facing signal a User Advocate can drain. A formal /feedback public form is a Polish deliverable, not a Real-Trading blocker. Sprint 4 spec-work owns the concrete design; until then, dogfood observations from CEO / personas fill the intake queue."
+    },
+    {
+      "id": "D085",
+      "date": "2026-07-22",
+      "role": "cpo",
+      "decision": "[PROTOCOL] R&D loop protocol adopted.",
+      "context": "company/protocols/rd-loop.md. Defines intake channels (\u00a71), CPO weekly triage cadence Monday morning (\u00a73, on-arrival for P0), routing rules by classification (\u00a74), the finance-research-experiments cross-repo bridge (\u00a75), loop closure criteria (\u00a76), ledger link via [INTAKE]-prefix decisions and a top-level intake array in company_state.json (\u00a77). CPO owns the weekly drain; Research Lead files [RESEARCH-QUESTION] pre-registrations; User Advocate files the intake items and runs the notify handshake on closure."
+    },
+    {
+      "id": "D086",
+      "date": "2026-07-22",
+      "role": "cto",
+      "decision": "[PROTOCOL] Literature-standards protocol adopted.",
+      "context": "company/protocols/literature-standards.md. Codifies what already runs in finance-research-experiments: pre-registration before compute (\u00a71 -- PROTOCOL commit predates results commit); FDR budget per campaign (\u00a72 -- Benjamini-Hochberg at pre-declared q, usually q=0.10; no p-hacking, no post-hoc metric selection, no double-dipping data, no post-freeze retuning); reproducibility (\u00a73 -- fixed seeds, versioned artefacts, commit SHAs on every result, venv'd runs); honest negatives (\u00a74 -- Phase AC canonical; every negative to company/rd/findings/); product-side experiments (\u00a75 -- F013 30d approval-rate as worked example); citation discipline (\u00a76 -- real authors + year + venue + DOI/URL); peer review (\u00a77 -- external triggers on whitepapers/investment-grade claims/named-alternative-method comparisons); non-negotiables that pull a claim (\u00a79). CTO owns reproducibility audit; Research Lead owns pre-reg + FDR enforcement; Legal owns citation + non-negotiables enforcement. Codified as escalation.md \u00a76 (suppression of a research negative) and review-chain.md \u00a77b (research conditional stage gated by research_relevant:true)."
     }
   ],
   "sprint_verdicts": [
@@ -1919,8 +1995,64 @@
     "bugs_open": 0,
     "cycle_time_days_p50": null,
     "test_coverage_pct": null,
-    "active_roles": 12,
-    "total_roles": 17
+    "active_roles": 14,
+    "total_roles": 19,
+    "intake_items_open": 1,
+    "intake_items_closed_last_7d": 0,
+    "experiments_in_flight": 0,
+    "published_findings_total": 0,
+    "published_findings_last_30d": 0
   },
+  "intake": [
+    {
+      "id": "I001",
+      "source": "post-mortem",
+      "submitter": "self-observation",
+      "submitted_at": "2026-07-22T00:45:00Z",
+      "classification": "PROCESS",
+      "priority": "P2",
+      "status": "triaged",
+      "route": "out-of-scope",
+      "linked_features": [],
+      "linked_decisions": ["D062"],
+      "linked_experiments": [],
+      "contact": null,
+      "resolved_at": null,
+      "summary": "Sprint 1's honest-review flag: 1 wall-clock day is only possible because the Executor persona owns every lane; a real 3-persona split would take longer.",
+      "file": "company/rd/intake/I001-sprint-1-honest-review-flag.md"
+    }
+  ],
+  "experiments": [
+    {
+      "id": "M001-PhaseAC",
+      "repo": "finance-research-experiments",
+      "branch": "multi-agent-ensemble",
+      "path": "programs/M001_multi_agent_ensemble/experiments/phase_ac_pitch_assignment/",
+      "status": "closed-negative",
+      "verdict": "AC.2 A2 FAIL (delta -0.006, p=0.861); stay with A1 baseline",
+      "protocol_commit": "083c0e9",
+      "report_commit": "2c8e363",
+      "fdr_budget_q": 0.10,
+      "fdr_rejects": 3,
+      "fdr_family_size": 28,
+      "condensed_finding_path": "company/rd/findings/phase-ac-pitch-assignment.md",
+      "condensed_finding_status": "not-yet-published"
+    },
+    {
+      "id": "F013-30d-approval-rate",
+      "repo": "multi-pair-trading-agent",
+      "branch": "product",
+      "path": "company/sprints/sprint-2-real-trading/F013-trade-approval-and-live-mode.md",
+      "status": "not-started",
+      "verdict": null,
+      "hypothesis": "At least 30% of proposed live orders will be reviewed within the 5-minute approval-queue timeout.",
+      "measurement": "approval_queue jsonl audit; count approved+rejected events with latency_ms < 300000, divide by total submitted.",
+      "success_criterion": "proportion >= 0.30, lower 95% Wilson CI bound >= 0.20",
+      "kill_condition": "proportion <= 0.05 for 3 consecutive days",
+      "panel": "First 30 days of live-mode traffic (post F013 ship, post live-mode-enabled)",
+      "condensed_finding_path": "company/rd/findings/F013-30d-approval-review-rate.md",
+      "condensed_finding_status": "awaiting-panel"
+    }
+  ],
   "blockers": []
 }

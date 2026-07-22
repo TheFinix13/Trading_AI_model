@@ -78,6 +78,7 @@ because F007 (broker wizard) and F008 (onboarding) both consume its
 | 5 | `build` | Frontend, Backend, AI/ML (as applicable) | Architecture review (green) | Implementation diff + new tests + `company/handoffs/<F###>-<role>-build.json` (one per contributing engineer) | Always |
 | 6 | `qa` | QA | Build + tests | `company/handoffs/<F###>-qa-verdict.json` (pass / pass-with-notes / fail) | Always |
 | 7 | `security`* | Security | QA-passed feature | `company/handoffs/<F###>-security-review.json` | **Conditional** — fires when: (a) auth/session/cookie/credentials touched, (b) user-generated content accepted, (c) external API key introduced, (d) broker connection changed, (e) file upload path added. CTO architecture-review flag `security_relevant: true` triggers this stage. |
+| 7b | `research`* | Research Lead | QA-passed feature that emits a user-behaviour hypothesis | `company/handoffs/<F###>-research-review.json` | **Conditional** — fires when CTO architecture-review flag `research_relevant: true` is set. Applies to features that emit a public claim or a testable hypothesis about user behaviour (e.g. F013 approval-rate). |
 | 8 | `legal`* | Legal (with Brand copy-check + Marketing claim-check pre-input) | QA-passed feature | `company/handoffs/<F###>-legal-review.json` | **Conditional** — fires when: (a) route is publicly reachable (no auth token required), (b) any performance / claim data displayed, (c) any user-data collection introduced, (d) any third-party name (Blue Lock characters, broker names) displayed. CTO architecture-review flag `legal_relevant: true` triggers this stage. |
 | 9 | `signoff` | CEO (Fiyin via The Ego persona) | All prior stages green; conditional stages either fired-and-passed or explicitly skipped-with-reason | Signature bullet in `company/ledger/decisions_log.md` + `history[]` entry in `company_state.json` | Always for P0; CPO-delegable for P1/P2 |
 | 10 | `ship` | DevOps | CEO signoff | Deploy note at `company/handoffs/<F###>-devops-ship.json` + `docs/DEPLOY_LOG.md` entry + healthcheck-green confirmation | Always |
@@ -120,14 +121,18 @@ conditional stages. Its JSON output includes:
   "tests_expected_delta": 3,
   "security_relevant": false,
   "legal_relevant": true,
-  "notes": "Public route with no auth. Legal reviews disclaimer copy."
+  "research_relevant": true,
+  "notes": "Public claim (30d approval-review rate); Research Lead needs hypothesis + measurement pre-registration."
 }
 ```
 
 If the CTO sets `security_relevant: true`, the `security` stage
 fires. If the CTO sets `legal_relevant: true`, the `legal` stage
-fires. Personas cannot skip these flags — attempts to route around a
-`legal_relevant: true` gate escalate to CEO.
+fires. If the CTO sets `research_relevant: true`, the `research`
+stage fires. Personas cannot skip these flags — attempts to route
+around a `legal_relevant: true` or `research_relevant: true` gate
+escalate to CEO (the latter per §6 of `escalation.md`, so a public
+claim can never be silently marked `research_relevant: false`).
 
 ## Ledger discipline
 

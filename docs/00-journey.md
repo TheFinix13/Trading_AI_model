@@ -1,8 +1,34 @@
 # 00 — The Journey: from ICT trading partner to a validated zone-fade portfolio
 
-**Last updated:** 2026-07-22 (Sprint 2 close-out)
+**Last updated:** 2026-07-22 (charter elevation D081)
 **Companion:** [CHECKPOINT.md](CHECKPOINT.md) (current-state snapshot, updated at every
 major divergence). Evidence record: [`reviews/`](reviews/).
+
+**2026-07-22 · Company charter elevated (D081–D086, evolution
+integration).** CEO directive: real product / real users / literature-
+standard R&D. Two new roles activated: **Research Lead** ("The Anri
+Junior", executive-adjacent, dual-report CTO+CPO; owns the E0xx +
+M0xx portfolio and the `/research` verdict manifest) and **User
+Advocate** (business tier, no persona; owns feedback intake, weekly
+triage brief for CPO, GDPR/CCPA hygiene). Two new protocols land:
+`company/protocols/rd-loop.md` (intake ID `I###`, Monday drain
+cadence, cross-repo bridge into `finance-research-experiments`) and
+`company/protocols/literature-standards.md` (pre-registration + FDR
+budget + reproducibility + honest negatives + citation discipline +
+five non-negotiables that pull a claim). Escalation protocol gains
+§6 (suppression of a research negative). Review chain gains stage
+7b (`research`, conditional on CTO flag `research_relevant: true`).
+Ledger grows: two role rows (17 → 19), three KPIs
+(`intake_items_open`, `experiments_in_flight`,
+`published_findings_last_30d`), two top-level arrays (`intake`,
+`experiments`) seeded with I001 (Sprint 1 honest-review flag) and
+two experiments (M001-PhaseAC negative, F013 30-day approval-rate).
+`/hq` grows an R&D pulse section between Sprint Kanban and Role
+grid; `_BASE_CSS_VERSION 1.0.0 → 1.1.0` (additive tokens). Six new
+`D###` decisions (D081–D086). Test suite 1483 → 1503 (+20). Zero
+diffs to `agent/live/*`, `agent/risk/*`, `agent/squad/*` (D065
+Invariant #2 preserved). Zero spend. Applies on top of Sprint 2
+close-out at `ecf6331`.
 
 **2026-07-22 · Sprint 2 (Real-Trading) complete.** Six P0 features
 shipped on `product` in a single autonomous executor day: F009 (auth

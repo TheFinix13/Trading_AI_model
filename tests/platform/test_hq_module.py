@@ -33,6 +33,7 @@ from agent.platform.hq import hq_state  # noqa: E402
 REQUIRED_TOP_LEVEL_KEYS = {
     "meta", "roles", "sprints", "features",
     "decisions", "kpis", "blockers",
+    "intake", "experiments",
 }
 
 
@@ -254,3 +255,158 @@ class TestDerivations:
         assert state["kpis"]["total_roles"] == 3
         # Two open features (spec, build); "ship" excluded from backlog.
         assert state["kpis"]["backlog_size"] == 2
+
+
+class TestRdPulse:
+    """Charter-elevation additions (D081): top-level `intake` /
+    `experiments` arrays are surfaced, and three R&D-pulse KPIs
+    (`intake_items_open`, `experiments_in_flight`,
+    `published_findings_last_30d`) either honour the ledger's recorded
+    values or are derived from the arrays.
+    """
+
+    def test_intake_and_experiments_arrays_pass_through(self, tmp_path: Path):
+        ledger = tmp_path / "company_state.json"
+        _write_ledger(ledger, {
+            "meta": {}, "roles": [], "sprints": [], "features": [],
+            "decisions": [], "kpis": {}, "blockers": [],
+            "intake": [
+                {"id": "I001", "classification": "PROCESS",
+                 "priority": "P2", "status": "triaged",
+                 "summary": "flag"},
+            ],
+            "experiments": [
+                {"id": "M001-PhaseAC", "status": "closed-negative"},
+                {"id": "E-live", "status": "in-flight",
+                 "hypothesis": "hyp"},
+            ],
+        })
+        state = hq_state(ledger_path=ledger)
+        assert "intake" in state and "experiments" in state
+        assert len(state["intake"]) == 1
+        assert state["intake"][0]["id"] == "I001"
+        assert len(state["experiments"]) == 2
+        assert {e["id"] for e in state["experiments"]} == {
+            "M001-PhaseAC", "E-live"}
+
+    def test_rd_kpis_default_to_zero_when_absent(self, tmp_path: Path):
+        # Missing `intake` + `experiments` -> zero counters, matching
+        # the skeleton contract so the frontend doesn't crash on
+        # missing keys.
+        ledger = tmp_path / "company_state.json"
+        _write_ledger(ledger, {
+            "meta": {}, "roles": [], "sprints": [], "features": [],
+            "decisions": [], "kpis": {}, "blockers": [],
+        })
+        state = hq_state(ledger_path=ledger)
+        assert state["intake"] == []
+        assert state["experiments"] == []
+        for key in ("intake_items_open", "experiments_in_flight",
+                    "published_findings_last_30d"):
+            assert state["kpis"][key] == 0, (
+                f"expected {key}=0 on empty ledger")
+
+    def test_intake_open_derived_when_kpi_not_recorded(self, tmp_path: Path):
+        # Two intake items -- one open, one closed -- and no explicit
+        # `intake_items_open` in kpis. Derivation counts the open one.
+        ledger = tmp_path / "company_state.json"
+        _write_ledger(ledger, {
+            "meta": {}, "roles": [], "sprints": [], "features": [],
+            "decisions": [], "kpis": {}, "blockers": [],
+            "intake": [
+                {"id": "I001", "status": "triaged"},
+                {"id": "I002", "status": "closed"},
+            ],
+            "experiments": [],
+        })
+        state = hq_state(ledger_path=ledger)
+        assert state["kpis"]["intake_items_open"] == 1
+
+    def test_experiments_in_flight_excludes_closed_variants(
+            self, tmp_path: Path):
+        # `closed-negative`, `closed-positive`, `shipped`, `done` are all
+        # terminal. Only genuinely open experiments count.
+        ledger = tmp_path / "company_state.json"
+        _write_ledger(ledger, {
+            "meta": {}, "roles": [], "sprints": [], "features": [],
+            "decisions": [], "kpis": {}, "blockers": [],
+            "intake": [],
+            "experiments": [
+                {"id": "e1", "status": "not-started"},
+                {"id": "e2", "status": "in-flight"},
+                {"id": "e3", "status": "closed-negative"},
+                {"id": "e4", "status": "closed-positive"},
+                {"id": "e5", "status": "shipped"},
+                {"id": "e6", "status": "done"},
+                {"id": "e7", "status": "closed"},
+            ],
+        })
+        state = hq_state(ledger_path=ledger)
+        # Only e1 + e2 count.
+        assert state["kpis"]["experiments_in_flight"] == 2
+
+    def test_published_findings_30d_window(self, tmp_path: Path):
+        # A published finding within 30d counts; older than 30d doesn't.
+        # An experiment with `condensed_finding_status="published"` but no
+        # explicit `condensed_finding_published_at` counts (best-effort:
+        # assume recent).
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        recent = (now - timedelta(days=5)).isoformat()
+        stale = (now - timedelta(days=120)).isoformat()
+        ledger = tmp_path / "company_state.json"
+        _write_ledger(ledger, {
+            "meta": {}, "roles": [], "sprints": [], "features": [],
+            "decisions": [], "kpis": {}, "blockers": [],
+            "intake": [],
+            "experiments": [
+                {"id": "e-recent",
+                 "condensed_finding_status": "published",
+                 "condensed_finding_published_at": recent},
+                {"id": "e-stale",
+                 "condensed_finding_status": "published",
+                 "condensed_finding_published_at": stale},
+                {"id": "e-undated",
+                 "condensed_finding_status": "published"},
+                {"id": "e-nyp",
+                 "condensed_finding_status": "not-yet-published"},
+            ],
+        })
+        state = hq_state(ledger_path=ledger)
+        # `e-recent` + `e-undated` count; `e-stale` and `e-nyp` don't.
+        assert state["kpis"]["published_findings_last_30d"] == 2
+
+    def test_recorded_kpi_wins_over_derivation(self, tmp_path: Path):
+        # If the ledger records explicit R&D counters, they take
+        # precedence -- matches the `active_roles`/`total_roles`
+        # pattern.
+        ledger = tmp_path / "company_state.json"
+        _write_ledger(ledger, {
+            "meta": {}, "roles": [], "sprints": [], "features": [],
+            "decisions": [],
+            "kpis": {"intake_items_open": 42,
+                     "experiments_in_flight": 7,
+                     "published_findings_last_30d": 3},
+            "blockers": [],
+            "intake": [{"id": "I001", "status": "triaged"}],
+            "experiments": [{"id": "e1", "status": "in-flight"}],
+        })
+        state = hq_state(ledger_path=ledger)
+        assert state["kpis"]["intake_items_open"] == 42
+        assert state["kpis"]["experiments_in_flight"] == 7
+        assert state["kpis"]["published_findings_last_30d"] == 3
+
+    def test_skeleton_includes_intake_and_experiments(
+            self, tmp_path: Path):
+        # Missing ledger -> skeleton payload with empty intake /
+        # experiments arrays plus zeroed R&D KPI counters.
+        missing = tmp_path / "does_not_exist.json"
+        state = hq_state(ledger_path=missing)
+        assert state["meta"]["unconfigured"] is True
+        assert state["intake"] == []
+        assert state["experiments"] == []
+        for key in ("intake_items_open", "experiments_in_flight",
+                    "published_findings_last_30d"):
+            assert key in state["kpis"], (
+                f"skeleton kpis missing {key!r}")
+            assert state["kpis"][key] == 0

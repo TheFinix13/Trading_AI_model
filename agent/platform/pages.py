@@ -13,7 +13,7 @@ from __future__ import annotations
 # additive tokens, patch on bug-fix / typo / a11y correction.
 # `tests/platform/test_pages_shared_states.py` pins this string so an
 # accidental drift fails the suite.
-_BASE_CSS_VERSION = "1.0.0"
+_BASE_CSS_VERSION = "1.1.0"
 
 _BASE_CSS = """
 :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#e6edf3;
@@ -482,9 +482,11 @@ __NAV__
     <h2>HQ &middot; Blue Lock Trading Co.
         <span class="badge sim" id="tile-hq-badge">company</span></h2>
     <p>See how the product is being built. Kanban of features by stage,
-    role grid across all 17 seats (Executive / Design / Engineering /
-    Business), decisions log, blockers panel, sprint KPIs. Reads live
-    from <code>company/ledger/company_state.json</code>. This is the
+    role grid across all 19 seats (Executive / Executive-adjacent /
+    Design / Engineering / Business), R&amp;D pulse (intake +
+    experiments + latest finding), decisions log, blockers panel,
+    sprint KPIs. Reads live from
+    <code>company/ledger/company_state.json</code>. This is the
     company running around the trading agent &mdash; not a black box.</p>
     <div class="summary" id="tile-hq-summary">&hellip;</div>
   </a>
@@ -2546,16 +2548,19 @@ _HQ_TEMPLATE = r"""<!DOCTYPE html>
   padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;
   letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
 .hq-header .hq-sprint .day-counter{font-variant-numeric:tabular-nums}
-.kpi-strip{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;
+.kpi-strip{display:grid;grid-template-columns:repeat(9,1fr);gap:10px;
   margin-bottom:20px}
+@media (max-width: 1400px){.kpi-strip{grid-template-columns:repeat(6,1fr)}}
 @media (max-width: 1100px){.kpi-strip{grid-template-columns:repeat(3,1fr)}}
 @media (max-width: 700px){.kpi-strip{grid-template-columns:repeat(2,1fr)}}
 .kpi-tile{background:var(--panel);border:1px solid var(--border);
   border-radius:10px;padding:12px 14px}
+.kpi-tile.warn{border-color:var(--red)}
 .kpi-tile .k{font-size:11px;color:var(--dim);text-transform:uppercase;
   letter-spacing:.05em;font-weight:600;margin-bottom:6px}
 .kpi-tile .v{font-size:22px;font-variant-numeric:tabular-nums;color:var(--fg);
   font-weight:600;line-height:1}
+.kpi-tile.warn .v{color:var(--red)}
 .kpi-tile .foot{font-size:11px;color:var(--dim);margin-top:6px}
 .section{margin-bottom:22px}
 .section h2{margin:0 0 10px;font-size:15px;display:flex;align-items:baseline;
@@ -2656,6 +2661,28 @@ _HQ_TEMPLATE = r"""<!DOCTYPE html>
   margin-bottom:18px;font-size:13px;color:var(--fg)}
 .unconfigured-banner code{background:#0d1117;padding:1px 6px;border-radius:4px;
   font-size:12px;color:var(--dim)}
+.rd-pulse{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width: 1100px){.rd-pulse{grid-template-columns:1fr}}
+.rd-column{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:12px 14px;min-height:120px;
+  display:flex;flex-direction:column}
+.rd-column h3{margin:0 0 10px;font-size:11.5px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--dim);font-weight:600}
+.rd-column-body{flex:1;font-size:12.5px;line-height:1.5;color:var(--fg)}
+.rd-column-body .rd-item{padding:6px 0;border-bottom:1px solid #1c2129}
+.rd-column-body .rd-item:last-child{border-bottom:none}
+.rd-column-body .rd-id{color:var(--dim);font-size:11px;
+  font-variant-numeric:tabular-nums;margin-right:6px}
+.rd-column-body .rd-prio{font-size:10px;font-weight:700;padding:1px 5px;
+  border-radius:4px;letter-spacing:.04em;text-transform:uppercase;
+  margin-right:6px;background:rgba(139,148,158,.15);color:var(--dim);
+  border:1px solid var(--border)}
+.rd-column-body .rd-tag{color:var(--purple);font-size:11px;margin-right:6px;
+  text-transform:uppercase;letter-spacing:.04em}
+.rd-column-body .empty{color:var(--dim);font-style:italic;font-size:12px}
+.rd-more{margin-top:8px;font-size:11.5px;color:var(--accent);
+  text-decoration:none;align-self:flex-start}
+.rd-more:hover{text-decoration:underline}
 </style></head><body>
 __NAV__
 <div id="hq-updated">loading&hellip;</div>
@@ -2681,9 +2708,37 @@ __NAV__
   <div class="kanban" id="kanban"></div>
 </div>
 
+<div class="section" aria-labelledby="rd-pulse-heading">
+  <h2 id="rd-pulse-heading">R&amp;D pulse <span class="aux">intake queue,
+      experiments in flight, most recent published finding</span></h2>
+  <div class="rd-pulse" id="rd-pulse">
+    <div class="rd-column">
+      <h3>Intake queue</h3>
+      <div class="rd-column-body" data-rd-column="intake">
+        <div class="empty">loading&hellip;</div>
+      </div>
+      <a href="/rd/intake" class="rd-more">See all intake &rarr;</a>
+    </div>
+    <div class="rd-column">
+      <h3>Experiments in flight</h3>
+      <div class="rd-column-body" data-rd-column="experiments">
+        <div class="empty">loading&hellip;</div>
+      </div>
+      <a href="/rd/experiments" class="rd-more">See all experiments &rarr;</a>
+    </div>
+    <div class="rd-column">
+      <h3>Most recent published finding</h3>
+      <div class="rd-column-body" data-rd-column="latest-finding">
+        <div class="empty">loading&hellip;</div>
+      </div>
+      <a href="/research" class="rd-more">/research &rarr;</a>
+    </div>
+  </div>
+</div>
+
 <div class="section">
-  <h2>Role grid <span class="aux">17 roles across 4 tiers; active in
-      colour, standby dimmed</span></h2>
+  <h2>Role grid <span class="aux">19 roles across 4 tiers (+
+      executive-adjacent); active in colour, standby dimmed</span></h2>
   <div id="role-grid"></div>
 </div>
 
@@ -2813,6 +2868,7 @@ function renderUnconfigured(hq){
 function renderKpiStrip(hq){
   const el = document.getElementById("kpi-strip");
   const k = hq.kpis || {};
+  const intakeOpen = k.intake_items_open == null ? 0 : k.intake_items_open;
   const tiles = [
     {k: "Features shipped", v: (k.features_shipped_sprint_0 || 0) +
       " / " + (k.features_total_sprint_0 || 0),
@@ -2829,14 +2885,84 @@ function renderKpiStrip(hq){
      foot: "pytest tests/"},
     {k: "Active roles", v: (k.active_roles || 0) + " / " +
       (k.total_roles || 0),
-     foot: "17 seats total"}
+     foot: "19 seats total"},
+    {k: "Intake open", v: intakeOpen,
+     foot: intakeOpen > 20 ? "over triage bandwidth" : "R&D queue",
+     tone: intakeOpen > 20 ? "warn" : null},
+    {k: "Experiments in flight", v: k.experiments_in_flight == null
+      ? 0 : k.experiments_in_flight,
+     foot: "R&D portfolio"},
+    {k: "Findings (30d)", v: k.published_findings_last_30d == null
+      ? 0 : k.published_findings_last_30d,
+     foot: "condensed + shipped"}
   ];
   el.innerHTML = tiles.map(t =>
-    '<div class="kpi-tile">'+
+    '<div class="kpi-tile' + (t.tone === "warn" ? " warn" : "") + '">'+
       '<div class="k">' + esc(t.k) + '</div>'+
       '<div class="v">' + esc(t.v) + '</div>'+
       '<div class="foot">' + esc(t.foot) + '</div>'+
     '</div>').join("");
+}
+
+function renderRdPulse(hq){
+  const intakeEl = document.querySelector(
+    '[data-rd-column="intake"]');
+  const expEl = document.querySelector(
+    '[data-rd-column="experiments"]');
+  const findEl = document.querySelector(
+    '[data-rd-column="latest-finding"]');
+  if(!intakeEl || !expEl || !findEl) return;
+
+  const intake = (hq.intake || []).filter(i =>
+    (i.status || "") !== "closed").slice(0, 5);
+  if(!intake.length){
+    intakeEl.innerHTML = '<div class="empty">'+
+      'no open intake items</div>';
+  } else {
+    intakeEl.innerHTML = intake.map(i => {
+      const cls = String(i.classification || "").toUpperCase();
+      const prio = String(i.priority || "").toUpperCase();
+      return '<div class="rd-item">'+
+        '<span class="rd-id">' + esc(i.id || "") + '</span>'+
+        (prio ? '<span class="rd-prio">' + esc(prio) + '</span>' : '') +
+        (cls ? '<span class="rd-tag">' + esc(cls) + '</span>' : '') +
+        esc(i.summary || "") +
+      '</div>';
+    }).join("");
+  }
+
+  const experiments = (hq.experiments || []).filter(e => {
+    const s = String(e.status || "").toLowerCase();
+    return s && s !== "closed" && !s.startsWith("closed-")
+      && s !== "shipped" && s !== "done";
+  }).slice(0, 5);
+  if(!experiments.length){
+    expEl.innerHTML = '<div class="empty">'+
+      'no experiments in flight</div>';
+  } else {
+    expEl.innerHTML = experiments.map(e => {
+      const hyp = e.hypothesis || e.verdict || "";
+      return '<div class="rd-item">'+
+        '<span class="rd-id">' + esc(e.id || "") + '</span>'+
+        '<span class="rd-tag">' + esc(e.status || "") + '</span>'+
+        esc(hyp) +
+      '</div>';
+    }).join("");
+  }
+
+  const published = (hq.experiments || []).filter(e =>
+    (e.condensed_finding_status || "") === "published");
+  if(!published.length){
+    findEl.innerHTML = '<div class="empty">'+
+      'no published findings yet</div>';
+  } else {
+    const latest = published[published.length - 1];
+    findEl.innerHTML = '<div class="rd-item">'+
+      '<span class="rd-id">' + esc(latest.id || "") + '</span>'+
+      '<span class="rd-tag">' + esc(latest.verdict || "") + '</span>'+
+      esc(latest.condensed_finding_path || "") +
+    '</div>';
+  }
 }
 
 function renderKanban(hq){
@@ -2977,6 +3103,7 @@ async function refresh(){
     // Still render everything else so the shell isn't blank.
     renderKpiStrip({kpis: {}});
     renderKanban({features: []});
+    renderRdPulse({intake: [], experiments: []});
     renderRoleGrid({roles: []});
     renderBlockers({blockers: []});
     renderDecisions({decisions: []});
@@ -2985,6 +3112,7 @@ async function refresh(){
   }
   renderKpiStrip(hq);
   renderKanban(hq);
+  renderRdPulse(hq);
   renderRoleGrid(hq);
   renderBlockers(hq);
   renderDecisions(hq);

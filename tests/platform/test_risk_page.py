@@ -41,7 +41,7 @@ class TestSharedPrimitives:
         assert 'class="nav"' in RISK_PAGE
 
     def test_base_css_version_pinned(self) -> None:
-        assert _BASE_CSS_VERSION == "1.0.0"
+        assert _BASE_CSS_VERSION == "1.1.0"
 
 
 class TestApiWiring:

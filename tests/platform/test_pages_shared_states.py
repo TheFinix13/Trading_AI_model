@@ -52,7 +52,7 @@ class TestBaseCssVersion:
             assert part.isdigit(), f"non-numeric semver part in {v!r}"
 
     def test_version_pinned_to_current(self):
-        assert pages._BASE_CSS_VERSION == "1.0.0", (
+        assert pages._BASE_CSS_VERSION == "1.1.0", (
             "bumping _BASE_CSS_VERSION requires updating this pin (per "
             "review-chain §5.5); layout/typography/class-name break = "
             "major, additive token = minor, patch = a11y/typo")
