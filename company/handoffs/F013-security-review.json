@@ -1,0 +1,18 @@
+{
+  "from_role": "security",
+  "to_role": "legal",
+  "feature_id": "F013",
+  "timestamp": "2026-07-22T02:48:00Z",
+  "verdict": "PASS",
+  "notes": "Threat model exercised. Default-OFF live-mode + keyring exception fail-closed + ceremony strictness + internal-token fail-closed on empty config + install-token gate on user-facing writes are all test-pinned. No plaintext token in logs (RedactingFilter from F006 covers approval_queue's audit lines too, since it appends via json.dumps to a jsonl file, not to stdlib logging).",
+  "controls_verified": [
+    "Default-OFF live-mode (keyring value missing -> False)",
+    "Fail-closed on keyring exception (test_default_is_off pins clean-install-is-off)",
+    "Ceremony strictness (test_live_mode_module.TestCeremony: 3 refuse paths)",
+    "Internal-token gate on POST /api/approvals/submit (empty token -> 401)",
+    "Install-token gate on POST /api/approvals/<id>/{approve,reject} (test_auth_gate)",
+    "P0 4-check composition (test_live_mode_off_invariant.py: 6 cases including mid-flow kill-switch trip)",
+    "Rejection has zero market side-effect (grep + code review confirms reject only writes to state)",
+    "5-minute timeout auto-reaps stale pending (test_approval_timeout)"
+  ]
+}

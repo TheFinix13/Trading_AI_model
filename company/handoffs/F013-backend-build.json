@@ -1,0 +1,25 @@
+{
+  "from_role": "backend",
+  "to_role": "security",
+  "feature_id": "F013",
+  "timestamp": "2026-07-22T02:44:00Z",
+  "artifacts": [
+    "agent/platform/approval_queue.py",
+    "agent/platform/pages.py (APPROVALS_PAGE + LIVE_MODE_TOGGLE_PAGE appended)",
+    "agent/platform/config.py ([internal].token block added)",
+    "scripts/serve_platform.py (F013 GET + POST routes; /api/live-mode/warning + /api/approvals/warning in _UNAUTHENTICATED_API_PATHS; /settings/live-mode in _ONBOARDING_HTML_ALLOWED)",
+    "company/legal/live-mode-warning.md (verbatim)",
+    "company/legal/approval-queue-warning.md (verbatim)"
+  ],
+  "verdict": "build-complete",
+  "notes": "69 new tests (spec asked 30). P0 test_live_mode_off_invariant.py is 6-case + all six pass. Full suite 1378 -> 1447. Zero imports from restricted directories (grep-verified). Internal-only submit endpoint fails closed on empty [internal].token config.",
+  "test_files": [
+    "tests/platform/test_approval_queue_module.py (21)",
+    "tests/platform/test_live_mode_module.py (7)",
+    "tests/platform/test_approval_timeout.py (2)",
+    "tests/platform/test_approvals_page.py (10)",
+    "tests/platform/test_live_mode_page.py (9)",
+    "tests/platform/test_approvals_api.py (14)",
+    "tests/security/test_live_mode_off_invariant.py (6 -- P0 PIN)"
+  ]
+}

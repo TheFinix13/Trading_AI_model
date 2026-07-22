@@ -5253,3 +5253,390 @@ RISK_PAGE = (_RISK_TEMPLATE
              .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
              .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
              .replace("__NAV__", nav('risk')))
+
+
+# ---------------------------------------------------------------------------
+# F013 -- Trade approvals + live-mode toggle pages
+# ---------------------------------------------------------------------------
+#
+# `/approvals` renders the pending queue with big Approve / Reject
+# buttons + a countdown timer per entry. `/settings/live-mode` renders
+# the enable-live-mode CEREMONY: checkbox + typed-value confirmation +
+# verbatim Legal disclaimer loaded from `/api/live-mode/warning`.
+#
+# Both pages ship default-OFF: live-mode default is OFF (D065), and
+# the approvals queue starts empty. The queue is populated only via
+# `/api/approvals/submit`, which Sprint 2 does NOT call from any live
+# pathway (D065 SCAFFOLDING invariant).
+
+_APPROVALS_TEMPLATE = r"""<!doctype html>
+<html><head><meta charset=utf-8><title>Approvals - Blue Lock</title>
+<style>__BASE_CSS____SKELETON_CSS__
+.approvals-warn{border:1px solid var(--accent);border-radius:8px;
+  padding:12px 14px;margin:0 0 16px 0;background:rgba(255,255,255,0.02)}
+.approvals-warn p{margin:0 0 6px 0}
+.approvals-warn p:last-child{margin-bottom:0}
+.approvals-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.approval-card{border:1px solid var(--panel);border-radius:8px;
+  padding:14px;background:var(--panel-solid,#1a1a20)}
+.approval-card.pending{border-color:var(--accent)}
+.approval-card h3{margin:0 0 6px 0;font-size:16px}
+.approval-card .meta{color:var(--dim);font-size:12px;margin:4px 0}
+.approval-card .params{display:grid;grid-template-columns:auto 1fr;
+  gap:4px 8px;font-size:13px;margin:6px 0}
+.approval-card .rationale{font-size:13px;font-style:italic;
+  color:var(--dim);margin:6px 0}
+.approval-card .countdown{font-family:monospace;color:var(--accent);
+  margin:6px 0}
+.approval-card .actions{display:flex;gap:8px;margin-top:8px}
+.approval-card .actions button{flex:1;padding:10px;border:0;
+  border-radius:6px;cursor:pointer;font-weight:bold}
+.approval-card .approve{background:#2a7f4a;color:#fff}
+.approval-card .reject{background:#a94a4a;color:#fff}
+.approval-card .reject-reason{width:100%;margin-top:6px;padding:6px;
+  background:transparent;color:inherit;border:1px solid var(--dim);
+  border-radius:4px;font-family:inherit;font-size:13px}
+.approval-card.approved{opacity:0.7;border-color:#2a7f4a}
+.approval-card.rejected{opacity:0.5;border-color:#a94a4a}
+.approval-card.timed_out{opacity:0.4;border-color:var(--dim)}
+.approval-card .status-pill{font-size:11px;text-transform:uppercase;
+  padding:2px 6px;border-radius:3px;background:rgba(255,255,255,0.06)}
+.approvals-section{margin:16px 0}
+.approvals-section h2{margin:0 0 8px 0;font-size:15px}
+@media (max-width: 700px){
+  .approvals-grid{grid-template-columns:1fr}
+}
+</style></head>
+<body>
+__NAV__
+<main>
+<h1>Approvals queue</h1>
+<div class="approvals-warn" id="warn-body">
+<p class="dim">Loading warning...</p>
+</div>
+
+<div class="approvals-section">
+<h2>Pending <span id="pending-count" class="dim"></span></h2>
+<div id="pending-body" class="approvals-grid"></div>
+</div>
+
+<div class="approvals-section">
+<h2>Recent (approved / rejected / timed out)</h2>
+<div id="recent-body" class="approvals-grid"></div>
+</div>
+
+<p class="dim" style="margin-top:20px;font-size:12px">
+Sprint 2 caveat: the platform ships the approval queue and the
+4-check pathway, but no live pathway in this sprint feeds proposals
+into <code>submit()</code>. Live-mode default OFF at
+<a href="/settings/live-mode">/settings/live-mode</a>.
+</p>
+</main>
+<script>__ERROR_COPY_JS__
+__WITH_STATES_JS__
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
+  });
+}
+function fmt(x){ return (typeof x === "number") ? x.toFixed(4) : "-"; }
+
+function statusPill(s){
+  return '<span class="status-pill">'+esc(s)+'</span>';
+}
+
+function cardHtml(entry, includeActions){
+  const cls = "approval-card " + esc(entry.status);
+  var actions = "";
+  if(includeActions){
+    actions = '<div class="actions">'+
+      '<button class="approve" data-id="'+esc(entry.id)+'">Approve</button>'+
+      '<button class="reject" data-id="'+esc(entry.id)+'">Reject</button>'+
+      '</div>'+
+      '<input class="reject-reason" data-id="'+esc(entry.id)+
+      '" placeholder="Reason (optional; sent only on Reject)" />';
+  }
+  const timeoutEpoch = entry.timeout_at_epoch || 0;
+  const params = '<div class="params">'+
+    '<span class="dim">side</span><span>'+esc(entry.side)+'</span>'+
+    '<span class="dim">size</span><span>'+esc(entry.size)+'</span>'+
+    '<span class="dim">entry</span><span>'+fmt(entry.entry)+'</span>'+
+    '<span class="dim">stop</span><span>'+fmt(entry.stop)+'</span>'+
+    '<span class="dim">TP</span><span>'+fmt(entry.take_profit)+'</span>'+
+    '<span class="dim">worst</span><span>$'+fmt(
+      (entry.risk_snapshot||{}).worst_case_loss)+'</span>'+
+    '</div>';
+  return '<div class="'+cls+'" data-id="'+esc(entry.id)+
+    '" data-timeout="'+timeoutEpoch+'">'+
+    '<h3>'+esc(entry.symbol)+' '+statusPill(entry.status)+'</h3>'+
+    '<div class="meta">'+esc(entry.source_agent)+' &middot; '+
+      esc(entry.timestamp)+'</div>'+
+    params+
+    '<div class="rationale">'+esc(entry.rationale)+'</div>'+
+    (includeActions ? '<div class="countdown" data-cd="'+
+      esc(entry.id)+'">--</div>' : "")+
+    actions+'</div>';
+}
+
+async function fetchList(status){
+  const r = await fetch("/api/approvals/list?status="+encodeURIComponent(status),
+                        {cache:"no-store"});
+  if(r.status === 401) return {__auth__: true};
+  if(!r.ok) return {__error__: "HTTP " + r.status};
+  return await r.json();
+}
+
+function wireActions(){
+  document.querySelectorAll(".approve").forEach(function(btn){
+    btn.onclick = async function(){
+      const id = btn.getAttribute("data-id");
+      await fetch("/api/approvals/"+encodeURIComponent(id)+"/approve",
+                  {method:"POST"});
+      refresh();
+    };
+  });
+  document.querySelectorAll(".reject").forEach(function(btn){
+    btn.onclick = async function(){
+      const id = btn.getAttribute("data-id");
+      const ta = document.querySelector('.reject-reason[data-id="'+id+'"]');
+      const reason = ta ? ta.value : "";
+      await fetch("/api/approvals/"+encodeURIComponent(id)+"/reject",
+                  {method:"POST",
+                   headers:{"Content-Type":"application/json"},
+                   body: JSON.stringify({reason: reason})});
+      refresh();
+    };
+  });
+}
+
+function tickCountdowns(){
+  const now = Date.now() / 1000;
+  document.querySelectorAll(".countdown[data-cd]").forEach(function(el){
+    const card = el.closest(".approval-card");
+    if(!card) return;
+    const to = parseFloat(card.getAttribute("data-timeout") || "0");
+    const s = Math.max(0, Math.floor(to - now));
+    const mm = String(Math.floor(s/60)).padStart(2,"0");
+    const ss = String(s%60).padStart(2,"0");
+    el.textContent = "timeout in " + mm + ":" + ss;
+    if(s === 0) el.textContent = "expired -- reap on next poll";
+  });
+}
+
+async function loadWarning(){
+  const box = document.getElementById("warn-body");
+  try{
+    const r = await fetch("/api/approvals/warning", {cache:"no-store"});
+    if(!r.ok){ box.innerHTML = '<p class="dim">Approval warning unavailable.</p>'; return; }
+    const j = await r.json();
+    const paras = String(j.body||"").split(/\n\n+/).map(function(p){
+      return "<p>"+esc(p)+"</p>";
+    }).join("");
+    box.innerHTML = paras;
+  }catch(e){
+    box.innerHTML = '<p class="dim">Approval warning unavailable.</p>';
+  }
+}
+
+async function refresh(){
+  const pendingBox = document.getElementById("pending-body");
+  const recentBox  = document.getElementById("recent-body");
+  await withStates(pendingBox, function(){ return fetchList("pending"); },
+    function(state){
+      const rows = state.entries || [];
+      document.getElementById("pending-count").textContent =
+        rows.length ? "(" + rows.length + ")" : "(0)";
+      pendingBox.innerHTML = rows.map(function(e){
+        return cardHtml(e, true);
+      }).join("");
+      wireActions();
+      tickCountdowns();
+      return null;
+    }, {emptyCopyKey: "no_data_yet"});
+
+  await withStates(recentBox, function(){ return fetchList("all"); },
+    function(state){
+      const rows = (state.entries || []).filter(function(e){
+        return e.status !== "pending";
+      }).slice(0, 20);
+      recentBox.innerHTML = rows.length ? rows.map(function(e){
+        return cardHtml(e, false);
+      }).join("") : '<div class="dim">Nothing resolved yet.</div>';
+      return null;
+    }, {emptyCopyKey: "no_data_yet"});
+}
+
+loadWarning();
+refresh();
+setInterval(refresh, 3000);
+setInterval(tickCountdowns, 1000);
+</script></body></html>"""
+
+
+APPROVALS_PAGE = (_APPROVALS_TEMPLATE
+                  .replace("__BASE_CSS__", _BASE_CSS)
+                  .replace("__SKELETON_CSS__", _SKELETON_CSS)
+                  .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+                  .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+                  .replace("__NAV__", nav('approvals')))
+
+
+_LIVE_MODE_TEMPLATE = r"""<!doctype html>
+<html><head><meta charset=utf-8><title>Live mode - Blue Lock</title>
+<style>__BASE_CSS____SKELETON_CSS__
+.lm-state{font-size:22px;font-weight:bold;padding:12px 16px;
+  border-radius:8px;display:inline-block;margin:8px 0}
+.lm-state.on{background:#a94a4a;color:#fff}
+.lm-state.off{background:var(--panel);color:var(--dim);
+  border:1px solid var(--dim)}
+.lm-warn{border:1px solid var(--accent);border-radius:8px;
+  padding:14px 16px;margin:12px 0;background:rgba(255,255,255,0.02);
+  max-height:360px;overflow-y:auto}
+.lm-warn p{margin:0 0 8px 0}
+.lm-warn p:last-child{margin-bottom:0}
+.lm-ceremony{border:1px dashed var(--accent);border-radius:8px;
+  padding:14px 16px;margin:12px 0}
+.lm-ceremony label{display:block;margin:8px 0}
+.lm-ceremony input[type=text]{width:100%;padding:8px;
+  background:transparent;color:inherit;border:1px solid var(--dim);
+  border-radius:4px;font-family:monospace;font-size:14px}
+.lm-actions{display:flex;gap:8px;margin-top:12px}
+.lm-actions button{padding:10px 16px;border:0;border-radius:6px;
+  font-weight:bold;cursor:pointer}
+.lm-enable{background:#a94a4a;color:#fff}
+.lm-enable:disabled{opacity:0.4;cursor:not-allowed}
+.lm-cancel{background:var(--panel);color:var(--dim);
+  border:1px solid var(--dim)}
+.lm-disable{background:#4a7f6a;color:#fff}
+@media (max-width: 700px){
+  .lm-actions{flex-direction:column}
+}
+</style></head>
+<body>
+__NAV__
+<main>
+<h1>Live mode</h1>
+<p class="dim">
+This toggle controls whether the platform is allowed to send live
+orders to your broker. Default is OFF; enabling requires a
+deliberate ceremony. Disabling is one click.
+</p>
+
+<div id="lm-current" class="lm-state off">Loading...</div>
+
+<section id="lm-off-section" style="display:none">
+  <h2>Enable live mode</h2>
+  <div id="lm-warn" class="lm-warn">
+    <p class="dim">Loading warning...</p>
+  </div>
+  <div class="lm-ceremony">
+    <label>
+      <input type="checkbox" id="lm-ack" />
+      I understand this will place real orders with real money.
+    </label>
+    <label>
+      Type <code>ENABLE LIVE MODE</code> to confirm:
+      <input type="text" id="lm-confirm" placeholder="ENABLE LIVE MODE"
+             autocomplete="off" />
+    </label>
+    <div class="lm-actions">
+      <button id="lm-enable-btn" class="lm-enable" disabled>Enable</button>
+      <a class="lm-cancel" href="/hq" style="text-decoration:none;
+         display:inline-block;padding:10px 16px;border-radius:6px;
+         border:1px solid var(--dim)">Cancel</a>
+    </div>
+  </div>
+</section>
+
+<section id="lm-on-section" style="display:none">
+  <h2>Live mode is ON</h2>
+  <p class="dim">
+    The platform is authorised to send live orders to your broker
+    subject to the approval queue at <a href="/approvals">/approvals</a>,
+    the kill-switches at <a href="/settings/kill-switches">/settings/kill-switches</a>,
+    and the risk budget at <a href="/risk">/risk</a>.
+  </p>
+  <div class="lm-actions">
+    <button id="lm-disable-btn" class="lm-disable">Turn off live mode</button>
+  </div>
+</section>
+</main>
+
+<script>__ERROR_COPY_JS__
+__WITH_STATES_JS__
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
+  });
+}
+async function fetchStatus(){
+  const r = await fetch("/api/live-mode/status", {cache:"no-store"});
+  if(!r.ok) return {enabled: false, __error__: r.status};
+  return await r.json();
+}
+async function loadWarning(){
+  const box = document.getElementById("lm-warn");
+  try{
+    const r = await fetch("/api/live-mode/warning", {cache:"no-store"});
+    if(!r.ok){ box.innerHTML = '<p class="dim">Warning unavailable.</p>'; return; }
+    const j = await r.json();
+    const paras = String(j.body||"").split(/\n\n+/).map(function(p){
+      return "<p>"+esc(p)+"</p>";
+    }).join("");
+    box.innerHTML = paras;
+  }catch(e){
+    box.innerHTML = '<p class="dim">Warning unavailable.</p>';
+  }
+}
+function updateEnableButton(){
+  const ack = document.getElementById("lm-ack").checked;
+  const conf = document.getElementById("lm-confirm").value.trim();
+  document.getElementById("lm-enable-btn").disabled =
+    !(ack && conf === "ENABLE LIVE MODE");
+}
+async function render(){
+  const s = await fetchStatus();
+  const cur = document.getElementById("lm-current");
+  if(s.enabled){
+    cur.className = "lm-state on";
+    cur.textContent = "ON -- live orders are authorised";
+    document.getElementById("lm-off-section").style.display = "none";
+    document.getElementById("lm-on-section").style.display = "block";
+  } else {
+    cur.className = "lm-state off";
+    cur.textContent = "OFF -- no live orders will be sent";
+    document.getElementById("lm-off-section").style.display = "block";
+    document.getElementById("lm-on-section").style.display = "none";
+    loadWarning();
+  }
+}
+document.addEventListener("change", function(e){
+  if(e.target && e.target.id === "lm-ack") updateEnableButton();
+});
+document.addEventListener("input", function(e){
+  if(e.target && e.target.id === "lm-confirm") updateEnableButton();
+});
+document.addEventListener("click", async function(e){
+  if(e.target && e.target.id === "lm-enable-btn"){
+    const ack = document.getElementById("lm-ack").checked;
+    const conf = document.getElementById("lm-confirm").value.trim();
+    const r = await fetch("/api/live-mode/enable", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({acknowledged: ack, confirmation: conf})});
+    if(r.ok) render();
+  } else if(e.target && e.target.id === "lm-disable-btn"){
+    await fetch("/api/live-mode/disable", {method:"POST"});
+    render();
+  }
+});
+render();
+</script></body></html>"""
+
+
+LIVE_MODE_TOGGLE_PAGE = (_LIVE_MODE_TEMPLATE
+                         .replace("__BASE_CSS__", _BASE_CSS)
+                         .replace("__SKELETON_CSS__", _SKELETON_CSS)
+                         .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+                         .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+                         .replace("__NAV__", nav('live-mode')))

@@ -57,6 +57,11 @@ def _defaults(repo_root: Path) -> dict:
         # F009 -- install-token session expiry (auto-logout after N days
         # of no authenticated activity). Default 7 days.
         "session": {"expiry_days": 7},
+        # F013 -- internal-only token used to gate
+        # `POST /api/approvals/submit`. Sprint 2 does NOT call this
+        # endpoint from any live pathway (D065). Left empty by default;
+        # when empty, the endpoint refuses every request (fail-closed).
+        "internal": {"token": ""},
     }
 
 
@@ -137,6 +142,10 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
                 cfg["session"]["expiry_days"] = int(se["expiry_days"])
             except (TypeError, ValueError):
                 pass
+    internal = raw.get("internal")
+    if isinstance(internal, dict):
+        if internal.get("token"):
+            cfg["internal"]["token"] = str(internal["token"])
     if cfg["live_dir"] is None:
         cfg["live_dir"] = Path(cfg["log_root"]) / "squad_live"
     return cfg

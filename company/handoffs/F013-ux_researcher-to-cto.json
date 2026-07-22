@@ -1,0 +1,18 @@
+{
+  "from_role": "ux_researcher",
+  "to_role": "cto",
+  "feature_id": "F013",
+  "timestamp": "2026-07-22T02:38:00Z",
+  "artifacts": [
+    "company/research/F013-user-journey.md",
+    "company/design/F013-mocks.md"
+  ],
+  "verdict": "handoff-open",
+  "notes": "Two pages: /approvals + /settings/live-mode. Ceremony gates enable, one-click disable. Asymmetric-danger palette (red for ON / Reject, green for Approve, dim for OFF). Verbatim disclaimers loaded from /api/*/warning endpoints. Sprint 2 caveat pinned in copy.",
+  "acceptance": [
+    "Ceremony mock covers checkbox + typed confirmation + verbatim disclaimer loading",
+    "Queue mock covers pending countdown + Approve/Reject asymmetry + reason textarea",
+    "Mobile 700px collapse specified for approvals grid AND ceremony buttons",
+    "Copy strings drafted (banner, empty states, Sprint 2 caveat)"
+  ]
+}

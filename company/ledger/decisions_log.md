@@ -1215,6 +1215,71 @@ constraints (3-tier verbatim + wins-don't-restore + 30-s-cache +
 password-never-in-return). Handoff at
 `company/handoffs/F012-legal-to-ceo.json`.
 
+## D078 · 2026-07-22 · cto · [FEATURE]
+
+**F013 shipped -- trade approval + `/approvals` + live-mode toggle
++ P0 live-mode-off invariant.**
+
+The central Real-Trading feature landed default-OFF (D065). New
+product-branch module `agent/platform/approval_queue.py` provides
+the FIRST and FOURTH gates in the four-check pathway:
+
+- **First gate:** `is_live_mode_enabled()` reads the keyring under
+  `namespace="bluelock", key="live_mode_enabled"`. Default missing
+  == disabled; any keyring exception also returns False (fail
+  closed).
+- **Ceremony:** `enable_ceremony(acknowledged, confirmation)`
+  requires BOTH the checkbox AND the exact string
+  `ENABLE LIVE MODE`. Case-sensitive. Test-pinned refuse paths.
+- **Disable:** `disable()` is one-click, no ceremony (safety
+  direction always frictionless).
+- **Fourth gate:** `can_send_order(approval_id)` returns True only
+  when the entry status is `approved`. Auto-reaps stale pending
+  (5-minute default timeout) before answering.
+- **Composition:** `can_send_live_order(entry)` runs all four gates
+  in order (live-mode -> kill-switch -> risk-budget -> approval).
+  Returns `(False, <reason>)` whenever any gate refuses.
+
+New pages: `APPROVALS_PAGE` at `/approvals` (pending grid + Approve
+/ Reject buttons + 3-second poll + countdown ticker) and
+`LIVE_MODE_TOGGLE_PAGE` at `/settings/live-mode` (state indicator
++ verbatim warning + ceremony gate + one-click disable).
+
+New APIs: `GET /api/approvals/list?status=`,
+`POST /api/approvals/<id>/{approve,reject}`,
+`POST /api/approvals/submit` (internal-token gated, fails closed
+on empty `[internal].token` config),
+`GET /api/live-mode/{status,warning}`,
+`POST /api/live-mode/{enable,disable}`,
+`GET /api/approvals/warning`. The two `/warning` endpoints are in
+`_UNAUTHENTICATED_API_PATHS` so the ceremony can render pre-token.
+`/settings/live-mode` added to `_ONBOARDING_HTML_ALLOWED` so the
+safety UI is reachable during onboarding.
+
+Two verbatim Legal documents drafted BEFORE QA (D048):
+`company/legal/live-mode-warning.md` (served at
+`/api/live-mode/warning`) and `company/legal/approval-queue-warning.md`
+(served at `/api/approvals/warning`).
+
+**P0 test on tape:** `tests/security/test_live_mode_off_invariant.py`
+composes the 4-check gate and pins 6 cases (default-is-off, live-mode
+alone is not enough, approval alone is not enough, all-four-pass ->
+True, kill-switch trip mid-flow -> False, clean-install-refuses). All
+6 pass. This test is the single most important guarantee that Sprint
+2's SCAFFOLDING invariant (D065) holds.
+
+69 new tests total (spec asked 30): 21 approval_queue module + 7
+live-mode module + 2 timeout + 10 approvals page + 9 live-mode page
++ 14 API + 6 P0 invariant. Full suite 1378 → 1447 passed.
+
+Zero imports from `agent/live/*`, `agent/risk/*`, `agent/squad/*`
+(grep-verified). Sprint 2 does NOT call `approval_queue.submit(...)`
+from any live pathway. Legal registered `approval_queue` claims
+with rolling constraints (ceremony strictness, fail-closed,
+5-minute timeout verbatim, no-live-wiring in Sprint 2, internal-token
+fail-closed on empty). Handoff at
+`company/handoffs/F013-legal-to-ceo.json`.
+
 ## Template for subsequent entries
 
 ```markdown

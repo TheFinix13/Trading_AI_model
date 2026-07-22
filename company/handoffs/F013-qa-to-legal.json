@@ -1,0 +1,12 @@
+{
+  "from_role": "qa",
+  "to_role": "legal",
+  "feature_id": "F013",
+  "timestamp": "2026-07-22T02:50:00Z",
+  "verdict": "APPROVED",
+  "verdict_doc": "company/qa/F013-verdict.md",
+  "notes": "69 tests green (spec asked 30). P0 test_live_mode_off_invariant.py is on tape with 6 passing cases including the mid-flow kill-switch trip. Full suite 1447 passed. Zero imports from restricted directories. Legal review needed on the two verbatim warnings AND the approval_queue register entries.",
+  "claim_register_entries_needed": [
+    "approval_queue: 15 accessors + 6 module constants + rolling constraints (ceremony strictness, fail-closed, 5-min timeout verbatim, no-live-wiring in Sprint 2)"
+  ]
+}

@@ -38,13 +38,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from agent.platform import (  # noqa: E402
-    auth, broker_connection, broker_health, credentials, hq,
+    approval_queue, auth, broker_connection, broker_health, credentials, hq,
     kill_switch_admin, kill_switches, live_status, onboarding, paper_loop,
     performance, players, rate_limiter, research, risk_budget, squad_events,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
-    BROKER_WIZARD_PAGE, HQ_PAGE, HUB_PAGE, KILL_SWITCHES_PAGE, ONBOARDING_PAGE,
+    APPROVALS_PAGE, BROKER_WIZARD_PAGE, HQ_PAGE, HUB_PAGE,
+    KILL_SWITCHES_PAGE, LIVE_MODE_TOGGLE_PAGE, ONBOARDING_PAGE,
     PERFORMANCE_PAGE, PLAYERS_INDEX_PAGE, RESEARCH_PAGE, RESET_INSTALL_PAGE,
     RISK_PAGE, V1_PAGE, V2_PAGE,
     player_detail_page, players_not_found_page,
@@ -80,6 +81,8 @@ _LIVE_RE = re.compile(
 _PLAYER_URL_RE = re.compile(r"^/players/([A-Za-z0-9_-]+)/?$")
 _PLAYER_API_RE = re.compile(r"^/api/players/([A-Za-z0-9_-]+)$")
 _BROKER_ALIAS_RE = re.compile(r"^/api/broker/([A-Za-z0-9_.\-]+)$")
+_APPROVAL_ACTION_RE = re.compile(
+    r"^/api/approvals/([A-Za-z0-9_-]+)/(approve|reject)$")
 
 # Path to the F007 live-broker warning served over /api/broker/live-warning.
 _LIVE_WARNING_PATH = REPO_ROOT / "company" / "legal" / "live-broker-warning.md"
@@ -94,6 +97,8 @@ _UNAUTHENTICATED_API_PATHS: frozenset[str] = frozenset({
     "/api/onboarding/pairs",    # F008 -- setup happens before token exists
     "/api/onboarding/complete", # F008 -- setup happens before token exists
     "/api/onboarding/reset",    # F008 -- reset must work without a token
+    "/api/live-mode/warning",   # F013 -- disclaimer loads BEFORE ceremony auth
+    "/api/approvals/warning",   # F013 -- approval-queue warning readable pre-auth
 })
 
 # F009 -- routes that require the install-token gate BUT skip the rate
@@ -110,6 +115,7 @@ _ONBOARDING_HTML_ALLOWED: frozenset[str] = frozenset({
     "/settings/reset-install", "/settings/reset-install/",
     "/settings/broker", "/settings/broker/",  # so wizard step 3 works
     "/settings/kill-switches", "/settings/kill-switches/",  # F011 safety UI always reachable
+    "/settings/live-mode", "/settings/live-mode/",  # F013 safety UI always reachable
     "/healthz",
 })
 
@@ -410,6 +416,47 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 return
             if path == "/api/risk/budgets":
                 self._json(risk_budget.load_config())
+                return
+
+            # F013 -- approvals queue + live-mode toggle.
+            if path in ("/approvals", "/approvals/"):
+                self._send(APPROVALS_PAGE.encode(),
+                           "text/html; charset=utf-8")
+                return
+            if path in ("/settings/live-mode", "/settings/live-mode/"):
+                self._send(LIVE_MODE_TOGGLE_PAGE.encode(),
+                           "text/html; charset=utf-8")
+                return
+            if path == "/api/approvals/list":
+                status = params.get("status", "all")
+                try:
+                    entries = approval_queue.list_entries(
+                        status=status, limit=100)
+                except ValueError as exc:
+                    self._json({"error": str(exc)}, 400)
+                    return
+                self._json({"entries": entries})
+                return
+            if path == "/api/approvals/warning":
+                warn_path = (REPO_ROOT / "company" / "legal"
+                             / "approval-queue-warning.md")
+                try:
+                    body = warn_path.read_text(encoding="utf-8")
+                except OSError:
+                    body = ""
+                self._json({"body": body})
+                return
+            if path == "/api/live-mode/status":
+                self._json({"enabled": approval_queue.is_live_mode_enabled()})
+                return
+            if path == "/api/live-mode/warning":
+                warn_path = (REPO_ROOT / "company" / "legal"
+                             / "live-mode-warning.md")
+                try:
+                    body = warn_path.read_text(encoding="utf-8")
+                except OSError:
+                    body = ""
+                self._json({"body": body})
                 return
 
             # F008 first-visit gate -- HTML routes redirect to
@@ -747,6 +794,58 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 else:
                     self._json({"ok": False,
                                 "error": "unable to write config"}, 500)
+                return
+
+            # F013 -- approvals + live-mode toggle write path (auth-gated).
+            m = _APPROVAL_ACTION_RE.match(path)
+            if m is not None:
+                approval_id, action = m.group(1), m.group(2)
+                body = self._read_body_json() or {}
+                if action == "approve":
+                    ok = approval_queue.approve(approval_id, by="user")
+                    self._json({"ok": ok})
+                    return
+                ok = approval_queue.reject(
+                    approval_id, str(body.get("reason", "")), by="user")
+                self._json({"ok": ok})
+                return
+            if path == "/api/approvals/submit":
+                # Internal-only endpoint. Sprint 2 does NOT call this
+                # from any live pathway (D065 invariant); the internal
+                # token is required + empty token fails closed.
+                cfg_now = load_config(REPO_ROOT)
+                internal_token = (cfg_now.get("internal", {})
+                                  .get("token") or "")
+                header_token = self.headers.get("X-Bluelock-Internal-Token", "")
+                if (not internal_token
+                        or not auth.constant_time_equal(
+                            internal_token, header_token)):
+                    self._json({"ok": False,
+                                "error": "internal-token required"}, 401)
+                    return
+                body = self._read_body_json() or {}
+                try:
+                    approval_id = approval_queue.submit(body)
+                except ValueError as exc:
+                    self._json({"ok": False, "error": str(exc)}, 400)
+                    return
+                self._json({"ok": True, "id": approval_id})
+                return
+            if path == "/api/live-mode/enable":
+                body = self._read_body_json() or {}
+                ok, reason = approval_queue.enable_ceremony(
+                    acknowledged=bool(body.get("acknowledged", False)),
+                    confirmation=str(body.get("confirmation", "")))
+                if not ok:
+                    self._json({"ok": False, "error": reason}, 400)
+                    return
+                self._json({"ok": True,
+                            "enabled": approval_queue.is_live_mode_enabled()})
+                return
+            if path == "/api/live-mode/disable":
+                ok = approval_queue.disable()
+                self._json({"ok": ok,
+                            "enabled": approval_queue.is_live_mode_enabled()})
                 return
 
             if path == "/api/broker/test-connection":

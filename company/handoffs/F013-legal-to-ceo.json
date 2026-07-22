@@ -1,0 +1,16 @@
+{
+  "from_role": "legal",
+  "to_role": "ceo",
+  "feature_id": "F013",
+  "timestamp": "2026-07-22T02:53:00Z",
+  "verdict": "APPROVED",
+  "verdict_doc": "company/legal/F013-review.md",
+  "notes": "F013 is the central Real-Trading feature. Live-mode default OFF + ceremony required + 4-check pathway pinned by P0 invariant test. Two verbatim documents (live-mode-warning.md, approval-queue-warning.md) served via unauthenticated warning endpoints so the ceremony can render pre-token. Rolling constraints logged (ceremony strictness, fail-closed, 5-min timeout verbatim, internal-token fail-closed on empty). Ready for CEO signoff.",
+  "risks_flagged": [
+    "Rolling constraint: any commit that adds `approval_queue.submit(...)` on a live pathway must ship under a new sprint with fresh security + legal reviews (D065 hard invariant).",
+    "Rolling constraint: relaxing enable_ceremony (case-insensitive confirmation, default-true acknowledgement, etc.) materially changes the safety claim and requires fresh Legal review."
+  ],
+  "claim_register_diff": [
+    "+ F013 --  `agent/platform/approval_queue.py` block (15 accessors, 6 module constants, 3 rolling constraints)"
+  ]
+}

@@ -388,6 +388,58 @@ whitelists the fields returned. A regression test in
 `tests/platform/test_broker_health_module.py` pins that the raw
 password does not appear in any field of the return payload.
 
+### F013 — `agent/platform/approval_queue.py` (Sprint 2)
+
+Public accessors: `submit(entry) -> str`,
+`approve(approval_id, by="user") -> bool`,
+`reject(approval_id, reason, by="user") -> bool`,
+`timeout_reap(now=None) -> list[str]`,
+`can_send_order(approval_id) -> bool`,
+`get_entry(approval_id) -> dict | None`,
+`list_entries(status="all", limit=100) -> list[dict]`,
+`get_timeout_seconds() -> int`,
+`set_timeout_seconds(seconds) -> None`,
+`is_live_mode_enabled() -> bool`,
+`set_live_mode(enabled) -> bool`,
+`enable_ceremony(acknowledged, confirmation) -> tuple[bool, str]`,
+`disable() -> bool`,
+`can_send_live_order(entry, ...) -> tuple[bool, str]`.
+
+Public module constants: `DEFAULT_TIMEOUT_SECONDS`, `STATUSES`,
+`AUDIT_FILENAME`, `LIVE_MODE_NAMESPACE`, `LIVE_MODE_KEY`,
+`CONFIRMATION_PHRASE`. Test-only helper marked `# claim-exempt`:
+`reset_state`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `is_live_mode_enabled` | `bool` | First of four live-mode-off gates. Default False. Any keyring error also returns False (fail-closed). | `approval_queue.is_live_mode_enabled`. | Live-mode warning renders when False -> True transition ceremony fires. |
+| `set_live_mode` | `bool` | Persist the toggle. Trusts its `enabled` argument -- the enable-ceremony is the caller's guard. | `approval_queue.set_live_mode`. | Ceremony required on enable path (`/api/live-mode/enable`). |
+| `enable_ceremony` | `(bool, str)` | Gate for `set_live_mode(True)` used by the HTTP API. True only when acknowledgement is True AND confirmation matches `ENABLE LIVE MODE` exactly. | `approval_queue.enable_ceremony`. | Verbatim `company/legal/live-mode-warning.md` rendered above the ceremony. |
+| `disable` | `bool` | One-click OFF -- no ceremony (safety direction always frictionless). | `approval_queue.disable`. | None. |
+| `submit` | `str` (approval_id) | Enqueue a proposal. Assigns id, validates payload, appends to JSONL audit. Sprint 2 does NOT call this from any live pathway (D065). | `approval_queue.submit`. | None -- internal endpoint gated by `[internal].token`. |
+| `approve` | `bool` | Move pending -> approved. Idempotent (returns False on second call). Audit-logged. | `approval_queue.approve`. | Verbatim `company/legal/approval-queue-warning.md` renders above the pending list. |
+| `reject` | `bool` | Move pending -> rejected with reason. Audit-logged. Rejected orders have zero market side-effect. | `approval_queue.reject`. | Same as approve. |
+| `can_send_order` | `bool` | Fourth of four live-mode-off gates. True iff status == "approved". Auto-reaps stale pending before answering. | `approval_queue.can_send_order`. | Composed into the invariant test. |
+| `can_send_live_order` | `(bool, str)` | Composes ALL FOUR gates (live-mode + kill-switch + risk-budget + approval). The `test_live_mode_off_invariant` pin. | `approval_queue.can_send_live_order`. | Composed disclaimer of all four dependencies. |
+| `timeout_reap` | `list[str]` | Expire stale pending entries. Called under the hood by `can_send_order` and `list_entries`. | `approval_queue.timeout_reap`. | None -- state. |
+| `list_entries` | `list[dict]` | Newest-first, optional status filter, `limit` cap. Returns copies (mutation-safe). | `approval_queue.list_entries`. | None -- state. |
+
+Rolling constraint (Legal): the "5-minute timeout" claim is only
+accurate while `DEFAULT_TIMEOUT_SECONDS == 300`. Any change (config
+knob or default) must strike or update the claim wherever cited.
+
+Ceremony-strictness constraint: `enable_ceremony` requires BOTH the
+acknowledgement checkbox AND the exact confirmation phrase
+`ENABLE LIVE MODE`. If either check is relaxed (e.g. case-insensitive
+match, checkbox default true), that materially changes the safety
+claim and requires a Legal review.
+
+Fail-closed constraint: any keyring exception in
+`is_live_mode_enabled` returns False. Removing the try/except would
+allow a keyring outage to flip the default to True (unsafe) -- the
+regression test in `tests/security/test_live_mode_off_invariant.py`
+pins clean-install-is-off.
+
 ## Audit hook (Sprint 2 — F010 implementation)
 
 Sprint 2's F010 ships `scripts/check_claim_register.py` +

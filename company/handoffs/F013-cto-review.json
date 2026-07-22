@@ -1,0 +1,27 @@
+{
+  "from_role": "cto",
+  "to_role": "backend",
+  "feature_id": "F013",
+  "timestamp": "2026-07-22T02:40:00Z",
+  "verdict": "spec-locked",
+  "notes": "Spec-lock: one new module (approval_queue.py -- in-memory dict + append-only JSONL audit + keyring-backed live-mode toggle), two new pages (APPROVALS_PAGE + LIVE_MODE_TOGGLE_PAGE), ~9 new API endpoints, one new config block ([internal].token, default empty == fails closed). ZERO imports from agent/live/*, agent/risk/*, agent/squad/*. Sprint 2 does NOT wire submit() from any pathway.",
+  "invariants_pinned": [
+    "can_send_live_order composes ALL FOUR gates -- test_live_mode_off_invariant.py is P0",
+    "Live-mode default is OFF; keyring exception -> False (fail-closed)",
+    "enable_ceremony requires acknowledgement AND exact 'ENABLE LIVE MODE' confirmation",
+    "disable is one-click -- safety direction always frictionless",
+    "submit endpoint gated by internal-only token; empty config -> refuses all",
+    "5-minute default timeout; timeouts auto-reap in list_entries + can_send_order",
+    "Rejection has ZERO market side-effect (audit-only)",
+    "Warning endpoints (/api/live-mode/warning, /api/approvals/warning) readable pre-auth so the ceremony can render",
+    "Zero imports from restricted directories (D065 hard invariant)"
+  ],
+  "acceptance": [
+    "P0 test_live_mode_off_invariant.py green (5+ cases)",
+    "Module tests cover submit / approve / reject / timeout / validation / audit / list-filter",
+    "Ceremony tests cover both refuse paths + accept path",
+    "Page tests cover pending grid + countdown + ceremony inputs + one-click disable + mobile 700px",
+    "API tests cover install-token gate + internal-token fail-closed on empty",
+    "All Legal warnings drafted BEFORE QA (D048)"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "from_role": "cpo",
+  "to_role": "ux_researcher",
+  "feature_id": "F013",
+  "timestamp": "2026-07-22T02:35:00Z",
+  "spec_path": "company/sprints/sprint-2-real-trading/F013-trade-approval-and-live-mode.md",
+  "verdict": "handoff-open",
+  "notes": "THE central Real-Trading feature. Full review chain applies (legal_relevant: true, auth: true, credentials: true). UX Researcher captures the enable-live-mode ceremony flow + queue interaction + the honest disclosure that Sprint 2 does not wire the submit() endpoint from any live pathway.",
+  "acceptance": [
+    "Enable-ceremony journey documented (checkbox + typed confirmation + verbatim warning)",
+    "Disable-is-one-click journey documented (safety direction always frictionless)",
+    "Queue interaction journey documented (approve / reject / countdown)",
+    "Sprint 2 caveat explicit in every user-facing surface (submit is NOT wired)"
+  ]
+}
