@@ -1,0 +1,16 @@
+{
+  "from_role": "security",
+  "to_role": "qa",
+  "feature_id": "F009",
+  "timestamp": "2026-07-22T00:54:00Z",
+  "verdict": "pass",
+  "deliverables": [
+    "company/handoffs/F009-security-review.json"
+  ],
+  "notes": "Security review passes. Threat model exercised: (1) rate-limit bypass by presenting different token positions -- refused by check_request_token constant-time compare (F006), then rate limiter buckets on fingerprint regardless of presentation channel; (2) session replay -- expired session refused with 401 + rotate hint, expired session cannot be revived without rotation (which requires a currently-valid token in the same request); (3) plaintext leakage on rotation -- test_rotate_logs_only_fingerprint pins that the rotated string never appears in a log record. Rate-limit bucket state is per-process; a restart resets it (single-user install per D052 -- acceptable). Rate limiter cannot cause a denial of the rotate endpoint (rotate is exempt from the session-expiry rejection).",
+  "blockers": [],
+  "review_criteria": [
+    "QA re-runs the 29 F009 tests + the full suite",
+    "QA confirms no plaintext-token-in-logs regression"
+  ]
+}

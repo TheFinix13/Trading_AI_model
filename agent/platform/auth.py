@@ -14,12 +14,20 @@ Public API::
     auth_status(token)                -> dict
     check_request_token(header, cookie, query, fallback_token) -> bool
     is_install_configured()           -> bool
+    rotate_install_token()            -> str  (F009 -- new token, old invalidated)
+    record_session_activity()         -> bool  (F009)
+    session_last_activity()           -> float | None
+    is_session_expired(now=None)      -> bool
+    clear_session_activity()          -> bool
+    set_session_expiry_seconds(secs)  -> None  (F009 -- config wiring)
+    get_session_expiry_seconds()      -> int
     RedactingFilter                   -- logging filter
 
 Layout::
 
     keyring namespace = "bluelock"
     keyring key       = "install_token"
+    keyring key       = "session_last_activity"   (F009 -- unix epoch str)
 
 The fingerprint is the first 8 chars + "\u2026" + the last 8 chars of
 the token, so users can record it without exposing the full string.
@@ -32,6 +40,7 @@ import hmac
 import logging
 import re
 import secrets
+import time
 
 from agent.platform import credentials
 
@@ -42,6 +51,13 @@ _INSTALL_TOKEN_MIN_LEN = 32
 _INSTALL_TOKEN_MAX_LEN = 128
 _TOKEN_CHAR_RE = re.compile(r"^[A-Za-z0-9_\-]{" + str(_INSTALL_TOKEN_MIN_LEN) +
                             r"," + str(_INSTALL_TOKEN_MAX_LEN) + r"}$")
+
+# F009 session expiry -- default 7 days from last authenticated request.
+# Configurable via ``[session]`` in platform.toml (see config.py) and
+# reset in tests via `set_session_expiry_seconds`.
+SESSION_ACTIVITY_KEY = "session_last_activity"
+DEFAULT_SESSION_EXPIRY_SECONDS: int = 7 * 24 * 3600
+_session_expiry_seconds: int = DEFAULT_SESSION_EXPIRY_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +72,11 @@ def generate_install_token() -> str:
     Returns the plaintext token (the caller displays it once, then
     stores it via :func:`credentials.store_secret`). Overwrites any
     prior install token.
+
+    Also records initial session activity so the F009 session-expiry
+    check does not immediately reject the first request that presents
+    this token (a fresh install has never been authenticated, so its
+    activity timestamp is otherwise stale-by-default).
     """
     token = secrets.token_urlsafe(INSTALL_TOKEN_BYTES)
     ok = credentials.store_secret(AUTH_NAMESPACE, INSTALL_TOKEN_KEY, token)
@@ -64,6 +85,10 @@ def generate_install_token() -> str:
             "install token could not be stored -- OS keychain unavailable "
             "and no fallback passphrase configured. Run through /onboarding "
             "to set a passphrase first.")
+    # F009 -- initial session activity so the first authenticated request
+    # from this install is not rejected as expired.
+    credentials.store_secret(
+        AUTH_NAMESPACE, SESSION_ACTIVITY_KEY, f"{time.time():.6f}")
     return token
 
 
@@ -239,3 +264,102 @@ def install_redacting_filter(logger_name: str = "") -> RedactingFilter:
         target.removeFilter(f)
     target.addFilter(filt)
     return filt
+
+
+# ---------------------------------------------------------------------------
+# F009 -- session expiry
+# ---------------------------------------------------------------------------
+
+def set_session_expiry_seconds(seconds: int) -> None:
+    """Reconfigure the session-expiry window.
+
+    Called at server start from `platform.toml` ``[session] expiry_days``
+    (via `agent/platform/config.py`). Tests override to shrink the
+    window and avoid a real 7-day wait.
+    """
+    global _session_expiry_seconds
+    s = int(seconds)
+    if s < 1:
+        raise ValueError(f"expiry_seconds must be >= 1, got {s}")
+    _session_expiry_seconds = s
+
+
+def get_session_expiry_seconds() -> int:
+    """Current expiry window (seconds)."""
+    return _session_expiry_seconds
+
+
+def record_session_activity(now: float | None = None) -> bool:
+    """Persist the current time as the last authenticated activity.
+
+    Called after every successful ``install-token`` check. The value is
+    a unix-epoch float stored as a string in the credentials layer, so
+    it lives alongside the install token itself.
+    """
+    t = time.time() if now is None else float(now)
+    return credentials.store_secret(
+        AUTH_NAMESPACE, SESSION_ACTIVITY_KEY, f"{t:.6f}")
+
+
+def session_last_activity() -> float | None:
+    """Return the persisted last-activity timestamp or None."""
+    raw = credentials.retrieve_secret(AUTH_NAMESPACE, SESSION_ACTIVITY_KEY)
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def is_session_expired(now: float | None = None) -> bool:
+    """True iff the last authenticated activity is older than the
+    configured expiry window.
+
+    A missing timestamp counts as **expired** (belt-and-braces: a fresh
+    install has no activity yet, so the first authenticated request
+    records one before any expiry check bites). Callers use the pattern
+    ``check token -> if expired, reject; else record + serve``.
+    """
+    last = session_last_activity()
+    if last is None:
+        return True
+    t = time.time() if now is None else float(now)
+    return (t - last) > float(_session_expiry_seconds)
+
+
+def clear_session_activity() -> bool:
+    """Erase the persisted last-activity timestamp."""
+    return credentials.delete_secret(AUTH_NAMESPACE, SESSION_ACTIVITY_KEY)
+
+
+# ---------------------------------------------------------------------------
+# F009 -- install-token rotation
+# ---------------------------------------------------------------------------
+
+def rotate_install_token() -> str:
+    """Generate a fresh install token and invalidate the old one.
+
+    Semantically the same as :func:`generate_install_token` --
+    :func:`credentials.store_secret` overwrites the existing value -- but
+    the API is separate so log-analytics can see "someone rotated" as a
+    distinct event from "first setup ran". Session-activity is refreshed
+    on the new token; a stale timestamp from the old token could
+    otherwise cause the rotated user to be immediately expired.
+
+    Raises :class:`RuntimeError` if no install token exists yet (rotate
+    is a rotation, not a first-time generation).
+    """
+    if not is_install_configured():
+        raise RuntimeError(
+            "cannot rotate install token: no install token configured yet")
+    token = secrets.token_urlsafe(INSTALL_TOKEN_BYTES)
+    ok = credentials.store_secret(AUTH_NAMESPACE, INSTALL_TOKEN_KEY, token)
+    if not ok:
+        raise RuntimeError(
+            "install token could not be rotated -- OS keychain unavailable "
+            "and no fallback passphrase configured.")
+    record_session_activity()
+    logger.info("auth.rotate_install_token fingerprint=%s outcome=ok",
+                install_token_fingerprint(token))
+    return token

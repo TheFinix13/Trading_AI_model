@@ -1,0 +1,15 @@
+{
+  "from_role": "legal",
+  "to_role": "ceo",
+  "feature_id": "F009",
+  "timestamp": "2026-07-22T00:58:00Z",
+  "verdict": "pass",
+  "deliverables": [
+    "company/legal/F009-review.md"
+  ],
+  "notes": "Legal review = pass. Two new claim_register entries seeded: rate-limit protection (60 req/min per install-token) + session expiry (7 days). No new user-facing legal warning required (F009 is defence-in-depth infrastructure, not a performance surface). Rolling constraints: any future 'we rate-limit at N req/min' copy must cite rate_limiter.get_config(); any future session-length copy must cite [session].expiry_days. Signoff to CEO.",
+  "blockers": [],
+  "review_criteria": [
+    "CEO signs off on the sprint-1 carry-over closing"
+  ]
+}

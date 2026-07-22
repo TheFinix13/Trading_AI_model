@@ -1,0 +1,23 @@
+{
+  "from_role": "backend",
+  "to_role": "security",
+  "feature_id": "F009",
+  "timestamp": "2026-07-22T00:50:00Z",
+  "deliverables": [
+    "agent/platform/rate_limiter.py",
+    "agent/platform/auth.py",
+    "agent/platform/config.py",
+    "scripts/serve_platform.py",
+    "tests/security/test_rate_limiter.py",
+    "tests/security/test_session_expiry.py",
+    "tests/security/test_token_rotation.py"
+  ],
+  "notes": "F009 build complete. rate_limiter.py implements a per-fingerprint token bucket (60 req/min default). auth.py adds record_session_activity / is_session_expired / rotate_install_token + related config. serve_platform's _install_gate_pass() composes the F006 auth check + F009 rate limit + F009 session expiry in one place; on 429 sends Retry-After header; on session-expiry rejects with the hint to rotate. Test count 15 target -> 29 delivered (14 rate_limiter + 9 session_expiry + 6 rotation). Full suite 1259 -> 1287 (+28 -- 29 new minus 1 replaced through the fallback fix).",
+  "blockers": [],
+  "review_criteria": [
+    "Threat model: rate-limit bypass, session replay, token leakage on rotation",
+    "Composition: order of checks in _install_gate_pass is correct (auth -> expiry -> rate-limit -> record activity)",
+    "Regression: RedactingFilter still scrubs rotated plaintext",
+    "Config safety: default 60 req/min + 7-day expiry is safe for an interactive dashboard user"
+  ]
+}

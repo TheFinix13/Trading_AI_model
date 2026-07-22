@@ -1,0 +1,17 @@
+{
+  "from_role": "cpo",
+  "to_role": "ux_researcher",
+  "feature_id": "F009",
+  "timestamp": "2026-07-22T00:42:00Z",
+  "deliverables": [
+    "company/sprints/sprint-2-real-trading/F009-auth-hardening.md"
+  ],
+  "notes": "F009 spec is locked. Sprint 1 carry-over (D062). Three security controls: per-install-token rate limit on /api/* non-localhost (60 req/min default), install-token session expiry (7 days default), token rotation via POST /api/auth/rotate. Handoff to UX Researcher to frame the security-conscious operator's journey and confirm the API-only surface for Sprint 2 (the UI section lives in Sprint 3).",
+  "blockers": [],
+  "review_criteria": [
+    "Confirm target segment = security-conscious operator (not a first-time onboarder)",
+    "Confirm API-only delivery is right for Sprint 2 (no /settings/security page in this sprint)",
+    "Confirm the 429 + Retry-After response shape is scriptable",
+    "Flag any adjacent need this feature deliberately does not address"
+  ]
+}

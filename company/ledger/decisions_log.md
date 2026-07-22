@@ -1059,6 +1059,35 @@ risk_budget_breach / approval_submitted / platform_down`.
 `/alerts` page + test-alert button. No real Telegram calls in
 tests (httpx mocked).
 
+## D073 · 2026-07-22 · cpo · [FEATURE]
+
+**F009 shipped — auth hardening: rate limiter + session expiry + token rotation.**
+
+Sprint 1's three deferred security controls (D062) all close with this
+feature. `agent/platform/rate_limiter.py` implements a per-install-
+token token bucket (60 req/min default, configurable via
+`[rate_limit]` in `platform.toml`; `429` with `Retry-After` on
+breach). `agent/platform/auth.py` gains
+`record_session_activity` / `is_session_expired` /
+`rotate_install_token`; `scripts/serve_platform.py` composes them in
+`_install_gate_pass()` so the F006 install-token gate now also
+enforces rate limiting and session expiry (default 7 days,
+configurable via `[session] expiry_days`). `POST /api/auth/rotate`
+generates a fresh token and invalidates the old atomically.
+Legacy `platform.toml` fallback tokens are explicitly exempt from
+session expiry (no F006 install configured) to avoid breaking the
+deployed VM binding.
+
+Full suite grows by 28 across three test files:
+`test_rate_limiter.py` 14, `test_session_expiry.py` 8,
+`test_token_rotation.py` 6. Claim register updated for the new
+public accessors; rolling Legal constraint added — future copy
+citing req/min or session-length MUST reference `get_config()` /
+`get_session_expiry_seconds()`, not restate hardcoded numbers.
+Handoff chain: F009 CPO → UX Researcher → CTO → Backend → Security →
+QA → Legal → CEO (via CPO signoff on behalf of CEO) at
+`company/handoffs/F009-legal-to-ceo.json`.
+
 ## Template for subsequent entries
 
 ```markdown

@@ -1,0 +1,17 @@
+{
+  "from_role": "ux_researcher",
+  "to_role": "cto",
+  "feature_id": "F009",
+  "timestamp": "2026-07-22T00:44:00Z",
+  "deliverables": [
+    "company/research/F009-user-journey.md"
+  ],
+  "notes": "Target segment = security-conscious operator confirmed. API-only surface for Sprint 2 accepted (UI section in Sprint 3). JTBD ordered: rotate on suspicion / auto-expire dormant sessions / scriptable rate-limit backoff. Non-goals ratified: multi-device sessions, refresh tokens, per-endpoint rate tiers.",
+  "blockers": [],
+  "review_criteria": [
+    "Confirm three modules touched (rate_limiter new, auth edited, config + serve_platform edited) sits at the CTO handoff threshold",
+    "Confirm no new PyPI dependency (rate_limiter uses stdlib only)",
+    "Confirm no cross-module blast radius on agent/live/ or agent/risk/ or agent/squad/",
+    "Confirm the `[rate_limit]` / `[session]` config blocks in platform.toml default-safe (no rate-limit surprise on existing installs)"
+  ]
+}

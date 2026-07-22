@@ -192,9 +192,52 @@ Public fields returned:
 Rolling constraint (Legal): the "By continuing you agree to…" text on
 the welcome step must render verbatim from `company/legal/F008-onboarding-agreement.md`.
 
-## Audit hook (Sprint 2+ target)
+### F009 — `agent/platform/rate_limiter.py` (Sprint 2)
 
-A pre-commit hook (`scripts/audit_claim_register.py`) walks
-`agent/platform/{performance,players,research,credentials,auth,broker_connection,onboarding}.py`
-and asserts every top-level `def` returning a dict has its keys registered
-above. Sprint 1 seeds the register manually; Sprint 2 automates.
+Public accessors: `check(token_key) -> tuple[bool, float]`,
+`reset(token_key=None) -> None`,
+`set_config(*, capacity, refill_per_sec, requests_per_minute) -> None`,
+`get_config() -> dict`, `bucket_count() -> int`.
+
+| Accessor | Field / return | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `check` | `(allowed: bool, retry_after: float)` | Whether this request is within the token-bucket budget for this install-token. Applied as the second gate on `/api/*` non-localhost. | `rate_limiter.check`. | None — security control. |
+| `set_config` | side-effect (None) | Reconfigure bucket capacity / refill rate. Called at server start from `[rate_limit]` in `platform.toml`. | `rate_limiter.set_config`. | None. |
+| `get_config` | `{capacity, refill_per_sec, requests_per_minute}` | Current rate-limit configuration. Cited by any future "we rate-limit at N req/min" copy. | `rate_limiter.get_config`. | None. |
+
+Rolling constraint (Legal): any future marketing copy citing a
+requests-per-minute number MUST reference `rate_limiter.get_config()`
+as the source, not restate a hardcoded number.
+
+### F009 — `agent/platform/auth.py` additions (Sprint 2)
+
+Public accessors added: `record_session_activity()`,
+`session_last_activity() -> float | None`,
+`is_session_expired(now=None) -> bool`,
+`clear_session_activity() -> bool`,
+`rotate_install_token() -> str`,
+`set_session_expiry_seconds(seconds) -> None`,
+`get_session_expiry_seconds() -> int`.
+
+| Accessor | Return | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `record_session_activity` | `bool` | Persist the current time as the last authenticated activity. Called by `_install_gate_pass()` after every successful install-token check. | `auth.record_session_activity`. | None — state. |
+| `session_last_activity` | `float \| None` | The stored last-activity unix timestamp, or None. | `auth.session_last_activity`. | None — state. |
+| `is_session_expired` | `bool` | True iff `now - last_activity > session_expiry_seconds`. Missing activity counts as expired (defense-in-depth). | `auth.is_session_expired`. | None — security control. |
+| `rotate_install_token` | `str` | Generate a fresh token and invalidate the old. Refreshes session activity. Raises RuntimeError if no install token exists yet. | `auth.rotate_install_token`. | Secrets-at-rest disclaimer (F006 applies). |
+| `get_session_expiry_seconds` | `int` | Current expiry window. Cited by any future session-length copy. | `auth.get_session_expiry_seconds`. | None. |
+
+Rolling constraint (Legal): any future session-length copy MUST
+reference `[session] expiry_days` in `platform.toml` (surfaced by
+`get_session_expiry_seconds`), not a hardcoded 7-day figure.
+
+## Audit hook (Sprint 2 — F010 implementation)
+
+Sprint 2's F010 ships `scripts/check_claim_register.py` +
+`scripts/git-hooks/pre-commit` +
+`scripts/install_git_hooks.py`. The script walks every
+`agent/platform/*.py` via AST, cross-references this file, and
+fails on any unregistered public claim. A CI-equivalent test at
+`tests/platform/test_claim_register_audit.py` runs the audit
+programmatically so an unregistered claim fails the suite even
+without the hook installed.

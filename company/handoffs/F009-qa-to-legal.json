@@ -1,0 +1,15 @@
+{
+  "from_role": "qa",
+  "to_role": "legal",
+  "feature_id": "F009",
+  "timestamp": "2026-07-22T00:56:00Z",
+  "deliverables": [
+    "company/qa/F009-verdict.md"
+  ],
+  "notes": "QA verdict = pass. 29 F009 tests green (14 rate_limiter + 9 session_expiry + 6 rotation). Full suite 1287 passed. Regression check: F006 RedactingFilter survives rotation. Two new public claims -- rate_limiter.check + auth.is_session_expired (+ rotate) -- forwarded to Legal for the claim_register audit.",
+  "blockers": [],
+  "review_criteria": [
+    "Legal audits the two new claim_register entries",
+    "Legal confirms no public performance claim, no user-data collection, no third-party name usage"
+  ]
+}

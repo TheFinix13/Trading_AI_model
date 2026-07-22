@@ -46,6 +46,17 @@ def _defaults(repo_root: Path) -> dict:
             "poll_seconds": 45,
             "symbols": ["EURUSD", "GBPUSD", "USDCAD"],
         },
+        # F009 -- per-install-token rate limit on non-localhost /api/*.
+        # `requests_per_minute` sets both bucket capacity and refill rate.
+        # Explicit `capacity` / `refill_per_sec` override.
+        "rate_limit": {
+            "requests_per_minute": 60,
+            "capacity": None,
+            "refill_per_sec": None,
+        },
+        # F009 -- install-token session expiry (auto-logout after N days
+        # of no authenticated activity). Default 7 days.
+        "session": {"expiry_days": 7},
     }
 
 
@@ -100,6 +111,32 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
                 pass
         if isinstance(sl.get("symbols"), list) and sl["symbols"]:
             cfg["squad_live"]["symbols"] = [str(s) for s in sl["symbols"]]
+    rl = raw.get("rate_limit")
+    if isinstance(rl, dict):
+        if rl.get("requests_per_minute") is not None:
+            try:
+                cfg["rate_limit"]["requests_per_minute"] = int(
+                    rl["requests_per_minute"])
+            except (TypeError, ValueError):
+                pass
+        if rl.get("capacity") is not None:
+            try:
+                cfg["rate_limit"]["capacity"] = int(rl["capacity"])
+            except (TypeError, ValueError):
+                pass
+        if rl.get("refill_per_sec") is not None:
+            try:
+                cfg["rate_limit"]["refill_per_sec"] = float(
+                    rl["refill_per_sec"])
+            except (TypeError, ValueError):
+                pass
+    se = raw.get("session")
+    if isinstance(se, dict):
+        if se.get("expiry_days") is not None:
+            try:
+                cfg["session"]["expiry_days"] = int(se["expiry_days"])
+            except (TypeError, ValueError):
+                pass
     if cfg["live_dir"] is None:
         cfg["live_dir"] = Path(cfg["log_root"]) / "squad_live"
     return cfg

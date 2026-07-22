@@ -39,7 +39,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from agent.platform import (  # noqa: E402
     auth, broker_connection, credentials, hq, live_status, onboarding,
-    paper_loop, performance, players, research, squad_events,
+    paper_loop, performance, players, rate_limiter, research, squad_events,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
@@ -93,6 +93,12 @@ _UNAUTHENTICATED_API_PATHS: frozenset[str] = frozenset({
     "/api/onboarding/complete", # F008 -- setup happens before token exists
     "/api/onboarding/reset",    # F008 -- reset must work without a token
 })
+
+# F009 -- routes that require the install-token gate BUT skip the rate
+# limiter and session-expiry checks. Empty by default; kept as a
+# structural placeholder for future exemptions (e.g. a heartbeat pull
+# that a monitor might legitimately poll faster than the user).
+_RATE_LIMIT_EXEMPT_PATHS: frozenset[str] = frozenset()
 
 # F008 first-visit gate. When onboarding is not yet complete, every
 # non-exempt HTML route redirects to /onboarding. HTTP routes that
@@ -219,6 +225,70 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 return True
             return False
 
+        # F009 -- Response helpers for 429 rate-limit and 401 expired.
+        def _reject_rate_limited(self, retry_after: float) -> None:
+            body = json.dumps({
+                "error": "rate limited",
+                "hint": "wait before retrying",
+                "retry_after_seconds": retry_after,
+            }).encode()
+            self.send_response(429)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Retry-After", str(int(max(1.0, retry_after))))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _reject_session_expired(self) -> None:
+            self._json({
+                "error": "session expired",
+                "hint": "rotate your token via POST /api/auth/rotate",
+            }, 401)
+
+        def _install_gate_pass(self, path: str) -> tuple[bool, str, float]:
+            """Run the F006 install-gate + F009 rate-limit + F009 session-
+            expiry check in one place.
+
+            Returns ``(passed, failure_reason, retry_after)`` where
+            failure_reason is one of ``""`` (passed), ``"unauth"``,
+            ``"rate_limited"``, ``"session_expired"``. ``retry_after`` is
+            populated only when ``failure_reason == "rate_limited"``.
+            """
+            params = self._parse_query_params()
+            if not self._install_gate_authorized(params):
+                return False, "unauth", 0.0
+            # Rate limit + session expiry keyed on the fingerprint so no
+            # raw token is passed to the limiter. Localhost path
+            # short-circuits above via ``_needs_install_gate``.
+            if path in _RATE_LIMIT_EXEMPT_PATHS:
+                return True, "", 0.0
+            fp = auth.install_token_fingerprint(auth.load_install_token()) \
+                or "fallback"
+            # F009 session expiry only bites when we're comparing against
+            # the F006 install token; the pre-Sprint-1 platform.toml
+            # fallback is D052 backwards-compat and stays unchanged.
+            if auth.is_install_configured() and auth.is_session_expired():
+                # A rotate call is still allowed even when the current
+                # session has expired -- it's the recovery path.
+                if path != "/api/auth/rotate":
+                    return False, "session_expired", 0.0
+            allowed, retry = rate_limiter.check(fp)
+            if not allowed:
+                return False, "rate_limited", retry
+            if auth.is_install_configured():
+                auth.record_session_activity()
+            return True, "", 0.0
+
+        def _parse_query_params(self) -> dict:
+            _path, _, query = self.path.partition("?")
+            params = {}
+            for pair in query.split("&"):
+                k, _, v = pair.partition("=")
+                if k:
+                    params[k] = v
+            return params
+
         def _needs_install_gate(self, path: str) -> bool:
             if not enforce_install_token:
                 return False
@@ -267,11 +337,18 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                                      "Authorization: Bearer"}, 401)
                 return
 
-            if self._needs_install_gate(path) \
-                    and not self._install_gate_authorized(params):
-                self._json({"error": "install-token required",
-                            "hint": "send X-Bluelock-Token header"}, 401)
-                return
+            if self._needs_install_gate(path):
+                ok, reason, retry = self._install_gate_pass(path)
+                if not ok:
+                    if reason == "rate_limited":
+                        self._reject_rate_limited(retry)
+                        return
+                    if reason == "session_expired":
+                        self._reject_session_expired()
+                        return
+                    self._json({"error": "install-token required",
+                                "hint": "send X-Bluelock-Token header"}, 401)
+                    return
 
             if path == "/api/auth/status":
                 self._json(auth.auth_status())
@@ -509,9 +586,36 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 self._json({"error": "unauthorized"}, 401)
                 return
 
-            if self._needs_install_gate(path) \
-                    and not self._install_gate_authorized(params):
-                self._json({"error": "install-token required"}, 401)
+            if self._needs_install_gate(path):
+                ok, reason, retry = self._install_gate_pass(path)
+                if not ok:
+                    if reason == "rate_limited":
+                        self._reject_rate_limited(retry)
+                        return
+                    if reason == "session_expired":
+                        self._reject_session_expired()
+                        return
+                    self._json({"error": "install-token required"}, 401)
+                    return
+
+            # F009 -- token rotation. Requires a currently-valid install
+            # token in the request; on success a fresh token is minted
+            # and returned once (the client displays it, stores it).
+            if path == "/api/auth/rotate":
+                try:
+                    new_token = auth.rotate_install_token()
+                except RuntimeError as exc:
+                    self._json({"success": False, "error": str(exc)}, 400)
+                    return
+                # Reset the rate-limit bucket for the OLD fingerprint;
+                # the new fingerprint starts with a full bucket lazily.
+                rate_limiter.reset()
+                self._json({
+                    "success": True,
+                    "install_token": new_token,
+                    "install_fingerprint": auth.install_token_fingerprint(
+                        new_token),
+                })
                 return
 
             # F008 -- onboarding write routes (exempt from install
@@ -600,10 +704,17 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
             if not self._authorized(params):
                 self._json({"error": "unauthorized"}, 401)
                 return
-            if self._needs_install_gate(path) \
-                    and not self._install_gate_authorized(params):
-                self._json({"error": "install-token required"}, 401)
-                return
+            if self._needs_install_gate(path):
+                ok, reason, retry = self._install_gate_pass(path)
+                if not ok:
+                    if reason == "rate_limited":
+                        self._reject_rate_limited(retry)
+                        return
+                    if reason == "session_expired":
+                        self._reject_session_expired()
+                        return
+                    self._json({"error": "install-token required"}, 401)
+                    return
 
             m = _BROKER_ALIAS_RE.match(path)
             if m:
@@ -673,6 +784,17 @@ def main() -> None:
     # binds; localhost single-user dev stays open per D052.
     auth.install_redacting_filter("")
     auth.install_redacting_filter("agent.platform")
+
+    # F009 -- rate limiter + session expiry config wiring. Both defaults
+    # match the module-level defaults; explicit config wins.
+    rl_cfg = cfg.get("rate_limit", {})
+    rate_limiter.set_config(
+        requests_per_minute=rl_cfg.get("requests_per_minute", 60),
+        capacity=rl_cfg.get("capacity"),
+        refill_per_sec=rl_cfg.get("refill_per_sec"),
+    )
+    expiry_days = int(cfg.get("session", {}).get("expiry_days", 7))
+    auth.set_session_expiry_seconds(expiry_days * 24 * 3600)
 
     server = ThreadingHTTPServer(
         (args.host, args.port),

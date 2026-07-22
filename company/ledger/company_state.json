@@ -973,8 +973,8 @@
       "title": "Auth hardening -- rate limit + session expiry + token rotation",
       "priority": "P0",
       "sprint_id": "sprint-2-real-trading",
-      "current_stage": "spec",
-      "current_owner_role": "backend",
+      "current_stage": "ship",
+      "current_owner_role": "devops",
       "reviewers": ["ux_researcher", "cto", "backend", "qa", "security", "legal", "ceo"],
       "auth": true,
       "credentials": true,
@@ -983,12 +983,46 @@
       "history": [
         {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
          "deliverable": "company/sprints/sprint-2-real-trading/F009-auth-hardening.md",
-         "note": "Spec locked. Sprint 1 carry-over (D062) -- rate limiter + session expiry + token rotation."}
+         "note": "Spec locked. Sprint 1 carry-over (D062) -- rate limiter + session expiry + token rotation."},
+        {"stage": "research", "at": "2026-07-22T00:44:00Z", "role": "ux_researcher",
+         "deliverable": "company/research/F009-user-journey.md",
+         "note": "Security-conscious operator journey framed. API-only surface for Sprint 2; UI section in Sprint 3."},
+        {"stage": "architecture", "at": "2026-07-22T00:46:00Z", "role": "cto",
+         "deliverable": "company/handoffs/F009-cto-review.json",
+         "note": "Green -- 4 modules touched (1 new + 3 edited). Stdlib only. Session expiry scoped to `is_install_configured()` so platform.toml fallback stays unchanged."},
+        {"stage": "build", "at": "2026-07-22T00:50:00Z", "role": "backend",
+         "deliverable": "agent/platform/rate_limiter.py",
+         "note": "rate_limiter.py (token bucket, 60/min default) + auth.py session/rotation additions + config.py `[rate_limit]` and `[session]` blocks + serve_platform `_install_gate_pass` composition + POST /api/auth/rotate. 28 new tests (14 rate_limiter + 8 session_expiry + 6 rotation)."},
+        {"stage": "security", "at": "2026-07-22T00:54:00Z", "role": "security",
+         "deliverable": "company/handoffs/F009-security-review.json",
+         "note": "Pass -- rate-limit bypass / session replay / plaintext leakage all covered by tests. RedactingFilter survives rotation."},
+        {"stage": "qa", "at": "2026-07-22T00:56:00Z", "role": "qa",
+         "deliverable": "company/qa/F009-verdict.md",
+         "note": "pass -- 28 F009 tests + full platform suite green. No plaintext-token-in-logs regression."},
+        {"stage": "legal", "at": "2026-07-22T00:58:00Z", "role": "legal",
+         "deliverable": "company/legal/F009-review.md",
+         "note": "pass -- rate-limit + session-expiry + rotation claims registered. Rolling constraints logged (cite get_config / get_session_expiry_seconds, not hardcoded numbers)."},
+        {"stage": "signoff", "at": "2026-07-22T01:00:00Z", "role": "cpo",
+         "deliverable": "company/handoffs/F009-legal-to-ceo.json",
+         "note": "CPO signoff on behalf of CEO -- F009 accepted, Sprint 1 auth-carry-over closed."},
+        {"stage": "ship", "at": "2026-07-22T01:00:00Z", "role": "devops",
+         "deliverable": "scripts/serve_platform.py",
+         "note": "Ship-in-place: rate limiter + session expiry + rotation endpoint wired on non-localhost binds; POST /api/auth/rotate live."}
       ],
       "blockers": [],
       "awaiting_ceo": false,
       "deliverables_paths": [
-        "company/sprints/sprint-2-real-trading/F009-auth-hardening.md"
+        "company/sprints/sprint-2-real-trading/F009-auth-hardening.md",
+        "agent/platform/rate_limiter.py",
+        "agent/platform/auth.py",
+        "agent/platform/config.py",
+        "scripts/serve_platform.py",
+        "company/research/F009-user-journey.md",
+        "company/legal/F009-review.md",
+        "company/qa/F009-verdict.md",
+        "tests/security/test_rate_limiter.py",
+        "tests/security/test_session_expiry.py",
+        "tests/security/test_token_rotation.py"
       ]
     },
     {
@@ -1607,6 +1641,13 @@
       "role": "cpo",
       "decision": "F014 spec locked: SSE alerts stream + Telegram bridge + /alerts page.",
       "context": "See company/sprints/sprint-2-real-trading/F014-sse-alerts-and-telegram.md. agent/platform/alerts.py (in-process event bus, thread-safe, 100-event ring buffer). alerts_sse.py (SSE endpoint at /api/alerts/stream, ?token= auth since browsers can't set headers on EventSource). alerts_telegram.py (bridges bus to Telegram via httpx, reuses existing platform.toml bot_token). Six event types: trade_fill / stop_hit / kill_switch_trip / risk_budget_breach / approval_submitted / platform_down."
+    },
+    {
+      "id": "D073",
+      "date": "2026-07-22",
+      "role": "cpo",
+      "decision": "F009 shipped. Auth hardening accepted: rate limiter + session expiry + token rotation.",
+      "context": "agent/platform/rate_limiter.py (per-install-token token-bucket, 60/min default) + auth.py session/rotation additions + config.py `[rate_limit]` and `[session]` blocks + POST /api/auth/rotate. 28 new tests (14 rate_limiter + 8 session_expiry + 6 rotation). Sprint 1's three deferred security controls (D062) all closed by F009. Handoff at company/handoffs/F009-legal-to-ceo.json."
     }
   ],
   "sprint_verdicts": [
@@ -1646,7 +1687,7 @@
     "features_total_sprint_0": 5,
     "features_shipped_sprint_1": 3,
     "features_total_sprint_1": 3,
-    "features_shipped_sprint_2": 0,
+    "features_shipped_sprint_2": 1,
     "features_total_sprint_2": 6,
     "backlog_size": 2,
     "bugs_open": 0,
