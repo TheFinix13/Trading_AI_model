@@ -5,7 +5,7 @@
     "mission": "The first AI trading platform that trades like a football team.",
     "one_liner": "Watch our striker squad find setups on real markets \u2014 every decision explained, every risk gated.",
     "current_sprint_id": "sprint-2-real-trading",
-    "generated_at": "2026-07-22T03:17:00Z",
+    "generated_at": "2026-07-22T03:25:00Z",
     "schema_version": "1.0.0"
   },
   "roles": [
@@ -228,10 +228,10 @@
       "goal": "Ship the scaffolding for live-order placement default-OFF: auth hardening, kill-switches, risk budget, trade-approval mode + live-mode toggle, SSE alerts. Zero diffs on agent/live/ or agent/risk/ or agent/squad/.",
       "started_at": "2026-07-21",
       "target_end": "2026-08-04",
-      "actual_end": null,
-      "verdict": "IN_PROGRESS",
+      "actual_end": "2026-07-22",
+      "verdict": "COMPLETE",
       "feature_ids": ["F009", "F010", "F011", "F012", "F013", "F014"],
-      "day_count": 0,
+      "day_count": 1,
       "day_target": 13
     }
   ],
@@ -1864,13 +1864,13 @@
     },
     {
       "sprint_id": "sprint-2-real-trading",
-      "verdict": "IN_PROGRESS",
-      "actual_end": null,
-      "features_shipped": [],
+      "verdict": "COMPLETE",
+      "actual_end": "2026-07-22",
+      "features_shipped": ["F009", "F010", "F011", "F012", "F013", "F014"],
       "features_missed": [],
       "blockers_surfaced": [],
-      "test_count_delta": "1259 -> in-flight",
-      "notes": "Sprint 2 opened 2026-07-22 by the Sprint 2 Executor. Six specs locked (F009-F014) per D064. SCAFFOLDING-only invariant per D065 (agent/live/ and agent/risk/ and agent/squad/ untouched; live-mode default OFF). Build order strictly serial (safety-first): F009 -> F010 -> F011 -> F012 -> F013 -> F014."
+      "test_count_delta": "1259 -> 1482 (+223)",
+      "notes": "Fully autonomous run under the Sprint 2 Executor persona. Six P0 features shipped default-OFF per D065 SCAFFOLDING invariant. tests/security/test_live_mode_off_invariant.py on tape (6 cases green) pinning the four-gate composition (live_mode_enabled AND not kill_switches.is_killed() AND risk_budget.can_send_order() AND approval_queue.can_send_order()). Zero diffs to agent/live/, agent/risk/, agent/squad/, scripts/run_squad_live.py, scripts/run_live.py -- verified by `git diff --stat c56e561 -- <paths>` returning empty. Security suite grew 132 -> 204 (+72). Sprint duration: 1 wall-clock day (2026-07-21 -> 2026-07-22) against a 13-day target -- honest-review flag continues from Sprint 1: this compression is only possible because the Executor persona owns every lane; a real 3-persona split would have taken longer. Commit range 242ac98..1303ca4."
     }
   ],
   "kpis": {

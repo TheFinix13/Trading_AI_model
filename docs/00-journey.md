@@ -1,8 +1,32 @@
 # 00 — The Journey: from ICT trading partner to a validated zone-fade portfolio
 
-**Last updated:** 2026-07-21 (Sprint 1 close-out)
+**Last updated:** 2026-07-22 (Sprint 2 close-out)
 **Companion:** [CHECKPOINT.md](CHECKPOINT.md) (current-state snapshot, updated at every
 major divergence). Evidence record: [`reviews/`](reviews/).
+
+**2026-07-22 · Sprint 2 (Real-Trading) complete.** Six P0 features
+shipped on `product` in a single autonomous executor day: F009 (auth
+hardening — per-token rate limit + session expiry + rotation), F010
+(claim-register audit tooling + pre-commit hook), F011 (kill-switches
+infrastructure — global + per-symbol + hot-reload + audit-jsonl),
+F012 (risk budget hard-cap + broker connection health + `/risk`
+dashboard), F013 (trade approval mode + `/approvals` queue +
+live-mode toggle with 3-part ceremony), F014 (SSE alerts stream +
+Telegram bridge + `/alerts`). Everything default-OFF per D065:
+`live_mode_enabled` defaults False at every layer, the Telegram
+bridge defaults disabled, and no live pathway calls
+`approval_queue.submit(...)` — Sprint 2 is scaffolding, not the
+switch. The P0 invariant lives at
+`tests/security/test_live_mode_off_invariant.py` (6 cases green): no
+live order can be sent unless FOUR gates all pass
+(`live_mode_enabled` AND `not kill_switches.is_killed()` AND
+`risk_budget.can_send_order()` AND `approval_queue.can_send_order()`).
+Zero diffs to `agent/live/*`, `agent/risk/*`, `agent/squad/*` (D065
+Invariant #2). Platform test suite 1259 → 1482 (+223); security
+suite 132 → 204 (+72). Sprint verdict COMPLETE, zero blockers, zero
+spend. Commit range `242ac98..1303ca4`. See
+`company/sprints/sprint-2-real-trading/REPORT.md` for the post-mortem
+and Sprint 3 (Stickiness) retro suggestions.
 
 **2026-07-21 · Sprint 1 (Access) complete.** Three P0 features shipped
 on `product` in a single autonomous executor day: F006 (encrypted

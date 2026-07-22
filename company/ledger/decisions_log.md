@@ -1339,6 +1339,59 @@ Zero imports from `agent/live/*`, `agent/risk/*`, `agent/squad/*`
 whitelist, SSE frame shape, bot-token-never-in-payload, bridge
 fail-closed). Handoff at `company/handoffs/F014-qa-to-cpo.json`.
 
+## D080 · 2026-07-22 · ceo · [SPRINT]
+
+**Sprint 2 (Real-Trading) verdict: COMPLETE.**
+
+Six P0 features shipped in a single autonomous executor day
+(2026-07-21 → 2026-07-22, against a 13-day target — honest-review
+flag continued from Sprint 1). All six landed as SCAFFOLDING per
+D065: default-OFF at every layer, no live pathway wired to
+`approval_queue.submit(...)`.
+
+**Features shipped:** F009 (auth hardening — rate limit + session
+expiry + rotation), F010 (claim-register audit tooling + pre-commit
+hook), F011 (kill-switches infrastructure), F012 (risk budget +
+broker health + `/risk` dashboard), F013 (trade approval + `/approvals`
++ live-mode toggle with 3-part ceremony), F014 (SSE alerts +
+Telegram bridge + `/alerts`).
+
+**The P0 invariant is on tape.**
+`tests/security/test_live_mode_off_invariant.py` composes all four
+gates and pins that no live order can go through unless
+`live_mode_enabled AND not kill_switches.is_killed() AND
+risk_budget.can_send_order() AND approval_queue.can_send_order()`.
+Six cases green, including the negative cases (default off, live-mode
+alone insufficient, approval but no budget, kill-switch trip
+mid-flow) and the single positive case (all four gates open →
+allowed).
+
+**Invariant #2 verified.** `git diff --stat c56e561 -- agent/live
+agent/risk agent/squad scripts/run_squad_live.py scripts/run_live.py`
+returns empty. The v1 zones live agent (`main` branch) and the
+squad paper runtime (`next-gen` branch) are byte-identical to their
+sprint-start state.
+
+**Test count delta:** 1259 → 1482 (+223). Security suite 132 → 204
+(+72). Full suite passes, 1 skipped (Playwright chromium unavailable
+in sandbox).
+
+**Zero blockers surfaced. Zero spend triggered. Zero commits off
+`product`. Zero Cursor attribution.** Commit range
+`242ac98..1303ca4`.
+
+**Retro suggestions for Sprint 3 (Stickiness).** Wire the four-gate
+composition to the squad's live-order path (this is NOT Sprint 3
+work — Sprint 3 is stickiness — but the acceptance test is already
+on tape). Strategy marketplace, character seasons, match highlights
+(paid infra — first legit `[BLOCKER][SPEND]` candidate), community.
+Sprint-length calibration: continue single-Executor with day_target
+~5-7, or split for real with day_target 11-13.
+
+Sprint verdict card:
+`company/ledger/company_state.json::sprint_verdicts[2]`. Full
+post-mortem: `company/sprints/sprint-2-real-trading/REPORT.md`.
+
 ## Template for subsequent entries
 
 ```markdown
