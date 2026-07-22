@@ -14,8 +14,8 @@
 > `research_relevant: true`). Ledger 17→19 roles, +3 R&D KPIs, +2
 > arrays (`intake` seeded `I001`; `experiments` seeded Phase AC
 > negative + F013 30d approval-rate). `/hq` R&D-pulse section;
-> `_BASE_CSS_VERSION 1.0.0 → 1.1.0`. **1483 → 1503 tests (+20).**
-> Zero diffs to `agent/{live,risk,squad}/*` (D065 Invariant #2).
+> `_BASE_CSS_VERSION 1.0.0 → 1.1.0`. **1482 → 1502 pass + 1 env-skip
+> (+20 collected; +19 pass).** Zero diffs to `agent/{live,risk,squad}/*` (D065 Invariant #2).
 > D081–D086 on tape. Prior v0.40–v0.44 detail in
 > [docs/00-journey.md](docs/00-journey.md#2026-07-22-·-company-charter-elevated).
 
@@ -46,7 +46,7 @@ lane** (Sprint 0–2 + charter elevation). Research on
   `/risk`, `/approvals`, `/alerts`, `/hq` (with R&D pulse).
   F005 `withStates()` + `_BASE_CSS_VERSION = "1.1.0"`.
 - **Live (`main`) + Squad (`next-gen`):** unchanged; zero diffs.
-- **Tests:** **1503 pass** (security 204).
+- **Tests:** **1502 pass + 1 env-skip** (security 204).
 
 ## 2) Key file paths
 
