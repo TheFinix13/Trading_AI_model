@@ -1,0 +1,17 @@
+{
+  "from_role": "legal",
+  "to_role": "ceo",
+  "feature_id": "F011",
+  "timestamp": "2026-07-22T01:52:00Z",
+  "verdict": "pass",
+  "deliverable": "company/legal/F011-review.md",
+  "claim_register_updates": [
+    "F011 -- agent/platform/kill_switches.py: kill_dir / is_killed / list_killed + module constants (KILL_DIR_ENV, DEFAULT_KILL_DIRNAME, SUPPORTED_SYMBOLS, GLOBAL_KEY)",
+    "F011 -- agent/platform/kill_switch_admin.py: activate_kill / clear_kill / recent_events / events_log_path"
+  ],
+  "rolling_constraints": [
+    "Any kill-scope copy in UI or Telegram must render the scope verbatim + cite the reason string.",
+    "The phrase 'kill switches with hot-reload' is only accurate while kill_switches._read_state stat-checks the directory on every call. A perf optimisation that removes hot-reload must strike the marketing claim."
+  ],
+  "handoff_to_ceo": "CPO signoff on behalf of CEO -- F011 accepted. Safety-primitive claim tied to the 4-check live-order pathway that Sprint 2 explicitly does NOT wire (D065 invariant)."
+}

@@ -1,0 +1,15 @@
+{
+  "from_role": "cpo",
+  "to_role": "ux_researcher",
+  "feature_id": "F011",
+  "timestamp": "2026-07-22T01:30:00Z",
+  "spec_path": "company/sprints/sprint-2-real-trading/F011-kill-switches.md",
+  "verdict": "handoff-open",
+  "notes": "Safety primitive -- second gate of the 4-check live-order pathway. Full review chain applies (has user-facing surface at /settings/kill-switches). UX Researcher captures panic-mode operator journey + reboot / recovery flow + operator-handoff audit-trail story.",
+  "acceptance": [
+    "Panic-mode journey documented (per-symbol kill during broker glitch)",
+    "Global-halt journey documented (all pairs simultaneously)",
+    "Reboot-recovery expectation covered (flag files persist)",
+    "Non-goals list rules out auto-expire + notification (F014 owns notifications)"
+  ]
+}

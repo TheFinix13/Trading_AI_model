@@ -38,13 +38,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from agent.platform import (  # noqa: E402
-    auth, broker_connection, credentials, hq, live_status, onboarding,
-    paper_loop, performance, players, rate_limiter, research, squad_events,
+    auth, broker_connection, credentials, hq, kill_switch_admin,
+    kill_switches, live_status, onboarding, paper_loop, performance,
+    players, rate_limiter, research, squad_events,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
-    BROKER_WIZARD_PAGE, HQ_PAGE, HUB_PAGE, ONBOARDING_PAGE, PERFORMANCE_PAGE,
-    PLAYERS_INDEX_PAGE, RESEARCH_PAGE, RESET_INSTALL_PAGE, V1_PAGE, V2_PAGE,
+    BROKER_WIZARD_PAGE, HQ_PAGE, HUB_PAGE, KILL_SWITCHES_PAGE, ONBOARDING_PAGE,
+    PERFORMANCE_PAGE, PLAYERS_INDEX_PAGE, RESEARCH_PAGE, RESET_INSTALL_PAGE,
+    V1_PAGE, V2_PAGE,
     player_detail_page, players_not_found_page,
 )
 
@@ -107,6 +109,7 @@ _ONBOARDING_HTML_ALLOWED: frozenset[str] = frozenset({
     "/onboarding", "/onboarding/",
     "/settings/reset-install", "/settings/reset-install/",
     "/settings/broker", "/settings/broker/",  # so wizard step 3 works
+    "/settings/kill-switches", "/settings/kill-switches/",  # F011 safety UI always reachable
     "/healthz",
 })
 
@@ -367,6 +370,21 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                         "/settings/reset-install/"):
                 self._send(RESET_INSTALL_PAGE.encode(),
                            "text/html; charset=utf-8")
+                return
+
+            # F011 -- kill-switches admin page + status API.
+            if path in ("/settings/kill-switches",
+                        "/settings/kill-switches/"):
+                self._send(KILL_SWITCHES_PAGE.encode(),
+                           "text/html; charset=utf-8")
+                return
+            if path == "/api/kill-switches/status":
+                self._json({
+                    "killed_scopes": kill_switches.list_killed(),
+                    "events": kill_switch_admin.recent_events(20),
+                    "supported_symbols": list(
+                        kill_switches.SUPPORTED_SYMBOLS),
+                })
                 return
 
             # F008 first-visit gate -- HTML routes redirect to
@@ -660,6 +678,34 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
             if path == "/api/onboarding/reset":
                 ok = onboarding.reset_install()
                 self._json({"ok": ok})
+                return
+
+            # F011 -- kill-switch admin write path. Every activate /
+            # clear appends to the JSONL audit log inside the module.
+            if path == "/api/kill-switches/activate":
+                body = self._read_body_json() or {}
+                symbol = body.get("symbol")
+                sym = None if symbol in (None, "", "GLOBAL") else str(symbol)
+                try:
+                    kill_switch_admin.activate_kill(
+                        symbol=sym,
+                        reason=str(body.get("reason", "")),
+                        by=str(body.get("by", "user")))
+                except ValueError as exc:
+                    self._json({"ok": False, "error": str(exc)}, 400)
+                    return
+                self._json({"ok": True})
+                return
+            if path == "/api/kill-switches/clear":
+                body = self._read_body_json() or {}
+                symbol = body.get("symbol")
+                sym = None if symbol in (None, "", "GLOBAL") else str(symbol)
+                try:
+                    kill_switch_admin.clear_kill(symbol=sym)
+                except ValueError as exc:
+                    self._json({"ok": False, "error": str(exc)}, 400)
+                    return
+                self._json({"ok": True})
                 return
 
             if path == "/api/broker/test-connection":

@@ -1,0 +1,23 @@
+{
+  "from_role": "cto",
+  "to_role": "backend",
+  "feature_id": "F011",
+  "timestamp": "2026-07-22T01:38:00Z",
+  "verdict": "green",
+  "modules_touched": [
+    "agent/platform/kill_switches.py (new -- read path)",
+    "agent/platform/kill_switch_admin.py (new -- write path)",
+    "agent/platform/pages.py (edit -- KILL_SWITCHES_PAGE appended, _BASE_CSS_VERSION unchanged)",
+    "scripts/serve_platform.py (edit -- 4 new routes + 2 imports)"
+  ],
+  "tests_expected_delta": 20,
+  "security_relevant": true,
+  "legal_relevant": true,
+  "notes": "Four modules touched (2 new + 2 edited). Threshold triggers explicit CTO handoff. Stdlib only (threading, os, json, pathlib). No new PyPI dep. Read/write split so a compromised read-only accessor can't accidentally activate. Zero import from agent/live/*, agent/risk/*, agent/squad/* (D065 invariant). `_bump_mtime()` after every write forces immediate read-path cache invalidation on filesystems that don't reflect same-second child changes. `/settings/kill-switches` explicitly added to `_ONBOARDING_HTML_ALLOWED` so the safety UI is reachable even mid-onboarding.",
+  "review_criteria": [
+    "Zero grep hit for `from agent.live` / `from agent.risk` / `from agent.squad` in the two new modules",
+    "Golden-path test proves activating global kill masks every symbol",
+    "Mobile media query at 700px collapses grid to `1fr`",
+    "F013 (future) can compose `is_killed()` into the 4-check pathway without touching this module"
+  ]
+}

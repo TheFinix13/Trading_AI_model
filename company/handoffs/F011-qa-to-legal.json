@@ -1,0 +1,13 @@
+{
+  "from_role": "qa",
+  "to_role": "legal",
+  "feature_id": "F011",
+  "timestamp": "2026-07-22T01:50:00Z",
+  "verdict": "pass",
+  "acceptance_ok": true,
+  "test_count_before": 1295,
+  "test_count_after": 1340,
+  "test_count_delta": 45,
+  "notes": "45 F011 tests + full suite 1340 passed / 1 skipped (playwright, pre-existing). Golden-path pinned (test_global_kill_masks_all). Mobile media query verified. Zero imports from agent/live/*, agent/risk/*, agent/squad/*. Ready for Legal to confirm claim register + rolling constraints.",
+  "verdict_path": "company/qa/F011-verdict.md"
+}

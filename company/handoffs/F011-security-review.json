@@ -1,0 +1,16 @@
+{
+  "from_role": "security",
+  "to_role": "qa",
+  "feature_id": "F011",
+  "timestamp": "2026-07-22T01:48:00Z",
+  "verdict": "pass",
+  "threats_reviewed": [
+    "Compromised read-path can trip a kill by side-effect -> MITIGATED: kill_switches.py has no write helpers; write path is a separate module.",
+    "Malicious reason string exceeding audit-line safety -> MITIGATED: reason trimmed to 200 chars server-side; JSONL line size bounded.",
+    "Symbol injection (POST body `symbol=../../etc/passwd`) -> MITIGATED: _normalise_scope raises ValueError on unknown symbol; only exact-match against SUPPORTED_SYMBOLS + GLOBAL_KEY.",
+    "Race between activate and read -> MITIGATED: mtime cache invalidates deterministically; write path calls reset_cache_for_tests() at the end of every mutation.",
+    "Unauthenticated POST to activate on non-localhost -> MITIGATED: install-token gate (F006) applies; test_activate_requires_install_token_on_non_localhost_semantics pins the 401.",
+    "Rate-limit bypass on activate -> MITIGATED: activate POSTs pass through the F009 rate limiter via _install_gate_pass()."
+  ],
+  "notes": "Sprint 2's second safety layer. All threats close cleanly. No wiring to live orders (D065 invariant preserved)."
+}

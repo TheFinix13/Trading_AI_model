@@ -4880,3 +4880,186 @@ document.getElementById("btn-reset").addEventListener("click", function(){
 RESET_INSTALL_PAGE = (_RESET_TEMPLATE
                       .replace("__BASE_CSS__", _BASE_CSS)
                       .replace("__NAV__", nav('reset')))
+
+
+# ---------------------------------------------------------------------------
+# F011 -- /settings/kill-switches page (Sprint 2)
+# ---------------------------------------------------------------------------
+#
+# Toggle grid + reason textarea + audit-event log. Uses `withStates()`
+# from F005 for the load / error / empty affordances. Mobile: media
+# query at 700px collapses the toggle grid to a single column.
+
+_KILL_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kill switches -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+__SKELETON_CSS__
+.ks-wrap{max-width:960px;margin:0 auto}
+.ks-lead{color:var(--dim);margin:6px 0 14px}
+.ks-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:12px 0 18px}
+.ks-cell{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px}
+.ks-cell.on{border-color:var(--red);background:rgba(248,81,73,.10)}
+.ks-cell h3{margin:0 0 6px;font-size:14px;letter-spacing:.02em}
+.ks-cell.on h3{color:var(--red)}
+.ks-cell .state{font-size:12px;color:var(--dim);margin-bottom:8px}
+.ks-cell.on .state{color:var(--red);font-weight:600}
+.ks-btn{background:var(--red);color:#fff;border:none;
+  border-radius:6px;padding:7px 12px;font-weight:600;cursor:pointer;
+  font-size:13px}
+.ks-btn.clear{background:var(--panel);color:var(--fg);
+  border:1px solid var(--border)}
+.ks-reason{width:100%;background:var(--bg);border:1px solid var(--border);
+  color:var(--fg);border-radius:6px;padding:8px 10px;font:13px/1.4 inherit;
+  min-height:60px;resize:vertical;box-sizing:border-box}
+.ks-audit{margin-top:22px}
+.ks-audit h2{font-size:15px;margin:0 0 8px}
+.ks-event{border-bottom:1px dashed var(--border);padding:6px 0;font-size:13px}
+.ks-event .ts{color:var(--dim);margin-right:8px}
+.ks-event .act.activate{color:var(--red);font-weight:600}
+.ks-event .act.clear{color:var(--green);font-weight:600}
+.ks-result{margin-top:10px;font-size:13px;color:var(--dim);min-height:20px}
+@media (max-width: 700px){
+  .ks-grid{grid-template-columns:1fr}
+}
+</style></head>
+<body>
+__NAV__
+<div class="ks-wrap">
+  <h1>Kill switches</h1>
+  <div class="ks-lead">Halt live orders globally or per-symbol. Activating
+  a switch creates a flag file the future live-order pathway will honour
+  as the second of the four safety checks (kill &rarr; risk &rarr;
+  approval, all after live-mode is enabled). Sprint 2 ships the switch,
+  not the wiring &mdash; toggling it here is safe.</div>
+
+  <textarea class="ks-reason" id="ks-reason" placeholder="Reason (required when activating; max 200 chars)"></textarea>
+
+  <div id="ks-grid" class="ks-grid"></div>
+
+  <div id="ks-result" class="ks-result" role="status" aria-live="polite"></div>
+
+  <section class="ks-audit">
+    <h2>Recent events</h2>
+    <div id="ks-audit"></div>
+  </section>
+</div>
+<script>
+__ERROR_COPY_JS__
+__WITH_STATES_JS__
+
+function esc(s){
+  var d=document.createElement("div"); d.innerText=String(s==null?"":s);
+  return d.innerHTML;
+}
+
+async function fetchStatus(){
+  const r = await fetch("/api/kill-switches/status", {cache: "no-store"});
+  if(r.status === 401) return {__auth__: true};
+  if(!r.ok) return {__error__: "HTTP " + r.status};
+  return await r.json();
+}
+
+async function postAction(url, body){
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body || {}),
+  });
+  var out;
+  try { out = await r.json(); } catch(e){ out = {}; }
+  return {status: r.status, body: out};
+}
+
+const SYMBOLS = ["GLOBAL", "EURUSD", "GBPUSD", "USDCAD", "USDJPY", "USDCHF"];
+
+function renderGrid(state, box){
+  const killed = new Set((state.killed_scopes || []).map(function(k){ return k.scope; }));
+  const reasons = {};
+  (state.killed_scopes || []).forEach(function(k){ reasons[k.scope] = k.reason; });
+  var out = "";
+  SYMBOLS.forEach(function(sym){
+    const on = killed.has(sym);
+    const scopeLabel = sym === "GLOBAL" ? "Global (all pairs)" : sym;
+    out += '<div class="ks-cell'+(on?' on':'')+'" data-scope="'+esc(sym)+'">';
+    out +=   '<h3>'+esc(scopeLabel)+'</h3>';
+    out +=   '<div class="state">'+(on ? 'ACTIVE'+(reasons[sym]?' -- '+esc(reasons[sym]):'') : 'inert')+'</div>';
+    if(on){
+      out += '<button class="ks-btn clear" data-act="clear" data-scope="'+esc(sym)+'">Clear</button>';
+    } else {
+      out += '<button class="ks-btn" data-act="activate" data-scope="'+esc(sym)+'">Activate kill</button>';
+    }
+    out += '</div>';
+  });
+  box.innerHTML = out;
+  box.querySelectorAll("button.ks-btn").forEach(function(btn){
+    btn.addEventListener("click", handleClick);
+  });
+}
+
+function renderAudit(state){
+  var box = document.getElementById("ks-audit");
+  const events = state.events || [];
+  if(!events.length){
+    box.innerHTML = '<div class="dim">No events yet.</div>';
+    return;
+  }
+  box.innerHTML = events.slice().reverse().map(function(e){
+    return '<div class="ks-event"><span class="ts">'+esc(e.ts||"")+'</span>'+
+      '<span class="act '+esc(e.action||"")+'">'+esc((e.action||"").toUpperCase())+'</span> '+
+      esc(e.scope||"")+' &mdash; '+esc(e.reason||"")+
+      ' <span class="dim">by '+esc(e.by||"user")+'</span></div>';
+  }).join("");
+}
+
+async function refresh(){
+  var grid = document.getElementById("ks-grid");
+  await withStates(grid, fetchStatus, function(state, box){
+    renderGrid(state, box);
+    renderAudit(state);
+    return null;
+  }, {emptyCopyKey: "no_data_yet"});
+}
+
+async function handleClick(ev){
+  const btn = ev.currentTarget;
+  const scope = btn.getAttribute("data-scope");
+  const act   = btn.getAttribute("data-act");
+  const body = scope === "GLOBAL" ? {} : {symbol: scope};
+  var url;
+  if(act === "activate"){
+    const reason = (document.getElementById("ks-reason").value || "").trim();
+    if(!reason){
+      document.getElementById("ks-result").textContent =
+        "Reason is required when activating.";
+      return;
+    }
+    body.reason = reason;
+    url = "/api/kill-switches/activate";
+  } else {
+    url = "/api/kill-switches/clear";
+  }
+  document.getElementById("ks-result").textContent = "Working...";
+  const res = await postAction(url, body);
+  if(res.status === 200 && res.body && res.body.ok){
+    document.getElementById("ks-result").textContent =
+      act === "activate" ? "Activated " + scope : "Cleared " + scope;
+    document.getElementById("ks-reason").value = "";
+    refresh();
+  } else {
+    document.getElementById("ks-result").textContent =
+      "Action failed: " + esc((res.body && res.body.error) || ("HTTP " + res.status));
+  }
+}
+
+refresh();
+</script></body></html>"""
+
+
+KILL_SWITCHES_PAGE = (_KILL_TEMPLATE
+                      .replace("__BASE_CSS__", _BASE_CSS)
+                      .replace("__SKELETON_CSS__", _SKELETON_CSS)
+                      .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+                      .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+                      .replace("__NAV__", nav('kill-switches')))

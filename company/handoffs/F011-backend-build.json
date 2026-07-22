@@ -1,0 +1,23 @@
+{
+  "from_role": "backend",
+  "to_role": "security",
+  "feature_id": "F011",
+  "timestamp": "2026-07-22T01:44:00Z",
+  "verdict": "green",
+  "deliverables": [
+    "agent/platform/kill_switches.py -- read path (kill_dir / is_killed / list_killed / reset_cache_for_tests + KILL_DIR_ENV / DEFAULT_KILL_DIRNAME / SUPPORTED_SYMBOLS / GLOBAL_KEY)",
+    "agent/platform/kill_switch_admin.py -- write path (activate_kill / clear_kill / recent_events / events_log_path) with append-only JSONL audit at <config_dir>/kill_events.jsonl",
+    "KILL_SWITCHES_PAGE at /settings/kill-switches -- toggle grid, reason textarea (required on activate), audit panel, red-tinted active cells, mobile grid collapse at 700px",
+    "scripts/serve_platform.py -- 4 new routes: GET /settings/kill-switches (page), GET /api/kill-switches/status, POST /api/kill-switches/activate, POST /api/kill-switches/clear. /settings/kill-switches added to _ONBOARDING_HTML_ALLOWED so the safety UI is reachable during onboarding.",
+    "45 new tests (spec asked 20) -- 11 module + 13 admin + 8 page + 13 api"
+  ],
+  "test_count_before": 1295,
+  "test_count_after": 1340,
+  "test_count_delta": 45,
+  "invariants_confirmed": [
+    "D065 Inv#2: zero imports from agent/live/*, agent/risk/*, agent/squad/* (grep-verified)",
+    "Read/write split: kill_switches.py is import-clean of any write helpers",
+    "Live-mode-off contract: is_killed() is the SECOND gate of the 4-check pathway; Sprint 2 does NOT wire it to any live-order code",
+    "Global masks all: activate GLOBAL -> every is_killed(symbol) returns True (test_global_kill_masks_all)"
+  ]
+}

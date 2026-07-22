@@ -278,6 +278,54 @@ Rolling constraint (Legal): any future session-length copy MUST
 reference `[session] expiry_days` in `platform.toml` (surfaced by
 `get_session_expiry_seconds`), not a hardcoded 7-day figure.
 
+### F011 — `agent/platform/kill_switches.py` (Sprint 2)
+
+Public accessors: `kill_dir()`, `is_killed(symbol=None) -> bool`,
+`list_killed() -> list[dict]`.
+
+Public module constants: `KILL_DIR_ENV`, `DEFAULT_KILL_DIRNAME`,
+`SUPPORTED_SYMBOLS`, `GLOBAL_KEY`. Test-only helper marked
+`# claim-exempt` inline: `reset_cache_for_tests`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `kill_dir` | `Path` | Current kill-flag directory. Defaults to `<config_dir>/kill`; env var `BLUELOCK_KILL_DIR` overrides. | `kill_switches.kill_dir`. | None -- filesystem path. |
+| `is_killed(None)` | `bool` | True iff the global kill flag exists. | `kill_switches.is_killed`. | Safety-control claim; documented in F013's live-mode warning. |
+| `is_killed("EURUSD")` | `bool` | True iff the global kill OR the EURUSD per-symbol flag exists. | Same. | Same. |
+| `list_killed` → `scope` | `"GLOBAL"` \| supported symbol | The active kill scopes, global-first then symbols in `SUPPORTED_SYMBOLS` order. | `kill_switches.list_killed`. | Safety-control state; surfaces in `/settings/kill-switches`. |
+| `list_killed` → `reason` | `str` | Operator-supplied reason (max 200 chars), scrubbed of trailing whitespace. | `kill_switch_admin.activate_kill` -> flag file. | None -- operator-authored text. |
+| `list_killed` → `activated_at` | ISO-8601 str | When the flag was written. | Same. | None. |
+| `list_killed` → `by` | `str` | Who activated the kill (default `"user"`). | Same. | None. |
+
+Rolling constraint (Legal): the "kill-switch is active" copy in any
+future UI or Telegram alert MUST cite the scope value verbatim (never
+paraphrase "GLOBAL" as "everything" without also citing the reason
+string).
+
+### F011 — `agent/platform/kill_switch_admin.py` (Sprint 2)
+
+Public accessors: `activate_kill(symbol=None, reason="", by="user") -> bool`,
+`clear_kill(symbol=None) -> bool`,
+`recent_events(limit=20) -> list[dict]`,
+`events_log_path() -> Path`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `activate_kill` | `bool` (True) | Create the flag file for the scope. Raises `ValueError` on unknown symbol. Idempotent (re-activate updates reason). | `kill_switch_admin.activate_kill`. | Safety-control -- documented in F013's live-mode warning. |
+| `clear_kill` | `bool` (True) | Remove the flag file for the scope. Idempotent (clear-of-empty still audit-logs a no-op). | `kill_switch_admin.clear_kill`. | Same. |
+| `recent_events` → `ts` | ISO-8601 str | When the audit entry was appended. | `kill_switch_admin._append_event`. | None. |
+| `recent_events` → `action` | `"activate"` \| `"clear"` | The operator action. | Same. | None. |
+| `recent_events` → `scope` | `"GLOBAL"` \| supported symbol | The scope acted on. | Same. | Same as `list_killed → scope`. |
+| `recent_events` → `reason` | `str` | Reason for activate; `""` or `"(no-op)"` for clear. | Same. | None -- operator-authored text. |
+| `recent_events` → `by` | `str` | Operator identifier. | Same. | None. |
+| `events_log_path` | `Path` | Path to `<config_dir>/kill_events.jsonl`. | `kill_switch_admin.events_log_path`. | None. |
+
+Rolling constraint (Legal): the phrase "kill switches with hot-reload"
+is only accurate to cite in marketing / documentation while
+`kill_switches._read_state` continues to stat-check the directory on
+every call. Any future perf optimisation that removes hot-reload must
+strike the claim from copy.
+
 ## Audit hook (Sprint 2 — F010 implementation)
 
 Sprint 2's F010 ships `scripts/check_claim_register.py` +

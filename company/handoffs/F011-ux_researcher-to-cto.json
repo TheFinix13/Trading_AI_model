@@ -1,0 +1,9 @@
+{
+  "from_role": "ux_researcher",
+  "to_role": "cto",
+  "feature_id": "F011",
+  "timestamp": "2026-07-22T01:35:00Z",
+  "verdict": "pass",
+  "deliverable": "company/research/F011-user-journey.md",
+  "notes": "Four scenarios: per-symbol kill, global halt, reboot/recovery, operator handoff. Copy validated against D047 trust-markers checklist (no false claim of active order-blocking; the subtitle explicitly discloses `Sprint 2 ships the switch, not the wiring`). Reason textarea required on activate; clear is one-click to keep panic-recovery fast. Colour semantic: red = safety-action, matches _BASE_CSS --red token."
+}

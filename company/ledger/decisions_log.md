@@ -1125,6 +1125,50 @@ pre-existing). Handoff chain (abbreviated: CPO → CTO → Backend →
 QA → CPO-signoff — no UX Researcher, no Legal, no Security stage
 for pure infra) at `company/handoffs/F010-qa-to-cpo.json`.
 
+## D075 · 2026-07-22 · cpo · [FEATURE]
+
+**F011 shipped — kill-switches infrastructure (global + per-symbol, hot-reload).**
+
+Sprint 2's second safety layer. `agent/platform/kill_switches.py` is
+the read path: `kill_dir()`, `is_killed(symbol=None) -> bool`,
+`list_killed() -> list[dict]`, plus module constants (`KILL_DIR_ENV`,
+`DEFAULT_KILL_DIRNAME`, `SUPPORTED_SYMBOLS`, `GLOBAL_KEY`). Sibling
+`agent/platform/kill_switch_admin.py` is the write path:
+`activate_kill`, `clear_kill`, `recent_events`, `events_log_path`,
+appending every activate / clear to `<config_dir>/kill_events.jsonl`.
+Split-module design so a compromised read accessor can't accidentally
+trip an activate.
+
+Hot-reload: the read path stat-checks the kill directory on every
+call; mtime cache means idempotent polling is cheap and any admin
+mutation is visible on the next `is_killed()`. `_bump_mtime()` after
+every write forces cache invalidation on filesystems that don't
+reflect same-second child changes.
+
+`KILL_SWITCHES_PAGE` at `/settings/kill-switches` renders a toggle
+grid (Global + 5 supported symbols: EURUSD/GBPUSD/USDCAD/USDJPY/
+USDCHF), a required reason textarea on activate (JS refuses empty
+reason), a one-click clear (fast panic-recovery), and an audit-events
+panel. Red-tinted active cells; grid collapses to `1fr` at 700px.
+Route added to `_ONBOARDING_HTML_ALLOWED` so the safety UI is
+reachable even mid-onboarding. Three new APIs
+(`GET /api/kill-switches/status`, `POST /api/kill-switches/activate`,
+`POST /api/kill-switches/clear`); admin POSTs pass through F006 install-
+token gate + F009 rate limiter + session expiry via `_install_gate_pass`.
+
+`is_killed()` is the SECOND gate in the four-check live-order
+pathway (`live_mode → kill_switches → risk_budget → approval_queue`);
+Sprint 2 ships the function and its UI only — wiring it into any
+live-order code is future-sprint work (D065 hard invariant). Zero
+imports from `agent/live/*`, `agent/risk/*`, `agent/squad/*` (grep-
+verified).
+
+45 new tests (spec asked 20): 11 module + 13 admin + 8 page + 13 api.
+Golden-path pinned (`test_global_kill_masks_all`). Full suite 1295 →
+1340 passed. Legal registered `kill_switches` + `kill_switch_admin`
+claims; two rolling constraints (scope-verbatim rule, hot-reload
+preservation) logged. Handoff at `company/handoffs/F011-legal-to-ceo.json`.
+
 ## Template for subsequent entries
 
 ```markdown
