@@ -1,0 +1,13 @@
+{
+  "from_role": "legal",
+  "to_role": "ceo",
+  "feature_id": "F012",
+  "timestamp": "2026-07-22T02:25:00Z",
+  "verdict": "APPROVED",
+  "notes": "Claim register updated with F012 entries: risk_budget (3-tier cap, asymmetric behaviour) and broker_health (30-s cache, password never in return payload). Rolling constraints pinned to code invariants -- perf changes that violate them must strike the claim from copy. F012 is safety-primitive gate #3 (of 4) in the live-mode-off invariant that F013 will pin end-to-end. Ready for CEO signoff.",
+  "risks_flagged": [],
+  "claim_register_diff": [
+    "+ F012 --  `agent/platform/risk_budget.py` block (accessors, constants, rolling & asymmetric constraints)",
+    "+ F012 --  `agent/platform/broker_health.py` block (accessors, cache constant, password-never-surfaces constraint)"
+  ]
+}

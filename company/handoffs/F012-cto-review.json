@@ -1,0 +1,22 @@
+{
+  "from_role": "cto",
+  "to_role": "backend",
+  "feature_id": "F012",
+  "timestamp": "2026-07-22T02:10:00Z",
+  "verdict": "spec-locked",
+  "notes": "Spec-lock: two new modules -- risk_budget.py (three-tier max-loss cap with TOML config + JSONL state) and broker_health.py (30-s cache over Sprint 1's broker_connection.test_connection). No imports from agent/live, agent/risk, or agent/squad -- F012 is the Sprint 2 product-branch equivalent, not a wire-up. Live-mode-off gate #3.",
+  "invariants_pinned": [
+    "risk_budget.can_send_order() is the ONLY public entry point that answers 'may this order proceed given today's realised losses'",
+    "Wins do NOT restore headroom (asymmetric cap by design)",
+    "Broker probe cached at 30 s -- reuses Sprint 1's test_connection under the hood",
+    "No file in agent/platform imports from agent/live, agent/risk, agent/squad (per Invariant #2)",
+    "Password never surfaces in broker_health return payload (whitelisted fields only)"
+  ],
+  "acceptance": [
+    "risk_budget module: load/save config, record_fill, remaining_budget, can_send_order",
+    "broker_health module: check_broker_health with cache, is_broker_alive, list_health_states",
+    "RISK_PAGE renders 3 panels, polls /api/risk/state every 30s",
+    "APIs: GET /api/risk/state, GET/POST /api/risk/budgets",
+    "38 tests covering module + page + API + scenario"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "from_role": "qa",
+  "to_role": "legal",
+  "feature_id": "F012",
+  "timestamp": "2026-07-22T02:20:00Z",
+  "verdict": "APPROVED",
+  "verdict_doc": "company/qa/F012-verdict.md",
+  "notes": "Coverage: 38 tests across module/page/API + scenario (two fills drain daily cap -> third refused -> reset restores). Password-never-in-return regression pinned. No modifications to agent/live, agent/risk, agent/squad. Legal review needed for register entries on risk_budget + broker_health.",
+  "claim_register_entries_needed": [
+    "risk_budget: 3-tier max-loss cap claim + asymmetric-cap constraint (wins don't restore headroom)",
+    "broker_health: 30-second cache claim + password-never-surfaces constraint"
+  ]
+}

@@ -5063,3 +5063,193 @@ KILL_SWITCHES_PAGE = (_KILL_TEMPLATE
                       .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
                       .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
                       .replace("__NAV__", nav('kill-switches')))
+
+
+# ---------------------------------------------------------------------------
+# F012 -- /risk dashboard (Sprint 2)
+# ---------------------------------------------------------------------------
+#
+# Three sections: budget headroom, broker health, live exposure
+# (placeholder). Polls /api/risk/state every 30s via withStates().
+
+_RISK_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Risk -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+__SKELETON_CSS__
+.risk-wrap{max-width:1000px;margin:0 auto}
+.risk-lead{color:var(--dim);margin:6px 0 14px}
+.risk-section{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:16px 18px;margin:14px 0}
+.risk-section h2{font-size:15px;margin:0 0 10px}
+.risk-bar{background:var(--bg);border:1px solid var(--border);
+  border-radius:6px;height:16px;position:relative;overflow:hidden}
+.risk-bar .fill{height:100%;background:var(--green);transition:width .2s}
+.risk-bar.warn .fill{background:var(--amber)}
+.risk-bar.hot  .fill{background:var(--red)}
+.risk-row{display:grid;grid-template-columns:140px 1fr 120px;gap:10px;
+  align-items:center;margin:6px 0;font-size:13px}
+.risk-row .label{color:var(--fg)}
+.risk-row .num{color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
+.risk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.risk-alias{background:var(--bg);border:1px solid var(--border);
+  border-radius:6px;padding:10px 12px}
+.risk-alias .badge{margin-left:6px}
+.risk-alias .meta{color:var(--dim);font-size:12px;margin-top:4px}
+.risk-updated{color:var(--dim);font-size:12px;margin-top:6px}
+.risk-warn{background:rgba(210,153,34,.10);border:1px solid rgba(210,153,34,.4);
+  border-left:3px solid var(--amber);border-radius:6px;padding:10px 12px;
+  color:var(--fg);font-size:12.5px;margin:8px 0}
+@media (max-width: 700px){
+  .risk-row{grid-template-columns:100px 1fr;grid-auto-flow:dense}
+  .risk-row .num{grid-column:2/3;text-align:left;color:var(--dim)}
+  .risk-grid{grid-template-columns:1fr}
+}
+</style></head>
+<body>
+__NAV__
+<div class="risk-wrap">
+  <h1>Risk</h1>
+  <div class="risk-lead">Pre-trade safety snapshot: your realised
+  daily-loss budget, per-symbol and per-strategy caps, and each
+  saved broker connection's health. Sprint 2 ships these as the
+  third of the four safety checks (live-mode &rarr; kill-switch
+  &rarr; <em>risk budget</em> &rarr; approval). Sprint 2 does not
+  send any live orders.</div>
+
+  <div class="risk-warn"><strong>Sprint 2 caveat.</strong> Live-mode is
+  OFF by default. Values below reflect any manually-recorded fills in
+  <code>risk_state.jsonl</code>; a fresh install shows all caps at
+  full headroom, which is correct.</div>
+
+  <div id="risk-live" class="risk-section">
+    <h2>Live exposure</h2>
+    <div id="risk-live-body"></div>
+  </div>
+
+  <div id="risk-budget" class="risk-section">
+    <h2>Budget headroom</h2>
+    <div id="risk-budget-body"></div>
+  </div>
+
+  <div id="risk-brokers" class="risk-section">
+    <h2>Broker connections</h2>
+    <div id="risk-brokers-body"></div>
+  </div>
+
+  <div id="risk-updated" class="risk-updated"></div>
+</div>
+<script>
+__ERROR_COPY_JS__
+__WITH_STATES_JS__
+
+function esc(s){
+  var d=document.createElement("div"); d.innerText=String(s==null?"":s);
+  return d.innerHTML;
+}
+function fmt(x){ return (typeof x === "number") ? x.toFixed(2) : "0.00"; }
+
+async function fetchState(){
+  const r = await fetch("/api/risk/state", {cache: "no-store"});
+  if(r.status === 401) return {__auth__: true};
+  if(!r.ok) return {__error__: "HTTP " + r.status};
+  return await r.json();
+}
+
+function barHtml(used, cap){
+  cap = Number(cap) || 1;
+  const pct = Math.min(100, Math.max(0, (used / cap) * 100));
+  const cls = pct >= 90 ? "hot" : (pct >= 50 ? "warn" : "");
+  return '<div class="risk-bar '+cls+'"><div class="fill" style="width:'+pct.toFixed(1)+'%"></div></div>';
+}
+
+function rowHtml(label, used, cap){
+  const remaining = Math.max(0, cap - used);
+  return '<div class="risk-row"><span class="label">'+esc(label)+'</span>'+
+    barHtml(used, cap)+
+    '<span class="num">'+fmt(remaining)+' / '+fmt(cap)+'</span></div>';
+}
+
+function renderBudget(state){
+  const b = state.budget || {};
+  const box = document.getElementById("risk-budget-body");
+  var out = "";
+  if(b.per_day){
+    out += rowHtml("Per day",       b.per_day.used, b.per_day.cap);
+  }
+  const syms = b.per_symbol || {};
+  const symKeys = Object.keys(syms).sort();
+  if(symKeys.length === 0){
+    out += '<div class="dim" style="margin:6px 0">No per-symbol usage today. Default cap: '+fmt(b.per_symbol_default||0)+'.</div>';
+  } else {
+    symKeys.forEach(function(k){
+      out += rowHtml("Symbol "+k, syms[k].used, syms[k].cap);
+    });
+  }
+  const strat = b.per_strategy || {};
+  const stratKeys = Object.keys(strat).sort();
+  if(stratKeys.length === 0){
+    out += '<div class="dim" style="margin:6px 0">No per-strategy usage today. Default cap: '+fmt(b.per_strategy_default||0)+'.</div>';
+  } else {
+    stratKeys.forEach(function(k){
+      out += rowHtml("Strategy "+k, strat[k].used, strat[k].cap);
+    });
+  }
+  box.innerHTML = out;
+}
+
+function renderBrokers(state){
+  const rows = state.brokers || [];
+  const box = document.getElementById("risk-brokers-body");
+  if(!rows.length){
+    box.innerHTML = '<div class="dim">No broker aliases saved. '+
+      '<a href="/settings/broker">Add one &rarr;</a></div>';
+    return;
+  }
+  box.innerHTML = '<div class="risk-grid">'+rows.map(function(row){
+    var badgeCls = row.alive ? "alive" : (row.reason === "not yet probed" ? "stale" : "down");
+    var badgeText = row.alive ? "alive" : (row.reason === "not yet probed" ? "stale" : "down");
+    return '<div class="risk-alias"><strong>'+esc(row.alias||"?")+'</strong>'+
+      '<span class="badge '+esc(badgeCls)+'">'+esc(badgeText)+'</span>'+
+      '<div class="meta">'+esc(row.reason||"")+
+      (row.server ? ' &middot; '+esc(row.server) : '')+
+      (row.account_type ? ' &middot; '+esc(row.account_type) : '')+
+      '</div></div>';
+  }).join("")+'</div>';
+}
+
+function renderLive(state){
+  const box = document.getElementById("risk-live-body");
+  const exposure = state.exposure || {open_positions: 0, notional_usd: 0};
+  box.innerHTML = '<div class="risk-row"><span class="label">Open positions</span>'+
+    '<span class="dim">Sprint 2 -- live-mode OFF, no live positions</span>'+
+    '<span class="num">'+(exposure.open_positions || 0)+'</span></div>'+
+    '<div class="risk-row"><span class="label">Notional (USD)</span>'+
+    '<span class="dim">placeholder for future integration</span>'+
+    '<span class="num">'+fmt(exposure.notional_usd || 0)+'</span></div>';
+}
+
+async function refresh(){
+  var box = document.getElementById("risk-budget-body");
+  await withStates(box, fetchState, function(state, box){
+    renderLive(state);
+    renderBudget(state);
+    renderBrokers(state);
+    document.getElementById("risk-updated").textContent =
+      "Updated " + esc(state.as_of || "");
+    return null;
+  }, {emptyCopyKey: "no_data_yet"});
+}
+
+refresh();
+setInterval(refresh, 30000);
+</script></body></html>"""
+
+
+RISK_PAGE = (_RISK_TEMPLATE
+             .replace("__BASE_CSS__", _BASE_CSS)
+             .replace("__SKELETON_CSS__", _SKELETON_CSS)
+             .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+             .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+             .replace("__NAV__", nav('risk')))

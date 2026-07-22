@@ -1,0 +1,17 @@
+{
+  "from_role": "ux_researcher",
+  "to_role": "cto",
+  "feature_id": "F012",
+  "timestamp": "2026-07-22T02:05:00Z",
+  "artifacts": [
+    "company/research/F012-user-journey.md",
+    "company/design/F012-mocks.md"
+  ],
+  "verdict": "handoff-open",
+  "notes": "Three-panel /risk dashboard grounded in Yoichi's 'show me the numbers' persona. Grid collapses to 1fr under 700px. Cache banner (`cached=true`) surfaces the 30-second broker-probe TTL honestly. CTO can proceed to spec-lock.",
+  "acceptance": [
+    "User journey covers 3 states: fresh install, mid-day partial consumption, cap-breached",
+    "Mocks pinned via base CSS tokens (no bespoke palette)",
+    "Copy strings drafted for Sprint 2 caveat + probe-cache tooltip"
+  ]
+}

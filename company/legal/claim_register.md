@@ -326,6 +326,68 @@ is only accurate to cite in marketing / documentation while
 every call. Any future perf optimisation that removes hot-reload must
 strike the claim from copy.
 
+### F012 — `agent/platform/risk_budget.py` (Sprint 2)
+
+Public accessors: `load_config() -> dict`, `save_config(payload) -> bool`,
+`record_fill(symbol, strategy, pnl, ts=None) -> bool`,
+`remaining_budget(scope="all", now=None) -> dict`,
+`can_send_order(symbol, strategy, worst_case_loss, now=None) -> tuple[bool, str]`.
+
+Public module constants: `DEFAULT_PER_DAY_MAX_LOSS`,
+`DEFAULT_PER_SYMBOL_MAX_LOSS`, `DEFAULT_PER_STRATEGY_MAX_LOSS`,
+`CONFIG_FILENAME`, `STATE_FILENAME`. Test-only helper marked
+`# claim-exempt`: `reset_state`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `can_send_order` | `(bool, str)` | Third of four live-mode-off gates: True iff every per-day / per-symbol / per-strategy cap has enough headroom for the ask. | `risk_budget.can_send_order`. | Safety-control -- documented in F013's live-mode warning. |
+| `remaining_budget` → `per_day` | `{cap, used, remaining}` | Today's UTC-day slice of realised loss vs configured per-day cap. | `risk_budget.remaining_budget`. | "Not investment advice" if surfaced in copy citing $-figures. |
+| `remaining_budget` → `per_symbol` | `{symbol: {cap, used, remaining}}` | Per-symbol daily loss vs cap. | Same. | Same. |
+| `remaining_budget` → `per_strategy` | `{strategy: {cap, used, remaining}}` | Per-source-agent daily loss vs cap. | Same. | Same. |
+| `remaining_budget` → `per_symbol_default` | `float` | The default cap applied when a symbol has no explicit entry. | Same. | None -- meta. |
+| `remaining_budget` → `per_strategy_default` | `float` | The default cap applied when a strategy has no explicit entry. | Same. | None -- meta. |
+| `remaining_budget` → `as_of` | ISO-8601 str | Timestamp of the payload. | Same. | None -- meta. |
+| `record_fill` | `bool` | Append a fill to `risk_state.jsonl`. Only losses (pnl < 0) count against the cap. | `risk_budget.record_fill`. | None -- state. |
+| `load_config` / `save_config` | `dict` / `bool` | Read / atomic write of `<config_dir>/risk_budget.toml`. Missing / malformed → defaults. | `risk_budget.load_config`, `risk_budget.save_config`. | None -- configuration. |
+
+Rolling constraint (Legal): any copy citing "3-tier max-loss cap"
+MUST reference all three scopes (per-day / per-symbol / per-strategy)
+verbatim -- collapsing to "daily loss limit" alone is inaccurate.
+
+Asymmetric-cap constraint: `remaining_budget` records positive fills
+but never restores headroom from a winning trade. Any future request
+to make wins credit against the cap requires a Legal review because
+it would materially change the safety-primitive claim.
+
+### F012 — `agent/platform/broker_health.py` (Sprint 2)
+
+Public accessors: `check_broker_health(user_alias, cache_ttl=None) -> dict`,
+`is_broker_alive(user_alias) -> bool`,
+`list_health_states() -> list[dict]`.
+
+Public module constant: `CACHE_TTL_SECONDS`. Test-only helper marked
+`# claim-exempt`: `clear_cache`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `check_broker_health` → `alive` | `bool` | Whether the last probe of this alias succeeded (or the cache says so if fresh). | `broker_health.check_broker_health`. | Live-broker warning if `account_type=="live"` shows. |
+| `check_broker_health` → `reason` | `str` | Human-readable diagnostic. `"ok"` on success; `"no credentials"` when the alias isn't saved; MT5 error text otherwise. Password NEVER included. | Same. | Live-broker warning. |
+| `check_broker_health` → `account_type` | `"demo"` \| `"live"` \| `"unknown"` \| None | Detected type from the probe. | Same. | Live-broker warning triggers when `"live"`. |
+| `check_broker_health` → `server` | `str` \| None | MT5 server echoed back. | Same. | None. |
+| `check_broker_health` → `checked_at` | ISO-8601 str | When the probe was recorded (cache-hit or fresh). | Same. | None. |
+| `check_broker_health` → `cached` | `bool` | True iff this reading came from the 30-second cache. | Same. | None. |
+| `is_broker_alive` | `bool` | Convenience wrapper. | `broker_health.is_broker_alive`. | Live-broker warning if the alias probes as `live`. |
+| `list_health_states` | `list[dict]` | One row per configured alias; not-yet-probed aliases render `reason="not yet probed"`. | `broker_health.list_health_states`. | Same. |
+
+Rolling constraint (Legal): the "30-second cache" claim is only
+accurate while `CACHE_TTL_SECONDS = 30.0`. A future perf change that
+raises the TTL must strike the claim from copy.
+
+Password-never-surfaces constraint: `_sanitise_result` explicitly
+whitelists the fields returned. A regression test in
+`tests/platform/test_broker_health_module.py` pins that the raw
+password does not appear in any field of the return payload.
+
 ## Audit hook (Sprint 2 — F010 implementation)
 
 Sprint 2's F010 ships `scripts/check_claim_register.py` +

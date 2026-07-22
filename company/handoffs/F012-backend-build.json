@@ -1,0 +1,20 @@
+{
+  "from_role": "backend",
+  "to_role": "qa",
+  "feature_id": "F012",
+  "timestamp": "2026-07-22T02:15:00Z",
+  "artifacts": [
+    "agent/platform/risk_budget.py",
+    "agent/platform/broker_health.py",
+    "agent/platform/pages.py (RISK_PAGE appended)",
+    "scripts/serve_platform.py (/risk + /api/risk/* routes)"
+  ],
+  "verdict": "build-complete",
+  "notes": "Shipped 38 tests (spec asked 25). risk_budget uses UTC-day rollover; state file at <config_dir>/risk_state.jsonl; config at <config_dir>/risk_budget.toml. broker_health wraps broker_connection.test_connection with a 30-s cache and whitelisted return fields. All tests pass; full-suite regression clean (1378 passed).",
+  "test_files": [
+    "tests/platform/test_risk_budget_module.py (10)",
+    "tests/platform/test_broker_health_module.py (7)",
+    "tests/platform/test_risk_page.py (9)",
+    "tests/platform/test_risk_api.py (12)"
+  ]
+}

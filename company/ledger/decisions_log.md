@@ -1169,6 +1169,52 @@ Golden-path pinned (`test_global_kill_masks_all`). Full suite 1295 →
 claims; two rolling constraints (scope-verbatim rule, hot-reload
 preservation) logged. Handoff at `company/handoffs/F011-legal-to-ceo.json`.
 
+## D076 · 2026-07-22 · cpo · [FEATURE]
+
+**F012 spec locked -- risk budget + broker health + `/risk` dashboard.**
+
+Third safety primitive of Sprint 2. New product-branch modules:
+
+- `agent/platform/risk_budget.py` -- three-tier max-loss cap (per-day,
+  per-symbol, per-strategy) with config at `<config_dir>/risk_budget.toml`
+  and append-only state at `<config_dir>/risk_state.jsonl`. Public API:
+  `load_config`, `save_config`, `record_fill`, `remaining_budget`,
+  `can_send_order`. `can_send_order` is the THIRD gate in the four-check
+  live-order pathway.
+- `agent/platform/broker_health.py` -- 30-second cache over Sprint 1's
+  `broker_connection.test_connection`. Public API: `check_broker_health`,
+  `is_broker_alive`, `list_health_states`. Password never surfaces in
+  return payload (whitelisted fields only, regression pinned).
+
+`RISK_PAGE` at `/risk` renders three panels (Live exposure / Budget
+headroom / Broker connections), polls `/api/risk/state` every 30 s via
+F005 `withStates()`. APIs: `GET /api/risk/state`, `GET/POST
+/api/risk/budgets` (POST behind F006/F009 install-token gate).
+
+Wins do NOT restore headroom -- asymmetric cap by design; Legal
+registered the constraint. Zero imports from `agent/live/*`,
+`agent/risk/*`, `agent/squad/*` (grep-verified). Spec at
+`company/sprints/sprint-2-real-trading/F012-risk-budget-and-broker-health.md`;
+handoff at `company/handoffs/F012-cpo-to-ux_researcher.json`.
+
+## D077 · 2026-07-22 · cto · [FEATURE]
+
+**F012 shipped -- risk budget + broker health + `/risk` dashboard.**
+
+Backend build complete, QA green, Legal green. Modules quarantined
+from `agent/live/*`, `agent/risk/*`, `agent/squad/*`. Config file
+`risk_budget.toml` uses defaults on missing keys; state file
+`risk_state.jsonl` UTC-day sliced; broker probe cached 30 s to stay
+under MT5 rate limits.
+
+38 new tests (spec asked 25): 10 risk_budget module + 7 broker_health
+module + 9 page + 12 api. Scenario test pinned (two fills drain daily
+cap -> third refused -> reset restores). Full suite 1340 → 1378 passed.
+Legal registered `risk_budget` + `broker_health` claims with rolling
+constraints (3-tier verbatim + wins-don't-restore + 30-s-cache +
+password-never-in-return). Handoff at
+`company/handoffs/F012-legal-to-ceo.json`.
+
 ## Template for subsequent entries
 
 ```markdown

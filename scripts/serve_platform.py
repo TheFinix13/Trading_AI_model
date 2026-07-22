@@ -38,15 +38,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from agent.platform import (  # noqa: E402
-    auth, broker_connection, credentials, hq, kill_switch_admin,
-    kill_switches, live_status, onboarding, paper_loop, performance,
-    players, rate_limiter, research, squad_events,
+    auth, broker_connection, broker_health, credentials, hq,
+    kill_switch_admin, kill_switches, live_status, onboarding, paper_loop,
+    performance, players, rate_limiter, research, risk_budget, squad_events,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
     BROKER_WIZARD_PAGE, HQ_PAGE, HUB_PAGE, KILL_SWITCHES_PAGE, ONBOARDING_PAGE,
     PERFORMANCE_PAGE, PLAYERS_INDEX_PAGE, RESEARCH_PAGE, RESET_INSTALL_PAGE,
-    V1_PAGE, V2_PAGE,
+    RISK_PAGE, V1_PAGE, V2_PAGE,
     player_detail_page, players_not_found_page,
 )
 
@@ -387,6 +387,31 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 })
                 return
 
+            # F012 -- risk dashboard.
+            if path == "/risk":
+                self._send(RISK_PAGE.encode(),
+                           "text/html; charset=utf-8")
+                return
+            if path == "/api/risk/state":
+                budget = risk_budget.remaining_budget()
+                brokers = broker_health.list_health_states()
+                self._json({
+                    "budget": budget,
+                    "brokers": brokers,
+                    "exposure": {
+                        "open_positions": 0,
+                        "notional_usd": 0.0,
+                        "note": "Sprint 2 -- live-mode default OFF, no live "
+                                "positions; placeholder for future "
+                                "integration.",
+                    },
+                    "as_of": budget.get("as_of"),
+                })
+                return
+            if path == "/api/risk/budgets":
+                self._json(risk_budget.load_config())
+                return
+
             # F008 first-visit gate -- HTML routes redirect to
             # /onboarding until the user completes setup. HTTP API
             # routes and the broker wizard (referenced from step 3)
@@ -706,6 +731,22 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                     self._json({"ok": False, "error": str(exc)}, 400)
                     return
                 self._json({"ok": True})
+                return
+
+            # F012 -- risk budget write path (auth-gated).
+            if path == "/api/risk/budgets":
+                body = self._read_body_json() or {}
+                if not isinstance(body, dict):
+                    self._json({"ok": False,
+                                "error": "expected JSON object"}, 400)
+                    return
+                ok = risk_budget.save_config(body)
+                if ok:
+                    self._json({"ok": True,
+                                "budgets": risk_budget.load_config()})
+                else:
+                    self._json({"ok": False,
+                                "error": "unable to write config"}, 500)
                 return
 
             if path == "/api/broker/test-connection":
