@@ -440,6 +440,85 @@ allow a keyring outage to flip the default to True (unsafe) -- the
 regression test in `tests/security/test_live_mode_off_invariant.py`
 pins clean-install-is-off.
 
+### F014 — `agent/platform/alerts.py` (Sprint 2)
+
+Public accessors: `publish(event_type, payload, ts=None) -> dict`,
+`subscribe(callback) -> str`,
+`unsubscribe(subscription_id) -> bool`,
+`recent(limit=100) -> list[dict]`.
+
+Public module constants: `EVENT_TYPES`, `RING_BUFFER_CAPACITY`.
+Test-only helper marked `# claim-exempt`: `reset`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `publish` | `dict` (event) | Push an event onto the in-process bus. Raises ValueError on unknown type or non-dict payload. Fires every subscriber synchronously; exceptions in one subscriber never break the others. Sprint 2 does NOT call this from any live pathway. | `alerts.publish`. | None -- transport. |
+| `subscribe` / `unsubscribe` | `str` / `bool` | Register / remove a callback. Ids returned by subscribe are opaque tokens. | Same module. | None. |
+| `recent` | `list[dict]` | Snapshot the ring buffer, newest first, up to `limit` entries. | Same. | None. |
+| `EVENT_TYPES` | `tuple[str, ...]` | Whitelist of six event types the bus accepts. Adding a new type requires a Legal re-review (see rolling constraint). | Same. | None -- meta. |
+| `RING_BUFFER_CAPACITY` | `int` (100) | Bounded ring buffer of most-recent events. Older events are dropped silently. | Same. | None -- meta. |
+
+Rolling constraint (Legal): the six event types
+(`trade_fill`, `stop_hit`, `kill_switch_trip`, `risk_budget_breach`,
+`approval_submitted`, `platform_down`) are the ONLY event types this
+bus accepts. Adding a new event type materially changes the alerts
+claim (e.g. "notifications on trade fills") and requires a Legal
+re-review AND a per_event default in `alerts_telegram`.
+
+### F014 — `agent/platform/alerts_sse.py` (Sprint 2)
+
+Public accessors:
+`format_event(event) -> bytes`,
+`sse_stream_response(handler, initial_history=None, heartbeat_seconds=15.0, max_seconds=None) -> None`.
+
+Public module constants: `DEFAULT_HEARTBEAT_SECONDS`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `format_event` | `bytes` | Render an event dict as a valid SSE frame (`id: `, `event: `, `data: `). Malformed events fall back to safe defaults. | `alerts_sse.format_event`. | None -- transport. |
+| `sse_stream_response` | None | Long-lived `text/event-stream` response. Auth is enforced by the caller (this module is transport-only). Broken pipes / connection resets clean up the subscription. | `alerts_sse.sse_stream_response`. | None. |
+| `DEFAULT_HEARTBEAT_SECONDS` | `float` (15.0) | Idle-heartbeat interval that keeps proxies alive. | Same. | None -- meta. |
+
+Rolling constraint (Legal): the "SSE frames" claim is only accurate
+while `format_event` emits `id: `, `event: `, and `data: ` lines
+delimited by a blank line (per the WHATWG SSE spec). Any wire-format
+change requires the client (`ALERTS_PAGE` EventSource wiring) to
+change with it and Legal to re-review the "browser-compatible live
+stream" claim.
+
+### F014 — `agent/platform/alerts_telegram.py` (Sprint 2)
+
+Public accessors:
+`configure(bot_token, chat_id, per_event=None, enabled=True) -> None`,
+`load_config() -> dict`,
+`is_enabled() -> bool`,
+`send(event, client=None) -> bool`,
+`start(client=None) -> str | None`,
+`stop() -> None`.
+
+Public module constants: `TELEGRAM_API_BASE`. Test-only helpers
+marked `# claim-exempt`: `reset`, `snapshot`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `configure` | None | Set the bridge config. Idempotent. Reuses the existing `[telegram]` bot_token / chat_id from `platform.toml` -- F014 does NOT add a new secret. | `alerts_telegram.configure`. | None. |
+| `load_config` | `dict` | Snapshot: `{enabled, bot_token_configured, chat_id_configured, per_event}`. NEVER echoes the raw bot_token or chat_id (only boolean flags). | `alerts_telegram.load_config`. | Bot-token-never-in-payload constraint. |
+| `is_enabled` | `bool` | True iff enabled AND bot_token AND chat_id are all populated (fail-closed). | Same. | None. |
+| `send` | `bool` | Post a single event via httpx (mocked in tests). Refuses when disabled, missing token, or the event's type is not in `per_event`. | `alerts_telegram.send`. | None -- transport. |
+| `start` / `stop` | `str \| None` / None | Attach / detach the bus subscription. Idempotent. | Same. | None. |
+| `TELEGRAM_API_BASE` | `str` | `https://api.telegram.org/bot` -- concatenated with the bot_token to form the sendMessage URL. | Same. | None -- meta. |
+
+Rolling constraint (Legal): `load_config()` returns
+`bot_token_configured: bool` and `chat_id_configured: bool` -- NEVER
+the raw string values. If a future change echoes the token itself,
+that's a P0 secrets-in-transit regression and must strike the
+"Telegram routing config" claim.
+
+Fail-closed constraint: `is_enabled()` requires ALL of (enabled=True,
+non-empty bot_token, non-empty chat_id). Any leakage that would
+allow a partially-configured bridge to fire would violate the
+"user-controlled routing" claim.
+
 ## Audit hook (Sprint 2 — F010 implementation)
 
 Sprint 2's F010 ships `scripts/check_claim_register.py` +

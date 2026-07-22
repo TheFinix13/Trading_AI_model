@@ -1,0 +1,23 @@
+{
+  "from_role": "backend",
+  "to_role": "security",
+  "feature_id": "F014",
+  "timestamp": "2026-07-22T03:08:00Z",
+  "artifacts": [
+    "agent/platform/alerts.py",
+    "agent/platform/alerts_sse.py",
+    "agent/platform/alerts_telegram.py",
+    "agent/platform/pages.py (ALERTS_PAGE appended)",
+    "agent/platform/config.py ([alerts.telegram] block added)",
+    "scripts/serve_platform.py (F014 GET + POST routes; SSE rate-limit exempt)"
+  ],
+  "verdict": "build-complete",
+  "notes": "35 new tests (spec asked 20). SSE stream in `_RATE_LIMIT_EXEMPT_PATHS` so long-lived connections don't drain the F009 bucket (still install-token gated via _authorized). Zero imports from restricted directories (grep-verified). Full suite 1447 -> 1482.",
+  "test_files": [
+    "tests/platform/test_alerts_module.py (10)",
+    "tests/platform/test_alerts_sse_module.py (5)",
+    "tests/platform/test_alerts_telegram_module.py (8)",
+    "tests/platform/test_alerts_page.py (7)",
+    "tests/platform/test_alerts_api.py (5)"
+  ]
+}

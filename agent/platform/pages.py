@@ -5640,3 +5640,159 @@ LIVE_MODE_TOGGLE_PAGE = (_LIVE_MODE_TEMPLATE
                          .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
                          .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
                          .replace("__NAV__", nav('live-mode')))
+
+
+# ---------------------------------------------------------------------------
+# F014 -- Alerts stream page
+# ---------------------------------------------------------------------------
+#
+# `/alerts` opens an EventSource to `/api/alerts/stream` and displays
+# a rolling list of events (last 100, newest-first). Filter chips per
+# event type + a "Send test alert" button that fires
+# POST /api/alerts/test.
+
+_ALERTS_TEMPLATE = r"""<!doctype html>
+<html><head><meta charset=utf-8><title>Alerts - Blue Lock</title>
+<style>__BASE_CSS____SKELETON_CSS__
+.alerts-topbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px 0}
+.alerts-chip{padding:6px 10px;border-radius:14px;background:var(--panel);
+  color:var(--dim);border:1px solid var(--dim);cursor:pointer;font-size:12px}
+.alerts-chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.alerts-actions{display:flex;gap:8px;margin:8px 0}
+.alerts-actions button{padding:8px 12px;border:0;border-radius:6px;
+  cursor:pointer;background:var(--accent);color:#fff;font-weight:bold}
+.alerts-actions .connection{font-size:12px;color:var(--dim);
+  align-self:center;margin-left:auto}
+.alerts-actions .connection.live{color:var(--accent)}
+.alerts-list{display:flex;flex-direction:column;gap:8px}
+.alert-row{border:1px solid var(--panel);border-radius:6px;padding:10px 12px}
+.alert-row .head{display:flex;justify-content:space-between;
+  align-items:baseline;margin:0 0 4px 0}
+.alert-row .type{font-weight:bold;text-transform:uppercase;font-size:12px}
+.alert-row .ts{color:var(--dim);font-size:11px;font-family:monospace}
+.alert-row .payload{font-family:monospace;font-size:12px;
+  color:var(--dim);white-space:pre-wrap;word-break:break-all}
+@media (max-width: 700px){
+  .alerts-topbar{gap:6px}
+  .alerts-actions{flex-direction:column;align-items:stretch}
+  .alerts-actions .connection{margin-left:0}
+}
+</style></head>
+<body>
+__NAV__
+<main>
+<h1>Alerts</h1>
+<p class="dim">
+Live event stream (SSE). Filter by type below. Sprint 2 caveat:
+Sprint 2 does not publish events from any live pathway -- only the
+"Send test alert" button below produces events.
+</p>
+
+<div class="alerts-topbar" id="alerts-chips"></div>
+
+<div class="alerts-actions">
+  <button id="alerts-test-btn">Send test alert</button>
+  <span id="alerts-connection" class="connection">connecting...</span>
+</div>
+
+<div id="alerts-list" class="alerts-list"></div>
+</main>
+<script>__ERROR_COPY_JS__
+__WITH_STATES_JS__
+const EVENT_TYPES = [
+  "trade_fill","stop_hit","kill_switch_trip","risk_budget_breach",
+  "approval_submitted","platform_down"
+];
+const ACTIVE = new Set(EVENT_TYPES);
+
+function esc(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];
+  });
+}
+
+function renderChips(){
+  const box = document.getElementById("alerts-chips");
+  box.innerHTML = EVENT_TYPES.map(function(t){
+    const on = ACTIVE.has(t) ? "on" : "";
+    return '<span class="alerts-chip '+on+'" data-t="'+esc(t)+'">'+
+      esc(t)+'</span>';
+  }).join("");
+  box.querySelectorAll(".alerts-chip").forEach(function(c){
+    c.onclick = function(){
+      const t = c.getAttribute("data-t");
+      if(ACTIVE.has(t)) ACTIVE.delete(t); else ACTIVE.add(t);
+      renderChips();
+      renderList();
+    };
+  });
+}
+
+const EVENTS = [];
+
+function addEvent(ev){
+  EVENTS.unshift(ev);
+  if(EVENTS.length > 100) EVENTS.length = 100;
+  renderList();
+}
+
+function renderList(){
+  const box = document.getElementById("alerts-list");
+  const rows = EVENTS.filter(function(e){ return ACTIVE.has(e.type); });
+  if(rows.length === 0){
+    box.innerHTML = '<div class="dim">No events yet. Try "Send test alert".</div>';
+    return;
+  }
+  box.innerHTML = rows.map(function(e){
+    const p = JSON.stringify(e.payload || {}, null, 2);
+    return '<div class="alert-row">'+
+      '<div class="head">'+
+      '<span class="type">'+esc(e.type)+'</span>'+
+      '<span class="ts">'+esc(e.ts)+'</span>'+
+      '</div>'+
+      '<div class="payload">'+esc(p)+'</div>'+
+      '</div>';
+  }).join("");
+}
+
+function openStream(){
+  const conn = document.getElementById("alerts-connection");
+  try{
+    const es = new EventSource("/api/alerts/stream?token="+
+      encodeURIComponent(window.__BLUELOCK_TOKEN__ || ""));
+    es.onopen = function(){
+      conn.classList.add("live");
+      conn.textContent = "connected";
+    };
+    es.onerror = function(){
+      conn.classList.remove("live");
+      conn.textContent = "reconnecting...";
+    };
+    EVENT_TYPES.forEach(function(t){
+      es.addEventListener(t, function(msg){
+        try{ addEvent(JSON.parse(msg.data)); }catch(e){}
+      });
+    });
+  }catch(e){
+    conn.textContent = "SSE unsupported (fallback poll)";
+  }
+}
+
+document.addEventListener("click", async function(e){
+  if(e.target && e.target.id === "alerts-test-btn"){
+    await fetch("/api/alerts/test", {method:"POST"});
+  }
+});
+
+renderChips();
+renderList();
+openStream();
+</script></body></html>"""
+
+
+ALERTS_PAGE = (_ALERTS_TEMPLATE
+               .replace("__BASE_CSS__", _BASE_CSS)
+               .replace("__SKELETON_CSS__", _SKELETON_CSS)
+               .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+               .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+               .replace("__NAV__", nav('alerts')))

@@ -62,6 +62,23 @@ def _defaults(repo_root: Path) -> dict:
         # endpoint from any live pathway (D065). Left empty by default;
         # when empty, the endpoint refuses every request (fail-closed).
         "internal": {"token": ""},
+        # F014 -- Telegram bridge for the alerts bus. Reuses the
+        # bot_token / chat_id from [telegram] above (no new secret).
+        # Default disabled; enable in platform.toml to route bus
+        # events to Telegram.
+        "alerts": {
+            "telegram": {
+                "enabled": False,
+                "per_event": {
+                    "trade_fill": True,
+                    "stop_hit": True,
+                    "kill_switch_trip": True,
+                    "risk_budget_breach": True,
+                    "approval_submitted": False,
+                    "platform_down": True,
+                },
+            },
+        },
     }
 
 
@@ -146,6 +163,17 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
     if isinstance(internal, dict):
         if internal.get("token"):
             cfg["internal"]["token"] = str(internal["token"])
+    ac = raw.get("alerts")
+    if isinstance(ac, dict):
+        tg = ac.get("telegram")
+        if isinstance(tg, dict):
+            if "enabled" in tg:
+                cfg["alerts"]["telegram"]["enabled"] = bool(tg["enabled"])
+            pe = tg.get("per_event")
+            if isinstance(pe, dict):
+                for k, v in pe.items():
+                    if k in cfg["alerts"]["telegram"]["per_event"]:
+                        cfg["alerts"]["telegram"]["per_event"][k] = bool(v)
     if cfg["live_dir"] is None:
         cfg["live_dir"] = Path(cfg["log_root"]) / "squad_live"
     return cfg

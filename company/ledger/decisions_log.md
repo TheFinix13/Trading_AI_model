@@ -1280,6 +1280,65 @@ with rolling constraints (ceremony strictness, fail-closed,
 fail-closed on empty). Handoff at
 `company/handoffs/F013-legal-to-ceo.json`.
 
+## D079 · 2026-07-22 · cto · [FEATURE]
+
+**F014 shipped -- SSE alerts stream + Telegram bridge + `/alerts`.**
+
+Enhances F013 with push-style notifications. Three new modules,
+one new page, four new endpoints, one new config block. All
+default-OFF: the Telegram bridge is disabled by default and Sprint 2
+does NOT publish events from any live pathway (D065).
+
+`agent/platform/alerts.py` — in-process pub/sub bus. Public API:
+`publish`, `subscribe`, `unsubscribe`, `recent`. Six-event-type
+whitelist: `trade_fill`, `stop_hit`, `kill_switch_trip`,
+`risk_budget_breach`, `approval_submitted`, `platform_down`.
+Adding a new event type materially changes the alerts claim and
+requires a Legal re-review (Legal-registered rolling constraint).
+Ring buffer bounded at 100 events. Subscriber exceptions are
+swallowed so one bad callback never breaks the others.
+
+`agent/platform/alerts_sse.py` — SSE transport. `format_event`
+renders `id:` + `event:` + `data:` frames per WHATWG spec.
+`sse_stream_response` writes a long-lived `text/event-stream`
+response; broken pipes clean up the subscription automatically.
+15-second heartbeat comment keeps proxies alive.
+
+`agent/platform/alerts_telegram.py` — Telegram bridge. Reuses the
+existing `[telegram]` `bot_token` / `chat_id` from `platform.toml`
+(no new secret). New `[alerts.telegram]` config block controls
+`enabled` + per-event fan-out. `load_config()` NEVER echoes the raw
+bot_token or chat_id -- only boolean flags. `is_enabled()`
+fail-closed: enabled AND token AND chat_id all populated. Tests
+mock `httpx.post` via a `_FakeClient` fixture; no real Telegram
+call is executed.
+
+`ALERTS_PAGE` at `/alerts` opens an `EventSource` to
+`/api/alerts/stream?token=<install-token>` (browsers cannot add
+headers to EventSource). Six filter chips + "Send test alert"
+button + connection indicator. Mobile 700px collapse for chips
+row + action bar.
+
+New endpoints:
+- `GET /api/alerts/stream` -- long-lived SSE. In
+  `_RATE_LIMIT_EXEMPT_PATHS` so the connection doesn't trickle-drain
+  the F009 bucket (still install-token gated via `_authorized`).
+- `GET /api/alerts/config` -- returns the bridge config with
+  boolean flags for token/chat_id (never raw values).
+- `POST /api/alerts/config` -- install-token gated write path.
+- `POST /api/alerts/test` -- publishes a synthetic `trade_fill`
+  event; the ONLY publisher shipped in Sprint 2.
+- `GET /api/alerts/recent` -- ring buffer snapshot.
+
+35 new tests (spec asked 20): 10 bus module + 5 SSE module + 8
+Telegram module + 7 page + 5 API. Full suite 1447 → 1482 passed.
+
+Zero imports from `agent/live/*`, `agent/risk/*`, `agent/squad/*`
+(grep-verified). Legal registered `alerts`, `alerts_sse`,
+`alerts_telegram` claims with rolling constraints (event-type
+whitelist, SSE frame shape, bot-token-never-in-payload, bridge
+fail-closed). Handoff at `company/handoffs/F014-qa-to-cpo.json`.
+
 ## Template for subsequent entries
 
 ```markdown

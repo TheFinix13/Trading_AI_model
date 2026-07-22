@@ -38,13 +38,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from agent.platform import (  # noqa: E402
-    approval_queue, auth, broker_connection, broker_health, credentials, hq,
-    kill_switch_admin, kill_switches, live_status, onboarding, paper_loop,
-    performance, players, rate_limiter, research, risk_budget, squad_events,
+    alerts, alerts_sse, alerts_telegram, approval_queue, auth,
+    broker_connection, broker_health, credentials, hq, kill_switch_admin,
+    kill_switches, live_status, onboarding, paper_loop, performance,
+    players, rate_limiter, research, risk_budget, squad_events,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
-    APPROVALS_PAGE, BROKER_WIZARD_PAGE, HQ_PAGE, HUB_PAGE,
+    ALERTS_PAGE, APPROVALS_PAGE, BROKER_WIZARD_PAGE, HQ_PAGE, HUB_PAGE,
     KILL_SWITCHES_PAGE, LIVE_MODE_TOGGLE_PAGE, ONBOARDING_PAGE,
     PERFORMANCE_PAGE, PLAYERS_INDEX_PAGE, RESEARCH_PAGE, RESET_INSTALL_PAGE,
     RISK_PAGE, V1_PAGE, V2_PAGE,
@@ -102,10 +103,15 @@ _UNAUTHENTICATED_API_PATHS: frozenset[str] = frozenset({
 })
 
 # F009 -- routes that require the install-token gate BUT skip the rate
-# limiter and session-expiry checks. Empty by default; kept as a
-# structural placeholder for future exemptions (e.g. a heartbeat pull
-# that a monitor might legitimately poll faster than the user).
-_RATE_LIMIT_EXEMPT_PATHS: frozenset[str] = frozenset()
+# limiter and session-expiry checks.
+#
+# F014's SSE stream is a long-lived connection; putting it through the
+# per-request bucket would trickle-drain the user's tokens even though
+# they only opened one page. Exempted here (still install-token-gated
+# through `_authorized`, so unauthenticated clients cannot subscribe).
+_RATE_LIMIT_EXEMPT_PATHS: frozenset[str] = frozenset({
+    "/api/alerts/stream",
+})
 
 # F008 first-visit gate. When onboarding is not yet complete, every
 # non-exempt HTML route redirects to /onboarding. HTTP routes that
@@ -457,6 +463,29 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 except OSError:
                     body = ""
                 self._json({"body": body})
+                return
+
+            # F014 -- alerts stream + config + page.
+            if path in ("/alerts", "/alerts/"):
+                self._send(ALERTS_PAGE.encode(),
+                           "text/html; charset=utf-8")
+                return
+            if path == "/api/alerts/config":
+                self._json(alerts_telegram.load_config())
+                return
+            if path == "/api/alerts/recent":
+                self._json({"events": alerts.recent(100)})
+                return
+            if path == "/api/alerts/stream":
+                # Long-lived SSE. Auth gate has already fired above.
+                # Ring buffer drains as `initial_history` so a
+                # reconnecting client catches up cheaply.
+                try:
+                    alerts_sse.sse_stream_response(
+                        self,
+                        initial_history=list(reversed(alerts.recent(100))))
+                except (BrokenPipeError, ConnectionResetError):
+                    pass
                 return
 
             # F008 first-visit gate -- HTML routes redirect to
@@ -846,6 +875,35 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 ok = approval_queue.disable()
                 self._json({"ok": ok,
                             "enabled": approval_queue.is_live_mode_enabled()})
+                return
+
+            # F014 -- alerts config write path + test-event publisher.
+            if path == "/api/alerts/config":
+                body = self._read_body_json() or {}
+                if not isinstance(body, dict):
+                    self._json({"ok": False,
+                                "error": "expected JSON object"}, 400)
+                    return
+                cfg_now = load_config(REPO_ROOT)
+                bot_token = str(cfg_now.get("telegram", {})
+                                .get("bot_token", "") or "")
+                chat_id = str(cfg_now.get("telegram", {})
+                              .get("chat_id", "") or "")
+                alerts_telegram.configure(
+                    bot_token=bot_token,
+                    chat_id=chat_id,
+                    per_event=body.get("per_event") or {},
+                    enabled=bool(body.get("enabled", False)))
+                alerts_telegram.start()
+                self._json({"ok": True,
+                            "config": alerts_telegram.load_config()})
+                return
+            if path == "/api/alerts/test":
+                event = alerts.publish(
+                    "trade_fill",
+                    {"test": True,
+                     "note": "synthetic event from POST /api/alerts/test"})
+                self._json({"ok": True, "event": event})
                 return
 
             if path == "/api/broker/test-connection":

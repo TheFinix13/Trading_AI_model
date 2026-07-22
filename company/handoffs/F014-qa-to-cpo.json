@@ -1,0 +1,14 @@
+{
+  "from_role": "qa",
+  "to_role": "cpo",
+  "feature_id": "F014",
+  "timestamp": "2026-07-22T03:15:00Z",
+  "verdict": "APPROVED",
+  "verdict_doc": "company/qa/F014-verdict.md",
+  "notes": "35 tests green (spec asked 20). Full suite 1482 passed / 1 skipped. Zero imports from restricted directories. Ring buffer bounded, subscriber exception isolation, SSE frame shape, Telegram-bridge fail-closed all test-pinned.",
+  "claim_register_entries_added": [
+    "alerts: 4 accessors + 2 module constants + rolling event-type whitelist constraint",
+    "alerts_sse: 2 accessors + 1 module constant + SSE frame-shape rolling constraint",
+    "alerts_telegram: 6 accessors + 1 module constant + bot-token-never-in-payload + fail-closed constraints"
+  ]
+}

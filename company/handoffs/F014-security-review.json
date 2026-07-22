@@ -1,0 +1,17 @@
+{
+  "from_role": "security",
+  "to_role": "qa",
+  "feature_id": "F014",
+  "timestamp": "2026-07-22T03:12:00Z",
+  "verdict": "PASS",
+  "notes": "Threat model exercised. Bot-token-never-in-payload constraint pinned by test. Bridge fail-closed on missing token / chat_id / enabled. SSE stream install-token gated via same _authorized path as the rest of /api/*. No real Telegram call in tests.",
+  "controls_verified": [
+    "load_config() returns bot_token_configured / chat_id_configured booleans only -- raw token/chat_id never in HTTP response",
+    "is_enabled() requires ALL of enabled+token+chat_id (fail-closed)",
+    "send() refuses on disabled config, missing token, and per_event=false",
+    "SSE stream install-token gated (?token= query param since browsers cannot add EventSource headers)",
+    "SSE rate-limit exempted (long-lived) but still auth-gated",
+    "Subscriber exception in one callback never breaks others (test-pinned)",
+    "Ring buffer bounded at 100 -- no unbounded memory growth"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "from_role": "cpo",
+  "to_role": "ux_researcher",
+  "feature_id": "F014",
+  "timestamp": "2026-07-22T03:00:00Z",
+  "spec_path": "company/sprints/sprint-2-real-trading/F014-sse-alerts-and-telegram.md",
+  "verdict": "handoff-open",
+  "notes": "Enhances F013 with SSE + Telegram. UX Researcher captures the away-from-keyboard journey + Rin-persona expectation of receiving push notifications while the browser tab is closed.",
+  "acceptance": [
+    "Away-from-keyboard journey documented (Telegram bridge fires while tab is closed)",
+    "At-the-desk journey documented (SSE fills the /alerts list live)",
+    "Reconnect behaviour documented (ring buffer replay)",
+    "Sprint 2 caveat prose (no live pathway publishes events) present in copy"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "from_role": "ux_researcher",
+  "to_role": "cto",
+  "feature_id": "F014",
+  "timestamp": "2026-07-22T03:02:00Z",
+  "artifacts": [
+    "company/research/F014-user-journey.md",
+    "company/design/F014-mocks.md"
+  ],
+  "verdict": "handoff-open",
+  "notes": "Single-column /alerts page with filter chips + test button + EventSource connection badge. Rows render newest-first, up to 100. Mobile 700px stacks the action bar. Copy pins Sprint 2 caveat.",
+  "acceptance": [
+    "Layout and colour semantics documented",
+    "Empty state + reconnecting state copy strings drafted",
+    "Ring buffer replay on reconnect specified"
+  ]
+}

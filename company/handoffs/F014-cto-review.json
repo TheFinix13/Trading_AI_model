@@ -1,0 +1,24 @@
+{
+  "from_role": "cto",
+  "to_role": "backend",
+  "feature_id": "F014",
+  "timestamp": "2026-07-22T03:05:00Z",
+  "verdict": "spec-locked",
+  "notes": "Spec-lock: three new modules (alerts.py bus + alerts_sse.py transport + alerts_telegram.py bridge) + one new page (ALERTS_PAGE) + [alerts.telegram] config block + 4 new endpoints. Reuses existing [telegram] bot_token / chat_id from platform.toml -- F014 does NOT add a new secret. Zero imports from agent/live/*, agent/risk/*, agent/squad/*. Sprint 2 does NOT publish events from any live pathway (D065).",
+  "invariants_pinned": [
+    "Ring buffer bounded (100 events; oldest fall off silently)",
+    "Subscriber exceptions never break other subscribers (test-pinned)",
+    "Six-event-type whitelist; adding a new type requires Legal re-review",
+    "SSE frame shape matches WHATWG spec (id/event/data + blank line)",
+    "Telegram bridge fail-closed: enabled AND bot_token AND chat_id all populated",
+    "load_config() NEVER echoes raw bot_token or chat_id -- only boolean flags",
+    "Auth-gated: /api/alerts/config POST + /api/alerts/test POST",
+    "SSE stream exempt from rate limiter (long-lived connection would trickle-drain the bucket)",
+    "No real Telegram call in tests (httpx mocked via _FakeClient)"
+  ],
+  "acceptance": [
+    "35 tests: 10 bus module + 5 SSE module + 8 Telegram module + 7 page + 5 API",
+    "SSE live-delivery integration test on tape",
+    "Telegram httpx.post mocked; per_event filter respected; disabled config -> no post"
+  ]
+}
