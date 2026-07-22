@@ -4,15 +4,16 @@
 > Watch our striker squad find setups on real markets — every decision
 > explained, every trade justified, every risk gated.
 
-Founded 2026-07-21. Sprint 0 in flight (target: 2026-08-04).
+Founded 2026-07-21. Charter elevated 2026-07-22 per CEO directive
+(real product / real users / literature-standard R&D).
 
 ---
 
 ## Mission
 
-Turn the multi-pair AI trading prototype into a **product a stranger can
-trust**. Every artifact this company ships must strengthen one of three
-pillars, in this order:
+Turn the multi-pair AI trading prototype into a **real product that real
+strangers pay real money for and give real feedback about**. Every artifact
+this company ships must strengthen one of three pillars, in this order:
 
 1. **Trust foundation** — public evidence, transparent research, human
    language. If a prospect cannot look at the platform for two minutes and
@@ -23,6 +24,38 @@ pillars, in this order:
    highlights, strategy marketplace, community.
 
 Trust before access. Access before stickiness. **Never invert the order.**
+
+## Operating principles (2026-07-22, CEO Fiyin)
+
+The mission above was written on founding day; these principles elevate
+how the mission is executed once real strangers are on the other side of
+the product.
+
+1. **Real product for real users.** Every internal decision anticipates
+   that a stranger will use this product with real money, real time, and
+   real trust. Consent, privacy, data-deletion, GDPR/CCPA hygiene, and
+   financial consequence live in the design, not the post-launch fire
+   drill. If a decision would embarrass us in front of a user who read
+   it back to us, we do not make it.
+2. **Closed feedback loop.** Users → intake → CPO triage → research /
+   product / bug fix → ship → measure → feedback again. This is not a
+   build-and-forget cadence. Every user-facing signal enters the loop
+   with an intake ID; every intake ID exits the loop with a status
+   (shipped / declined / deferred with reason); every material fix
+   surfaces on `/research` or `/hq` so the loop is publicly auditable.
+   Protocol: `protocols/rd-loop.md`.
+3. **Literature-standard research.** Every non-trivial claim this
+   company makes — product-side ("30 % of proposed live orders are
+   reviewed within the timeout") or strategy-side ("Rin USDCHF widening
+   fails squad-lift") — is held to the same rigour as a peer-reviewed
+   publication: pre-registered hypothesis, statistical corrections
+   (FDR budget per campaign, already practised in
+   `finance-research-experiments/`), reproducibility (fixed seeds,
+   versioned artefacts, exact commit SHAs on every result), honest
+   negatives reported (Phase AC is the canon-negative example — 1 of 8
+   sub-arms passed AC.1, then failed AC.2 squad-lift, and the negative
+   shipped as `REPORT.md`), and a bibliography a hypothetical outside
+   reader could actually check. Protocol: `protocols/literature-standards.md`.
 
 ## Values (the founding four)
 
@@ -65,76 +98,77 @@ Trust before access. Access before stickiness. **Never invert the order.**
 ```
                         CEO (The Ego, exec. of Fiyin)
                                     │
-              ┌─────────────────────┼─────────────────────┐
-              │                     │                     │
-        CTO (The Anri)       CPO / Head of Product   Head of Business
-                                (Noel Noa)          (rotates: Sales/Mkt)
-              │                     │                     │
-   ┌──────────┼──────────┐    ┌─────┼─────┐   ┌──────┬───┴───┬─────────┐
-   │          │          │    │     │     │   │      │       │         │
-Frontend  Backend    AI/ML   UX    UI  Brand Mkt   Sales  Support   Legal
- (Isagi   (Reo    (Isagi'70 Res.  Des.  Des.
-  finish) build)  striker
-                  ops)
-   │                                                                  │
-   └── QA — Security — DevOps  (cross-cutting)                    Finance
+        ┌────────────────┬──────────┴──────────┬─────────────────┐
+        │                │                     │                 │
+  CTO (The Anri)   Research Lead        CPO / Head of Product   Head of
+                (The Anri Junior)          (Noel Noa)           Business
+        │                │                     │                 │
+        │       ┌────────┴────────┐            │                 │
+        │       │                 │       ┌────┼────┐    ┌──────┬┴──────┬────────┬─────────┐
+        │       │                 │       │    │    │    │      │       │        │         │
+        │  R&D loop         Experiments   UX   UI  Brand Mkt  Sales  Support  User      Legal
+        │  (F-R-E link)     portfolio     Res  Des  Des                       Advocate
+   ┌────┼──────┐                                                                          │
+   │    │      │                                                                          │
+Frontend Backend AI/ML                                                                Finance
+   │
+   └── QA — Security — DevOps  (cross-cutting)
 ```
 
 Full breakdown as a table:
 
-| Tier | Role | Persona | Sprint-0 active? |
+| Tier | Role | Persona | Status as of 2026-07-22 |
 |---|---|---|---|
-| Executive | CEO | The Ego (executes Fiyin) | ✅ yes — sign-off |
-| Executive | CTO | The Anri | ✅ yes — architecture |
-| Executive | Head of Product (CPO) | Noel Noa | ✅ yes — sprint owner |
-| Design | UX Researcher | (no persona) | ✅ yes — F001/F002/F003 |
-| Design | UI Designer | (no persona) | ✅ yes — F001/F002/F003/F004 |
-| Design | Brand / Content Designer | (no persona) | ✅ yes — copy on F001–F005 |
-| Engineering | Frontend Engineer | (no persona) | ✅ yes — F001/F002/F003/F004/F005 |
-| Engineering | Backend Engineer | (no persona) | ✅ yes — F001 data plumb, F003 |
-| Engineering | AI/ML Engineer | (11-striker roster steward) | ⚪ standby — F002 stats source only |
-| Engineering | DevOps Engineer | (no persona) | ⚪ standby — Sprint 1+ |
-| Engineering | QA Engineer | (no persona) | ✅ yes — every feature |
-| Engineering | Security Engineer | (no persona) | ⚪ standby — auth-touching only |
-| Business | Marketing | (no persona) | ✅ yes — F003 copy review |
+| Executive | CEO | The Ego (executes Fiyin) | ✅ active — sign-off |
+| Executive | CTO | The Anri | ✅ active — architecture |
+| Executive | Head of Product (CPO) | Noel Noa | ✅ active — sprint owner |
+| Executive-adjacent | Research Lead (R&D) | The Anri Junior | ✅ active from 2026-07-22 — portfolio + `/research` gate + F-R-E bridge |
+| Design | UX Researcher | (no persona) | ✅ active |
+| Design | UI Designer | (no persona) | ✅ active |
+| Design | Brand / Content Designer | (no persona) | ✅ active |
+| Engineering | Frontend Engineer | (no persona) | ✅ active |
+| Engineering | Backend Engineer | (no persona) | ✅ active |
+| Engineering | AI/ML Engineer | (11-striker roster steward) | ⚪ standby — sim-side only |
+| Engineering | DevOps Engineer | (no persona) | ⚪ standby — deploy-adjacent |
+| Engineering | QA Engineer | (no persona) | ✅ active — every feature |
+| Engineering | Security Engineer | (no persona) | ✅ active — auth surface hot |
+| Business | Marketing | (no persona) | ✅ active — claim review |
 | Business | Sales | (no persona) | ⚪ standby — Sprint 6 |
 | Business | Support | (no persona) | ⚪ standby — post-launch |
-| Business | Legal | (no persona) | ✅ yes — F001 disclaimers |
+| Business | User Advocate | (no persona — professional) | ✅ active from 2026-07-22 — intake + voice-of-user + privacy hygiene |
+| Business | Legal | (no persona) | ✅ active — every public surface |
 | Business | Finance | (no persona) | ⚪ standby — first paid service |
 
-Ten roles active in Sprint 0, seven on standby. Standby roles come online
-when their sprint arrives; they still exist and receive review requests
-if a feature touches their surface earlier.
+Nineteen roles total (17 original + Research Lead + User Advocate).
+Standby roles come online when their sprint arrives; they still exist
+and receive review requests if a feature touches their surface earlier.
+Research Lead + User Advocate are the R&D-loop backbone (see
+`protocols/rd-loop.md`).
 
 ## Current sprint
 
-**Sprint 0 — Trust Foundation** (2026-07-21 → 2026-08-04)
-
-Ship the five features that turn the prototype into something showable
-to prospects:
-
-| ID | Title | Priority |
-|---|---|---|
-| F001 | Public `/performance` route (equity curve, drawdown, Sharpe, win rate) | P0 |
-| F002 | `/players/:id` character bio + career stats | P0 |
-| F003 | `/research` timeline (Phase AC verdicts, anti-marketing marketing) | P0 |
-| F004 | Mobile-responsive pass on hub + /v1 + /v2 + /hq at 375px | P0 |
-| F005 | Loading skeletons + friendly error-state recovery | P0 |
-
-See `sprints/sprint-0-trust-foundation/README.md` for the full charter.
+**Sprint 2 — Real-Trading (Scaffolding)** — in progress at time of writing.
+Sprint 0 (Trust Foundation) and Sprint 1 (Access) both closed COMPLETE.
+See `sprints/sprint-2-real-trading/README.md` for the current charter,
+`sprints/sprint-1-access/REPORT.md` for Sprint 1 close-out, and
+`sprints/sprint-0-trust-foundation/REPORT.md` for Sprint 0 close-out.
 
 ## What's in this directory
 
 | Path | Contents |
 |---|---|
-| `README.md` | This file — charter, values, org chart, current sprint. |
-| `roles/` | 17 role docs — mission, responsibilities, deliverables, KPIs, escalation triggers. |
+| `README.md` | This file — charter, values, org chart, operating principles. |
+| `roles/` | 19 role docs — mission, responsibilities, deliverables, KPIs, escalation triggers. |
 | `protocols/review-chain.md` | Canonical feature lifecycle. Who does what, in what order. |
 | `protocols/persona-handoff.md` | Mechanics of role-to-role handoff (JSON artefact + narrative). |
 | `protocols/escalation.md` | When a persona MUST bump to the CEO instead of deciding autonomously. |
+| `protocols/rd-loop.md` | Feedback → triage → research / product / bug → ship → measure → feedback again. |
+| `protocols/literature-standards.md` | Pre-registration, FDR budgets, reproducibility, honest negatives, citations. |
+| `rd/` | R&D team's home — intake queue, active-experiment index, published findings. |
+| `evolution/` | Company-evolution drafts awaiting integration (post-sprint patches). |
 | `ledger/company_state.json` | Machine-readable company state. HQ dashboard reads this. |
 | `ledger/decisions_log.md` | Human-readable chronological decisions log. |
-| `sprints/sprint-0-trust-foundation/` | Current sprint charter, 5 feature specs, backlog for sprints 1–6. |
+| `sprints/` | Sprint charters, feature specs, retrospectives. Current: sprint-2-real-trading. |
 | `handoffs/` | JSON handoff artefacts, one per role-to-role handoff. Grows over time. |
 
 ## The dashboard
@@ -150,8 +184,9 @@ grid showing who is active, decisions log, blockers panel, KPIs. Fetches
   agent; the agent (v1) keeps trading on demo with no interference.
 - Not a decision-making authority. Personas make small calls; the CEO
   (Fiyin) makes big ones. The escalation protocol draws the line.
-- Not a shipping vehicle by itself. Founding this company does not ship
-  a single product feature. Sprint 0 execution ships features.
+- Not a shipping vehicle by itself. Founding — or evolving — this
+  company does not ship a single product feature by itself. Sprint
+  execution ships features.
 - Not permanent bureaucracy. The review chain has a fast-path for small
   fixes. If a persona is adding process without adding value, it is
   performing "persona theater" (see `agents/company-of-agents-protocol.md`
