@@ -156,7 +156,7 @@ def _config_dir() -> Path:
     return _config_dir_override if _config_dir_override is not None else _default_config_dir()
 
 
-def encrypted_file_path() -> Path:
+def encrypted_file_path() -> Path:  # claim-exempt: internal path helper; no HTTP surface
     """Return the path to the encrypted-file fallback store."""
     return _config_dir() / "credentials.enc"
 
@@ -165,7 +165,7 @@ def _salt_path() -> Path:
     return _config_dir() / "credentials.salt"
 
 
-def set_config_dir(path: Path | None) -> None:
+def set_config_dir(path: Path | None) -> None:  # claim-exempt: test-only config override
     """Override the config dir. Passing None restores the default.
 
     Used by tests via a fixture; the wizard never calls this at runtime.
@@ -174,7 +174,7 @@ def set_config_dir(path: Path | None) -> None:
     _config_dir_override = Path(path) if path is not None else None
 
 
-def set_encrypted_file_passphrase(passphrase: str | None) -> None:
+def set_encrypted_file_passphrase(passphrase: str | None) -> None:  # claim-exempt: process-local secret setter, no HTTP surface
     """Set the per-process passphrase for the encrypted-file fallback.
 
     Passing None reverts to the ``BLUELOCK_PASSPHRASE`` env-var route.
@@ -267,12 +267,12 @@ def _keyring_ready() -> bool:
     return "fail" not in name  # keyring's Fail backend indicates no OS store
 
 
-def is_keyring_available() -> bool:
+def is_keyring_available() -> bool:  # claim-exempt: capability probe; no HTTP surface
     """Public probe: is the OS keychain usable right now?"""
     return _keyring_ready()
 
 
-def force_fallback(enabled: bool) -> None:
+def force_fallback(enabled: bool) -> None:  # claim-exempt: test-only fallback override
     """Test helper -- force the encrypted-file path even if keychain works."""
     global _FORCE_FALLBACK
     _FORCE_FALLBACK = bool(enabled)

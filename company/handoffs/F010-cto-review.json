@@ -1,0 +1,27 @@
+{
+  "from_role": "cto",
+  "to_role": "backend",
+  "feature_id": "F010",
+  "timestamp": "2026-07-22T01:12:00Z",
+  "verdict": "green",
+  "modules_touched": [
+    "scripts/check_claim_register.py",
+    "scripts/git-hooks/pre-commit",
+    "scripts/install_git_hooks.py",
+    "tests/platform/test_claim_register_audit.py"
+  ],
+  "cross_repo_touches": [
+    "company/legal/claim_register.md -- register missing pre-Sprint-2 accessors (list_players, is_setup_complete family, is_install_configured, check_request_token) so the audit runs clean on day one",
+    "agent/platform/{credentials,broker_connection,auth}.py -- add `# claim-exempt: <reason>` inline markers on internal helpers (encrypted_file_path, set_config_dir, set_encrypted_file_passphrase, is_keyring_available, force_fallback, reset_rate_limiter, constant_time_equal, RedactingFilter, install_redacting_filter). Documentation-only edits; no runtime behaviour changes."
+  ],
+  "tests_expected_delta": 8,
+  "security_relevant": false,
+  "legal_relevant": false,
+  "notes": "Stdlib only (ast, tokenize, re, argparse, pathlib, subprocess). No new dep. Cross-repo edits are documentation-grade (comment markers + register table rows) and safe because they change no code path. `# claim-exempt` markers are appended to existing def lines only; behaviour identical.",
+  "review_criteria": [
+    "Audit exits 0 on current repo (invariant for CI)",
+    "Red-line SPARE_CLAIM case exits 1 with helpful diagnostic",
+    "Installer is idempotent and refuses to clobber foreign hooks",
+    "Every claim-exempt marker in agent/platform/*.py has a human-readable reason"
+  ]
+}

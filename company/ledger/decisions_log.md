@@ -1088,6 +1088,43 @@ Handoff chain: F009 CPO → UX Researcher → CTO → Backend → Security →
 QA → Legal → CEO (via CPO signoff on behalf of CEO) at
 `company/handoffs/F009-legal-to-ceo.json`.
 
+## D074 · 2026-07-22 · cpo · [FEATURE]
+
+**F010 shipped — claim-register audit tooling + pre-commit hook.**
+
+Sprint 1's second deferred item (D062: review-chain §6.3 automation,
+originally flagged in D047) closes. `scripts/check_claim_register.py`
+walks every `agent/platform/*.py`, extracts public accessors and
+`# claim: NAME` markers, and cross-references
+`company/legal/claim_register.md`. Unregistered accessors exit 1 with
+a `file:line kind module.name` diagnostic. `# claim-exempt: <reason>`
+inline markers on def / class lines opt an internal helper out
+(reason surfaced in `--json`).
+
+The pre-commit hook (`scripts/git-hooks/pre-commit`) is opt-in via
+`python3 scripts/install_git_hooks.py` — installer is idempotent
+(marker-based), backs up foreign hooks to `pre-commit.bak`, refuses
+to remove non-Blue-Lock hooks. `tests/platform/test_claim_register_audit.py`
+holds 9 tests (spec asked 8) including a red-line SPARE_CLAIM case
+that pins the diagnostic format.
+
+Housekeeping: to make the audit exit 0 on the current repo, 8
+pre-Sprint-2 accessors were formally registered (`list_players`,
+`is_setup_complete`, `set_current_step`, `set_default_pairs`,
+`get_default_pairs`, `validate_passphrase`, `is_install_configured`,
+`check_request_token`) and 9 internal helpers were marked
+`# claim-exempt: <reason>` inline
+(`credentials.{encrypted_file_path, set_config_dir,
+set_encrypted_file_passphrase, is_keyring_available, force_fallback}`,
+`broker_connection.reset_rate_limiter`,
+`auth.{constant_time_equal, RedactingFilter, install_redacting_filter}`).
+Documentation-grade edits; no runtime behaviour change.
+
+Full suite: 1287 → 1295 passed, 1 skipped (playwright cache,
+pre-existing). Handoff chain (abbreviated: CPO → CTO → Backend →
+QA → CPO-signoff — no UX Researcher, no Legal, no Security stage
+for pure infra) at `company/handoffs/F010-qa-to-cpo.json`.
+
 ## Template for subsequent entries
 
 ```markdown

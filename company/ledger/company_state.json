@@ -1030,20 +1030,40 @@
       "title": "Claim-register audit pre-commit hook",
       "priority": "P0",
       "sprint_id": "sprint-2-real-trading",
-      "current_stage": "spec",
-      "current_owner_role": "backend",
+      "current_stage": "ship",
+      "current_owner_role": "devops",
       "reviewers": ["cto", "backend", "qa", "ceo"],
       "created_at": "2026-07-22T00:40:00Z",
       "age_in_stage_days": 0,
       "history": [
         {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
          "deliverable": "company/sprints/sprint-2-real-trading/F010-claim-register-audit.md",
-         "note": "Spec locked. Sprint 1 carry-over (D062) -- automates review-chain \u00a76.3 audit."}
+         "note": "Spec locked. Sprint 1 carry-over (D062) -- automates review-chain \u00a76.3 audit."},
+        {"stage": "architecture", "at": "2026-07-22T01:12:00Z", "role": "cto",
+         "deliverable": "company/handoffs/F010-cto-review.json",
+         "note": "Green -- 4 new files, stdlib only. Cross-repo edits are docs (register table rows) + inline claim-exempt markers on 9 internal helpers. No runtime behaviour change."},
+        {"stage": "build", "at": "2026-07-22T01:20:00Z", "role": "backend",
+         "deliverable": "scripts/check_claim_register.py",
+         "note": "Audit + pre-commit template + opt-in installer + 9 tests (spec asked 8). Audit exits 0 on current repo. Red-line SPARE_CLAIM case fails with file:line diagnostic. Installer idempotent, backs up foreign hooks, refuses to remove non-Blue-Lock hooks."},
+        {"stage": "qa", "at": "2026-07-22T01:25:00Z", "role": "qa",
+         "deliverable": "company/qa/F010-verdict.md",
+         "note": "pass -- 9 F010 tests + full suite 1295 passed / 1 skipped (playwright, pre-existing)."},
+        {"stage": "signoff", "at": "2026-07-22T01:26:00Z", "role": "cpo",
+         "deliverable": "company/handoffs/F010-qa-to-cpo.json",
+         "note": "CPO signoff on behalf of CEO -- F010 is infra tooling, no CEO letter required."},
+        {"stage": "ship", "at": "2026-07-22T01:26:00Z", "role": "devops",
+         "deliverable": "scripts/check_claim_register.py",
+         "note": "Ship-in-place: audit runs offline; hook only fires if user opts in via install_git_hooks.py."}
       ],
       "blockers": [],
       "awaiting_ceo": false,
       "deliverables_paths": [
-        "company/sprints/sprint-2-real-trading/F010-claim-register-audit.md"
+        "company/sprints/sprint-2-real-trading/F010-claim-register-audit.md",
+        "scripts/check_claim_register.py",
+        "scripts/git-hooks/pre-commit",
+        "scripts/install_git_hooks.py",
+        "tests/platform/test_claim_register_audit.py",
+        "company/qa/F010-verdict.md"
       ]
     },
     {
@@ -1648,6 +1668,13 @@
       "role": "cpo",
       "decision": "F009 shipped. Auth hardening accepted: rate limiter + session expiry + token rotation.",
       "context": "agent/platform/rate_limiter.py (per-install-token token-bucket, 60/min default) + auth.py session/rotation additions + config.py `[rate_limit]` and `[session]` blocks + POST /api/auth/rotate. 28 new tests (14 rate_limiter + 8 session_expiry + 6 rotation). Sprint 1's three deferred security controls (D062) all closed by F009. Handoff at company/handoffs/F009-legal-to-ceo.json."
+    },
+    {
+      "id": "D074",
+      "date": "2026-07-22",
+      "role": "cpo",
+      "decision": "F010 shipped. Claim-register audit tooling + pre-commit hook + CI-equivalent test.",
+      "context": "scripts/check_claim_register.py walks agent/platform/*.py, cross-references company/legal/claim_register.md, exits 1 on unregistered public accessor or `# claim: NAME` marker not in register. Supports `# claim-exempt: <reason>` inline opt-out. scripts/git-hooks/pre-commit + scripts/install_git_hooks.py opt-in installer (idempotent, backs up foreign hooks). tests/platform/test_claim_register_audit.py (9 tests, spec asked 8). Sprint 1's second deferred item (D062: review-chain \u00a76.3 automation, flagged in D047) closed. Also registers 8 pre-Sprint-2 accessors that had been implicit (list_players, is_setup_complete family, is_install_configured, check_request_token) and marks 9 internal helpers with `# claim-exempt`. No runtime behaviour change."
     }
   ],
   "sprint_verdicts": [
@@ -1687,7 +1714,7 @@
     "features_total_sprint_0": 5,
     "features_shipped_sprint_1": 3,
     "features_total_sprint_1": 3,
-    "features_shipped_sprint_2": 1,
+    "features_shipped_sprint_2": 2,
     "features_total_sprint_2": 6,
     "backlog_size": 2,
     "bugs_open": 0,

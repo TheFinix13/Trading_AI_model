@@ -88,7 +88,7 @@ def is_mt5_available() -> bool:
     return True
 
 
-def reset_rate_limiter() -> None:
+def reset_rate_limiter() -> None:  # claim-exempt: test-only helper, no HTTP surface
     """Test helper -- clear the rate-limit window."""
     _rate_attempts.clear()
 

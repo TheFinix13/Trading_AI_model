@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# F010 -- pre-commit hook: enforce claim-register coverage.
+#
+# Installed via `python3 scripts/install_git_hooks.py` (opt-in).
+# The marker below lets the installer detect and update in place.
+#
+# blue-lock:claim-register-audit:v1
+set -e
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+python3 "$REPO_ROOT/scripts/check_claim_register.py" --quiet >&2

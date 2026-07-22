@@ -1,0 +1,14 @@
+{
+  "from_role": "qa",
+  "to_role": "cpo",
+  "feature_id": "F010",
+  "timestamp": "2026-07-22T01:25:00Z",
+  "verdict": "pass",
+  "acceptance_ok": true,
+  "test_count_before": 1287,
+  "test_count_after": 1295,
+  "test_count_delta": 8,
+  "notes": "F010 is infra tooling -- no Legal, no Security stage. Abbreviated chain per protocol. Audit exits 0 on current repo. Red-line SPARE_CLAIM case fails with a helpful diagnostic naming file:line and the unregistered symbol. Installer idempotent, backs up foreign hooks, refuses to remove non-Blue-Lock hooks.",
+  "verdict_path": "company/qa/F010-verdict.md",
+  "next_stage": "cpo-signoff-on-behalf-of-ceo (no user-facing surface; no CEO letter)"
+}

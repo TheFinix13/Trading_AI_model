@@ -1,0 +1,22 @@
+{
+  "from_role": "cpo",
+  "to_role": "cto",
+  "feature_id": "F010",
+  "timestamp": "2026-07-22T01:10:00Z",
+  "spec_path": "company/sprints/sprint-2-real-trading/F010-claim-register-audit.md",
+  "verdict": "handoff-open",
+  "notes": "F010 is Sprint-1-carry-over infra tooling (D062). Closes review-chain \u00a76.3's automation gap flagged in D047. No user-facing surface, so the abbreviated chain applies per protocol: CPO -> CTO -> Backend -> QA -> CPO-signoff. No UX Researcher, no Legal, no Security stage. All eight test cases from the spec must land plus the current repo must exit 0 with the new audit.",
+  "acceptance": [
+    "scripts/check_claim_register.py exists and exits 0 on the current repo",
+    "scripts/git-hooks/pre-commit template exists and is executable",
+    "scripts/install_git_hooks.py installs idempotently on a temp repo and refuses to clobber a foreign pre-commit hook without backup",
+    "tests/platform/test_claim_register_audit.py holds >= 8 tests including a red-line SPARE_CLAIM case",
+    "Adding a fake SPARE_CLAIM constant to a platform module fails the audit with a diagnostic",
+    "Full suite green"
+  ],
+  "invariants": [
+    "Inv#2 (D065): does NOT touch agent/live/*, agent/risk/*, agent/squad/*",
+    "Never auto-installs the git-hook; users opt in via `python3 scripts/install_git_hooks.py`",
+    "Legal owns the register text -- --fix mode NOT implemented"
+  ]
+}

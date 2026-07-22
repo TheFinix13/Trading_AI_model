@@ -132,7 +132,7 @@ def _is_well_formed(token: str | None) -> bool:
     return bool(_TOKEN_CHAR_RE.match(token))
 
 
-def constant_time_equal(a: str | None, b: str | None) -> bool:
+def constant_time_equal(a: str | None, b: str | None) -> bool:  # claim-exempt: crypto primitive, no HTTP surface
     """Constant-time string compare (side-channel resistant)."""
     if a is None or b is None:
         return False
@@ -208,7 +208,7 @@ _MT5_PW_RE = re.compile(
     r"(?i)(\"password\"\s*:\s*)\"([^\"]+)\"")
 
 
-class RedactingFilter(logging.Filter):
+class RedactingFilter(logging.Filter):  # claim-exempt: log filter, protects claims but emits none
     """Logging filter that scrubs tokens / passwords from log lines.
 
     Installed on the root logger (or the platform's namespace root) at
@@ -249,7 +249,7 @@ def _scrub_any(value: object) -> object:
     return value
 
 
-def install_redacting_filter(logger_name: str = "") -> RedactingFilter:
+def install_redacting_filter(logger_name: str = "") -> RedactingFilter:  # claim-exempt: log-filter installer, protects claims but emits none
     """Mount a fresh :class:`RedactingFilter` on the target logger.
 
     Called once at server startup. Returns the filter instance so callers

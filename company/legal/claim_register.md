@@ -37,10 +37,26 @@ in marketing copy outside `/performance` without a linked disclaimer.
 ### F002 — `agent/platform/players.py`
 
 Public accessors: `players.list_state(live_dir) -> dict`,
+`players.list_players(live_dir, bio_dir) -> list[dict]`,
 `players.get_player(id_, live_dir) -> dict | None`,
 `players.roster_meta() -> tuple[dict, ...]`,
 `players.valid_ids() -> tuple[str, ...]`,
 `players.normalize_id(raw) -> str | None`.
+
+`list_players()` per-row fields (roster index card):
+
+| Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|
+| `id` | Canonical slug. | `list_players`. | None. |
+| `name` | Display name (Blue Lock IP). | `list_players`. | IP notice. |
+| `playstyle_tag` | Short badge string ("scoring line", etc.). | `list_players`. | Same. |
+| `status` | `"active"` / `"standby"` / `"retired"`. | `list_players`. | None (state). |
+| `tier` | Roster tier (e.g. `"S"`, `"A"`). | `list_players`. | None (state). |
+| `symbols` | FX pairs assigned to this striker. | `list_players`. | None (state). |
+| `signature_blurb` | One-line bio blurb. | `list_players`. | IP notice. |
+| `proposals` | Count of proposal events for the agent. | `_stats_for_agent`. | Not-investment-advice. |
+| `wins` | Count of proposals that closed with `pnl_pips > 0`. | `_stats_for_agent`. | Same. |
+| `net_pips` | Sum of `pnl_pips` for the agent's proposals. | `_stats_for_agent`. | Same. |
 
 `list_state()` per-row fields:
 
@@ -112,6 +128,12 @@ Public accessors: `store_secret(namespace, key, value)`,
 `retrieve_secret(namespace, key)`, `delete_secret(namespace, key)`,
 `list_keys(namespace)`.
 
+Internal setup / test helpers (no user-visible claim; marked
+`# claim-exempt` at their def line): `encrypted_file_path`,
+`set_config_dir`, `set_encrypted_file_passphrase`,
+`is_keyring_available`, `force_fallback`. These configure the
+storage backend but do not emit any field over HTTP.
+
 Public fields returned:
 
 | Accessor | Returned shape | Human meaning | Code path | Disclaimer required? |
@@ -132,7 +154,14 @@ Public accessors: `generate_install_token() -> str`,
 `install_token_fingerprint(token) -> str`,
 `load_install_token() -> str | None`,
 `clear_install_token() -> bool`,
+`is_install_configured() -> bool`,
+`check_request_token(headers, query, cookies) -> bool`,
 `auth_status() -> dict`.
+
+Internal helpers exempt from the register (`# claim-exempt` inline):
+`constant_time_equal`, `RedactingFilter`, `install_redacting_filter` --
+these are auth-plumbing utilities that protect logs and never emit
+their own claims over HTTP.
 
 Public fields returned:
 
@@ -144,6 +173,8 @@ Public fields returned:
 | `clear_install_token` | `bool` | Reset the token (used by `/settings/reset-install`). | `auth.clear_install_token`. | Same. |
 | `auth_status` → `authenticated` | `bool` | Whether the current request presents a valid token. | `auth.auth_status`. | None. |
 | `auth_status` → `install_fingerprint` | `str \| None` | Fingerprint if configured, None otherwise. | `auth.auth_status`. | None. |
+| `is_install_configured` | `bool` | True iff a stored install token exists in the F006 credentials layer. Callers use this to short-circuit the F009 session-expiry gate when running on the pre-F006 `platform.toml` fallback path. | `auth.is_install_configured`. | None -- state. |
+| `check_request_token` | `bool` | Constant-time comparison of a request's presented token against the stored install token. Returns False on missing / mismatched / absent-config. Called by `scripts/serve_platform._install_gate_pass()`. | `auth.check_request_token`. | None -- security control. |
 
 ### F007 — `agent/platform/broker_connection.py` (Sprint 1)
 
@@ -151,6 +182,10 @@ Public accessors: `test_connection(login, password, server, timeout)`,
 `save_credentials(user_alias, login, password, server, account_type)`,
 `load_credentials(user_alias)`, `list_aliases()`,
 `delete_credentials(user_alias)`, `is_mt5_available()`.
+
+Test-only helper marked `# claim-exempt` inline: `reset_rate_limiter`.
+Not user-visible; used in unit tests to reset internal state between
+cases.
 
 Public fields returned:
 
@@ -175,15 +210,27 @@ or its HTTP wrappers. A regression test in `tests/security/` pins this.
 
 ### F008 — `agent/platform/onboarding.py` (Sprint 1)
 
-Public accessors: `is_first_visit() -> bool`, `mark_setup_complete()`,
-`reset_install()`, `get_onboarding_state()`.
+Public accessors: `is_first_visit() -> bool`,
+`is_setup_complete() -> bool`,
+`mark_setup_complete() -> bool`,
+`reset_install() -> bool`,
+`get_onboarding_state() -> dict`,
+`set_current_step(step) -> bool`,
+`set_default_pairs(pairs) -> bool`,
+`get_default_pairs() -> list[str]`,
+`validate_passphrase(passphrase, keyring_available) -> tuple[bool, str]`.
 
 Public fields returned:
 
 | Accessor | Field | Human meaning | Code path | Disclaimer required? |
 |---|---|---|---|---|
 | `is_first_visit` | `bool` | True when no `install_token` exists in keyring/config. | `onboarding.is_first_visit`. | None — state. |
+| `is_setup_complete` | `bool` | True once the user has completed the setup wizard. Cached in the F006 credentials layer under key `setup_complete`. | `onboarding.is_setup_complete`. | None — state. |
 | `mark_setup_complete` | `bool` | Sets `setup_complete` flag in keyring. | `onboarding.mark_setup_complete`. | None. |
+| `set_current_step` | `bool` | Persists the current wizard step id so a refresh returns to the same screen. Value validated against `_STEPS`. | `onboarding.set_current_step`. | None — state. |
+| `set_default_pairs` | `bool` | Persists the FX pairs the user selected during onboarding. Values validated against `_ALLOWED_PAIRS`. | `onboarding.set_default_pairs`. | None — state. |
+| `get_default_pairs` | `list[str]` | The FX pairs the user selected. Empty list = none chosen yet. | `onboarding.get_default_pairs`. | None — state. |
+| `validate_passphrase` | `(bool, str)` | Rejects empty passphrases when the OS keychain is unavailable, and enforces a 12-character floor for the encrypted-file fallback. Second element is the reason. | `onboarding.validate_passphrase`. | None — security control. |
 | `reset_install` | `bool` | Clears every keyring key under `namespace=bluelock`. | `onboarding.reset_install`. | Confirmation-required user-facing string uses `company/brand/copy.md` §F008. |
 | `get_onboarding_state` → `step` | `str` | Current step id (e.g. `"welcome"`, `"passphrase"`, `"broker"`, `"pairs"`, `"confirm"`). | Same. | None — state. |
 | `get_onboarding_state` → `completed` | `bool` | Whether setup is done. | Same. | None. |

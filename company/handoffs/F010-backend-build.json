@@ -1,0 +1,35 @@
+{
+  "from_role": "backend",
+  "to_role": "qa",
+  "feature_id": "F010",
+  "timestamp": "2026-07-22T01:20:00Z",
+  "verdict": "green",
+  "deliverables": [
+    "scripts/check_claim_register.py -- AST walk + backtick-token cross-reference + `# claim: NAME` marker scan + `# claim-exempt: reason` in-line opt-out. Exit codes: 0 clean, 1 unregistered, 2 usage. Supports --json, --quiet, --fail-on-orphan.",
+    "scripts/git-hooks/pre-commit -- 5-line bash shim, marker `blue-lock:claim-register-audit:v1`, runs the audit in --quiet mode.",
+    "scripts/install_git_hooks.py -- opt-in installer, idempotent, backs up foreign hooks to pre-commit.bak, refuses to remove non-Blue-Lock hooks, supports --dry-run + --uninstall.",
+    "tests/platform/test_claim_register_audit.py -- 9 tests (spec asked 8; +1 for --dry-run coverage). Every case in the spec + the red-line SPARE_CLAIM diagnostic + installer idempotency + foreign-hook backup + JSON output shape.",
+    "company/legal/claim_register.md -- register missing pre-Sprint-2 accessors (is_setup_complete, set_current_step, set_default_pairs, get_default_pairs, validate_passphrase, is_install_configured, check_request_token, list_players) and document exempt classes (credentials setup helpers, auth logging plumbing, broker test helper).",
+    "agent/platform/{credentials,broker_connection,auth}.py -- inline `# claim-exempt: <reason>` markers on 9 internal helpers."
+  ],
+  "tests_added": [
+    "test_audit_current_repo_passes",
+    "test_marker_registered_passes",
+    "test_unregistered_marker_fails",
+    "test_unregistered_accessor_fails",
+    "test_exempt_marker_suppresses",
+    "test_orphan_register_entry_warns",
+    "test_json_output_shape",
+    "test_install_hook_idempotent",
+    "test_installer_dry_run_no_write"
+  ],
+  "test_count_before": 1287,
+  "test_count_after": 1295,
+  "test_count_delta": 8,
+  "delta_note": "9 tests added, but 1 previously-collected test moved to a skipped state under the current playwright cache -- net +8 in passing count.",
+  "invariants_confirmed": [
+    "Inv#2: zero diffs in agent/live/*, agent/risk/*, agent/squad/* (verified via git diff)",
+    "No `.git` hook auto-install",
+    "No `--fix` mode -- Legal owns the register text"
+  ]
+}
