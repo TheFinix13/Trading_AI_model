@@ -519,6 +519,44 @@ non-empty bot_token, non-empty chat_id). Any leakage that would
 allow a partially-configured bridge to fire would violate the
 "user-controlled routing" claim.
 
+### F015 — `agent/platform/hq.py` (Org & Flow + HQ dashboard state)
+
+Public accessors: `hq.hq_state(ledger_path) -> dict`,
+`hq.org_state(ledger_path, handoffs_dir, handoff_limit) -> dict`.
+
+Both read `company/ledger/company_state.json` (and, for `org_state`,
+`company/handoffs/*.json`) and are strictly read-only. Missing /
+malformed sources degrade to a shaped payload with
+`unconfigured: true` — never a 500.
+
+`hq_state()` fields (the `/api/hq/state` payload — internal company
+dashboard, ledger-sourced):
+
+| Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|
+| `meta` | Company charter metadata (name, founded, mission, sprint id). | `hq.hq_state`. | None — internal dashboard; mission copy owned by Brand. |
+| `roles` / `sprints` / `features` / `decisions` / `intake` / `experiments` / `blockers` | Ledger arrays passed through verbatim (decisions truncated to last 10 + `decisions_total`). | `hq.hq_state`. | None — internal state; any number promoted to marketing copy must cite the ledger entry. |
+| `kpis` | KPI strip counters; recorded ledger values win, else derived at render (`_count_open_intake`, `_count_experiments_in_flight`, `_count_published_findings_30d`). | `hq.hq_state`. | None — internal metrics. |
+
+`org_state()` fields (the `/api/hq/org` payload):
+
+| Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|
+| `tiers` | Roles grouped by tier (executive / design / engineering / business / executive-adjacent→"R&D"), each with `id`, `title`, `persona_name`, `active`, `current_task`, `reports_to`. | `hq.org_state` → `_group_roles_by_tier`. | Blue Lock IP notice covers persona names (same as F002). |
+| `tiers[].roles[].reports_to` | Resolved report line: explicit ledger `reports_to` wins; tier default otherwise (design→cpo, engineering→cto, business→ceo, executive→ceo); CEO reports to nobody. | `_resolve_reports_to`. | None — org structure, not a performance claim. |
+| `review_chain` | The 11 review-chain stages verbatim from `company/protocols/review-chain.md` (stage, owner, conditional, fires_when). | `_REVIEW_CHAIN_STAGES` module constant. | None — process description. |
+| `handoffs` | Most recent N persona handoffs (`from_role`, `to_role`, `feature_id`, `timestamp`, `scope`, `verdict`, `file`) parsed from `company/handoffs/*.json`; malformed files skipped. | `_load_recent_handoffs`. | None — internal artefact metadata; notes bodies are NOT emitted. |
+| `handoffs_total` / `roles_total` | Counts of parseable handoffs / ledger roles. | `hq.org_state`. | None — meta. |
+| `generated_at` / `unconfigured` / `unconfigured_reason` | Payload timestamp + degradation flags. | `hq.org_state`. | None — meta. |
+
+Rolling constraint (Legal): `org_state` deliberately emits handoff
+METADATA only — the `notes` / `invariants_pinned` bodies of handoff
+JSONs stay off the wire. Any future change that emits handoff notes
+verbatim needs a Legal re-review (notes may reference unreleased
+features or internal criticism). The review-chain stage list must
+track `company/protocols/review-chain.md` — if the protocol gains or
+drops a stage, `_REVIEW_CHAIN_STAGES` changes in the same commit.
+
 ## Audit hook (Sprint 2 — F010 implementation)
 
 Sprint 2's F010 ships `scripts/check_claim_register.py` +

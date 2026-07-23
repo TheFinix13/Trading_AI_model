@@ -36,6 +36,70 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_LEDGER_PATH = REPO_ROOT / "company" / "ledger" / "company_state.json"
+DEFAULT_HANDOFFS_DIR = REPO_ROOT / "company" / "handoffs"
+
+# ---------------------------------------------------------------------
+# F015 -- Org & Flow (org_state)
+# ---------------------------------------------------------------------
+
+# Tier display order + labels for the org chart. `executive-adjacent`
+# (currently only research_lead) renders as the "R&D" group per the
+# CEO's 2026-07-23 org-web request. Unknown tiers append after these
+# so a future ledger tier never silently disappears.
+_ORG_TIER_ORDER = ("executive", "design", "engineering", "business",
+                   "executive-adjacent")
+_ORG_TIER_LABELS = {
+    "executive": "Executive",
+    "design": "Design",
+    "engineering": "Engineering",
+    "business": "Business",
+    "executive-adjacent": "R&D",
+}
+
+# Default report line per tier, used when a role row carries no
+# explicit `reports_to` array. Source: company/roles/*.md review-chain
+# sections -- CEO sits at the top; CTO + CPO report to CEO; design
+# roles hand work up through CPO; engineering through CTO; business
+# roles answer to the CEO. Explicit ledger `reports_to` (research_lead
+# dual-reports CTO + CPO; user_advocate reports to CPO) always wins.
+_ORG_DEFAULT_REPORTS_TO = {
+    "executive": ["ceo"],
+    "design": ["cpo"],
+    "engineering": ["cto"],
+    "business": ["ceo"],
+    "executive-adjacent": ["cto", "cpo"],
+}
+
+# The review-chain pipeline, verbatim from
+# company/protocols/review-chain.md §Stages (stages 1-10 incl. the 7b
+# research-conditional stage added by D086). `conditional` stages fire
+# only when their criterion is met; the org view renders them with a
+# `*` marker.
+_REVIEW_CHAIN_STAGES = (
+    {"stage": "spec", "owner": "cpo", "conditional": False,
+     "fires_when": "always"},
+    {"stage": "research", "owner": "ux_researcher", "conditional": True,
+     "fires_when": "always for P0/P1; skipped on fast path"},
+    {"stage": "design", "owner": "ui_designer", "conditional": False,
+     "fires_when": "always (+ brand for copy)"},
+    {"stage": "architecture", "owner": "cto", "conditional": True,
+     "fires_when": "always for P0/P1; skipped on fast path"},
+    {"stage": "build", "owner": "frontend / backend / ai_ml",
+     "conditional": False, "fires_when": "always"},
+    {"stage": "qa", "owner": "qa", "conditional": False,
+     "fires_when": "always"},
+    {"stage": "security", "owner": "security", "conditional": True,
+     "fires_when": "CTO architecture flag security_relevant: true"},
+    {"stage": "research (7b)", "owner": "research_lead",
+     "conditional": True,
+     "fires_when": "CTO architecture flag research_relevant: true"},
+    {"stage": "legal", "owner": "legal", "conditional": True,
+     "fires_when": "CTO architecture flag legal_relevant: true"},
+    {"stage": "signoff", "owner": "ceo", "conditional": False,
+     "fires_when": "always for P0; CPO-delegable for P1/P2"},
+    {"stage": "ship", "owner": "devops", "conditional": False,
+     "fires_when": "always"},
+)
 
 _SKELETON_META = {
     "company_name": "Blue Lock Trading Co.",
@@ -317,3 +381,143 @@ def _count_published_findings_30d(experiments: list[dict],
         if days is not None and days <= 30:
             count += 1
     return count
+
+
+# ---------------------------------------------------------------------
+# F015 -- Org & Flow data plane
+# ---------------------------------------------------------------------
+
+def _load_ledger_roles(path: Path) -> tuple[list[dict], str | None]:
+    """Read the ledger and return ``(roles, error_reason)``.
+
+    Mirrors :func:`hq_state`'s degradation contract: any failure
+    returns an empty role list plus a human-readable reason instead of
+    raising, so /api/hq/org can render a friendly banner.
+    """
+    if not path.is_file():
+        return [], f"ledger file not found at {path}"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return [], f"ledger unreadable: {exc.__class__.__name__}"
+    if not isinstance(payload, dict):
+        return [], "ledger top-level is not a JSON object"
+    return list(payload.get("roles") or []), None
+
+
+def _resolve_reports_to(role: dict) -> list[str]:
+    """Explicit ledger ``reports_to`` wins; else the tier default.
+
+    The CEO is the root of the chart and reports to nobody.
+    """
+    if role.get("id") == "ceo":
+        return []
+    explicit = role.get("reports_to")
+    if isinstance(explicit, list) and explicit:
+        return [str(r) for r in explicit]
+    tier = str(role.get("tier") or "business")
+    return list(_ORG_DEFAULT_REPORTS_TO.get(tier, ["ceo"]))
+
+
+def _group_roles_by_tier(roles: list[dict]) -> list[dict]:
+    """Return the tier groups in display order, each with its roles.
+
+    Unknown tiers append after the canonical five so a future ledger
+    tier still renders (labelled by its raw id).
+    """
+    by_tier: dict[str, list[dict]] = {}
+    for r in roles:
+        tier = str(r.get("tier") or "business")
+        by_tier.setdefault(tier, []).append({
+            "id": r.get("id"),
+            "title": r.get("title") or r.get("id"),
+            "tier": tier,
+            "persona_name": r.get("persona_name"),
+            "active": bool(r.get("active")),
+            "current_task": r.get("current_task"),
+            "reports_to": _resolve_reports_to(r),
+        })
+    ordered = [t for t in _ORG_TIER_ORDER if t in by_tier]
+    ordered += [t for t in by_tier if t not in _ORG_TIER_ORDER]
+    return [{
+        "id": tier,
+        "label": _ORG_TIER_LABELS.get(tier, tier),
+        "roles": by_tier[tier],
+    } for tier in ordered]
+
+
+def _handoff_sort_key(h: dict) -> str:
+    return str(h.get("timestamp") or "")
+
+
+def _load_recent_handoffs(handoffs_dir: Path,
+                          limit: int) -> tuple[list[dict], int]:
+    """Parse ``company/handoffs/*.json`` and return the most recent
+    ``limit`` entries (newest-first by ``timestamp``) plus the total
+    count of parseable handoffs. Malformed / non-dict files are
+    skipped silently -- a broken handoff artefact must never take the
+    org view down.
+    """
+    if not handoffs_dir.is_dir():
+        return [], 0
+    parsed: list[dict] = []
+    for path in sorted(handoffs_dir.glob("*.json")):
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(raw, dict):
+            continue
+        parsed.append({
+            "from_role": raw.get("from_role"),
+            "to_role": raw.get("to_role"),
+            "feature_id": raw.get("feature_id"),
+            "timestamp": raw.get("timestamp"),
+            "scope": raw.get("scope"),
+            "verdict": raw.get("verdict"),
+            "file": path.name,
+        })
+    parsed.sort(key=_handoff_sort_key, reverse=True)
+    return parsed[:limit], len(parsed)
+
+
+def org_state(ledger_path: Path | None = None,
+              handoffs_dir: Path | None = None,
+              handoff_limit: int = 8) -> dict:
+    """Return the Org & Flow payload for ``/api/hq/org``.
+
+    Three blocks, per the CEO's 2026-07-23 org-web request:
+
+    * ``tiers`` -- the 19 roles from the ledger grouped by tier
+      (Executive / Design / Engineering / Business / R&D), each role
+      carrying ``active``, ``persona_name`` and its resolved
+      ``reports_to`` line (ledger ``reports_to`` wins; tier default
+      otherwise; CEO reports to nobody).
+    * ``review_chain`` -- the 11-stage pipeline verbatim from
+      ``company/protocols/review-chain.md`` (conditional stages
+      flagged so the UI can star them).
+    * ``handoffs`` -- the most recent ``handoff_limit`` artefacts from
+      ``company/handoffs/*.json``, newest-first, plus
+      ``handoffs_total``.
+
+    Missing / malformed ledger degrades to ``unconfigured: True`` with
+    empty ``tiers`` -- the static ``review_chain`` still renders so
+    the page is never blank.
+    """
+    the_ledger = Path(ledger_path) if ledger_path is not None \
+        else DEFAULT_LEDGER_PATH
+    the_handoffs = Path(handoffs_dir) if handoffs_dir is not None \
+        else DEFAULT_HANDOFFS_DIR
+    roles, reason = _load_ledger_roles(the_ledger)
+    handoffs, handoffs_total = _load_recent_handoffs(
+        the_handoffs, handoff_limit)
+    return {
+        "generated_at": _now_iso(),
+        "unconfigured": reason is not None,
+        "unconfigured_reason": reason,
+        "tiers": _group_roles_by_tier(roles),
+        "roles_total": len(roles),
+        "review_chain": [dict(s) for s in _REVIEW_CHAIN_STAGES],
+        "handoffs": handoffs,
+        "handoffs_total": handoffs_total,
+    }

@@ -130,6 +130,7 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                  live_dir: Path | None = None,
                  auth_token: str | None = None,
                  company_ledger_path: Path | None = None,
+                 company_handoffs_dir: Path | None = None,
                  research_root: Path | None = None,
                  research_manifest_path: Path | None = None,
                  enforce_install_token: bool = False,
@@ -595,6 +596,15 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 # with meta.unconfigured=True so the dashboard renders a
                 # friendly "not configured" state instead of a 500.
                 self._json(hq.hq_state(ledger_path=company_ledger_path))
+            elif path == "/api/hq/org":
+                # F015: Org & Flow -- roles grouped by tier with report
+                # lines, the review-chain pipeline, and the most recent
+                # persona handoffs from company/handoffs/*.json. Same
+                # degradation contract as /api/hq/state: missing ledger
+                # returns 200 with unconfigured=True, never a 500.
+                self._json(hq.org_state(
+                    ledger_path=company_ledger_path,
+                    handoffs_dir=company_handoffs_dir))
             elif path == "/api/v1/status":
                 self._json(live_status.collect_status(log_root, repo_root))
             elif path == "/api/v2/matches":

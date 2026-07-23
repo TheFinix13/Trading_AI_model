@@ -2683,6 +2683,59 @@ _HQ_TEMPLATE = r"""<!DOCTYPE html>
 .rd-more{margin-top:8px;font-size:11.5px;color:var(--accent);
   text-decoration:none;align-self:flex-start}
 .rd-more:hover{text-decoration:underline}
+/* F015 -- Org & Flow section. Page-scoped additive CSS (no _BASE_CSS
+ * change, so no _BASE_CSS_VERSION bump). */
+.org-flow{display:flex;flex-direction:column;gap:12px}
+.org-sub{margin:0 0 10px;font-size:11.5px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--dim);font-weight:600}
+.org-sub .aux{font-size:11px;color:var(--dim);font-weight:400;
+  text-transform:none;letter-spacing:0}
+.org-tier{margin-bottom:12px}
+.org-tier:last-child{margin-bottom:0}
+.org-tier h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;
+  letter-spacing:.06em;color:var(--dim);font-weight:600}
+.org-tier-roles{display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+@media (max-width: 700px){.org-tier-roles{grid-template-columns:1fr}}
+.org-chip{background:#0d1117;border:1px solid var(--border);
+  border-radius:8px;padding:8px 10px;font-size:12px;
+  display:flex;flex-direction:column;gap:3px}
+.org-chip.idle{opacity:.35}
+.org-chip .org-role{font-weight:600;color:var(--fg);
+  display:flex;align-items:center;gap:7px}
+.org-chip .org-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.org-chip .org-dot.active{background:var(--green);
+  box-shadow:0 0 5px rgba(63,185,80,.6)}
+.org-chip .org-dot.idle{background:var(--dim)}
+.org-chip .org-persona{color:var(--purple);font-size:11px;font-style:italic}
+.org-chip .org-reports{color:var(--dim);font-size:11px}
+.org-chip .org-reports b{color:var(--accent);font-weight:600}
+.org-pipeline{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch}
+.org-stage{background:#0d1117;border:1px solid var(--border);
+  border-radius:8px;padding:6px 10px;font-size:11.5px;min-width:78px;
+  display:flex;flex-direction:column;gap:2px}
+.org-stage.cond{border-style:dashed;border-color:var(--amber)}
+.org-stage .org-stage-name{font-weight:700;color:var(--fg);
+  white-space:nowrap}
+.org-stage.cond .org-stage-name{color:var(--amber)}
+.org-stage .org-stage-owner{color:var(--dim);font-size:10.5px;
+  white-space:nowrap}
+.org-arrow{color:var(--dim);align-self:center;font-size:13px;
+  user-select:none}
+.org-handoffs .row{display:grid;
+  grid-template-columns:max-content max-content 1fr;gap:10px;
+  padding:5px 0;border-bottom:1px solid #1c2129;font-size:12px;
+  align-items:baseline}
+.org-handoffs .row:last-child{border-bottom:none}
+.org-handoffs .row .ts{color:var(--dim);font-size:11px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.org-handoffs .row .fid{color:var(--purple);font-weight:600;
+  font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.org-handoffs .row .edge b{color:var(--accent);font-weight:600}
+@media (max-width: 700px){
+  .org-handoffs .row{grid-template-columns:max-content 1fr}
+  .org-handoffs .row .ts{grid-column:1 / -1}
+}
 </style></head><body>
 __NAV__
 <div id="hq-updated">loading&hellip;</div>
@@ -2740,6 +2793,31 @@ __NAV__
   <h2>Role grid <span class="aux">19 roles across 4 tiers (+
       executive-adjacent); active in colour, standby dimmed</span></h2>
   <div id="role-grid"></div>
+</div>
+
+<div class="section" aria-labelledby="org-flow-heading">
+  <h2 id="org-flow-heading">Org &amp; Flow <span class="aux">who reports
+      to whom, the review-chain pipeline, and the latest persona
+      handoffs</span></h2>
+  <div class="org-flow" id="org-flow">
+    <div class="card">
+      <h3 class="org-sub">Org chart <span class="aux">by tier; explicit
+          report lines win, tier default otherwise</span></h3>
+      <div id="org-chart"><div class="empty">loading&hellip;</div></div>
+    </div>
+    <div class="card">
+      <h3 class="org-sub">Review-chain pipeline <span class="aux">*
+          = conditional stage</span></h3>
+      <div class="org-pipeline" id="org-pipeline"><div class="empty">
+          loading&hellip;</div></div>
+    </div>
+    <div class="card">
+      <h3 class="org-sub">Recent handoffs <span class="aux"
+          id="org-handoffs-aux"></span></h3>
+      <div class="org-handoffs" id="org-handoffs"><div class="empty">
+          loading&hellip;</div></div>
+    </div>
+  </div>
 </div>
 
 <div class="section">
@@ -3093,6 +3171,118 @@ function renderFooter(hq){
     ' \u00b7 founded ' + esc(meta.founded || "\u2014");
 }
 
+// F015 -- Org & Flow. Fetches /api/hq/org (its own endpoint so the
+// /api/hq/state contract stays untouched) and renders the org chart,
+// the review-chain pipeline, and the recent-handoff feed. Every
+// failure path degrades to friendly copy inside the section.
+function renderOrgChart(org){
+  const el = document.getElementById("org-chart");
+  const tiers = org.tiers || [];
+  if(!tiers.length){
+    el.innerHTML = '<div class="empty">' +
+      (org.unconfigured
+        ? 'company ledger not configured \u2014 ' +
+          esc(org.unconfigured_reason || "unknown")
+        : 'no roles on the ledger') + '</div>';
+    return;
+  }
+  el.innerHTML = tiers.map(tier => {
+    const roles = tier.roles || [];
+    return '<div class="org-tier">'+
+      '<h4>' + esc(tier.label || tier.id) +
+        ' <span class="aux">(' + roles.length + ')</span></h4>'+
+      '<div class="org-tier-roles">'+
+      roles.map(r => {
+        const active = !!r.active;
+        const reports = (r.reports_to || [])
+          .map(x => '<b>' + esc(String(x).toUpperCase()) + '</b>')
+          .join(" + ");
+        return '<div class="org-chip ' + (active ? "" : "idle") + '">'+
+          '<div class="org-role">'+
+            '<span class="org-dot ' + (active ? "active" : "idle") +
+              '"></span>'+
+            '<span>' + esc(r.title || r.id) + '</span>'+
+          '</div>'+
+          (r.persona_name
+            ? '<div class="org-persona">' + esc(r.persona_name) + '</div>'
+            : '') +
+          '<div class="org-reports">' +
+            (reports ? ('&#8627; reports to ' + reports)
+                     : 'top of the chart') +
+          '</div>'+
+        '</div>';
+      }).join("") +
+      '</div>'+
+    '</div>';
+  }).join("");
+}
+
+function renderOrgPipeline(org){
+  const el = document.getElementById("org-pipeline");
+  const stages = org.review_chain || [];
+  if(!stages.length){
+    el.innerHTML = '<div class="empty">no review chain on file</div>';
+    return;
+  }
+  el.innerHTML = stages.map((s, i) => {
+    const cond = !!s.conditional;
+    const pill = '<div class="org-stage' + (cond ? " cond" : "") +
+      '" title="' + esc(s.fires_when || "") + '">'+
+      '<span class="org-stage-name">' + esc(s.stage || "") +
+        (cond ? "*" : "") + '</span>'+
+      '<span class="org-stage-owner">' + esc(s.owner || "") + '</span>'+
+    '</div>';
+    const arrow = (i < stages.length - 1)
+      ? '<span class="org-arrow">&#8594;</span>' : '';
+    return pill + arrow;
+  }).join("");
+}
+
+function renderOrgHandoffs(org){
+  const el = document.getElementById("org-handoffs");
+  const aux = document.getElementById("org-handoffs-aux");
+  const handoffs = org.handoffs || [];
+  if(aux){
+    aux.innerText = org.handoffs_total
+      ? ("latest " + handoffs.length + " of " + org.handoffs_total +
+         " on tape")
+      : "";
+  }
+  if(!handoffs.length){
+    el.innerHTML = '<div class="empty">no handoffs on tape yet</div>';
+    return;
+  }
+  el.innerHTML = handoffs.map(h => {
+    const ts = String(h.timestamp || "").replace("T", " ")
+      .replace("Z", "");
+    return '<div class="row">'+
+      '<span class="ts">' + esc(ts || "\u2014") + '</span>'+
+      '<span class="fid">' + esc(h.feature_id || h.scope || "\u2014") +
+        '</span>'+
+      '<span class="edge"><b>' + esc(h.from_role || "?") + '</b>'+
+        ' &#8594; <b>' + esc(h.to_role || "?") + '</b>'+
+        (h.verdict ? (' \u00b7 ' + esc(h.verdict)) : '') +
+      '</span>'+
+    '</div>';
+  }).join("");
+}
+
+async function renderOrgFlow(){
+  const org = await fetchJson("/api/hq/org");
+  if(org.__error__ || org.__auth__){
+    const msg = org.__auth__ ? "auth required"
+      : ("org API error: " + org.__error__);
+    document.getElementById("org-chart").innerHTML =
+      '<div class="empty">' + esc(msg) + '</div>';
+    renderOrgPipeline({review_chain: []});
+    renderOrgHandoffs({handoffs: []});
+    return;
+  }
+  renderOrgChart(org);
+  renderOrgPipeline(org);
+  renderOrgHandoffs(org);
+}
+
 async function refresh(){
   const hq = await fetchJson("/api/hq/state");
   document.getElementById("hq-updated").innerText =
@@ -3119,7 +3309,9 @@ async function refresh(){
   renderFooter(hq);
 }
 refresh();
+renderOrgFlow();
 setInterval(refresh, 30000);
+setInterval(renderOrgFlow, 30000);
 </script></body></html>"""
 
 HQ_PAGE = (_HQ_TEMPLATE

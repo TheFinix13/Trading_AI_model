@@ -1598,6 +1598,34 @@ condensation path was demonstrated, not the discovery path).
 Re-validation conditions for cycle 2+: external submitter (notify
 handshake), a P0 arrival, and a non-trivial queue depth.
 
+## D091 · 2026-07-23 · cto · [FEATURE]
+
+**F015 Org & Flow section shipped on `/hq` — the CEO's org-web
+request.**
+
+CEO ask: "if we have a webapp showing how the different roles relate
+that would be good." Shipped as a new `/hq` section (extends the
+company dashboard rather than adding a route) with three blocks:
+(1) org chart — all 19 ledger roles grouped by tier (Executive /
+Design / Engineering / Business / R&D, the last mapping the
+`executive-adjacent` tier), active/standby state, persona names, and
+resolved report lines (explicit ledger `reports_to` wins — Research
+Lead dual-reports CTO+CPO, User Advocate reports CPO; tier default
+otherwise: design→CPO, engineering→CTO, business→CEO, CEO root);
+(2) the 11-stage review-chain pipeline verbatim from
+`review-chain.md` incl. the 7b research stage, conditional stages
+starred; (3) live handoff activity — the most recent 8 of the
+`company/handoffs/*.json` artefacts (metadata only; notes bodies stay
+off the wire per the new Legal rolling constraint). Backend:
+`hq.org_state()` on a new `/api/hq/org` endpoint (keeps the
+`/api/hq/state` contract untouched), same never-500 degradation
+contract. Pure HTML/CSS, page-scoped additive styles — no `_BASE_CSS`
+change, `_BASE_CSS_VERSION` stays 1.1.0. Mobile collapse at 700 px.
+18 new tests (module 11 / page 5 / API 2) in
+`tests/platform/test_hq_org.py`; suite 1502+1skip → 1521 passed
+(the Playwright env-skip passes on this machine). Claim-register:
+new F015 section registers `hq_state` + `org_state`; audit green.
+
 ## Template for subsequent entries
 
 ```markdown

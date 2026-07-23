@@ -1978,6 +1978,13 @@
       "role": "research_lead",
       "decision": "[PROCESS] R&D loop cycle 1 validated -- PASS. First weekly rollup published.",
       "context": "company/rd/intake/2026-W30-rollup.md (opened: I001, I002; closed: I001 resolved D087; routed: I002 -> product D088; queue depth 1; aged >30d: 0; findings published: 1). company/rd/loop-validation.md records the cycle-1 verdict: every loop stage (intake -> triage -> routing -> publish -> closure -> rollup) fired at least once with a real artifact on tape; time-to-triage inside SLA; 2/2 items carry route decisions; ledger MD<->JSON 1:1. Honest caveats: small-N (2 items / 1 finding), same-executor triage (time-to-triage ~0 is a topology artifact per D087), finding was pre-staged (condensation path demonstrated, not discovery path). Re-validate at cycle 2+ with an external submitter, a P0, and non-trivial queue depth."
+    },
+    {
+      "id": "D091",
+      "date": "2026-07-23",
+      "role": "cto",
+      "decision": "[FEATURE] F015 Org & Flow section shipped on /hq -- the CEO's org-web request.",
+      "context": "Three blocks on /hq: (1) org chart -- 19 ledger roles grouped by tier (Executive/Design/Engineering/Business/R&D, the last mapping executive-adjacent), active state, persona names, resolved report lines (explicit ledger reports_to wins -- research_lead dual-reports cto+cpo, user_advocate reports cpo; tier default otherwise: design->cpo, engineering->cto, business->ceo, ceo root); (2) 11-stage review-chain pipeline verbatim from review-chain.md incl. 7b research stage, conditional stages starred; (3) most recent 8 handoffs from company/handoffs/*.json (metadata only; notes bodies off the wire per new Legal rolling constraint). Backend hq.org_state() on new /api/hq/org endpoint; never-500 degradation. Page-scoped additive CSS, _BASE_CSS_VERSION stays 1.1.0; mobile collapse at 700px. 18 new tests in tests/platform/test_hq_org.py; suite 1521 passed. Claim register F015 section registers hq_state + org_state; audit green."
     }
   ],
   "sprint_verdicts": [
