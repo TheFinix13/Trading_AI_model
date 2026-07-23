@@ -4,7 +4,7 @@
     "founded": "2026-07-21",
     "mission": "The first AI trading platform that trades like a football team.",
     "one_liner": "Watch our striker squad find setups on real markets \u2014 every decision explained, every risk gated.",
-    "current_sprint_id": "sprint-2-real-trading",
+    "current_sprint_id": "sprint-2b-live-readiness",
     "generated_at": "2026-07-22T03:25:00Z",
     "schema_version": "1.0.0",
     "charter_elevated_at": "2026-07-22T00:40:00Z",
@@ -267,6 +267,18 @@
       "feature_ids": ["F009", "F010", "F011", "F012", "F013", "F014"],
       "day_count": 1,
       "day_target": 13
+    },
+    {
+      "id": "sprint-2b-live-readiness",
+      "name": "Live Readiness",
+      "goal": "The D065 successor, step 1 of the D095 ordering: F017 Ops Watchdog (no-black-boxes directive) + F018 demo-order executor (the four gates get their one caller, DEMO-only, default-disabled). Squad->submit wiring out of scope. Zero diffs on agent/live, agent/risk, agent/squad.",
+      "started_at": "2026-07-24",
+      "target_end": "2026-07-25",
+      "actual_end": null,
+      "verdict": "in_progress",
+      "feature_ids": ["F017", "F018"],
+      "day_count": null,
+      "day_target": 2
     }
   ],
   "features": [
@@ -1346,6 +1358,49 @@
         "tests/platform/test_alerts_page.py",
         "tests/platform/test_alerts_api.py"
       ]
+    },
+    {
+      "id": "F017",
+      "title": "Ops Watchdog -- check registry + alert publisher + /hq strip",
+      "priority": "P0",
+      "sprint_id": "sprint-2b-live-readiness",
+      "current_stage": "build",
+      "current_owner_role": "backend",
+      "reviewers": ["cto", "backend", "frontend", "qa", "legal", "ceo"],
+      "auth": true,
+      "created_at": "2026-07-24T00:30:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-24T00:30:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-2b-live-readiness/F017-ops-watchdog.md",
+          "note": "Spec locked (D098). 7-check registry, state-change-only watchdog_alert publishing, /api/watchdog/status + /hq strip + run_watchdog.py. Fast-path as solo executor; spec lands before build."
+        }
+      ]
+    },
+    {
+      "id": "F018",
+      "title": "Demo-order executor -- the four gates get their caller (DEMO-only)",
+      "priority": "P0",
+      "sprint_id": "sprint-2b-live-readiness",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
+      "auth": true,
+      "credentials": true,
+      "created_at": "2026-07-24T00:30:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-24T00:30:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-2b-live-readiness/F018-demo-order-executor.md",
+          "note": "Spec locked (D099). Mt5OrderAdapter seam, execute_approved re-runs all four gates before send, DEMO-ONLY guard (allowlist + demo_only ack, fail-closed), volume cap, single-use approvals, default-disabled (gate #5). P0 invariant file extended, never weakened."
+        }
+      ]
     }
   ],
   "decisions": [
@@ -2020,6 +2075,27 @@
       "role": "user_advocate",
       "decision": "[INTAKE] I002 root cause amended: the week's silence was over-determined by two coded-in next-gen defects, not just a quiet market.",
       "context": "Read-only investigation of the next-gen runtime (launched from the same CEO signal that filed I002) found the squad could not have acted even with qualifying events and valid setups. (1) Warm-up gate bug, P1: agent/squad/engine.py withholds proposals until bars_seen > WARMUP_BARS (=200), counting only post-boot bars -- the ~2,500 historical bars hydrating zones/swings/ATR at prepare() don't count; a runtime started 2026-07-20 is structurally mute until ~late August (sim-era 'bars of context' semantics became live 'days of uptime' in the port). (2) Sae structurally inert: roster built without SaeConfig (default sae_enabled=False, never in proposers); calendar never hydrated for Sae; no bars provider; H4 cadence only catches events landing 15-60 min before a bar-open -- NFP 12:30 UTC / FOMC 18:00 UTC never qualify. (3) Original legibility thesis STANDS, strengthened: the 'silence was correct behavior' framing at filing was itself a casualty of the illegibility. Fix session dispatched on next-gen via isolated worktree 2026-07-24: warm-up seeding from history + explicit 2-bar burn-in (parity-safe, live-feed-only), Sae hydration behind default-OFF --enable-sae (Phase AE pre-reg gate retained), calendar failure visibility, and I002's /v2 fixes -- ahead of Sprint 3. H4-cadence gap parked to Phase AE design. I002 front-matter carries the amendment; status stays routed until the next-gen commits land."
+    },
+    {
+      "id": "D097",
+      "date": "2026-07-24",
+      "role": "ceo",
+      "decision": "[SPRINT] Sprint 2b (Live Readiness) green-lit -- the D065 successor: demo wiring first, two-feature scope (F017 Ops Watchdog + F018 demo-order executor).",
+      "context": "Two direct CEO directives tonight anchor the charter (company/sprints/sprint-2b-live-readiness/README.md): 'why not connect to mt5 and my exness and use a demo account' and 'we can't have a black box system... we need to be notified of irregular behaviors or problems within any of our systems, including the company loop'. Executes step 1 of D095's ordering (demo wiring -> shadow -> real-broker only after pen test + legal). D065 scaffolding-only invariant deliberately and NARROWLY superseded for DEMO accounts only: the four gates get exactly one caller (F018 live_executor), default-disabled, structurally unable to reach a non-demo server (allowlist + demo_only=true ack, fail-closed). F017 lands first so the executor is born observable. Squad -> approval_queue submission wiring stays OUT of scope. Real-broker connections remain a hard NO per escalation.md section 5. Zero-diff invariant vs c56e561 on agent/{live,risk,squad} + scripts/run_{live,squad_live}.py carries forward."
+    },
+    {
+      "id": "D098",
+      "date": "2026-07-24",
+      "role": "cpo",
+      "decision": "[FEATURE] F017 spec locked -- Ops Watchdog: 7-check registry + state-change alert publisher + /hq strip + cron runner.",
+      "context": "company/sprints/sprint-2b-live-readiness/F017-ops-watchdog.md. New module agent/platform/watchdog.py: runtime_heartbeat (warn >5min / alarm >30min), calendar_feed (warn >12h / alarm >48h), broker_health, risk_state, intake_sla (P0 4h / P1 7d / open >30d), sprint_pulse (in-progress sprint quiet 7d), ledger_drift (JSON<->MD decision-count mismatch -- the drift bug from Sprint 2 close, D076-D080 history). Publisher fires watchdog_alert bus events on state TRANSITIONS only (last-known state persisted at <config_dir>/watchdog_state.json). New event type trips the F014 Legal rolling constraint -- Legal re-review inline before ship. Surfaces: GET /api/watchdog/status (~30s cache), /hq status strip, scripts/run_watchdog.py (one-shot exit codes or --loop N with heartbeat file). Target >=35 tests."
+    },
+    {
+      "id": "D099",
+      "date": "2026-07-24",
+      "role": "cpo",
+      "decision": "[FEATURE] F018 spec locked -- demo-order executor: the four gates get their one caller, DEMO-only, default-disabled.",
+      "context": "company/sprints/sprint-2b-live-readiness/F018-demo-order-executor.md. New module agent/platform/live_executor.py: Mt5OrderAdapter seam (MetaTrader5 imported lazily inside methods, Windows-only; tests use fakes), execute_approved(approval_id, adapter) re-runs can_send_live_order (all four gates) immediately before send, then the DEMO-ONLY guard ([live_executor] allowed_server_patterns fail-closed match + demo_only=true required ack), volume hard-cap (max_volume_lots default 0.01), single-use approvals, fill -> risk_budget.record_fill + trade_fill alert, error -> alert + no auto-retry. enabled=false default is gate #5; the P0 invariant file is EXTENDED (never weakened) with executor-disabled-by-default, per-gate refusal, no-creds refusal, and demo-guard cases. Surfaces: POST /api/executor/execute/<id>, GET /api/executor/status, Execute button on /approvals (Legal warning copy per F013 pattern). Runbook: V2 Platform demo account (login 436983644 / Exness-MT5Trial9; password keyring-only) + full ceremony + kill-switch drill. Target >=45 tests."
     }
   ],
   "sprint_verdicts": [

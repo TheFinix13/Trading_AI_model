@@ -1754,6 +1754,71 @@ line, Sae/Karasu roster presence) — ahead of Sprint 3. H4-cadence gap
 parked to Phase AE design. I002 front-matter carries the amendment;
 status stays `routed` until the next-gen commits land.
 
+## D097 · 2026-07-24 · ceo · [SPRINT]
+
+**Sprint 2b (Live Readiness) green-lit — the D065 successor: demo
+wiring first, two-feature scope (F017 + F018).**
+
+Two direct CEO directives tonight anchor the charter
+(`company/sprints/sprint-2b-live-readiness/README.md`): "why not
+connect to mt5 and my exness and use a demo account" and "we can't
+have a black box system... we need to be notified of irregular
+behaviors or problems within any of our systems, including the
+company loop." This executes step 1 of D095's ordering (demo wiring →
+shadow → real-broker only after pen test + legal). The D065
+scaffolding-only invariant is deliberately and NARROWLY superseded for
+DEMO accounts only: the four gates get exactly one caller
+(F018 `live_executor`), default-disabled, structurally unable to reach
+a non-demo server (allowlist + `demo_only = true` ack, fail-closed).
+F017 (Ops Watchdog) lands first so the executor is born observable.
+Squad → approval_queue submission wiring stays OUT of scope (next-gen
+lane + future integration decision). Real-broker connections remain a
+hard NO per escalation.md §5. Zero-diff invariant vs `c56e561` on
+`agent/{live,risk,squad}` + `scripts/run_{live,squad_live}.py`
+carries forward.
+
+## D098 · 2026-07-24 · cpo · [FEATURE]
+
+**F017 spec locked — Ops Watchdog: 7-check registry + state-change
+alert publisher + `/hq` strip + cron runner.**
+
+See `company/sprints/sprint-2b-live-readiness/F017-ops-watchdog.md`.
+New module `agent/platform/watchdog.py`: checks `runtime_heartbeat`
+(warn >5 min / alarm >30 min), `calendar_feed` (warn >12 h / alarm
+>48 h), `broker_health`, `risk_state`, `intake_sla` (P0 4 h / P1 7 d /
+open >30 d), `sprint_pulse` (in-progress sprint quiet 7 d),
+`ledger_drift` (JSON↔MD decision-count mismatch — the drift bug from
+Sprint 2 close, D076–D080 history). Publisher fires `watchdog_alert`
+bus events on state TRANSITIONS only (last-known state persisted at
+`<config_dir>/watchdog_state.json`). New event type trips the F014
+Legal rolling constraint — Legal re-review to land inline before
+ship. Surfaces: `GET /api/watchdog/status` (~30 s cache), `/hq`
+status strip, `scripts/run_watchdog.py` (one-shot exit codes or
+`--loop N` with heartbeat file). Target ≥35 tests.
+
+## D099 · 2026-07-24 · cpo · [FEATURE]
+
+**F018 spec locked — demo-order executor: the four gates get their
+one caller, DEMO-only, default-disabled.**
+
+See `company/sprints/sprint-2b-live-readiness/F018-demo-order-executor.md`.
+New module `agent/platform/live_executor.py`: `Mt5OrderAdapter` seam
+(MetaTrader5 imported lazily inside methods, Windows-only; tests use
+fakes), `execute_approved(approval_id, adapter)` re-runs
+`can_send_live_order` (all four gates) immediately before send, then
+the DEMO-ONLY guard (`[live_executor] allowed_server_patterns`
+fail-closed match + `demo_only = true` required ack), volume hard-cap
+(`max_volume_lots` default 0.01), single-use approvals, fill →
+`risk_budget.record_fill` + `trade_fill` alert, error → alert + no
+auto-retry. `enabled = false` default is gate #5; the P0 invariant
+file is EXTENDED (never weakened) with executor-disabled-by-default,
+per-gate refusal, no-creds refusal, and demo-guard cases. Surfaces:
+`POST /api/executor/execute/<id>`, `GET /api/executor/status`,
+Execute button on `/approvals` (Legal warning copy per F013 pattern).
+Runbook: V2 Platform demo account (login 436983644 /
+Exness-MT5Trial9; password keyring-only) + full ceremony + kill-switch
+drill. Target ≥45 tests.
+
 ## Template for subsequent entries
 
 ```markdown
