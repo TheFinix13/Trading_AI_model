@@ -1985,6 +1985,27 @@
       "role": "cto",
       "decision": "[FEATURE] F015 Org & Flow section shipped on /hq -- the CEO's org-web request.",
       "context": "Three blocks on /hq: (1) org chart -- 19 ledger roles grouped by tier (Executive/Design/Engineering/Business/R&D, the last mapping executive-adjacent), active state, persona names, resolved report lines (explicit ledger reports_to wins -- research_lead dual-reports cto+cpo, user_advocate reports cpo; tier default otherwise: design->cpo, engineering->cto, business->ceo, ceo root); (2) 11-stage review-chain pipeline verbatim from review-chain.md incl. 7b research stage, conditional stages starred; (3) most recent 8 handoffs from company/handoffs/*.json (metadata only; notes bodies off the wire per new Legal rolling constraint). Backend hq.org_state() on new /api/hq/org endpoint; never-500 degradation. Page-scoped additive CSS, _BASE_CSS_VERSION stays 1.1.0; mobile collapse at 700px. 18 new tests in tests/platform/test_hq_org.py; suite 1521 passed. Claim register F015 section registers hq_state + org_state; audit green."
+    },
+    {
+      "id": "D092",
+      "date": "2026-07-23",
+      "role": "ux_researcher",
+      "decision": "[FEATURE] F016 test-persona cast + dogfood harness shipped -- the CEO's test-personas/test-customers request.",
+      "context": "Six persona docs in company/rd/personas/ (P001 CEO dogfood owner, P002 cautious mobile-only first-timer, P003 power-user quant hobbyist, P004 skeptical auditor, P005 non-technical customer, P006 test-customer pair with fake billing-ready profiles: .invalid emails, DO_NOT_CHARGE tokens) + README surface map. scripts/dogfood_personas.py drives the REAL make_handler stack in-process (credentials only exposes force_fallback() as an in-process seam; a subprocess run would touch the operator's real macOS keychain) on an ephemeral port with an isolated temp config dir. Journeys: onboarding round-trip, broker failure paths (validation reject, MT5-unavailable copy, 5/60s rate limiter), kill-switch activate/clear, approvals submit/approve/reject via internal-token seam incl. fail-closed 401 check (temp gitignored platform.toml created only when absent, removed after), alerts test event, /research + /hq/org auditor checks, HTML smoke. No live-mode step exists by construction (pinned by test). First run: 113/113 steps passed, 0 skipped, 6 personas, 4.8s. Reports under gitignored reports/dogfood/; committed sample at company/rd/personas/sample-dogfood-report.md. 20 new tests in tests/platform/test_dogfood_personas.py. Two qualitative frictions -> I003 (D093), I004 (D094)."
+    },
+    {
+      "id": "D093",
+      "date": "2026-07-23",
+      "role": "user_advocate",
+      "decision": "[INTAKE] I003 filed + routed: broker wizard dead-ends on non-Windows hosts.",
+      "context": "From the first dogfood run (D092), P002/P005 journeys: on macOS test_connection returns 'MT5 client is not available on this platform. MT5 runs on Windows only.' -- a dead end with no recovery path, and onboarding completes silently with broker_connected false. Triaged UX / P2 / route product (copy + wizard-state work, next product sprint). Compounds I002. company/rd/intake/I003-broker-wizard-nonwindows-deadend.md."
+    },
+    {
+      "id": "D094",
+      "date": "2026-07-23",
+      "role": "user_advocate",
+      "decision": "[INTAKE] I004 filed + routed: internal-token config is pinned to the repo root.",
+      "context": "From building the D092 harness: every state module relocates via BLUELOCK_CONFIG_DIR except the F013 internal token gating POST /api/approvals/submit, which serve_platform reads via load_config(REPO_ROOT) -- repo-root platform.toml only. The harness had to write (and clean up) a temp platform.toml in the source checkout to exercise submit/approve/reject; packaged/hosted installs hit the same wall. Triaged DX / P3 / route product; fold into the packaging sprint, becomes P1 when packaging starts. Fail-closed-when-unset must not change. company/rd/intake/I004-internal-token-config-pinned.md."
     }
   ],
   "sprint_verdicts": [
@@ -2032,7 +2053,7 @@
     "test_coverage_pct": null,
     "active_roles": 14,
     "total_roles": 19,
-    "intake_items_open": 1,
+    "intake_items_open": 3,
     "intake_items_closed_last_7d": 1,
     "experiments_in_flight": 0,
     "published_findings_total": 1,
@@ -2072,6 +2093,40 @@
       "resolved_at": null,
       "summary": "Dashboard silence is illegible: the CEO watched /v2 all week and saw no agent activity. Silence was CORRECT (no NFP Jul 20-24; next Aug 7; FOMC Jul 28-29 is Sae's window) but the product gave no way to know that. Proposal: upcoming-events countdown panel + why-quiet status line on /v2.",
       "file": "company/rd/intake/I002-dashboard-silence-illegible.md"
+    },
+    {
+      "id": "I003",
+      "source": "dogfood",
+      "submitter": "user_advocate",
+      "submitted_at": "2026-07-23T23:10:00Z",
+      "classification": "UX",
+      "priority": "P2",
+      "status": "routed",
+      "route": "product",
+      "linked_features": ["F016"],
+      "linked_decisions": ["D093"],
+      "linked_experiments": [],
+      "contact": "internal (dogfood harness, D092)",
+      "resolved_at": null,
+      "summary": "Broker wizard dead-ends on non-Windows hosts: test_connection's 'MT5 runs on Windows only' copy offers no recovery path, and onboarding completes silently with broker_connected false. Surfaced by P002/P005 dogfood journeys. Fix: actionable failure copy + missing-broker state chip post-onboarding.",
+      "file": "company/rd/intake/I003-broker-wizard-nonwindows-deadend.md"
+    },
+    {
+      "id": "I004",
+      "source": "dogfood",
+      "submitter": "user_advocate",
+      "submitted_at": "2026-07-23T23:12:00Z",
+      "classification": "DX",
+      "priority": "P3",
+      "status": "routed",
+      "route": "product",
+      "linked_features": ["F016"],
+      "linked_decisions": ["D094"],
+      "linked_experiments": [],
+      "contact": "internal (dogfood harness, D092)",
+      "resolved_at": null,
+      "summary": "Internal-token config pinned to repo-root platform.toml: everything else relocates via BLUELOCK_CONFIG_DIR, but the /api/approvals/submit gate reads load_config(REPO_ROOT) only. Packaging blocker in miniature; fold into packaging sprint. Fail-closed-when-unset stays.",
+      "file": "company/rd/intake/I004-internal-token-config-pinned.md"
     }
   ],
   "experiments": [

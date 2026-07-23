@@ -1626,6 +1626,70 @@ change, `_BASE_CSS_VERSION` stays 1.1.0. Mobile collapse at 700 px.
 (the Playwright env-skip passes on this machine). Claim-register:
 new F015 section registers `hq_state` + `org_state`; audit green.
 
+## D092 · 2026-07-23 · ux_researcher · [FEATURE]
+
+**F016 test-persona cast + dogfood harness shipped — the CEO's
+"test personas/users along myself... also test customers" request.**
+
+Six persona docs in `company/rd/personas/` (P001 Fiyin/CEO dogfood
+owner; P002 cautious mobile-only first-timer; P003 power-user quant
+hobbyist; P004 skeptical auditor; P005 non-technical customer; P006
+Amaka+Chidi Eze test-customer pair with fake billing-ready profiles —
+`.invalid` emails, DO_NOT_CHARGE card tokens) + README mapping
+personas to test surfaces. `scripts/dogfood_personas.py` drives the
+REAL `make_handler` stack in-process (deliberate: credentials only
+exposes `force_fallback()` as an in-process seam; a subprocess run
+would touch the operator's actual macOS keychain and
+`/api/onboarding/reset` could delete real secrets) on an ephemeral
+port with an isolated temp config dir. Journeys: onboarding
+round-trip, broker-wizard failure paths (validation reject,
+MT5-unavailable copy, 5/60s rate limiter), kill-switch
+activate/clear, approvals submit/approve/reject via the
+internal-token seam (incl. the fail-closed no-token 401 check; temp
+gitignored `platform.toml` created only when absent, removed after),
+alerts test event, /research + /hq/org auditor checks, HTML smoke.
+No live-mode step exists by construction (pinned by test). First run:
+**113/113 steps passed, 0 skipped** across all 6 personas in 4.8 s;
+reports under gitignored `reports/dogfood/`, committed sample at
+`company/rd/personas/sample-dogfood-report.md`. 20 new tests in
+`tests/platform/test_dogfood_personas.py` (front-matter parser,
+roster validation, journey assembly, no-live-mode invariant, friction
+reporting). Two qualitative frictions found while building/running →
+I003, I004 (D093, D094).
+
+## D093 · 2026-07-23 · user_advocate · [INTAKE]
+
+**I003 filed + routed: broker wizard dead-ends on non-Windows
+hosts.**
+
+From the first dogfood run (D092), P002/P005 journeys: on macOS,
+`test_connection` returns "MT5 client is not available on this
+platform. MT5 runs on Windows only." — a factually-true dead end with
+no recovery path, no support link, no "connect later from Settings →
+Broker" guidance. Onboarding then completes silently with
+`broker_connected: false` and nothing surfaces the missing broker
+afterwards. Triaged UX / P2 / route product (copy + wizard-state
+work, next product sprint). Compounds I002: a broker-less install
+sees a quiet dashboard forever with no breadcrumb to the blocker.
+`company/rd/intake/I003-broker-wizard-nonwindows-deadend.md`.
+
+## D094 · 2026-07-23 · user_advocate · [INTAKE]
+
+**I004 filed + routed: internal-token config is pinned to the repo
+root.**
+
+From building the D092 harness: every state module relocates through
+the `BLUELOCK_CONFIG_DIR` seam except the F013 internal token gating
+`POST /api/approvals/submit`, which `serve_platform` reads via
+`load_config(REPO_ROOT)` — repo-root `platform.toml` only. The
+harness had to write (and guarantee cleanup of) a temporary
+`platform.toml` in the source checkout to exercise the
+submit/approve/reject path; any packaged or hosted install hits the
+same wall. Triaged DX / P3 / route product — fold into the
+packaging/hosting sprint (see sellability-gaps memo); becomes P1 the
+moment packaging starts. Fail-closed-when-unset behavior must not
+change. `company/rd/intake/I004-internal-token-config-pinned.md`.
+
 ## Template for subsequent entries
 
 ```markdown
