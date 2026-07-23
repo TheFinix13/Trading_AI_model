@@ -1,22 +1,24 @@
-# AI Context — brain dump (updated 2026-07-22, v0.45)
+# AI Context — brain dump (updated 2026-07-23, v0.46)
 
-> v0.45 — **Company charter elevated** 2026-07-22 per CEO (Fiyin)
-> directive: real product / real users / literature-standard R&D
-> (D081). Two new roles: **Research Lead** ("The Anri Junior",
-> exec-adjacent, dual-report CTO+CPO — owns E0xx/M0xx portfolio +
-> `/research` manifest) and **User Advocate** (business — feedback
-> intake, weekly triage, GDPR/CCPA hygiene). Two new protocols:
-> `rd-loop.md` (intake `I###`, Monday drain, cross-repo bridge to
-> `finance-research-experiments`) + `literature-standards.md`
-> (pre-reg + FDR + reproducibility + honest negatives + 5
-> non-negotiables). `escalation.md §6` (research-negative
-> suppression); `review-chain.md §7b` (`research` stage, gated by
-> `research_relevant: true`). Ledger 17→19 roles, +3 R&D KPIs, +2
-> arrays (`intake` seeded `I001`; `experiments` seeded Phase AC
-> negative + F013 30d approval-rate). `/hq` R&D-pulse section;
-> `_BASE_CSS_VERSION 1.0.0 → 1.1.0`. **1482 → 1502 pass + 1 env-skip
-> (+20 collected; +19 pass).** Zero diffs to `agent/{live,risk,squad}/*` (D065 Invariant #2).
-> D081–D086 on tape. Prior v0.40–v0.44 detail in
+> v0.46 — **R&D cycle 1 + org web + dogfood cast + sellability memo**
+> 2026-07-23 (D087–D095, commits 797913e..25d8491 on `product`).
+> Cycle 1 PASS (`company/rd/loop-validation.md`): I001 resolved D087
+> (executor-days = sprint planning unit); I002 dashboard-silence
+> filed/routed (P1, /v2 fix = next-gen Sprint 3); first real finding
+> published `company/rd/findings/2026-07-phase-ac-pitch-assignment.md`
+> (honest negative, manifest + claim register wired, D089); W30
+> rollup D090. **F015 Org & Flow on `/hq`** (D091): `hq.org_state()`
+> → `/api/hq/org`, 19 roles by tier + report lines, 11-stage pipeline,
+> recent handoffs; CSS page-scoped, `_BASE_CSS_VERSION` stays 1.1.0.
+> **F016 dogfood cast** (D092): 6 personas `company/rd/personas/`
+> (P006 = fake-billing test customers), `scripts/dogfood_personas.py`
+> drives real make_handler in-process (keychain-safe seams), first
+> run 113/113; frictions → I003 broker non-Windows dead-end (D093),
+> I004 internal-token repo-root pinning (D094). **Sellability memo**
+> `company/strategy/sellability-gaps.md` (D095): off-backlog flags =
+> live-order wiring, 30–90d shadow clock, packaging, legal/ToS; repo
+> split PARKED until product #2. **1540 pass + 1 env-skip.** Zero
+> diffs to `agent/{live,risk,squad}/*`. Prior v0.45 charter detail in
 > [docs/00-journey.md](docs/00-journey.md#2026-07-22-·-company-charter-elevated).
 
 Read this first in a fresh chat. Deeper history: `docs/00-journey.md`
@@ -38,37 +40,42 @@ lane** (Sprint 0–2 + charter elevation). Research on
   `tests/security/test_live_mode_off_invariant.py`. F009 auth, F010
   claim-audit, F011 kill-switches, F012 risk+broker-health, F013
   approval+live-mode, F014 SSE alerts + Telegram.
-- **R&D loop live:** `company/rd/{intake,experiments,findings}/`;
-  `I001` filed (PROCESS/P2, ties D062); tracked: M001-PhaseAC
-  (closed-negative), F013 30d approval-rate (awaiting-panel).
+- **R&D loop validated (cycle 1 PASS):** intake I001 resolved,
+  I002–I004 routed (queue depth 3); first finding published (Phase
+  AC honest negative, on `/research` manifest); W30 rollup on tape.
 - **Public routes:** `/performance`, `/players[/:id]`, `/research`,
   `/onboarding`, `/settings/{broker,live-mode,kill-switches,reset-install}`,
-  `/risk`, `/approvals`, `/alerts`, `/hq` (with R&D pulse).
-  F005 `withStates()` + `_BASE_CSS_VERSION = "1.1.0"`.
+  `/risk`, `/approvals`, `/alerts`, `/hq` (R&D pulse + F015 Org &
+  Flow via `/api/hq/org`). F005 `withStates()` +
+  `_BASE_CSS_VERSION = "1.1.0"`.
+- **Dogfood cast (F016):** 6 personas + `scripts/dogfood_personas.py`
+  (in-process server, keychain-safe, no live mode by construction);
+  first run 113/113 across onboarding/broker/kill/approvals/alerts.
 - **Live (`main`) + Squad (`next-gen`):** unchanged; zero diffs.
-- **Tests:** **1502 pass + 1 env-skip** (security 204).
+- **Tests:** **1540 pass + 1 env-skip** (security 204).
 
 ## 2) Key file paths
 
 | Area | Files |
 |---|---|
-| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001-*},experiments/README,findings/README}.md`, `company/ledger/{company_state.json (86 D### + 19 roles + intake + experiments + 3 R&D KPIs),decisions_log.md}` |
+| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I004},findings/2026-07-phase-ac-pitch-assignment.md,personas/,loop-validation.md}`, `company/strategy/sellability-gaps.md`, `company/ledger/{company_state.json (95 D### + 19 roles + intake×4 + experiments),decisions_log.md}` |
 | Sprint 2 real-trading | `agent/platform/{rate_limiter,kill_switches,kill_switch_admin,risk_budget,broker_health,approval_queue,alerts,alerts_sse,alerts_telegram,auth}.py`, `agent/platform/pages.py` (KILL_SWITCHES / RISK / APPROVALS / LIVE_MODE_TOGGLE / ALERTS + HQ R&D pulse), `scripts/{serve_platform,check_claim_register,install_git_hooks}.py`, `scripts/git-hooks/pre-commit`, `company/legal/{live-mode,approval-queue}-warning.md` + `claim_register.md` |
 | Sprint 0/1 backend | `agent/platform/{performance,players,research,hq (R&D pulse extension),credentials,broker_connection,onboarding}.py` |
-| Tests | `tests/security/test_live_mode_off_invariant.py`, `tests/platform/test_hq_page_rd_pulse.py` + `test_hq_{module,api}.py` R&D extensions |
+| Tests | `tests/security/test_live_mode_off_invariant.py`, `tests/platform/{test_hq_org,test_dogfood_personas,test_hq_page_rd_pulse}.py` |
+| Org web + dogfood | `agent/platform/hq.py` (`org_state()`), `agent/platform/pages.py` (HQ Org & Flow), `scripts/dogfood_personas.py`, `company/rd/personas/` |
 | Strategy / Live / Squad | `agent/alphas/{concepts/{zone_alpha,_htf},zone_routing}.py`; **off-limits:** `agent/{live,risk,squad}/*`, `scripts/run_{live,squad_live}.py` |
 | Docs | `docs/{CHECKPOINT,00-journey,RUNBOOK_demo_launch}.md` |
 
 ## 3) Next immediate goal
 
-**Run the R&D loop for one week and file the first weekly rollup**
-per `protocols/rd-loop.md` §3 (Monday drain). CPO drains `I001` +
-any new intake; Research Lead sets up the first weekly cross-repo
-sync; User Advocate wires the F013 approval-queue signal into
-intake once real-mode traffic appears. Sprint 3 (Stickiness) waits
-until the loop is ratified — candidates: strategy marketplace,
-character seasons, match highlights (first legit
-`[BLOCKER][SPEND]` for video infra), community.
+**Act on the sellability memo's top three (D095):** scope the
+live-order wiring charter (demo-MT5 first, escalation.md §5 order),
+start the 30–90 day shadow clock on the VM (calendar-constrained —
+every idle week delays the earliest sale date), and charter the
+install-token → multi-user auth migration. In parallel: Sprint 3
+scoping picks up I002 (/v2 silence legibility, next-gen lane) and
+I003 (broker dead-end copy); cycle-2 R&D drain re-validates the loop
+with a non-trivial queue (I002–I004 open).
 
 **Parked (no start without discussion):** wiring four-gate composition
 to squad's real-order path; Sprint 4 `/feedback` route (D084 defers —
