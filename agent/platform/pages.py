@@ -5659,6 +5659,16 @@ _APPROVALS_TEMPLATE = r"""<!doctype html>
   background:transparent;color:inherit;border:1px solid var(--dim);
   border-radius:4px;font-family:inherit;font-size:13px}
 .approval-card.approved{opacity:0.7;border-color:#2a7f4a}
+.approval-card .execute{background:#8a6d1f;color:#fff;width:100%;
+  margin-top:8px;padding:10px;border:0;border-radius:6px;
+  cursor:pointer;font-weight:bold}
+.approval-card .exec-note{font-size:12px;color:var(--dim);margin-top:8px}
+.approval-card .exec-result{font-size:12px;font-family:monospace;
+  margin-top:6px;word-break:break-all}
+.exec-warn{border:1px solid #8a6d1f;border-radius:8px;
+  padding:12px 14px;margin:0 0 16px 0;background:rgba(138,109,31,.08)}
+.exec-warn p{margin:0 0 6px 0}
+.exec-warn p:last-child{margin-bottom:0}
 .approval-card.rejected{opacity:0.5;border-color:#a94a4a}
 .approval-card.timed_out{opacity:0.4;border-color:var(--dim)}
 .approval-card .status-pill{font-size:11px;text-transform:uppercase;
@@ -5677,6 +5687,8 @@ __NAV__
 <p class="dim">Loading warning...</p>
 </div>
 
+<div class="exec-warn" id="exec-warn" style="display:none"></div>
+
 <div class="approvals-section">
 <h2>Pending <span id="pending-count" class="dim"></span></h2>
 <div id="pending-body" class="approvals-grid"></div>
@@ -5688,10 +5700,11 @@ __NAV__
 </div>
 
 <p class="dim" style="margin-top:20px;font-size:12px">
-Sprint 2 caveat: the platform ships the approval queue and the
-4-check pathway, but no live pathway in this sprint feeds proposals
-into <code>submit()</code>. Live-mode default OFF at
-<a href="/settings/live-mode">/settings/live-mode</a>.
+Sprint 2b caveat: approved entries can be executed against a DEMO
+account only (F018 executor -- default disabled, demo-server
+allowlist, 0.01-lot cap). No live pathway feeds proposals into
+<code>submit()</code>; squad wiring is future-sprint work. Live-mode
+default OFF at <a href="/settings/live-mode">/settings/live-mode</a>.
 </p>
 </main>
 <script>__ERROR_COPY_JS__
@@ -5707,6 +5720,10 @@ function statusPill(s){
   return '<span class="status-pill">'+esc(s)+'</span>';
 }
 
+// F018 -- executor readiness, refreshed alongside the queue.
+// States: disabled (default) / not-on-windows / ready.
+var execState = {state: "disabled", enabled: false};
+
 function cardHtml(entry, includeActions){
   const cls = "approval-card " + esc(entry.status);
   var actions = "";
@@ -5717,6 +5734,21 @@ function cardHtml(entry, includeActions){
       '</div>'+
       '<input class="reject-reason" data-id="'+esc(entry.id)+
       '" placeholder="Reason (optional; sent only on Reject)" />';
+  }
+  if(entry.status === "approved"){
+    if(execState.state === "ready"){
+      actions += '<button class="execute" data-id="'+esc(entry.id)+
+        '">Execute (DEMO account)</button>'+
+        '<div class="exec-result" data-exec-result="'+esc(entry.id)+
+        '"></div>';
+    } else if(execState.state === "not-on-windows"){
+      actions += '<div class="exec-note">Executor enabled, but '+
+        'MetaTrader5 is not available on this OS - run the platform '+
+        'on the Windows VM to execute.</div>';
+    } else {
+      actions += '<div class="exec-note">Demo executor disabled '+
+        '([live_executor] enabled = false).</div>';
+    }
   }
   const timeoutEpoch = entry.timeout_at_epoch || 0;
   const params = '<div class="params">'+
@@ -5769,6 +5801,49 @@ function wireActions(){
       refresh();
     };
   });
+  document.querySelectorAll(".execute").forEach(function(btn){
+    btn.onclick = async function(){
+      const id = btn.getAttribute("data-id");
+      if(!confirm("Send this order to the DEMO account? This is "+
+                  "single-use: the approval is consumed whether the "+
+                  "send fills or errors.")) return;
+      btn.disabled = true;
+      var out = {status: "error", reason: "request failed"};
+      try{
+        const r = await fetch("/api/executor/execute/"+
+                              encodeURIComponent(id), {method:"POST"});
+        out = await r.json();
+      }catch(e){}
+      const box = document.querySelector(
+        '.exec-result[data-exec-result="'+id+'"]');
+      if(box){
+        box.textContent = out.status + ": " +
+          (out.status === "filled" ? ("ticket " + out.ticket)
+                                   : (out.reason || ""));
+      }
+      refresh();
+    };
+  });
+}
+
+async function loadExecutor(){
+  // Readiness first (drives the button), warning copy second.
+  try{
+    const r = await fetch("/api/executor/status", {cache:"no-store"});
+    if(r.ok) execState = await r.json();
+  }catch(e){}
+  const warnBox = document.getElementById("exec-warn");
+  if(!warnBox) return;
+  if(!execState.enabled){ warnBox.style.display = "none"; return; }
+  try{
+    const r = await fetch("/api/executor/warning", {cache:"no-store"});
+    if(!r.ok) return;
+    const j = await r.json();
+    const paras = String(j.body||"").split(/\n\n+/).map(function(p){
+      return "<p>"+esc(p)+"</p>";
+    }).join("");
+    if(paras){ warnBox.innerHTML = paras; warnBox.style.display = ""; }
+  }catch(e){}
 }
 
 function tickCountdowns(){
@@ -5824,13 +5899,15 @@ async function refresh(){
       recentBox.innerHTML = rows.length ? rows.map(function(e){
         return cardHtml(e, false);
       }).join("") : '<div class="dim">Nothing resolved yet.</div>';
+      wireActions();  // F018 Execute buttons live on approved cards here
       return null;
     }, {emptyCopyKey: "no_data_yet"});
 }
 
 loadWarning();
-refresh();
+loadExecutor().then(refresh);
 setInterval(refresh, 3000);
+setInterval(loadExecutor, 15000);
 setInterval(tickCountdowns, 1000);
 </script></body></html>"""
 

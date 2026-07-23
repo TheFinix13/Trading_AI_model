@@ -167,3 +167,195 @@ class TestKillSwitchTripsMidFlow:
         ok, reason = approval_queue.can_send_live_order(entry)
         assert ok is False
         assert "kill" in reason.lower()
+
+
+# =====================================================================
+# Sprint 2b EXTENSIONS (F018). Everything above this line is the
+# Sprint 2 pin, unmodified. D097 superseded D065 NARROWLY: the four
+# gates now have exactly ONE caller (live_executor.execute_approved),
+# for DEMO accounts only. These cases pin the caller's own gates.
+# =====================================================================
+
+from agent.platform import broker_connection, live_executor  # noqa: E402
+
+
+def _executor_reset():
+    live_executor.reset_state_for_tests()
+
+
+def _demo_cfg(**overrides) -> dict:
+    """A fully-open executor config; tests close one door at a time."""
+    cfg = {
+        "enabled": True,
+        "demo_only": True,
+        "allowed_server_patterns": ["*Trial*", "*Demo*", "*demo*"],
+        "max_volume_lots": 0.01,
+        "broker_alias": "v2-demo",
+    }
+    cfg.update(overrides)
+    return cfg
+
+
+def _approved_entry(size: float = 0.01) -> str:
+    """Open all four Sprint-2 gates and return the approval id."""
+    approval_queue.set_live_mode(True)
+    aid = approval_queue.submit({
+        "symbol": "EURUSD",
+        "side": "buy",
+        "size": size,
+        "entry": 1.0850,
+        "stop": 1.0820,
+        "take_profit": 1.0920,
+        "rationale": "P0 extension test",
+        "source_agent": "A1_baseline",
+        "risk_snapshot": {"worst_case_loss": 5.0},
+    })
+    approval_queue.approve(aid)
+    return aid
+
+
+def _store_demo_creds() -> None:
+    broker_connection.reset_rate_limiter()
+    assert broker_connection.save_credentials(
+        "v2-demo", 436983644, "not-a-real-password-fixture",
+        "Exness-MT5Trial9", "demo") is True
+
+
+class TestExecutorDisabledByDefault:
+    """Gate #5 pin: a clean install's executor refuses EVERYTHING,
+    even with all four Sprint-2 gates open, creds stored, and a
+    healthy demo adapter."""
+
+    def test_config_default_is_disabled(self) -> None:
+        assert live_executor.is_enabled({}) is False
+        assert live_executor.load_executor_config({})["enabled"] is False
+
+    def test_junk_enabled_values_stay_disabled(self) -> None:
+        for junk in ("true", 1, "yes", [], {"on": True}):
+            assert live_executor.is_enabled(
+                {"live_executor": {"enabled": junk}}) is False
+
+    def test_refuses_even_when_everything_else_is_open(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        aid = _approved_entry()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.execute_approved(
+            aid, adapter, _demo_cfg(enabled=False))
+        assert result["ok"] is False
+        assert result["status"] == "refused"
+        assert "disabled" in result["reason"]
+        assert adapter.calls == []  # never even connected
+
+
+class TestExecutorRefusesOnAnyGateFailure:
+    """The executor re-runs can_send_live_order fresh; each Sprint-2
+    gate individually closed keeps the adapter untouched."""
+
+    def test_live_mode_off_refuses(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        aid = _approved_entry()
+        approval_queue.set_live_mode(False)
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.execute_approved(aid, adapter, _demo_cfg())
+        assert result["status"] == "refused"
+        assert "live-mode" in result["reason"]
+        assert adapter.calls == []
+
+    def test_kill_switch_refuses(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        aid = _approved_entry()
+        assert kill_switch_admin.activate_kill(
+            symbol=None, reason="P0 extension", by="test") is True
+        kill_switches.reset_cache_for_tests()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.execute_approved(aid, adapter, _demo_cfg())
+        assert result["status"] == "refused"
+        assert "kill" in result["reason"].lower()
+        assert adapter.calls == []
+
+    def test_risk_budget_refuses(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        aid = _approved_entry()
+        risk_budget.save_config({"per_day": {"max_loss": 1.0}})
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.execute_approved(aid, adapter, _demo_cfg())
+        assert result["status"] == "refused"
+        assert "cap" in result["reason"].lower()
+        assert adapter.calls == []
+
+    def test_unapproved_entry_refuses(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        approval_queue.set_live_mode(True)
+        aid = approval_queue.submit({
+            "symbol": "EURUSD", "side": "buy", "size": 0.01,
+            "entry": 1.0850, "stop": 1.0820, "take_profit": 1.0920,
+            "rationale": "left pending", "source_agent": "A1_baseline",
+            "risk_snapshot": {"worst_case_loss": 5.0},
+        })  # deliberately NOT approved
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.execute_approved(aid, adapter, _demo_cfg())
+        assert result["status"] == "refused"
+        assert "approval" in result["reason"].lower()
+        assert adapter.calls == []
+
+
+class TestExecutorRefusesWithoutBrokerCreds:
+    def test_no_alias_configured(self) -> None:
+        _executor_reset()
+        aid = _approved_entry()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.execute_approved(
+            aid, adapter, _demo_cfg(broker_alias=""))
+        assert result["status"] == "refused"
+        assert "broker_alias" in result["reason"]
+        assert adapter.calls == []
+
+    def test_alias_without_stored_credentials(self) -> None:
+        _executor_reset()
+        aid = _approved_entry()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.execute_approved(aid, adapter, _demo_cfg())
+        assert result["status"] == "refused"
+        assert "credentials" in result["reason"]
+        assert adapter.calls == []
+
+
+class TestDemoOnlyGuard:
+    """Invariant #3: structurally unable to reach a non-demo server."""
+
+    def test_real_looking_server_refused(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        aid = _approved_entry()
+        adapter = live_executor.FakeMt5OrderAdapter(server="Exness-MT5Real8")
+        result = live_executor.execute_approved(aid, adapter, _demo_cfg())
+        assert result["status"] == "refused"
+        assert "demo guard" in result["reason"]
+        # Connected for the server check, but NO order call happened.
+        assert not any(c[0] == "send_market_order" for c in adapter.calls)
+        assert adapter.shutdown_called is True
+
+    def test_missing_demo_only_ack_refused(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        aid = _approved_entry()
+        adapter = live_executor.FakeMt5OrderAdapter()  # proper demo server
+        result = live_executor.execute_approved(
+            aid, adapter, _demo_cfg(demo_only=False))
+        assert result["status"] == "refused"
+        assert "demo_only" in result["reason"]
+        assert not any(c[0] == "send_market_order" for c in adapter.calls)
+
+    def test_demo_server_with_ack_reaches_send(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        aid = _approved_entry()
+        adapter = live_executor.FakeMt5OrderAdapter(server="Exness-MT5Trial9")
+        result = live_executor.execute_approved(aid, adapter, _demo_cfg())
+        assert result["ok"] is True
+        assert result["status"] == "filled"

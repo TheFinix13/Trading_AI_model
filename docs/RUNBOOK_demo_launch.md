@@ -463,6 +463,92 @@ poll_seconds = 45
 symbols = ["EURUSD", "GBPUSD", "USDCAD"]
 ```
 
+## 7c. Demo-order executor (F018) — wire the "V2 Platform" demo account
+
+> **What this is.** Sprint 2b's demo-order executor: approved entries
+> on `/approvals` can be sent as real market orders to a DEMO account
+> only. Default-disabled; demo-server allowlist enforced in code;
+> volume hard-capped at 0.01 lots; every approval is single-use.
+> Real-broker connections remain a hard NO (escalation protocol,
+> Section 5).
+
+**Designated account** (the only account this should ever point at):
+
+| Field    | Value                                    |
+|----------|------------------------------------------|
+| Nickname | V2 Platform                              |
+| Login    | 436983644                                |
+| Server   | `Exness-MT5Trial9` (DEMO trial server)   |
+| Type     | Pro, USD, $500                           |
+
+The password lives ONLY in the platform keyring (entered once via
+`/settings/broker` on the VM). It must never appear in this repo, in
+`platform.toml`, in `.env`, or in any log.
+
+### 7c.1 One-time setup (on the Windows VM)
+
+1. **Store the credentials** — open `/settings/broker`, add an alias
+   (suggested: `v2-demo`) with login `436983644`, server
+   `Exness-MT5Trial9`, and the password. Probe it from the same page;
+   the health pill must go green before anything else matters.
+2. **Set the risk budget** — `/risk`: per-day / per-symbol /
+   per-strategy caps. Defaults ($100 / $50 / $50 max loss) are sane
+   for a $500 demo.
+3. **Enable the executor** in `platform.toml` (all five keys matter;
+   `demo_only = true` is a required acknowledgement, not decoration):
+
+```toml
+[live_executor]
+enabled = true
+demo_only = true                 # required ack; absent/false refuses
+allowed_server_patterns = ["*Trial*", "*Demo*", "*demo*"]
+max_volume_lots = 0.01
+broker_alias = "v2-demo"
+```
+
+4. **Restart the platform server** (or the Windows service) so the
+   config is re-read.
+
+### 7c.2 The ceremony order (every session)
+
+The executor refuses unless ALL of these are true at the moment you
+click Execute — do them in order:
+
+1. Broker creds stored + probe green (`/settings/broker`).
+2. Risk budget has headroom (`/risk`).
+3. Live-mode ceremony done (`/settings/live-mode` — acknowledge +
+   type `ENABLE LIVE MODE`). One click turns it back off.
+4. Submit a test proposal through the internal endpoint (requires
+   `[internal] token` set in `platform.toml`):
+
+```powershell
+curl -X POST http://127.0.0.1:8787/api/approvals/submit `
+  -H "X-Bluelock-Internal-Token: <your internal token>" `
+  -H "Content-Type: application/json" `
+  -d '{"symbol":"EURUSD","side":"buy","size":0.01,"entry":1.09,
+       "stop":1.085,"take_profit":1.10,
+       "rationale":"executor ceremony test",
+       "source_agent":"runbook_test",
+       "risk_snapshot":{"worst_case_loss":5.0}}'
+```
+
+5. Approve it on `/approvals` within the 5-minute timeout.
+6. Click **Execute (DEMO account)** on the approved card. Expected:
+   `filled: ticket <n>` and the position visible in the MT5 terminal
+   on the VM. The fill lands in `executions.jsonl`, the risk ledger,
+   and the alerts stream (Telegram if the bridge is on).
+
+### 7c.3 Kill-switch drill (do this once after wiring)
+
+1. Trip the global switch on `/settings/kill-switches` (or
+   `echo halt > kill_switch` at the repo root).
+2. Submit + approve another test proposal, click Execute — it MUST
+   refuse with a kill-switch reason and consume nothing.
+3. Clear the switch; verify `/api/executor/status` still says ready.
+
+If any step of the drill does not behave exactly as above, stop and
+treat it as a P0 intake item — do not keep executing.
+
 ## 8. Emergency stop
 
 ```powershell

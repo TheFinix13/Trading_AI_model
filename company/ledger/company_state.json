@@ -1406,8 +1406,8 @@
       "title": "Demo-order executor -- the four gates get their caller (DEMO-only)",
       "priority": "P0",
       "sprint_id": "sprint-2b-live-readiness",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "shipped",
+      "current_owner_role": "cto",
       "reviewers": ["cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
       "auth": true,
       "credentials": true,
@@ -1420,6 +1420,27 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-2b-live-readiness/F018-demo-order-executor.md",
           "note": "Spec locked (D099). Mt5OrderAdapter seam, execute_approved re-runs all four gates before send, DEMO-ONLY guard (allowlist + demo_only ack, fail-closed), volume cap, single-use approvals, default-disabled (gate #5). P0 invariant file extended, never weakened."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-24T01:50:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/live_executor.py",
+          "note": "Adapter seam (Real lazy-imports MetaTrader5 inside methods, Fake for tests), execute_approved refusal chain, executions.jsonl audit + restart-surviving single-use consumption, executor_status. Routes + /approvals Execute button (3 states) + runbook 7c."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-24T02:00:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/F018-review.md + executor-demo-warning.md",
+          "note": "Approved with rolling constraints (D102): demo guard and single-use consumption are safety claims; weakening either needs a fresh review. Warning copy renders on /approvals when enabled, served pre-auth."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-24T02:15:00Z",
+          "role": "cto",
+          "deliverable": "tests/platform/test_live_executor_module.py + test_executor_api.py + P0 invariant extensions",
+          "note": "Shipped (D103). 71 tests vs >=45 target: gate-composition matrix, demo-guard refusals incl. case-sensitivity pin, volume cap, single-use (fill + errored send + restart persistence), refusals never consume, fill->risk_budget + trade_fill alert, endpoints incl. 401/409, page smoke. Claim audit fully green; zero-diff invariant verified."
         }
       ]
     }
@@ -2131,6 +2152,20 @@
       "role": "cto",
       "decision": "[FEATURE] F017 shipped -- Ops Watchdog: 7-check registry, transition-only publisher, /api/watchdog/status, /hq strip, cron runner. 79 tests (target was >=35).",
       "context": "agent/platform/watchdog.py (7 checks per D098, observe-never-mutate, never-raise, state persisted at <config_dir>/watchdog_state.json); watchdog_alert added to alerts.EVENT_TYPES + Telegram per-event default ON (D100 review); GET /api/watchdog/status in serve_platform (install-token-gated like every /api route, ~30s module cache); /hq watchdog strip (chip per check, 60s refresh); scripts/run_watchdog.py (exit 0/1/2 = ok/warn/alarm, --loop N with watchdog_heartbeat.txt, --json). Tests: test_watchdog_module.py (44), test_watchdog_transitions.py (17), test_watchdog_api.py (6), test_run_watchdog_script.py (12) -- all ok/warn/alarm/na paths, transition-only publishing incl. recovery + broken-bus, cache, endpoint auth, page smoke, script exit codes. Security suite 204 passed; claim audit green (F017 registered)."
+    },
+    {
+      "id": "D102",
+      "date": "2026-07-24",
+      "role": "legal",
+      "decision": "[LEGAL] F018 approved with rolling constraints -- the DEMO-ONLY guard and single-use consumption are safety claims, not configuration.",
+      "context": "Review on tape at company/legal/F018-review.md; warning copy at company/legal/executor-demo-warning.md (renders on /approvals when the executor is enabled; served pre-auth at /api/executor/warning like the F013 warnings). Constraint 1: weakening the demo guard (non-literal demo_only, looser allowlist matching, enabled defaulting true, higher volume-cap default, or caching the four-gate check) requires a fresh Legal review. Constraint 2: removing/weakening single-use consumption (including errored-send consumption) allows replay of one human approval and requires a fresh Legal review. No credential exposure found: adapters receive an alias only; executor_status exposes broker_alias_configured: bool, never contents. The runbook's login+server reference for the designated DEMO trial account is accepted as non-sensitive; the password lives only in the F006 keyring via /settings/broker."
+    },
+    {
+      "id": "D103",
+      "date": "2026-07-24",
+      "role": "cto",
+      "decision": "[FEATURE] F018 shipped -- demo-order executor: the four gates have their ONE caller, DEMO-only, default-disabled. 71 tests (target was >=45).",
+      "context": "agent/platform/live_executor.py: Mt5OrderAdapter seam (RealMt5OrderAdapter lazy-imports MetaTrader5 inside methods; FakeMt5OrderAdapter exported for tests/dogfood); execute_approved refusal order = gate #5 enabled -> approval exists -> single-use -> can_send_live_order fresh (all four gates) -> alias+creds present -> connect -> DEMO guard against the server the adapter ACTUALLY connected to -> volume hard-cap -> send. Fill -> risk_budget.record_fill + trade_fill alert; errored send also consumes; consumption persists in <config_dir>/executions.jsonl across restarts; NO auto-retry. Routes: POST /api/executor/execute/<id> (409 on refusal), GET /api/executor/status, GET /api/executor/warning (pre-auth). /approvals Execute button with 3 states (disabled / not-on-windows / ready) + confirm dialog. Runbook section 7c: V2 Platform account wiring, ceremony order, kill-switch drill. Tests: test_live_executor_module.py (47), test_executor_api.py (12), P0 invariant file EXTENDED +12 (18 total, Sprint-2 pin untouched above the extension marker). Claim audit fully green (19 modules). Zero-diff invariant vs c56e561 verified empty."
     }
   ],
   "sprint_verdicts": [

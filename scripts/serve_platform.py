@@ -41,8 +41,8 @@ from agent.platform import (  # noqa: E402
     alerts, alerts_sse, alerts_telegram, approval_queue, auth,
     broker_connection, broker_health, credentials, hq, kill_switch_admin,
     kill_switches, live_status, onboarding, paper_loop,
-    performance, players, rate_limiter, research, risk_budget,
-    squad_events, watchdog,
+    live_executor, performance, players, rate_limiter, research,
+    risk_budget, squad_events, watchdog,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
@@ -85,6 +85,8 @@ _PLAYER_API_RE = re.compile(r"^/api/players/([A-Za-z0-9_-]+)$")
 _BROKER_ALIAS_RE = re.compile(r"^/api/broker/([A-Za-z0-9_.\-]+)$")
 _APPROVAL_ACTION_RE = re.compile(
     r"^/api/approvals/([A-Za-z0-9_-]+)/(approve|reject)$")
+_EXECUTOR_EXECUTE_RE = re.compile(
+    r"^/api/executor/execute/([A-Za-z0-9_-]+)$")
 
 # Path to the F007 live-broker warning served over /api/broker/live-warning.
 _LIVE_WARNING_PATH = REPO_ROOT / "company" / "legal" / "live-broker-warning.md"
@@ -101,6 +103,7 @@ _UNAUTHENTICATED_API_PATHS: frozenset[str] = frozenset({
     "/api/onboarding/reset",    # F008 -- reset must work without a token
     "/api/live-mode/warning",   # F013 -- disclaimer loads BEFORE ceremony auth
     "/api/approvals/warning",   # F013 -- approval-queue warning readable pre-auth
+    "/api/executor/warning",    # F018 -- executor demo warning readable pre-auth
 })
 
 # F009 -- routes that require the install-token gate BUT skip the rate
@@ -504,6 +507,20 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                     ledger_md_path=ledger_md))
                 return
 
+            # F018 -- demo-order executor read surfaces.
+            if path == "/api/executor/status":
+                self._json(live_executor.executor_status())
+                return
+            if path == "/api/executor/warning":
+                warn_path = (REPO_ROOT / "company" / "legal"
+                             / "executor-demo-warning.md")
+                try:
+                    body = warn_path.read_text(encoding="utf-8")
+                except OSError:
+                    body = ""
+                self._json({"body": body})
+                return
+
             # F008 first-visit gate -- HTML routes redirect to
             # /onboarding until the user completes setup. HTTP API
             # routes and the broker wizard (referenced from step 3)
@@ -884,6 +901,20 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                     self._json({"ok": False, "error": str(exc)}, 400)
                     return
                 self._json({"ok": True, "id": approval_id})
+                return
+            # F018 -- demo-order executor write path (install-token
+            # gated + rate-limited via the standard do_POST preamble).
+            # Every layer below this route ALSO refuses on its own:
+            # gate #5 default-disabled, the four Sprint-2 gates re-run
+            # fresh, the DEMO-ONLY guard, the volume hard-cap.
+            m = _EXECUTOR_EXECUTE_RE.match(path)
+            if m is not None:
+                approval_id = m.group(1)
+                adapter = live_executor.RealMt5OrderAdapter()
+                result = live_executor.execute_approved(
+                    approval_id, adapter)
+                status_code = 200 if result["ok"] else 409
+                self._json(result, status_code)
                 return
             if path == "/api/live-mode/enable":
                 body = self._read_body_json() or {}

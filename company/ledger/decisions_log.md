@@ -1855,6 +1855,52 @@ ok/warn/alarm/na paths, transition-only publishing incl. recovery +
 broken-bus, cache, endpoint auth, page smoke, script exit codes.
 Security suite 204 passed; claim audit green (F017 registered).
 
+## D102 · 2026-07-24 · legal · [LEGAL]
+
+**F018 approved with rolling constraints — the DEMO-ONLY guard and
+single-use consumption are safety claims, not configuration.**
+
+Review on tape at `company/legal/F018-review.md`; warning copy at
+`company/legal/executor-demo-warning.md` (renders on `/approvals`
+when the executor is enabled; served pre-auth at
+`/api/executor/warning` like the F013 warnings). Constraint 1:
+weakening the demo guard (non-literal `demo_only`, looser allowlist
+matching, `enabled` defaulting true, higher volume-cap default, or
+caching the four-gate check) requires a fresh Legal review.
+Constraint 2: removing/weakening single-use consumption (including
+errored-send consumption) allows replay of one human approval and
+requires a fresh Legal review. No credential exposure found:
+adapters receive an alias only; `executor_status` exposes
+`broker_alias_configured: bool`, never contents. The runbook's
+login+server reference for the designated DEMO trial account is
+accepted as non-sensitive; the password lives only in the F006
+keyring via `/settings/broker`.
+
+## D103 · 2026-07-24 · cto · [FEATURE]
+
+**F018 shipped — demo-order executor: the four gates have their ONE
+caller, DEMO-only, default-disabled. 71 tests (target was ≥45).**
+
+`agent/platform/live_executor.py`: `Mt5OrderAdapter` seam
+(`RealMt5OrderAdapter` lazy-imports MetaTrader5 inside methods;
+`FakeMt5OrderAdapter` exported for tests/dogfood);
+`execute_approved` refusal order = gate #5 enabled → approval exists
+→ single-use → `can_send_live_order` fresh (all four gates) →
+alias+creds present → connect → DEMO guard against the server the
+adapter ACTUALLY connected to → volume hard-cap → send. Fill →
+`risk_budget.record_fill` + `trade_fill` alert; errored send also
+consumes; consumption persists in `<config_dir>/executions.jsonl`
+across restarts; NO auto-retry. Routes: `POST
+/api/executor/execute/<id>` (409 on refusal), `GET
+/api/executor/status`, `GET /api/executor/warning` (pre-auth).
+`/approvals` Execute button with 3 states (disabled /
+not-on-windows / ready) + confirm dialog. Runbook section 7c: V2
+Platform account wiring, ceremony order, kill-switch drill. Tests:
+`test_live_executor_module.py` (47), `test_executor_api.py` (12),
+P0 invariant file EXTENDED +12 (18 total, Sprint-2 pin untouched
+above the extension marker). Claim audit fully green (19 modules).
+Zero-diff invariant vs `c56e561` verified empty.
+
 ## Template for subsequent entries
 
 ```markdown
