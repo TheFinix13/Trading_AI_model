@@ -293,6 +293,9 @@ class SquadEngine:
             "per_agent_equity": dict(self.per_agent_equity),
             "workspace_publish_counts": dict(self.workspace_publish_counts),
             "workspace_read_counts": dict(self.workspace_read_counts),
+            # Additive (schema stays 1): Sae roster status so the /v2
+            # dashboard can render his disabled state honestly.
+            "sae_enabled": bool(getattr(self.roster, "sae_enabled", False)),
             # Additive (schema stays 1): per-symbol warm-up progress so
             # the /v2 dashboard can render "warming up X/200" honestly.
             "warmup": {

@@ -56,7 +56,8 @@ from agent.squad.feed import (  # noqa: E402
 )
 from agent.squad.news_config import DEFAULT_NEWS_CONFIG  # noqa: E402
 from agent.squad.news_refresher import NewsFeedRefresher  # noqa: E402
-from agent.squad.roster import build_roster  # noqa: E402
+from agent.squad.roster import SquadRoster, build_roster  # noqa: E402
+from agent.squad.sae_config import SaeConfig  # noqa: E402
 from agent.live.signal_loop import next_h4_close_utc  # noqa: E402
 
 load_dotenv(REPO_ROOT / ".env", override=False)
@@ -70,6 +71,26 @@ def _configure_logging(verbose: bool) -> None:
         level=level,
         format="%(asctime)s %(levelname)s %(name)s -- %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+
+def build_live_roster(
+    symbols,
+    *,
+    parity_mode: bool = False,
+    enable_sae: bool = False,
+) -> SquadRoster:
+    """Roster for the live runtime.
+
+    Sae stays DISABLED unless ``enable_sae`` (the ``--enable-sae``
+    flag). The Phase AE research pre-registration gate is the default;
+    the flag only makes enabling operational without code edits.
+    """
+    return build_roster(
+        symbols=tuple(symbols),
+        barou_v12=False,
+        barou_v13=not parity_mode,
+        sae_config=SaeConfig(sae_enabled=True) if enable_sae else None,
     )
 
 
@@ -156,10 +177,10 @@ def run_loop(args, cfg: dict) -> str:
     if notifier is not None:
         notify_fn = notifier.notify_row
 
-    roster = build_roster(
-        symbols=symbols,
-        barou_v12=False,
-        barou_v13=not args.parity_mode,
+    roster = build_live_roster(
+        symbols,
+        parity_mode=args.parity_mode,
+        enable_sae=bool(getattr(args, "enable_sae", False)),
     )
     source_label = (
         f"live_market:{args.feed}" if args.feed != "cache"
@@ -178,9 +199,20 @@ def run_loop(args, cfg: dict) -> str:
 
     if feed_name == "mt5":
         broker = asyncio.run(_connect_mt5())
-        feed = Mt5Feed(broker, symbols=symbols)
+        feed = Mt5Feed(
+            broker, symbols=symbols,
+            # Read-only M15 window for Sae's event mechanics (fade /
+            # ride need intra-H4 bars around the release). Cheap and
+            # harmless when Sae is disabled.
+            m15_symbols=tuple(
+                s for s in getattr(roster.sae, "symbols", ()) if s in symbols
+            ),
+        )
         asyncio.run(feed.refresh())
         warmup = feed.warmup_bars()
+        # Late-bind Sae's M15 provider to the live feed's cache. On
+        # non-MT5 feeds the provider stays unset and Sae fails open.
+        roster.sae.set_bars_provider(feed.m15_bars)
     elif feed_name == "cache":
         feed = CacheFeed(
             symbols=symbols,
@@ -219,6 +251,7 @@ def run_loop(args, cfg: dict) -> str:
     if not args.no_news_refresh:
         news_refresher = NewsFeedRefresher(
             karasu=roster.karasu,
+            sae=roster.sae,
             cache_path=news_cfg.cache_path,
             feed_url=news_cfg.feed_url,
             ttl_seconds=news_cfg.cache_ttl_seconds,
@@ -226,7 +259,7 @@ def run_loop(args, cfg: dict) -> str:
         )
         if args.refresh_news:
             n = news_refresher.kickoff()
-            log.info("Karasu calendar kickoff: %d events cached", n)
+            log.info("Karasu+Sae calendar kickoff: %d events cached", n)
         else:
             # Read whatever is already on disk without touching the
             # network; refresher will attempt a fetch after one
@@ -236,7 +269,26 @@ def run_loop(args, cfg: dict) -> str:
                 log.info("Karasu cache-only load: %d events", n)
             except Exception as exc:   # noqa: BLE001
                 log.warning("Karasu cache load failed: %s", exc)
+            try:
+                n_sae = roster.sae.load_calendar(
+                    cache_path=news_cfg.cache_path,
+                )
+                log.info("Sae cache-only load: %d events", n_sae)
+            except Exception as exc:   # noqa: BLE001
+                log.warning("Sae cache load failed: %s", exc)
         news_refresher.start()
+    else:
+        # No refresher at all: still hydrate both news consumers once
+        # from the on-disk cache (matching the --no-news-refresh help
+        # text; both stay fail-open on a missing/empty cache).
+        try:
+            roster.karasu.load_calendar()
+        except Exception as exc:   # noqa: BLE001
+            log.warning("Karasu cache load failed: %s", exc)
+        try:
+            roster.sae.load_calendar(cache_path=news_cfg.cache_path)
+        except Exception as exc:   # noqa: BLE001
+            log.warning("Sae cache load failed: %s", exc)
 
     log.info(
         "squad live starting (%s) feed=%s arm=%s symbols=%s out=%s",
@@ -352,9 +404,9 @@ def run_loop(args, cfg: dict) -> str:
     return outcome
 
 
-def main() -> None:
-    cfg = load_config(REPO_ROOT)
-    sl = cfg.get("squad_live") or {}
+def build_arg_parser(sl: dict | None = None) -> argparse.ArgumentParser:
+    """CLI surface for the squad live runner (extracted for tests)."""
+    sl = sl or {}
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument(
         "--feed", choices=("mt5", "cache", "fake"),
@@ -392,6 +444,15 @@ def main() -> None:
         ),
     )
     ap.add_argument(
+        "--enable-sae", action="store_true",
+        help=(
+            "add Sae (event-specialist striker) to the proposing roster. "
+            "DEFAULT OFF -- the Phase AE research pre-registration gate "
+            "stays; this flag only makes enabling operational without "
+            "code edits"
+        ),
+    )
+    ap.add_argument(
         "--burn-in-bars", type=int,
         default=int(sl.get("burn_in_bars") or 2),
         help=(
@@ -419,7 +480,13 @@ def main() -> None:
         help="background news-refresh interval (seconds); default 3600 (1 h)",
     )
     ap.add_argument("-v", "--verbose", action="store_true")
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    cfg = load_config(REPO_ROOT)
+    sl = cfg.get("squad_live") or {}
+    args = build_arg_parser(sl).parse_args()
     if args.symbols is None and sl.get("symbols"):
         args.symbols = list(sl["symbols"])
 

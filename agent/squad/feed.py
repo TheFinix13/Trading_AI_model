@@ -185,13 +185,21 @@ class Mt5Feed(MarketFeed):
         symbols: Sequence[str] = DEFAULT_SYMBOLS,
         history_bars: int = 500,
         lookback_for_prepare: int = 2500,
+        m15_symbols: Sequence[str] = (),
+        m15_lookback: int = 64,
     ) -> None:
         self.broker = broker
         self.symbols = tuple(symbols)
         self.history_bars = int(history_bars)
         self.lookback_for_prepare = int(lookback_for_prepare)
+        # Symbols for which refresh() also pulls a small M15 window
+        # (read-only) so Sae's event mechanics have intra-H4 bars.
+        # Empty by default -- the extra pull is opt-in per symbol.
+        self.m15_symbols = tuple(m15_symbols)
+        self.m15_lookback = int(m15_lookback)
         self._last_closed: dict[str, datetime] = {}
         self._cache: dict[str, list[Bar]] = {s: [] for s in self.symbols}
+        self._m15_cache: dict[str, list[Bar]] = {s: [] for s in self.m15_symbols}
         # Forming (in-progress) bar per symbol — used as the fill bar
         # (next open) when a newly closed H4 is processed live.
         self._forming: dict[str, Bar | None] = {s: None for s in self.symbols}
@@ -221,6 +229,30 @@ class Mt5Feed(MarketFeed):
             else:
                 self._cache[sym] = list(bars)
                 self._forming[sym] = None
+        for sym in self.m15_symbols:
+            m15 = await self.broker.get_latest_bars(
+                sym, "M15", count=self.m15_lookback,
+            )
+            if m15:
+                self._m15_cache[sym] = list(m15)
+
+    def m15_bars(self, symbol: str, start_utc: datetime, end_utc: datetime) -> list[Bar]:
+        """Sae ``BarsProvider`` contract: M15 bars whose open time falls
+        in ``[start_utc, end_utc]``, ascending. Read-only view over the
+        cache populated by ``refresh()`` -- never a broker round-trip,
+        so it is safe to call from the synchronous ``intend()`` path.
+        Returns [] for symbols outside ``m15_symbols`` (Sae fail-open)."""
+        def _utc(dt: datetime) -> datetime:
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+        start_utc = _utc(start_utc)
+        end_utc = _utc(end_utc)
+        out = [
+            b for b in self._m15_cache.get(symbol, ())
+            if start_utc <= _utc(b.time) <= end_utc
+        ]
+        out.sort(key=lambda b: b.time)
+        return out
 
     def forming_bar(self, symbol: str) -> Bar | None:
         """In-progress H4 bar (fill proxy for the just-closed bar)."""
@@ -264,7 +296,8 @@ def make_feed(
             raise ValueError("Mt5Feed requires a connected broker instance")
         return Mt5Feed(broker, symbols=symbols, **{
             k: v for k, v in kwargs.items()
-            if k in ("history_bars", "lookback_for_prepare")
+            if k in ("history_bars", "lookback_for_prepare",
+                     "m15_symbols", "m15_lookback")
         })
     raise ValueError(f"unknown feed: {name!r} (expected cache|mt5|fake)")
 

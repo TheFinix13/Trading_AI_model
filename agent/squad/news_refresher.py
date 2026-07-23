@@ -58,6 +58,11 @@ class NewsFeedRefresher:
                           successful refresh. Optional -- when None,
                           the refresher only writes to the on-disk
                           cache and callers can pull it themselves.
+        sae:              Sae instance to re-hydrate alongside Karasu.
+                          Optional (backward compat with karasu-only
+                          call sites). Hydration is cheap and harmless
+                          when Sae is disabled -- he simply holds the
+                          event list without ever proposing.
         cache_path:       Where the JSON cache lives.
         feed_url:         Upstream feed.
         ttl_seconds:      Passed to ``fetch_calendar``.
@@ -71,6 +76,7 @@ class NewsFeedRefresher:
         self,
         *,
         karasu: Optional[A8KarasuV1] = None,
+        sae=None,
         cache_path: Path | str = "data/news_calendar.json",
         feed_url: str = DEFAULT_FEED_URL,
         ttl_seconds: int = DEFAULT_TTL_SECONDS,
@@ -78,6 +84,7 @@ class NewsFeedRefresher:
         fetcher=None,
     ) -> None:
         self.karasu = karasu
+        self.sae = sae
         self.cache_path = Path(cache_path)
         self.feed_url = feed_url
         self.ttl_seconds = int(ttl_seconds)
@@ -106,6 +113,7 @@ class NewsFeedRefresher:
                 cache_path=self.cache_path,
                 cache_fetched_at=self._last_refresh,
             )
+        self._hydrate_sae()
         return n
 
     def start(self) -> None:
@@ -164,6 +172,17 @@ class NewsFeedRefresher:
         )
         return self._last_event_count
 
+    def _hydrate_sae(self) -> None:
+        """Re-hydrate Sae from the on-disk cache. Fail-open like Karasu."""
+        if self.sae is None:
+            return
+        try:
+            self.sae.load_calendar(cache_path=self.cache_path)
+        except Exception as exc:   # noqa: BLE001
+            log.warning(
+                "NewsFeedRefresher: Sae hydration failed (%s)", exc,
+            )
+
     def _run(self) -> None:
         while not self._stop.is_set():
             if self._stop.wait(timeout=self.interval_seconds):
@@ -180,10 +199,13 @@ class NewsFeedRefresher:
                         "NewsFeedRefresher: Karasu hydration failed (%s)",
                         exc,
                     )
+                    self._hydrate_sae()
                     continue
+            self._hydrate_sae()
             log.debug(
-                "NewsFeedRefresher tick: %d events, karasu=%s",
+                "NewsFeedRefresher tick: %d events, karasu=%s sae=%s",
                 n, "yes" if self.karasu else "no",
+                "yes" if self.sae else "no",
             )
 
 
