@@ -22,6 +22,10 @@ history:
     at: 2026-07-23T22:50:00Z
     by: cpo
     note: "Triaged in the same cycle-1 drain: FEATURE-REQUEST / P1 / route product. Fix targets next-gen's /v2 page territory -- Sprint 3 / next-gen session candidate. Not implemented in this session by design."
+  - stage: amended
+    at: 2026-07-23T23:20:00Z
+    by: user_advocate
+    note: "Root cause REVISED after read-only next-gen investigation (D096). The silence was NOT merely correct quiet-market behavior: two coded-in defects also guaranteed it (200-live-bar warm-up gate silencing strikers ~33 days; Sae hard-disabled and unhydrated on the live path). Fix session in flight on next-gen 2026-07-24 -- this item's /v2 legibility feature is being implemented there, ahead of Sprint 3."
 ---
 
 # I002 — Dashboard silence is illegible
@@ -37,17 +41,52 @@ The user watched the `/v2` dashboard across the week of Jul 20–24 and
 interpreted the absence of agent activity as the agents being broken
 or idle.
 
-Root cause context: **the silence was correct behavior.** No NFP
-event occurred Jul 20–24 — NFP is first-Friday-of-month, so the next
-NFP is Aug 7; the next high-impact USD window for Sae is FOMC
-Jul 28–29. The zone strikers were waiting on H4 setups that did not
-materialise into proposals in that window. The squad did exactly what
-its doctrine says it should: nothing.
+Root cause context (as filed): **the silence was correct behavior.**
+No NFP event occurred Jul 20–24 — NFP is first-Friday-of-month, so
+the next NFP is Aug 7; the next high-impact USD window for Sae is
+FOMC Jul 28–29. The zone strikers were waiting on H4 setups that did
+not materialise into proposals in that window.
 
 The product failure is that healthy silence and broken silence render
 identically — an empty feed. The user had no way to distinguish "no
 event in window, agents correctly waiting" from "agents crashed /
 disconnected / misconfigured".
+
+## Root-cause amendment (2026-07-23, post-investigation — D096)
+
+A read-only investigation of the `next-gen` runtime code revised the
+root cause. The silence was **over-determined**: even in a week with
+qualifying events and valid H4 setups, the squad could not have acted.
+
+1. **Warm-up gate bug (P1).** `agent/squad/engine.py` withholds all
+   proposals until `bars_seen[symbol] > WARMUP_BARS (=200)`, and the
+   counter only counts bars arriving after process start — the ~2,500
+   historical bars that already hydrate zones/swings/ATR at boot do
+   not count. A runtime started 2026-07-20 cannot propose until
+   ~late August. Sim-era gate semantics ("bars of context") silently
+   became live semantics ("days of uptime").
+2. **Sae structurally inert.** `run_squad_live.py` builds the roster
+   without a `SaeConfig` (default `sae_enabled=False`, so Sae never
+   joins `proposers`); nothing on the live path loads his calendar or
+   sets his bars provider; and the H4 evaluation cadence can only
+   catch events landing 15–60 min before an H4 bar-open — NFP
+   (12:30 UTC) and FOMC (18:00 UTC) never do. Three independent
+   blockers.
+3. **Failure invisibility (the original framing).** Calendar-fetch
+   failures are console-only; Sae/Karasu have no pitch presence; no
+   warm-up/burn-in/status surface exists. This item's legibility
+   thesis stands — strengthened: the "correct behavior" framing at
+   filing time was itself a casualty of the illegibility, since even
+   the operators could not see the warm-up gate from the dashboard.
+
+**Fix in flight** (next-gen fix session, 2026-07-24): warm-up seeding
+from history + explicit 2-bar burn-in; Sae hydration behind a
+default-OFF `--enable-sae` flag (Phase AE pre-reg gate retained);
+calendar failure visibility (event rows + rate-limited Telegram);
+and this item's `/v2` fixes (upcoming-events panel, why-quiet line,
+Sae/Karasu roster presence) — shipping ahead of Sprint 3. The
+H4-cadence gap is parked to Phase AE design (Sae likely needs an M15
+sub-loop).
 
 ## Why it matters
 

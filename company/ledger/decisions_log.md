@@ -1719,6 +1719,41 @@ cross-product canon, and the forcing function is a second product
 wanting the company layer. Revisit at product #2 kickoff or Sprint 6,
 whichever first.
 
+## D096 · 2026-07-23 · user_advocate · [INTAKE]
+
+**I002 root cause amended: the week's silence was over-determined by
+two coded-in defects, not just a quiet market.**
+
+A read-only investigation of the `next-gen` runtime (launched from the
+same CEO signal that filed I002) found that even with qualifying
+events and valid setups the squad could not have acted:
+
+1. **Warm-up gate bug (P1):** `agent/squad/engine.py` withholds
+   proposals until `bars_seen > WARMUP_BARS (=200)`, counting only
+   post-boot bars — the ~2,500 historical bars that hydrate
+   zones/swings/ATR at `prepare()` don't count. A runtime started
+   2026-07-20 is structurally mute until ~late August. Sim-era gate
+   semantics ("bars of context") became live semantics ("days of
+   uptime") in the port.
+2. **Sae structurally inert:** roster built without a `SaeConfig`
+   (default `sae_enabled=False` → never in `proposers`); calendar
+   never hydrated for Sae; no bars provider; H4 cadence can only
+   catch events landing 15–60 min before a bar-open — NFP 12:30 UTC
+   and FOMC 18:00 UTC never qualify. Three independent blockers.
+3. The original legibility thesis STANDS, strengthened: the
+   "silence was correct behavior" framing at filing time was itself
+   a casualty of the illegibility — operators couldn't see the
+   warm-up gate from the dashboard either.
+
+Fix session dispatched on `next-gen` (isolated worktree, 2026-07-24):
+warm-up seeding from history + explicit 2-bar burn-in (parity-safe,
+live-feed-only), Sae hydration behind default-OFF `--enable-sae`
+(Phase AE pre-reg gate retained as a feature), calendar failure
+visibility, and I002's `/v2` fixes (upcoming-events panel, why-quiet
+line, Sae/Karasu roster presence) — ahead of Sprint 3. H4-cadence gap
+parked to Phase AE design. I002 front-matter carries the amendment;
+status stays `routed` until the next-gen commits land.
+
 ## Template for subsequent entries
 
 ```markdown
