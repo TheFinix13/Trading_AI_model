@@ -55,7 +55,8 @@
       "verdict_label": "Fails pre-registered AC.2 primary criterion",
       "brand_summary": "Phase AC asked whether widening one striker's tradeable pair set improved the whole squad's decision quality. The pre-registered criterion was a +0.02 lift in squad mean TQS; the observed effect was -0.006 with a 95% confidence interval spanning zero (p = 0.861). The recommendation is to keep the current baseline. No trading change follows.",
       "headline_stat": "A2 - A1 = -0.006 TQS; 95% CI [-0.017, +0.005]; p(delta <= 0) = 0.861.",
-      "report_commit_sha_hint": null
+      "report_commit_sha_hint": "2c8e363",
+      "condensed_finding_path": "company/rd/findings/2026-07-phase-ac-pitch-assignment.md"
     }
   ]
 }

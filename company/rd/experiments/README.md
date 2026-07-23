@@ -24,7 +24,7 @@ intake item and re-sync.
 
 | Campaign | PROTOCOL | Status | FDR budget | Verdict | Findings link |
 |---|---|---|---|---|---|
-| Phase AC pitch assignment | `programs/M001_multi_agent_ensemble/experiments/phase_ac_pitch_assignment/PROTOCOL.md` (`083c0e9`) + AMENDMENT (`0ac645a`) | **closed — negative** | q=0.10, 28-test family, 3 rejects (STRICT: 1 authorising) | AC.2 A2 FAIL (delta −0.006, p=0.861); stay with A1 baseline | `company/rd/findings/phase-ac-pitch-assignment.md` (staged) |
+| Phase AC pitch assignment | `programs/M001_multi_agent_ensemble/experiments/phase_ac_pitch_assignment/PROTOCOL.md` (`083c0e9`) + AMENDMENT (`0ac645a`) | **closed — negative, finding published** | q=0.10, 28-test family, 3 rejects (STRICT: 1 authorising) | AC.2 A2 FAIL (delta −0.006, p=0.861); stay with A1 baseline | `company/rd/findings/2026-07-phase-ac-pitch-assignment.md` (published 2026-07-23, D089) |
 | Nagi extended-panel diagnostic | (not yet pre-registered) | **candidate** | tbd | tbd | — |
 | Kunigami un-retirement wiring fix | (not yet pre-registered) | **candidate** | tbd | tbd | — |
 | `SquadEngineMulti` build (unblocks B1-hard / B1-soft) | (engineering pre-req, not statistical) | **candidate** | n/a | n/a | — |
