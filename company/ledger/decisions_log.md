@@ -1515,6 +1515,89 @@ Codified as `escalation.md` §6 (suppression of a research negative)
 and `review-chain.md` §7b (`research` conditional stage gated by
 `research_relevant: true`).
 
+## D087 · 2026-07-23 · cpo · [INTAKE]
+
+**I001 drained and resolved — solo-executor compression codified;
+"executor-days" adopted as the sprint planning unit.**
+
+First real CPO intake drain (R&D loop cycle 1). I001's self-triage
+(PROCESS / P2 / route: process) is confirmed. The item's own
+pre-declared discriminator resolved it: Sprint 2 carried 6 P0
+features and still closed in 1 wall-clock day (D080), so the
+closure fork lands on codification, not split-persona testing.
+Resolution: one Executor owning every persona lane compresses a
+13-persona-day sprint into ~1 wall-clock day; future sprint
+day_targets are re-baselined to 1–2 executor-days, or staffed as
+genuinely parallel sub-executors where file-scopes allow (per
+concurrent-session-safety claims), in which case persona-day targets
+apply per lane. Persona-theater caveat stays on-record; revisit as
+P1 if the intake queue exceeds 20 items/week for two consecutive
+weeks or a sprint misses its re-baselined target. I001 status →
+resolved, `resolved_at` 2026-07-23T22:45:00Z.
+
+## D088 · 2026-07-23 · user_advocate · [INTAKE]
+
+**I002 filed and routed — "Dashboard silence is illegible" (dogfood,
+CEO, P1, route: product).**
+
+Real user signal from the CEO, 2026-07-23: "I've been watching the
+dashboard all week but haven't seen any of the agents make a move...
+I haven't seen any actions from Sae." The silence was CORRECT — no
+NFP occurred Jul 20–24 (next is Aug 7; FOMC Jul 28–29 is Sae's next
+window) and no H4 zone setups fired — but the product gave the user
+no way to distinguish healthy waiting from a broken feed. CPO triage
+in the same cycle-1 drain: FEATURE-REQUEST / P1 / route product.
+Proposed fix (not implemented this session — `/v2` is next-gen page
+territory): (a) an "upcoming events Sae is watching" countdown panel
+from the economic calendar, (b) a "why quiet" status line ("No
+high-impact USD events in window; zone strikers waiting for H4
+setups — last evaluated N min ago"). Sprint 3 / next-gen session
+candidate. Item: `company/rd/intake/I002-dashboard-silence-illegible.md`.
+
+## D089 · 2026-07-23 · research_lead · [RESEARCH]
+
+**Phase AC condensed finding published — the first real entry in
+`company/rd/findings/`.**
+
+`company/rd/findings/2026-07-phase-ac-pitch-assignment.md` condenses
+the Phase AC pitch-assignment campaign (honest negative): AC.2 A2
+FAILS the pre-registered squad-lift criterion — squad TQS delta
+A2 − A1 = −0.006 [boot 95% CI −0.017, +0.005], p(delta ≤ 0) = 0.861 —
+so no pitch-assignment widening ships and the squad stays on the A1
+baseline. The one exception that passed: AC.1.rin-a (Rin on
+EURUSD + USDCHF; mean TQS 0.357, CI lower 0.295, BH reject at
+q = 0.10) — an individual-agent pass that did not survive squad
+aggregation (Rin 0.370 → 0.341 with +188 trades). FDR accounting:
+3 rejects out of 28 pre-registered tests, all in AC.1; 3 NOT_TESTABLE
+sentinels excluded from the BH family. Every number traced to the
+research-repo commits: pre-registration `083c0e9`, amendment
+`0ac645a`, stages `b31a36f` / `fd5d55d` / `2c8e363` (seed 20260720).
+Publication manifest row `phase_ac_pitch_assignment` (already
+allow-listed with `publish: true`, CPO signoff 2026-07-21) updated
+with `report_commit_sha_hint: 2c8e363` + the condensed-finding path.
+Legal check: no NEW public claim — the finding's numbers are the
+manifest's existing `headline_stat` verbatim, already covered by the
+F003 publication constraint in `company/legal/claim_register.md`;
+no register change required. Experiments index + ledger `experiments`
+entry flipped to published (2026-07-23). KPI: published_findings 0 → 1.
+
+## D090 · 2026-07-23 · research_lead · [PROCESS]
+
+**R&D loop cycle 1 validated — PASS. First weekly rollup published.**
+
+`company/rd/intake/2026-W30-rollup.md` (opened: I001, I002; closed:
+I001 resolved D087; routed: I002 → product D088; queue depth 1; aged
+> 30 d: 0; findings published: 1). `company/rd/loop-validation.md`
+records the cycle-1 verdict: every loop stage (intake → triage →
+routing → publish → closure → rollup) fired at least once with a real
+artifact on tape; time-to-triage inside SLA; 2/2 items carry route
+decisions; ledger MD↔JSON 1:1. Honest caveats on-record: small-N
+(2 items / 1 finding), same-executor triage (time-to-triage ≈ 0 is a
+topology artifact per D087), and the finding was pre-staged (the
+condensation path was demonstrated, not the discovery path).
+Re-validation conditions for cycle 2+: external submitter (notify
+handshake), a P0 arrival, and a non-trivial queue depth.
+
 ## Template for subsequent entries
 
 ```markdown

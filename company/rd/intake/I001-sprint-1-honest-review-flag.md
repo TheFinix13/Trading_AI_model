@@ -5,14 +5,15 @@ submitter: self-observation
 submitted_at: 2026-07-22T00:45:00Z
 classification: PROCESS
 priority: P2
-status: triaged
+status: resolved
 route: process
 linked_features: []
 linked_decisions:
   - D062
+  - D087
 linked_experiments: []
 contact: null
-resolved_at: null
+resolved_at: 2026-07-23T22:45:00Z
 history:
   - stage: filed
     at: 2026-07-22T00:45:00Z
@@ -22,6 +23,10 @@ history:
     at: 2026-07-22T00:45:00Z
     by: user_advocate
     note: "Self-triaged at filing because CPO has not yet run its first Monday drain — parent will confirm at first drain."
+  - stage: resolved
+    at: 2026-07-23T22:45:00Z
+    by: cpo
+    note: "First real CPO drain (R&D loop cycle 1). Self-triage confirmed (PROCESS / P2 / process). Resolution adopted per D087: codify the solo-executor compression and adopt executor-days as the sprint planning unit. Closure path (b) from the item's own closure criteria."
 ---
 
 # I001 — Sprint 1 honest-review flag: solo-executor sprint compression is not portable
@@ -119,16 +124,48 @@ own duration + intake-queue-depth observations.
 - **Linked experiment pre-registration (if any):** none — the
   measurement is Sprint 2's own duration, not a pre-registered study.
 
+## Resolution (CPO, 2026-07-23 — D087)
+
+The item's own decision fork asked: split executors for real, or
+codify the compression? The evidence since filing points at (2),
+codify:
+
+- **Sprint 2 (Real-Trading)** carried 6 P0 features (vs Sprint 0/1's
+  5 and 3) and still closed COMPLETE in 1 wall-clock day
+  (2026-07-21 → 2026-07-22, D080). The item's own pre-declared
+  test — "if Sprint 2 still runs 1 day, evidence points at (2)" —
+  resolved in favour of codification.
+- **The Company Evolution session** (2026-07-22, D081–D086) ran the
+  same solo-executor topology across CEO/CPO/CTO/Legal lanes and
+  landed 2 protocols + 2 role activations + charter elevation in one
+  session, again without a missed deliverable.
+
+**Adopted resolution — "executor-days" as the sprint planning unit.**
+The honest finding is that one Executor owning every persona lane
+compresses a 13-persona-day sprint into ~1 wall-clock day. Future
+sprint `day_target`s are re-baselined in executor-days: plan 1–2
+executor-days per sprint of Sprint-0/1/2 shape, OR staff genuinely
+parallel sub-executors where file-scopes allow (per
+concurrent-session-safety `.sessions/` claims), in which case
+persona-day targets apply to each lane independently.
+
+The persona-theater caveat stays on-record: handoff JSONs authored
+by one process carry a thinner independence-of-review invariant than
+the ledger implies. The mitigation is the existing artefact
+discipline (every stage transition on tape, every handoff a JSON,
+every claim register-audited) — not a pretence of parallelism.
+
+Escalation trigger retained from the original filing: if the intake
+queue backs up past 20 items/week for two consecutive weeks, or a
+sprint misses its (re-baselined) executor-day target, this decision
+is revisited as a P1.
+
 ## Closure notes
 
-Open. Closes when either (a) Sprint 3 executes the split-persona
-test and reports on the outcome, or (b) the CEO explicitly codifies
-the solo-executor model as the intended shape with a documented
-threshold. Whichever lands first is the closure event.
-
-- **Outcome:** _pending_
-- **Measurement:** _pending — Sprint 2 duration + Sprint 3 topology
-  choice_
+- **Outcome:** Resolved via closure path (b) — solo-executor
+  compression codified; "executor-days" adopted as the sprint
+  planning unit with re-baselined day_targets (D087).
+- **Measurement:** Sprint 2 duration (1 wall-clock day for 6 P0
+  features, D080) — the item's own pre-declared discriminator.
 - **User notified:** n/a (self-observation, no external submitter)
-- **Related decisions:** D062, and a future `D###` when Sprint 3
-  reports.
+- **Related decisions:** D062, D080, D087.

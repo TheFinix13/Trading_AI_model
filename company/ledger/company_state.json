@@ -1950,6 +1950,34 @@
       "role": "cto",
       "decision": "[PROTOCOL] Literature-standards protocol adopted.",
       "context": "company/protocols/literature-standards.md. Codifies what already runs in finance-research-experiments: pre-registration before compute (\u00a71 -- PROTOCOL commit predates results commit); FDR budget per campaign (\u00a72 -- Benjamini-Hochberg at pre-declared q, usually q=0.10; no p-hacking, no post-hoc metric selection, no double-dipping data, no post-freeze retuning); reproducibility (\u00a73 -- fixed seeds, versioned artefacts, commit SHAs on every result, venv'd runs); honest negatives (\u00a74 -- Phase AC canonical; every negative to company/rd/findings/); product-side experiments (\u00a75 -- F013 30d approval-rate as worked example); citation discipline (\u00a76 -- real authors + year + venue + DOI/URL); peer review (\u00a77 -- external triggers on whitepapers/investment-grade claims/named-alternative-method comparisons); non-negotiables that pull a claim (\u00a79). CTO owns reproducibility audit; Research Lead owns pre-reg + FDR enforcement; Legal owns citation + non-negotiables enforcement. Codified as escalation.md \u00a76 (suppression of a research negative) and review-chain.md \u00a77b (research conditional stage gated by research_relevant:true)."
+    },
+    {
+      "id": "D087",
+      "date": "2026-07-23",
+      "role": "cpo",
+      "decision": "[INTAKE] I001 drained and resolved -- solo-executor compression codified; executor-days adopted as the sprint planning unit.",
+      "context": "First real CPO intake drain (R&D loop cycle 1). I001 self-triage (PROCESS/P2/process) confirmed. The item's own pre-declared discriminator resolved it: Sprint 2 carried 6 P0 features and still closed in 1 wall-clock day (D080), so the closure fork lands on codification. Future sprint day_targets re-baselined to 1-2 executor-days, or staffed as genuinely parallel sub-executors where file-scopes allow (concurrent-session-safety claims), in which case persona-day targets apply per lane. Persona-theater caveat on-record; revisit as P1 if intake exceeds 20 items/week for two consecutive weeks or a sprint misses its re-baselined target. I001 status -> resolved, resolved_at 2026-07-23T22:45:00Z."
+    },
+    {
+      "id": "D088",
+      "date": "2026-07-23",
+      "role": "user_advocate",
+      "decision": "[INTAKE] I002 filed and routed -- Dashboard silence is illegible (dogfood, CEO, P1, route: product).",
+      "context": "Real user signal from the CEO, 2026-07-23: 'I've been watching the dashboard all week but haven't seen any of the agents make a move... I haven't seen any actions from Sae.' The silence was CORRECT -- no NFP Jul 20-24 (next Aug 7; FOMC Jul 28-29 is Sae's next window), no H4 zone setups -- but the product gave no way to distinguish healthy waiting from a broken feed. CPO triage same drain: FEATURE-REQUEST / P1 / route product. Proposed fix (not implemented this session, /v2 is next-gen territory): (a) upcoming-events-Sae-is-watching countdown panel from the economic calendar, (b) why-quiet status line. Sprint 3 / next-gen session candidate. Item: company/rd/intake/I002-dashboard-silence-illegible.md."
+    },
+    {
+      "id": "D089",
+      "date": "2026-07-23",
+      "role": "research_lead",
+      "decision": "[RESEARCH] Phase AC condensed finding published -- first real entry in company/rd/findings/.",
+      "context": "company/rd/findings/2026-07-phase-ac-pitch-assignment.md condenses the Phase AC honest negative: AC.2 A2 FAILS the pre-registered squad-lift criterion (delta A2-A1 = -0.006 [boot 95% CI -0.017, +0.005], p(delta<=0)=0.861); squad stays on A1 baseline. One exception passed: AC.1.rin-a (Rin EURUSD+USDCHF, mean TQS 0.357, CI lower 0.295, BH reject q=0.10) -- individual pass that did not survive squad aggregation (Rin 0.370 -> 0.341 with +188 trades). FDR: 3 rejects / 28 pre-registered tests, all AC.1; 3 NOT_TESTABLE sentinels excluded from BH family. Commits: pre-reg 083c0e9, amendment 0ac645a, stages b31a36f/fd5d55d/2c8e363, seed 20260720. Manifest row phase_ac_pitch_assignment updated with report_commit_sha_hint 2c8e363 + condensed-finding path. Legal: no NEW public claim (numbers are the manifest's existing headline_stat verbatim; F003 publication constraint covers). KPI published_findings 0 -> 1."
+    },
+    {
+      "id": "D090",
+      "date": "2026-07-23",
+      "role": "research_lead",
+      "decision": "[PROCESS] R&D loop cycle 1 validated -- PASS. First weekly rollup published.",
+      "context": "company/rd/intake/2026-W30-rollup.md (opened: I001, I002; closed: I001 resolved D087; routed: I002 -> product D088; queue depth 1; aged >30d: 0; findings published: 1). company/rd/loop-validation.md records the cycle-1 verdict: every loop stage (intake -> triage -> routing -> publish -> closure -> rollup) fired at least once with a real artifact on tape; time-to-triage inside SLA; 2/2 items carry route decisions; ledger MD<->JSON 1:1. Honest caveats: small-N (2 items / 1 finding), same-executor triage (time-to-triage ~0 is a topology artifact per D087), finding was pre-staged (condensation path demonstrated, not discovery path). Re-validate at cycle 2+ with an external submitter, a P0, and non-trivial queue depth."
     }
   ],
   "sprint_verdicts": [
@@ -1998,10 +2026,10 @@
     "active_roles": 14,
     "total_roles": 19,
     "intake_items_open": 1,
-    "intake_items_closed_last_7d": 0,
+    "intake_items_closed_last_7d": 1,
     "experiments_in_flight": 0,
-    "published_findings_total": 0,
-    "published_findings_last_30d": 0
+    "published_findings_total": 1,
+    "published_findings_last_30d": 1
   },
   "intake": [
     {
@@ -2011,15 +2039,32 @@
       "submitted_at": "2026-07-22T00:45:00Z",
       "classification": "PROCESS",
       "priority": "P2",
-      "status": "triaged",
-      "route": "out-of-scope",
+      "status": "resolved",
+      "route": "process",
       "linked_features": [],
-      "linked_decisions": ["D062"],
+      "linked_decisions": ["D062", "D087"],
       "linked_experiments": [],
       "contact": null,
-      "resolved_at": null,
-      "summary": "Sprint 1's honest-review flag: 1 wall-clock day is only possible because the Executor persona owns every lane; a real 3-persona split would take longer.",
+      "resolved_at": "2026-07-23T22:45:00Z",
+      "summary": "Sprint 1's honest-review flag: 1 wall-clock day is only possible because the Executor persona owns every lane; a real 3-persona split would take longer. Resolved D087: compression codified; executor-days adopted as the sprint planning unit.",
       "file": "company/rd/intake/I001-sprint-1-honest-review-flag.md"
+    },
+    {
+      "id": "I002",
+      "source": "dogfood",
+      "submitter": "ceo",
+      "submitted_at": "2026-07-23T22:50:00Z",
+      "classification": "FEATURE-REQUEST",
+      "priority": "P1",
+      "status": "routed",
+      "route": "product",
+      "linked_features": [],
+      "linked_decisions": ["D088"],
+      "linked_experiments": [],
+      "contact": "internal (CEO)",
+      "resolved_at": null,
+      "summary": "Dashboard silence is illegible: the CEO watched /v2 all week and saw no agent activity. Silence was CORRECT (no NFP Jul 20-24; next Aug 7; FOMC Jul 28-29 is Sae's window) but the product gave no way to know that. Proposal: upcoming-events countdown panel + why-quiet status line on /v2.",
+      "file": "company/rd/intake/I002-dashboard-silence-illegible.md"
     }
   ],
   "experiments": [
@@ -2035,8 +2080,9 @@
       "fdr_budget_q": 0.10,
       "fdr_rejects": 3,
       "fdr_family_size": 28,
-      "condensed_finding_path": "company/rd/findings/phase-ac-pitch-assignment.md",
-      "condensed_finding_status": "not-yet-published"
+      "condensed_finding_path": "company/rd/findings/2026-07-phase-ac-pitch-assignment.md",
+      "condensed_finding_status": "published",
+      "condensed_finding_published_at": "2026-07-23"
     },
     {
       "id": "F013-30d-approval-rate",
