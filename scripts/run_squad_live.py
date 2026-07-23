@@ -198,6 +198,22 @@ def run_loop(args, cfg: dict) -> str:
 
     engine.prepare(warmup)
 
+    # F4 fix: on the live-market path, credit the feed's historical
+    # closed bars toward the warm-up gate so a fresh runtime doesn't
+    # sit silent for 200 live H4 bars (~33 days). A small live burn-in
+    # (default 2 bars) still applies after seeding. Cache replays and
+    # --parity-mode never seed (byte-identical replay behavior).
+    if feed_name == "mt5" and not args.parity_mode:
+        seeded_any = False
+        for sym, bars in warmup.items():
+            seeded_any = engine.seed_warmup(
+                sym, len(bars), burn_in_bars=args.burn_in_bars,
+            ) or seeded_any
+        if seeded_any:
+            # Persist immediately so the dashboard shows the seeded
+            # warm-up state before the first live bar closes.
+            engine.save_state()
+
     news_cfg = DEFAULT_NEWS_CONFIG
     news_refresher: NewsFeedRefresher | None = None
     if not args.no_news_refresh:
@@ -370,7 +386,18 @@ def main() -> None:
     ap.add_argument("--no-telegram", action="store_true")
     ap.add_argument(
         "--parity-mode", action="store_true",
-        help="disable Barou v1.3 weapon (use sealed v1) for cache parity work",
+        help=(
+            "disable Barou v1.3 weapon (use sealed v1) for cache parity "
+            "work; also disables warm-up seeding on the mt5 feed"
+        ),
+    )
+    ap.add_argument(
+        "--burn-in-bars", type=int,
+        default=int(sl.get("burn_in_bars") or 2),
+        help=(
+            "live bars withheld from proposing after warm-up seeding "
+            "(mt5 feed only; feed-sanity confirmation window; default 2)"
+        ),
     )
     ap.add_argument(
         "--refresh-news", action="store_true",

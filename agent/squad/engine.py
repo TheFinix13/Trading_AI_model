@@ -48,6 +48,10 @@ from agent.types import Bar
 log = logging.getLogger(__name__)
 
 WARMUP_BARS = 200
+# Live burn-in: when the warm-up gate is seeded from historical bars
+# (see SquadEngine.seed_warmup), the first N genuinely-live bars are
+# still withheld from proposing as a feed-sanity confirmation window.
+DEFAULT_LIVE_BURN_IN_BARS = 2
 SANDBOX_EQUITY_DOLLARS = 100.0
 SANDBOX_PIP_VALUE_PER_MIN_LOT = 0.10
 ARM4_SANDBOX_RISK_CAP_FRAC = 0.50
@@ -174,6 +178,12 @@ class SquadEngine:
         self.tick_id = 0
         self.bars_seen: dict[str, int] = {}
         self.bars_by_symbol: dict[str, list[Bar]] = {}
+        # Live-path warm-up seeding state (see seed_warmup). Both dicts
+        # stay EMPTY on cache/replay/parity paths, which keeps those
+        # paths byte-identical: nothing in on_bar consults them unless
+        # a live runner explicitly called seed_warmup first.
+        self.warmup_seeded_bars: dict[str, int] = {}
+        self.burn_in_remaining: dict[str, int] = {}
 
         self.open_trades: dict[str, OpenPaperTrade] = {}
         self.open_trades_multi: dict[str, list[OpenPaperTrade]] = {}
@@ -201,6 +211,50 @@ class SquadEngine:
             self.bars_seen.setdefault(s, 0)
         prepare_roster(self.roster, self.bars_by_symbol)
         self.load_state()
+
+    def seed_warmup(
+        self,
+        symbol: str,
+        n_history_bars: int,
+        *,
+        burn_in_bars: int = DEFAULT_LIVE_BURN_IN_BARS,
+    ) -> bool:
+        """Credit historical closed bars toward the warm-up gate.
+
+        LIVE-FEED PATH ONLY. The live runner calls this after
+        ``prepare()`` when the feed supplied real closed history
+        (mt5 pre-loads ~2,500 H4 bars per symbol). Without seeding, a
+        fresh live runtime would sit through 200 live H4 bars (~33
+        calendar days) before proposing -- an accidental port artifact
+        of the research replay, where replayed bars count naturally.
+
+        Credits ``min(n_history_bars, WARMUP_BARS)`` bars and arms a
+        small live burn-in (``burn_in_bars`` genuinely-live bars still
+        withheld from proposing as feed-sanity confirmation).
+
+        Never regresses: if ``bars_seen[symbol]`` is already at or past
+        the credit (resumed state.json), this is a no-op and any
+        partially-consumed burn-in is left alone. Returns True iff
+        seeding was applied.
+
+        Parity invariant: cache/replay/parity paths never call this,
+        so their behavior is byte-identical to the pre-seeding engine.
+        """
+        credited = min(int(n_history_bars), WARMUP_BARS)
+        if credited <= 0:
+            return False
+        if self.bars_seen.get(symbol, 0) >= credited:
+            return False
+        self.bars_seen[symbol] = credited
+        self.warmup_seeded_bars[symbol] = credited
+        self.burn_in_remaining[symbol] = max(0, int(burn_in_bars))
+        log.info(
+            "warm-up seeded: %s bars_seen=%d/%d burn_in=%d "
+            "(from %d history bars)",
+            symbol, credited, WARMUP_BARS,
+            self.burn_in_remaining[symbol], int(n_history_bars),
+        )
+        return True
 
     def kill_active(self) -> str | None:
         kill = self.out_dir / KILL_FILE
@@ -239,6 +293,19 @@ class SquadEngine:
             "per_agent_equity": dict(self.per_agent_equity),
             "workspace_publish_counts": dict(self.workspace_publish_counts),
             "workspace_read_counts": dict(self.workspace_read_counts),
+            # Additive (schema stays 1): per-symbol warm-up progress so
+            # the /v2 dashboard can render "warming up X/200" honestly.
+            "warmup": {
+                s: {
+                    "bars_seen": int(self.bars_seen.get(s, 0)),
+                    "warmup_bars": int(WARMUP_BARS),
+                    "burn_in_remaining": int(self.burn_in_remaining.get(s, 0)),
+                    "seeded_bars": int(self.warmup_seeded_bars.get(s, 0)),
+                }
+                for s in sorted(
+                    set(self.bars_seen) | set(self.burn_in_remaining)
+                )
+            },
             "saved_at": datetime.now(tz=timezone.utc).isoformat(),
         }
         tmp = self._state_path().with_suffix(".tmp")
@@ -276,6 +343,13 @@ class SquadEngine:
         self.workspace_read_counts.update(
             dict(state.get("workspace_read_counts") or {}),
         )
+        for s, w in (state.get("warmup") or {}).items():
+            if not isinstance(w, dict):
+                continue
+            self.burn_in_remaining[s] = int(w.get("burn_in_remaining", 0))
+            seeded = int(w.get("seeded_bars", 0))
+            if seeded > 0:
+                self.warmup_seeded_bars[s] = seeded
         for row in state.get("open_positions") or []:
             try:
                 ot = self.broker.from_persistable(row)
@@ -544,6 +618,17 @@ class SquadEngine:
         bar_time_iso = self.last_bar_times[symbol]
 
         if self.bars_seen[symbol] <= WARMUP_BARS:
+            self._emit_tick_summary(
+                symbol=symbol, bar_time_iso=bar_time_iso,
+                eligible=eligible, result=result,
+            )
+            self.save_state()
+            return result
+
+        # Live burn-in gate: only armed by seed_warmup (live feeds).
+        # Empty dict on cache/replay/parity paths -> no behavior change.
+        if self.burn_in_remaining.get(symbol, 0) > 0:
+            self.burn_in_remaining[symbol] -= 1
             self._emit_tick_summary(
                 symbol=symbol, bar_time_iso=bar_time_iso,
                 eligible=eligible, result=result,
