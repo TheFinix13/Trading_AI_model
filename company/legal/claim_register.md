@@ -458,12 +458,15 @@ Test-only helper marked `# claim-exempt`: `reset`.
 | `EVENT_TYPES` | `tuple[str, ...]` | Whitelist of six event types the bus accepts. Adding a new type requires a Legal re-review (see rolling constraint). | Same. | None -- meta. |
 | `RING_BUFFER_CAPACITY` | `int` (100) | Bounded ring buffer of most-recent events. Older events are dropped silently. | Same. | None -- meta. |
 
-Rolling constraint (Legal): the six event types
+Rolling constraint (Legal): the seven event types
 (`trade_fill`, `stop_hit`, `kill_switch_trip`, `risk_budget_breach`,
-`approval_submitted`, `platform_down`) are the ONLY event types this
-bus accepts. Adding a new event type materially changes the alerts
-claim (e.g. "notifications on trade fills") and requires a Legal
-re-review AND a per_event default in `alerts_telegram`.
+`approval_submitted`, `platform_down`, `watchdog_alert`) are the ONLY
+event types this bus accepts. `watchdog_alert` was added in Sprint 2b
+under this very constraint — re-review on tape at
+`company/legal/F017-review.md` (D100). Adding a further event type
+materially changes the alerts claim (e.g. "notifications on trade
+fills") and requires a Legal re-review AND a per_event default in
+`alerts_telegram`.
 
 ### F014 — `agent/platform/alerts_sse.py` (Sprint 2)
 
@@ -556,6 +559,97 @@ verbatim needs a Legal re-review (notes may reference unreleased
 features or internal criticism). The review-chain stage list must
 track `company/protocols/review-chain.md` — if the protocol gains or
 drops a stage, `_REVIEW_CHAIN_STAGES` changes in the same commit.
+
+### F017 — `agent/platform/watchdog.py` (Sprint 2b)
+
+Public accessors: `watchdog.check_runtime_heartbeat(live_dir, now) -> dict`,
+`watchdog.check_calendar_feed(cache_path, now) -> dict`,
+`watchdog.check_broker_health(now) -> dict`,
+`watchdog.check_risk_state(state_path, now) -> dict`,
+`watchdog.check_intake_sla(intake_dir, now) -> dict`,
+`watchdog.check_sprint_pulse(ledger_json_path, now) -> dict`,
+`watchdog.check_ledger_drift(ledger_json_path, ledger_md_path, now) -> dict`,
+`watchdog.run_check(check_id, ...) -> dict`,
+`watchdog.run_checks(...) -> list[dict]`,
+`watchdog.overall_status(results) -> str`,
+`watchdog.publish_transitions(results, state_path, publisher) -> list[dict]`,
+`watchdog.snapshot(...) -> dict`.
+
+Public module constants: `CHECK_IDS`, `STATUSES`, `ALERT_EVENT_TYPE`,
+`RUNTIME_WARN_SECONDS`, `RUNTIME_ALARM_SECONDS`,
+`CALENDAR_WARN_SECONDS`, `CALENDAR_ALARM_SECONDS`,
+`INTAKE_P0_ALARM_SECONDS`, `INTAKE_P1_WARN_SECONDS`,
+`INTAKE_OPEN_WARN_SECONDS`, `SPRINT_QUIET_WARN_SECONDS`,
+`FUTURE_SKEW_TOLERANCE_SECONDS`, `SNAPSHOT_CACHE_SECONDS`,
+`STATE_FILENAME`, `REPO_ROOT`. Test-only helper marked
+`# claim-exempt`: `reset_cache_for_tests`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `run_checks` / `run_check` | `list[dict]` / `dict` | The 7-check ops registry (`runtime_heartbeat`, `calendar_feed`, `broker_health`, `risk_state`, `intake_sla`, `sprint_pulse`, `ledger_drift`); each result is `{id, status: ok\|warn\|alarm\|na, detail, checked_at}`. Checks observe, never mutate; none may raise. | `watchdog.run_checks`. | None — ops state, not a performance claim. |
+| `check_runtime_heartbeat` | `dict` | squad_live artefact freshness via `paper_loop.live_status`; warn > 5 min, alarm > 30 min, na when not configured. | `watchdog.check_runtime_heartbeat`. | None. |
+| `check_calendar_feed` | `dict` | News cache `fetched_at` age; na absent, warn > 12 h, alarm > 48 h; corrupt cache alarms. | `watchdog.check_calendar_feed`. | None. |
+| `check_broker_health` | `dict` | Reuses `broker_health.list_health_states()`; na when no aliases; warn when a probed alias is down. Never triggers a fresh probe. | `watchdog.check_broker_health`. | None. |
+| `check_risk_state` | `dict` | `risk_state.jsonl` integrity (parseable, not future-dated); corruption alarms because it silently disables the F012 caps. | `watchdog.check_risk_state`. | None. |
+| `check_intake_sla` | `dict` | Company-loop SLA: P0 untriaged > 4 h alarm, P1 untriaged > 7 d warn, any open item > 30 d warn. Emits item IDs + ages only — never intake body text. | `watchdog.check_intake_sla`. | Detail-string constraint (see F017 review). |
+| `check_sprint_pulse` | `dict` | In-progress sprint with no ledger decision in 7 d → warn. | `watchdog.check_sprint_pulse`. | None. |
+| `check_ledger_drift` | `dict` | Decision-count parity JSON vs MD; mismatch alarms (the Sprint-2-close drift bug, D076–D080). | `watchdog.check_ledger_drift`. | None. |
+| `overall_status` | `str` | Worst status across the registry (na counts as ok). | `watchdog.overall_status`. | None — meta. |
+| `publish_transitions` | `list[dict]` | State-change-only `watchdog_alert` publishing to the F014 bus; last-known state persists at `<config_dir>/watchdog_state.json`. Steady state publishes nothing. | `watchdog.publish_transitions`. | Transition-only constraint (see F017 review). |
+| `snapshot` | `dict` | `{checks, overall, generated_at, cached}` with an in-process ~30 s cache; the `/api/watchdog/status` payload and the `/hq` strip's source. | `watchdog.snapshot`. | None. |
+
+Rolling constraint (Legal): `watchdog_alert` payloads carry check id,
+status, previous status, `recovered`, and a `detail` string built from
+artefact metadata (ages, counts, IDs, filenames) ONLY. Piping file
+contents into `detail` requires a fresh Legal review
+(`company/legal/F017-review.md`).
+
+Transition-only constraint: publishing on every poll instead of on
+state changes kills the "alert stream you can trust not to nag" claim
+and requires a Legal re-review — alert fatigue is a safety regression
+for a trading product.
+
+### F018 — `agent/platform/live_executor.py` (Sprint 2b)
+
+Public accessors: `live_executor.Mt5OrderAdapter` (protocol),
+`live_executor.FakeMt5OrderAdapter` (test double, exported for the
+dogfood harness), `live_executor.RealMt5OrderAdapter` (Windows-only,
+lazy MetaTrader5 import),
+`live_executor.adapter_available() -> bool`,
+`live_executor.load_executor_config(cfg=None) -> dict`,
+`live_executor.is_enabled(cfg=None) -> bool`,
+`live_executor.demo_guard(server, cfg=None) -> tuple[bool, str]`,
+`live_executor.execute_approved(approval_id, adapter, cfg=None) -> dict`,
+`live_executor.recent_executions(limit=20) -> list[dict]`,
+`live_executor.executor_status(cfg=None) -> dict`.
+
+Public module constants: `EXECUTIONS_FILENAME`,
+`DEFAULT_MAX_VOLUME_LOTS`, `DEFAULT_ALLOWED_SERVER_PATTERNS`,
+`EXECUTOR_STATES`. Test-only helper marked `# claim-exempt`:
+`reset_state_for_tests`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `is_enabled` | `bool` | Gate #5. `[live_executor] enabled` in platform.toml; DEFAULT FALSE — a clean install refuses every execution. | `live_executor.is_enabled`. | Executor warning (`company/legal/executor-demo-warning.md`) renders on `/approvals`. |
+| `demo_guard` | `(bool, str)` | DEMO-ONLY guard: requires the literal `demo_only = true` acknowledgement AND a connected-server name matching `allowed_server_patterns` (fnmatch, fail-closed on blank/missing/unmatched). Real-broker connections stay a hard NO (escalation.md §5). | `live_executor.demo_guard`. | Same warning. |
+| `execute_approved` | `dict` | THE one caller of the four gates: re-runs `approval_queue.can_send_live_order` immediately before send (fresh, never cached), then demo guard, volume hard-cap, creds presence; single-use approvals; fill → `risk_budget.record_fill` + `trade_fill` alert; error → alert, NO auto-retry. Every attempt (refusals included) appends to `<config_dir>/executions.jsonl`. | `live_executor.execute_approved`. | Same warning + all four gate disclaimers compose. |
+| `executor_status` | `dict` | `{enabled, demo_only_ack, allowed_server_patterns, max_volume_lots, broker_alias_configured, adapter_available, state: disabled\|not-on-windows\|ready, recent_executions}`. Never echoes credentials. | `live_executor.executor_status`. | None — state. |
+| `recent_executions` | `list[dict]` | Last N rows of the executions audit JSONL, newest first. | `live_executor.recent_executions`. | None — state. |
+| `load_executor_config` | `dict` | Normalised `[live_executor]` block (enabled, demo_only, patterns, max_volume_lots, broker_alias). | `live_executor.load_executor_config`. | None — meta. |
+| `adapter_available` | `bool` | Whether MetaTrader5 is importable on this host (Windows-only package). | `live_executor.adapter_available`. | None — capability probe. |
+| `Mt5OrderAdapter` / `RealMt5OrderAdapter` / `FakeMt5OrderAdapter` | protocol / impl / test double | The injectable MT5 seam: `connect`, `account_info`, `send_market_order`, `close_position`, `shutdown`. The real adapter imports MetaTrader5 lazily inside methods; credentials ride `broker_connection.load_credentials` and are never logged or echoed. | `live_executor`. | Same warning. |
+
+Rolling constraint (Legal): the DEMO-ONLY guard is a safety claim.
+Weakening it — accepting `demo_only` values other than literal true,
+matching servers case-insensitively beyond the shipped patterns,
+defaulting `enabled` to true, raising `max_volume_lots` default, or
+caching the four-gate check across executions — requires a fresh
+Legal review (`company/legal/F018-review.md`).
+
+Single-use constraint: an approval that has been executed (or failed
+execution) is consumed and can never fire a second order. Removing
+the consumption marking would allow replay of a single human approval
+into multiple orders — P0 regression.
 
 ## Audit hook (Sprint 2 — F010 implementation)
 

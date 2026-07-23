@@ -40,8 +40,9 @@ sys.path.insert(0, str(REPO_ROOT))
 from agent.platform import (  # noqa: E402
     alerts, alerts_sse, alerts_telegram, approval_queue, auth,
     broker_connection, broker_health, credentials, hq, kill_switch_admin,
-    kill_switches, live_status, onboarding, paper_loop, performance,
-    players, rate_limiter, research, risk_budget, squad_events,
+    kill_switches, live_status, onboarding, paper_loop,
+    performance, players, rate_limiter, research, risk_budget,
+    squad_events, watchdog,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
@@ -487,6 +488,20 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                         initial_history=list(reversed(alerts.recent(100))))
                 except (BrokenPipeError, ConnectionResetError):
                     pass
+                return
+
+            # F017 -- ops-watchdog registry snapshot (cached ~30 s in
+            # the module). Ledger override keeps test fixtures honest:
+            # the drift check compares the fixture JSON against its
+            # sibling decisions_log.md.
+            if path == "/api/watchdog/status":
+                ledger_md = (company_ledger_path.parent
+                             / "decisions_log.md"
+                             if company_ledger_path is not None else None)
+                self._json(watchdog.snapshot(
+                    live_dir=live_dir,
+                    ledger_json_path=company_ledger_path,
+                    ledger_md_path=ledger_md))
                 return
 
             # F008 first-visit gate -- HTML routes redirect to

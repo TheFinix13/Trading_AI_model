@@ -27,6 +27,8 @@ _DEFAULT_PER_EVENT: dict[str, bool] = {
     "risk_budget_breach": True,
     "approval_submitted": False,
     "platform_down": True,
+    # F017 -- an ops alarm is exactly what Telegram is for.
+    "watchdog_alert": True,
 }
 
 _LOG = logging.getLogger(__name__)

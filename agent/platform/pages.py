@@ -2548,6 +2548,19 @@ _HQ_TEMPLATE = r"""<!DOCTYPE html>
   padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;
   letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
 .hq-header .hq-sprint .day-counter{font-variant-numeric:tabular-nums}
+.wd-strip{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px}
+.wd-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+  padding:3px 10px;border-radius:999px;border:1px solid var(--border);
+  color:var(--dim);background:rgba(255,255,255,.02)}
+.wd-chip::before{content:"";width:8px;height:8px;border-radius:50%;
+  background:#556}
+.wd-chip.wd-ok::before{background:#3fb950}
+.wd-chip.wd-ok{color:#7ee2a8;border-color:rgba(63,185,80,.35)}
+.wd-chip.wd-warn::before{background:#d29922}
+.wd-chip.wd-warn{color:#e3b341;border-color:rgba(210,153,34,.45)}
+.wd-chip.wd-alarm::before{background:#f85149}
+.wd-chip.wd-alarm{color:#ff7b72;border-color:rgba(248,81,73,.5)}
+.wd-chip.wd-na::before{background:#556}
 .kpi-strip{display:grid;grid-template-columns:repeat(9,1fr);gap:10px;
   margin-bottom:20px}
 @media (max-width: 1400px){.kpi-strip{grid-template-columns:repeat(6,1fr)}}
@@ -2752,6 +2765,11 @@ __NAV__
 </div>
 
 <div id="hq-unconfigured"></div>
+
+<div class="wd-strip" id="watchdog-strip" aria-label="Ops watchdog"
+     title="F017 ops watchdog — green/amber/red per check">
+  <span class="wd-chip wd-na">watchdog loading&hellip;</span>
+</div>
 
 <div class="kpi-strip" id="kpi-strip"></div>
 
@@ -3283,6 +3301,28 @@ async function renderOrgFlow(){
   renderOrgHandoffs(org);
 }
 
+async function renderWatchdog(){
+  // F017 ops-watchdog strip: one chip per check, coloured by status.
+  const el = document.getElementById("watchdog-strip");
+  const wd = await fetchJson("/api/watchdog/status");
+  if(wd.__error__ || wd.__auth__){
+    el.innerHTML = '<span class="wd-chip wd-na">watchdog: ' +
+      esc(wd.__auth__ ? "auth required" : "unavailable") + '</span>';
+    return;
+  }
+  const checks = wd.checks || [];
+  if(!checks.length){
+    el.innerHTML = '<span class="wd-chip wd-na">watchdog: no checks</span>';
+    return;
+  }
+  el.innerHTML = checks.map(c => {
+    const st = String(c.status || "na");
+    return '<span class="wd-chip wd-' + esc(st) + '" title="' +
+      esc(c.detail || "") + '">' + esc(c.id) +
+      (st === "ok" ? "" : " \u00b7 " + esc(st)) + '</span>';
+  }).join("");
+}
+
 async function refresh(){
   const hq = await fetchJson("/api/hq/state");
   document.getElementById("hq-updated").innerText =
@@ -3310,8 +3350,10 @@ async function refresh(){
 }
 refresh();
 renderOrgFlow();
+renderWatchdog();
 setInterval(refresh, 30000);
 setInterval(renderOrgFlow, 30000);
+setInterval(renderWatchdog, 60000);
 </script></body></html>"""
 
 HQ_PAGE = (_HQ_TEMPLATE

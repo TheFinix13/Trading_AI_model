@@ -30,6 +30,10 @@ EVENT_TYPES: tuple[str, ...] = (
     "risk_budget_breach",
     "approval_submitted",
     "platform_down",
+    # F017 (Sprint 2b) -- ops-watchdog state transitions. Added under
+    # the F014 Legal rolling constraint with an inline Legal re-review
+    # on tape at company/legal/F017-review.md (D100).
+    "watchdog_alert",
 )
 
 RING_BUFFER_CAPACITY: int = 100

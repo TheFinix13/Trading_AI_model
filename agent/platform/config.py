@@ -76,8 +76,22 @@ def _defaults(repo_root: Path) -> dict:
                     "risk_budget_breach": True,
                     "approval_submitted": False,
                     "platform_down": True,
+                    "watchdog_alert": True,
                 },
             },
+        },
+        # F018 (Sprint 2b) -- demo-order executor. DEFAULT-DISABLED
+        # (gate #5). `demo_only = true` is a REQUIRED acknowledgement:
+        # the executor refuses when it is false or absent, and refuses
+        # any connected server whose name doesn't match
+        # `allowed_server_patterns` (fail-closed). Real-broker
+        # connections stay a hard NO per escalation.md section 5.
+        "live_executor": {
+            "enabled": False,
+            "demo_only": False,   # absent-in-toml == not acknowledged
+            "allowed_server_patterns": ["*Trial*", "*Demo*", "*demo*"],
+            "max_volume_lots": 0.01,
+            "broker_alias": "",
         },
     }
 
@@ -174,6 +188,30 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
                 for k, v in pe.items():
                     if k in cfg["alerts"]["telegram"]["per_event"]:
                         cfg["alerts"]["telegram"]["per_event"][k] = bool(v)
+    le = raw.get("live_executor")
+    if isinstance(le, dict):
+        if "enabled" in le:
+            cfg["live_executor"]["enabled"] = bool(le["enabled"])
+        # demo_only is a REQUIRED acknowledgement: only a literal TOML
+        # `true` counts; anything else (absent, false, junk) leaves the
+        # default False and the executor fails closed.
+        cfg["live_executor"]["demo_only"] = le.get("demo_only") is True
+        patterns = le.get("allowed_server_patterns")
+        if isinstance(patterns, list):
+            cleaned = [str(p).strip() for p in patterns if str(p).strip()]
+            # An empty allowlist would match nothing -- keep it, that
+            # is the fail-closed direction.
+            cfg["live_executor"]["allowed_server_patterns"] = cleaned
+        if le.get("max_volume_lots") is not None:
+            try:
+                vol = float(le["max_volume_lots"])
+                if vol > 0:
+                    cfg["live_executor"]["max_volume_lots"] = vol
+            except (TypeError, ValueError):
+                pass
+        if le.get("broker_alias"):
+            cfg["live_executor"]["broker_alias"] = str(
+                le["broker_alias"]).strip()
     if cfg["live_dir"] is None:
         cfg["live_dir"] = Path(cfg["log_root"]) / "squad_live"
     return cfg

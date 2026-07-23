@@ -1819,6 +1819,42 @@ Runbook: V2 Platform demo account (login 436983644 /
 Exness-MT5Trial9; password keyring-only) + full ceremony + kill-switch
 drill. Target ≥45 tests.
 
+## D100 · 2026-07-24 · legal · [LEGAL]
+
+**`watchdog_alert` approved as the seventh whitelisted alerts-bus
+event type — with two rolling constraints.**
+
+The F014 rolling constraint required a Legal re-review before any new
+event type; review on tape at `company/legal/F017-review.md`, claim
+register updated (F014 section reworded to seven types, new F017
+section). Constraint 1: `watchdog_alert` payload `detail` strings
+carry artefact METADATA only (ages, counts, item IDs, filenames) —
+piping file contents into `detail` needs a fresh review. Constraint 2:
+publishing is state-transition-only; switching to every-poll
+publishing kills the "alert stream you can trust not to nag" claim
+and needs a re-review. No performance/profit claims are made by any
+check; no disclaimer copy needed.
+
+## D101 · 2026-07-24 · cto · [FEATURE]
+
+**F017 shipped — Ops Watchdog: 7-check registry, transition-only
+publisher, `/api/watchdog/status`, `/hq` strip, cron runner. 79 tests
+(target was ≥35).**
+
+`agent/platform/watchdog.py` (7 checks per D098, observe-never-mutate,
+never-raise, state persisted at `<config_dir>/watchdog_state.json`);
+`watchdog_alert` added to `alerts.EVENT_TYPES` + Telegram per-event
+default ON (D100 review); `GET /api/watchdog/status` in
+`serve_platform` (install-token-gated like every /api route, ~30 s
+module cache); `/hq` watchdog strip (chip per check, 60 s refresh);
+`scripts/run_watchdog.py` (exit 0/1/2 = ok/warn/alarm, `--loop N`
+with `watchdog_heartbeat.txt`, `--json`). Tests:
+`test_watchdog_module.py` (44), `test_watchdog_transitions.py` (17),
+`test_watchdog_api.py` (6), `test_run_watchdog_script.py` (12) — all
+ok/warn/alarm/na paths, transition-only publishing incl. recovery +
+broken-bus, cache, endpoint auth, page smoke, script exit codes.
+Security suite 204 passed; claim audit green (F017 registered).
+
 ## Template for subsequent entries
 
 ```markdown
