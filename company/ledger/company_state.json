@@ -2006,6 +2006,13 @@
       "role": "user_advocate",
       "decision": "[INTAKE] I004 filed + routed: internal-token config is pinned to the repo root.",
       "context": "From building the D092 harness: every state module relocates via BLUELOCK_CONFIG_DIR except the F013 internal token gating POST /api/approvals/submit, which serve_platform reads via load_config(REPO_ROOT) -- repo-root platform.toml only. The harness had to write (and clean up) a temp platform.toml in the source checkout to exercise submit/approve/reject; packaged/hosted installs hit the same wall. Triaged DX / P3 / route product; fold into the packaging sprint, becomes P1 when packaging starts. Fail-closed-when-unset must not change. company/rd/intake/I004-internal-token-config-pinned.md."
+    },
+    {
+      "id": "D095",
+      "date": "2026-07-23",
+      "role": "ceo",
+      "decision": "[STRATEGY] Sellability-gaps memo published; business/product-docs repo split PARKED until product #2 exists.",
+      "context": "company/strategy/sellability-gaps.md: eight gaps mapped to the Sprint 1-6 backlog. Covered: payments (Sprint 6), pen test (Sprint 5, gated before paid tiers). Partially covered: multi-user auth (install-token -> real accounts needs its own charter), support channel (minimal version should ride Sprint 3/4). On NO backlog -- flagged: hosting/packaged installer (I004 in miniature), external legal review + ToS (add to Sprint 5 charter), 30-90 day live shadow track record (calendar-constrained, cannot be sprinted -- start the clock now), live-order wiring sprint (four gates composition-tested, no pathway calls them; needs a D065-successor charter under escalation.md ordering: demo wiring -> shadow -> real-broker only after pen test + legal). Finance priority: live-order wiring > shadow clock > multi-user auth. Repo split DEFERRED: company/ coupled to platform code (claim-register audit walks agent/platform/*.py; /hq + /api/hq/org read ledger + handoffs at request time); brain-box holds cross-product canon; revisit at product #2 kickoff or Sprint 6, whichever first."
     }
   ],
   "sprint_verdicts": [

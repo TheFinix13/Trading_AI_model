@@ -1690,6 +1690,35 @@ packaging/hosting sprint (see sellability-gaps memo); becomes P1 the
 moment packaging starts. Fail-closed-when-unset behavior must not
 change. `company/rd/intake/I004-internal-token-config-pinned.md`.
 
+## D095 · 2026-07-23 · ceo · [STRATEGY]
+
+**Sellability-gaps memo published; business/product-docs repo split
+PARKED until product #2 exists.**
+
+`company/strategy/sellability-gaps.md` (CEO/CPO/Finance personas):
+eight gaps between today's state and "functional and sellable",
+each mapped to the Sprint 1–6 backlog. Covered: payments (Sprint 6),
+pen test (Sprint 5, correctly gated before paid tiers). Partially
+covered: multi-user auth (install-token → real accounts needs its own
+charter — executed sprint-1 consciously shipped single-install
+instead), support channel (minimal email + error-state link should
+ride Sprint 3/4). **On NO backlog — flagged:** hosting/packaged
+installer (I004 is this gap in miniature), external legal review +
+ToS (Sprint 5 charter addition), the 30–90 day live shadow track
+record (calendar-constrained, cannot be sprinted — start the clock
+now), and the live-order wiring sprint (four gates
+composition-tested, no pathway calls them; D065 scaffolding invariant
+was right for Sprint 2 and now needs a successor charter under
+escalation.md §5 ordering: demo wiring → shadow → real-broker only
+after pen test + legal). Finance priority read: live-order wiring >
+shadow clock > multi-user auth. Repo-split question answered:
+**defer** — company/ is coupled to platform code (claim-register
+pre-commit audit walks agent/platform/*.py; /hq + /api/hq/org read
+the ledger and handoffs at request time), brain-box already holds
+cross-product canon, and the forcing function is a second product
+wanting the company layer. Revisit at product #2 kickoff or Sprint 6,
+whichever first.
+
 ## Template for subsequent entries
 
 ```markdown
