@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -92,6 +93,34 @@ def build_live_roster(
         barou_v13=not parity_mode,
         sae_config=SaeConfig(sae_enabled=True) if enable_sae else None,
     )
+
+
+def make_calendar_status_sink(out_dir: Path, notifier=None):
+    """Sink for NewsFeedRefresher ``system_status`` rows (F5/F6).
+
+    Every row is appended to ``events.jsonl`` (structured, greppable,
+    dashboard-readable). The Telegram page is rate-limited to once per
+    failure STREAK (streak==1 only, same pattern as the halt one-offs)
+    -- never once per poll.
+    """
+    out_dir = Path(out_dir)
+
+    def sink(row: dict) -> None:
+        try:
+            with (out_dir / "events.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(row, default=str) + "\n")
+        except OSError as exc:
+            log.warning("calendar status event write failed: %s", exc)
+        if notifier is not None and int(row.get("failure_streak") or 0) == 1:
+            age = row.get("cache_age_seconds")
+            age_txt = f"{age:.0f}s old" if isinstance(age, (int, float)) else "absent"
+            notifier.notify_system(
+                f"news calendar cache {row.get('status', '?')} "
+                f"({age_txt}) — Karasu/Sae advisories may be blind. "
+                f"Check the feed / VM network."
+            )
+
+    return sink
 
 
 def _build_notifier(cfg: dict, *, no_telegram: bool):
@@ -256,6 +285,7 @@ def run_loop(args, cfg: dict) -> str:
             feed_url=news_cfg.feed_url,
             ttl_seconds=news_cfg.cache_ttl_seconds,
             interval_seconds=float(args.news_refresh_seconds),
+            status_sink=make_calendar_status_sink(out_dir, notifier),
         )
         if args.refresh_news:
             n = news_refresher.kickoff()

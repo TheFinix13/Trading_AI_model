@@ -196,6 +196,14 @@ class SquadNotifier:
         self._safe_send(build_squad_kickoff(
             source_label=source_label, n_rows=n_rows, out_dir=out_dir))
 
+    def notify_system(self, text: str) -> None:
+        """One-line system warning (e.g. dead news feed).
+
+        Rate limiting is the CALLER's concern -- follow the
+        once-per-failure-streak pattern (send on streak==1 only),
+        never per poll."""
+        self._safe_send(f"*SQUAD | SYSTEM*\n{text}")
+
     def notify_stop(self, outcome: str, *, reason: str = "") -> None:
         """Full-time (done/max_steps) or halt (killed) + final table."""
         if outcome == "killed":
