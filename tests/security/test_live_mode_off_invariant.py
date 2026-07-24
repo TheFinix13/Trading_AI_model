@@ -359,3 +359,78 @@ class TestDemoOnlyGuard:
         result = live_executor.execute_approved(aid, adapter, _demo_cfg())
         assert result["ok"] is True
         assert result["status"] == "filled"
+
+
+# =====================================================================
+# 2026-07-24 audit EXTENSION (A005 -- stale approvals). Everything
+# above this line is the Sprint 2 pin + Sprint 2b extension,
+# unmodified. These cases pin the two A005 fixes: (a) a click landing
+# after timeout_at can never approve an expired entry; (b) an
+# `approved` entry goes stale after the approved-freshness window and
+# every gate -- including the F018 executor via composition --
+# refuses it.
+# =====================================================================
+
+import time  # noqa: E402
+
+
+class TestStaleApprovalRefused:
+    def test_late_click_cannot_approve_expired_entry(self) -> None:
+        """(a) `_resolve` reaps first: approving after the pending
+        timeout has passed fails and the entry reads timed_out."""
+        approval_queue.set_timeout_seconds(1)
+        aid = approval_queue.submit({
+            "symbol": "EURUSD", "side": "buy", "size": 0.01,
+            "entry": 1.0850, "stop": 1.0820, "take_profit": 1.0920,
+            "rationale": "late click", "source_agent": "A1_baseline",
+            "risk_snapshot": {"worst_case_loss": 5.0},
+        })
+        time.sleep(1.1)
+        assert approval_queue.approve(aid) is False
+        entry = approval_queue.get_entry(aid)
+        assert entry is not None
+        assert entry["status"] == "timed_out"
+        assert approval_queue.can_send_order(aid) is False
+
+    def test_approved_entry_expires_after_ttl(self) -> None:
+        """(b) approved entries carry a freshness window; past it the
+        status flips to approval_expired and the gate refuses."""
+        aid = _approved_entry()
+        assert approval_queue.can_send_order(aid) is True
+        # Reap as-if the TTL (default 300 s) has elapsed.
+        approval_queue.timeout_reap(now=time.time() + 301)
+        assert approval_queue.can_send_order(aid) is False
+        entry = approval_queue.get_entry(aid)
+        assert entry is not None
+        assert entry["status"] == "approval_expired"
+        assert entry["resolution_reason"] == "approved_ttl_expired"
+
+    def test_stale_approval_refuses_composed_gate(self) -> None:
+        """can_send_live_order (the P0 composition) refuses a stale
+        approval even with every other gate open."""
+        aid = _approved_entry()
+        entry = _valid_entry(approval_id=aid)
+        assert approval_queue.can_send_live_order(entry)[0] is True
+        approval_queue.timeout_reap(now=time.time() + 301)
+        ok, reason = approval_queue.can_send_live_order(entry)
+        assert ok is False
+        assert "approval" in reason.lower()
+
+    def test_executor_refuses_stale_approval_via_composition(self) -> None:
+        """The F018 executor re-runs can_send_live_order fresh, so a
+        stale approval never reaches the adapter."""
+        _executor_reset()
+        _store_demo_creds()
+        aid = _approved_entry()
+        approval_queue.timeout_reap(now=time.time() + 301)
+        adapter = live_executor.FakeMt5OrderAdapter(server="Exness-MT5Trial9")
+        result = live_executor.execute_approved(aid, adapter, _demo_cfg())
+        assert result["status"] == "refused"
+        assert "approval" in result["reason"].lower()
+        assert adapter.calls == []
+
+    def test_ttl_config_knob_and_default(self) -> None:
+        assert approval_queue.DEFAULT_APPROVED_TTL_SECONDS == 300
+        assert approval_queue.get_approved_ttl_seconds() == 300
+        approval_queue.set_approved_ttl_seconds(60)
+        assert approval_queue.get_approved_ttl_seconds() == 60

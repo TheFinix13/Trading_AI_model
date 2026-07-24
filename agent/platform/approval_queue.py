@@ -35,7 +35,12 @@ from pathlib import Path
 from agent.platform import credentials
 
 DEFAULT_TIMEOUT_SECONDS: int = 5 * 60  # 5 minutes
-STATUSES: tuple[str, ...] = ("pending", "approved", "rejected", "timed_out")
+# A005 (2026-07-24 audit): an approval is only fresh for a bounded
+# window after the click -- `can_send_order` refuses afterwards.
+# Configurable via `[approvals] approved_ttl_seconds` in platform.toml.
+DEFAULT_APPROVED_TTL_SECONDS: int = 5 * 60  # 5 minutes
+STATUSES: tuple[str, ...] = (
+    "pending", "approved", "rejected", "timed_out", "approval_expired")
 AUDIT_FILENAME: str = "approvals.jsonl"
 
 LIVE_MODE_NAMESPACE: str = "bluelock"
@@ -54,6 +59,7 @@ _ALLOWED_SIDES: frozenset[str] = frozenset({"buy", "sell"})
 _ENTRIES: dict[str, dict] = {}
 _LOCK = threading.RLock()
 _TIMEOUT_SECONDS: int = DEFAULT_TIMEOUT_SECONDS
+_APPROVED_TTL_SECONDS: int = DEFAULT_APPROVED_TTL_SECONDS
 
 
 def _audit_path() -> Path:
@@ -131,6 +137,10 @@ def submit(entry: dict) -> str:
 
 def _resolve(approval_id: str, new_status: str, by: str,
              reason: str | None) -> bool:
+    # A005: reap FIRST so a click that lands after timeout_at can
+    # never resolve an already-expired entry (the reap flips it to
+    # timed_out and the pending-only check below refuses).
+    timeout_reap()
     now = _now()
     with _LOCK:
         record = _ENTRIES.get(approval_id)
@@ -142,6 +152,11 @@ def _resolve(approval_id: str, new_status: str, by: str,
         record["resolved_at"] = _iso(now)
         record["resolved_by"] = by
         record["resolution_reason"] = reason
+        if new_status == "approved":
+            record["approved_at"] = _iso(now)
+            record["approved_at_epoch"] = now
+            record["approved_expires_at"] = _iso(now + _APPROVED_TTL_SECONDS)
+            record["approved_expires_at_epoch"] = now + _APPROVED_TTL_SECONDS
     _append_audit({"event": new_status, "id": approval_id,
                    "resolved_at": _iso(now), "resolved_by": by,
                    "resolution_reason": reason})
@@ -157,31 +172,42 @@ def reject(approval_id: str, reason: str, by: str = "user") -> bool:
 
 
 def timeout_reap(now: float | None = None) -> list[str]:
-    """Mark every stale `pending` entry as `timed_out`. Returns
-    the list of ids that were expired in this call."""
+    """Mark every stale `pending` entry as `timed_out` AND every
+    stale `approved` entry as `approval_expired` (A005: an approval
+    is only fresh for `_APPROVED_TTL_SECONDS` after the click).
+    Returns the list of ids that were expired in this call."""
     cutoff = now if now is not None else _now()
-    expired: list[str] = []
+    expired: list[tuple[str, str]] = []
     with _LOCK:
         for approval_id, record in _ENTRIES.items():
-            if record["status"] != "pending":
-                continue
-            if record["timeout_at_epoch"] <= cutoff:
+            if (record["status"] == "pending"
+                    and record["timeout_at_epoch"] <= cutoff):
                 record["status"] = "timed_out"
                 record["resolved_at"] = _iso(cutoff)
                 record["resolved_by"] = "system"
                 record["resolution_reason"] = "timeout"
-                expired.append(approval_id)
-    for approval_id in expired:
-        _append_audit({"event": "timed_out", "id": approval_id,
+                expired.append((approval_id, "timed_out"))
+            elif (record["status"] == "approved"
+                    and record.get("approved_expires_at_epoch") is not None
+                    and record["approved_expires_at_epoch"] <= cutoff):
+                record["status"] = "approval_expired"
+                record["resolved_by"] = "system"
+                record["resolution_reason"] = "approved_ttl_expired"
+                expired.append((approval_id, "approval_expired"))
+    for approval_id, event in expired:
+        _append_audit({"event": event, "id": approval_id,
                        "resolved_at": _iso(cutoff),
                        "resolved_by": "system",
-                       "resolution_reason": "timeout"})
-    return expired
+                       "resolution_reason": ("timeout"
+                                             if event == "timed_out"
+                                             else "approved_ttl_expired")})
+    return [approval_id for approval_id, _ in expired]
 
 
 def can_send_order(approval_id: str) -> bool:
     """The fourth live-mode-off gate. True iff the entry exists and its
-    status is `approved`. Auto-reaps timeouts before answering."""
+    status is `approved`. Auto-reaps timeouts AND stale approvals
+    (A005 approved-freshness window) before answering."""
     timeout_reap()
     with _LOCK:
         record = _ENTRIES.get(approval_id)
@@ -223,16 +249,28 @@ def get_timeout_seconds() -> int:
     return _TIMEOUT_SECONDS
 
 
+def set_approved_ttl_seconds(seconds: int) -> None:  # claim-exempt: config setter, no HTTP surface
+    """Adjust the approved-freshness window (A005). Config-time only
+    (`[approvals] approved_ttl_seconds` in platform.toml)."""
+    global _APPROVED_TTL_SECONDS
+    _APPROVED_TTL_SECONDS = max(1, int(seconds))
+
+
+def get_approved_ttl_seconds() -> int:
+    return _APPROVED_TTL_SECONDS
+
+
 def reset_state() -> None:  # claim-exempt: test-only
     """Clear the in-memory queue AND drop the JSONL audit file.
 
     Callers must have set `credentials.set_config_dir(...)` to a
     throwaway directory before invoking this. Real deployments should
     never call it."""
-    global _TIMEOUT_SECONDS
+    global _TIMEOUT_SECONDS, _APPROVED_TTL_SECONDS
     with _LOCK:
         _ENTRIES.clear()
         _TIMEOUT_SECONDS = DEFAULT_TIMEOUT_SECONDS
+        _APPROVED_TTL_SECONDS = DEFAULT_APPROVED_TTL_SECONDS
     audit = _audit_path()
     try:
         if audit.exists():
@@ -356,6 +394,7 @@ def can_send_live_order(entry: dict, *,
 
 __all__ = [
     "DEFAULT_TIMEOUT_SECONDS",
+    "DEFAULT_APPROVED_TTL_SECONDS",
     "STATUSES",
     "AUDIT_FILENAME",
     "LIVE_MODE_NAMESPACE",
@@ -370,6 +409,8 @@ __all__ = [
     "list_entries",
     "set_timeout_seconds",
     "get_timeout_seconds",
+    "set_approved_ttl_seconds",
+    "get_approved_ttl_seconds",
     "is_live_mode_enabled",
     "set_live_mode",
     "enable_ceremony",

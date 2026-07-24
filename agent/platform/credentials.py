@@ -48,6 +48,7 @@ import logging
 import os
 import re
 import sys
+import threading
 from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -96,6 +97,12 @@ _FORCE_FALLBACK: bool = False
 
 # Override for the config dir (used by tests to point at tmp_path).
 _config_dir_override: Path | None = None
+
+# A006 (2026-07-24 audit): the fallback bag is one file mutated via
+# read-modify-write; without a lock two concurrent store/delete calls
+# can interleave and silently drop each other's alias. Guard every
+# RMW cycle with this lock.
+_BAG_LOCK = threading.RLock()
 
 
 def _redact(s: str | None) -> str:
@@ -240,11 +247,16 @@ def _write_encrypted_bag(passphrase: str, bag: dict) -> bool:
     try:
         f = _fernet_from_passphrase(passphrase)
         blob = f.encrypt(json.dumps(bag).encode("utf-8"))
-        path.write_bytes(blob)
+        # A006: tmp-file + os.replace (same pattern as
+        # risk_budget.save_config) so an interrupted write can never
+        # leave a truncated -- hence undecryptable -- bag behind.
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_bytes(blob)
         try:
-            os.chmod(path, 0o600)
+            os.chmod(tmp, 0o600)
         except OSError:
             pass
+        os.replace(tmp, path)
         return True
     except (ValueError, OSError):
         return False
@@ -363,9 +375,10 @@ def store_secret(namespace: str, key: str, value: str) -> bool:
         logger.info("credentials.store_secret namespace=%s key=%s value=%s "
                     "backend=fallback outcome=no_passphrase", ns, k, _redact(v))
         return False
-    bag = _read_encrypted_bag(passphrase)
-    bag.setdefault(ns, {})[k] = v
-    ok = _write_encrypted_bag(passphrase, bag)
+    with _BAG_LOCK:
+        bag = _read_encrypted_bag(passphrase)
+        bag.setdefault(ns, {})[k] = v
+        ok = _write_encrypted_bag(passphrase, bag)
     logger.info("credentials.store_secret namespace=%s key=%s value=%s "
                 "backend=fallback outcome=%s", ns, k, _redact(v),
                 "ok" if ok else "fail")
@@ -419,13 +432,14 @@ def delete_secret(namespace: str, key: str) -> bool:
 
     passphrase = _current_passphrase()
     if passphrase:
-        bag = _read_encrypted_bag(passphrase)
-        if k in bag.get(ns, {}):
-            del bag[ns][k]
-            if not bag[ns]:
-                del bag[ns]
-            _write_encrypted_bag(passphrase, bag)
-            removed = True
+        with _BAG_LOCK:
+            bag = _read_encrypted_bag(passphrase)
+            if k in bag.get(ns, {}):
+                del bag[ns][k]
+                if not bag[ns]:
+                    del bag[ns]
+                _write_encrypted_bag(passphrase, bag)
+                removed = True
 
     logger.info("credentials.delete_secret namespace=%s key=%s outcome=%s",
                 ns, k, "ok" if removed else "miss")

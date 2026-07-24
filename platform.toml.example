@@ -31,6 +31,12 @@
 # chat_id = "-1001234567890"
 # summary_every = 10
 
+# Approved-freshness window (A005): an approved entry is executable
+# for this many seconds after the click; afterwards it reads
+# "approval_expired" and every gate refuses it. Default 300 (5 min).
+# [approvals]
+# approved_ttl_seconds = 300
+
 # F014 Telegram bridge for the alerts bus. The PRIMARY destination
 # reuses the [telegram] bot_token / chat_id above (no new secret) and
 # carries all TRADING events (trade_fill, stop_hit, risk_budget_breach,

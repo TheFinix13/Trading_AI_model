@@ -47,11 +47,26 @@ Persistence
   Only losses (``pnl < 0``) count against the cap; winning fills are
   recorded but do NOT add headroom (asymmetric cap by design so a
   lucky streak can't buy you the right to blow up harder).
+
+Gate performance (A007, 2026-07-24 audit)
+=========================================
+
+``_today_losses`` used to re-parse the FULL history file on every
+gate call, which degrades linearly as ``risk_state.jsonl`` grows. It
+now keeps an in-process cache keyed by ``(file mtime_ns, file size,
+UTC day)`` with the full scan as the fallback correctness path. This
+was chosen over day-keyed segment files / compact-on-day-roll because
+it changes no on-disk format and no other accessor: the gate is on
+the order path, so correctness beats cleverness. Any append
+(``record_fill``) changes mtime+size and invalidates the key; a UTC
+day roll changes the day component; anything unexpected (missing
+file, stat error) simply falls back to the scan.
 """
 from __future__ import annotations
 
 import json
 import math
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -255,8 +270,26 @@ class _TodayLosses:
     by_strategy: dict[str, float]
 
 
-def _today_losses(now: float | None = None) -> _TodayLosses:
-    prefix = _today_utc_iso_prefix(now)
+# A007 -- gate-call cache: {"key": ((mtime_ns, size) | None, day_prefix),
+# "value": _TodayLosses}. See the module docstring for the rationale.
+_LOSSES_CACHE_LOCK = threading.Lock()
+_LOSSES_CACHE: dict | None = None
+
+
+def _losses_cache_key(prefix: str) -> tuple:
+    path = _state_path()
+    try:
+        st = path.stat()
+        stat_key: tuple | None = (st.st_mtime_ns, st.st_size)
+    except OSError:
+        stat_key = None
+    # Path is part of the key so a config-dir change (tests, env
+    # override) can never serve losses computed for a different file.
+    return (str(path), stat_key, prefix)
+
+
+def _scan_today_losses(prefix: str) -> _TodayLosses:
+    """Full-scan fallback: parse every row and sum today's losses."""
     total = 0.0
     by_symbol: dict[str, float] = {}
     by_strategy: dict[str, float] = {}
@@ -278,6 +311,30 @@ def _today_losses(now: float | None = None) -> _TodayLosses:
         by_strategy[strat] = by_strategy.get(strat, 0.0) + loss
     return _TodayLosses(total=total, by_symbol=by_symbol,
                         by_strategy=by_strategy)
+
+
+def _copy_losses(losses: _TodayLosses) -> _TodayLosses:
+    return _TodayLosses(total=losses.total,
+                        by_symbol=dict(losses.by_symbol),
+                        by_strategy=dict(losses.by_strategy))
+
+
+def _today_losses(now: float | None = None) -> _TodayLosses:
+    """Today's realised losses, O(1) on repeated gate calls.
+
+    Cached per (file mtime_ns, file size, UTC day); any append or day
+    roll misses the cache and re-runs the full scan (the correctness
+    path). Callers receive copies so cached state is mutation-safe."""
+    global _LOSSES_CACHE
+    prefix = _today_utc_iso_prefix(now)
+    key = _losses_cache_key(prefix)
+    with _LOSSES_CACHE_LOCK:
+        if _LOSSES_CACHE is not None and _LOSSES_CACHE["key"] == key:
+            return _copy_losses(_LOSSES_CACHE["value"])
+    losses = _scan_today_losses(prefix)
+    with _LOSSES_CACHE_LOCK:
+        _LOSSES_CACHE = {"key": key, "value": _copy_losses(losses)}
+    return losses
 
 
 def _cap_for_symbol(cfg: dict, symbol: str) -> float:
@@ -406,7 +463,10 @@ def can_send_order(symbol: str, strategy: str,
 
 
 def reset_state() -> None:  # claim-exempt: test-only state wipe, no HTTP surface
-    """Test helper -- wipe ``risk_state.jsonl``."""
+    """Test helper -- wipe ``risk_state.jsonl`` (and the A007 cache)."""
+    global _LOSSES_CACHE
+    with _LOSSES_CACHE_LOCK:
+        _LOSSES_CACHE = None
     path = _state_path()
     if path.exists():
         try:

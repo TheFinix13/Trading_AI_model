@@ -1104,6 +1104,10 @@ def main() -> None:
     expiry_days = int(cfg.get("session", {}).get("expiry_days", 7))
     auth.set_session_expiry_seconds(expiry_days * 24 * 3600)
 
+    # A005 -- approved-freshness window ([approvals] approved_ttl_seconds).
+    approval_queue.set_approved_ttl_seconds(
+        int(cfg.get("approvals", {}).get("approved_ttl_seconds", 300)))
+
     server = ThreadingHTTPServer(
         (args.host, args.port),
         make_handler(args.log_root, args.repo_root, args.research_reviews,

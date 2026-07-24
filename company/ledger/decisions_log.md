@@ -1944,6 +1944,37 @@ Tests: `test_alerts_telegram_ops_routing.py` (13 — routing matrix,
 fallback, fail-closed, no-token-echo); platform suite 866 green;
 claim audit green.
 
+## D106 · 2026-07-24 · cto · [SECURITY]
+
+**Audit fixes A005/A006/A007 shipped — stale approvals refused,
+credential bag writes atomic + locked, risk gate O(today).**
+
+A005 (`approval_queue.py`): `_resolve` now reaps BEFORE resolving so
+a click landing after `timeout_at` can never approve an expired
+entry; approved entries carry `approved_at` + a freshness window
+(`[approvals] approved_ttl_seconds`, default 300 s) and flip to the
+new `approval_expired` status (reason `approved_ttl_expired`) on
+reap, so `can_send_order` → `can_send_live_order` → the F018
+executor all refuse stale approvals via composition (verified: the
+executor re-runs `can_send_live_order` fresh). `/approvals` shows an
+"approval expires in" countdown on approved cards. P0 invariant file
+EXTENDED +5 cases (`TestStaleApprovalRefused`, 23 total; Sprint-2 pin
+and Sprint-2b extension untouched above the new marker). Freshness
+rolling constraint added to the F013 register section.
+A006 (`credentials.py`): `_write_encrypted_bag` now tmp-file +
+`os.replace` (the `risk_budget.save_config` pattern) so an
+interrupted write can't corrupt the bag; store/delete
+read-modify-write cycles guarded by a new `_BAG_LOCK`. Tests:
+`test_credentials_atomicity.py` (5 — interrupted replace, interrupted
+tmp write, no stray tmp, 8-thread store race, store-vs-delete race).
+A007 (`risk_budget.py::_today_losses`): in-process cache keyed by
+(state-file path, mtime_ns, size, UTC day) with the full scan as the
+fallback correctness path — chosen over segment files /
+compact-on-day-roll as least invasive (no on-disk format change);
+rationale in the module docstring. Tests:
+`test_risk_budget_gate_perf.py` (6 — day boundary, invalidation on
+new fill, 10k-row fixture not re-parsed on second call).
+
 ## Template for subsequent entries
 
 ```markdown

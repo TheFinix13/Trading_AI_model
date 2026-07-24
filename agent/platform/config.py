@@ -57,6 +57,11 @@ def _defaults(repo_root: Path) -> dict:
         # F009 -- install-token session expiry (auto-logout after N days
         # of no authenticated activity). Default 7 days.
         "session": {"expiry_days": 7},
+        # F013/A005 -- approved-freshness window: an `approved` entry
+        # is only executable for this many seconds after the click;
+        # afterwards it flips to `approval_expired` and every gate
+        # refuses it (fail-closed).
+        "approvals": {"approved_ttl_seconds": 300},
         # F013 -- internal-only token used to gate
         # `POST /api/approvals/submit`. Sprint 2 does NOT call this
         # endpoint from any live pathway (D065). Left empty by default;
@@ -183,6 +188,15 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
         if se.get("expiry_days") is not None:
             try:
                 cfg["session"]["expiry_days"] = int(se["expiry_days"])
+            except (TypeError, ValueError):
+                pass
+    approvals = raw.get("approvals")
+    if isinstance(approvals, dict):
+        if approvals.get("approved_ttl_seconds") is not None:
+            try:
+                ttl = int(approvals["approved_ttl_seconds"])
+                if ttl > 0:
+                    cfg["approvals"]["approved_ttl_seconds"] = ttl
             except (TypeError, ValueError):
                 pass
     internal = raw.get("internal")

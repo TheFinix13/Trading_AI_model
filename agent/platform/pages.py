@@ -5671,6 +5671,7 @@ _APPROVALS_TEMPLATE = r"""<!doctype html>
 .exec-warn p:last-child{margin-bottom:0}
 .approval-card.rejected{opacity:0.5;border-color:#a94a4a}
 .approval-card.timed_out{opacity:0.4;border-color:var(--dim)}
+.approval-card.approval_expired{opacity:0.4;border-color:var(--dim)}
 .approval-card .status-pill{font-size:11px;text-transform:uppercase;
   padding:2px 6px;border-radius:3px;background:rgba(255,255,255,0.06)}
 .approvals-section{margin:16px 0}
@@ -5695,7 +5696,7 @@ __NAV__
 </div>
 
 <div class="approvals-section">
-<h2>Recent (approved / rejected / timed out)</h2>
+<h2>Recent (approved / rejected / timed out / expired)</h2>
 <div id="recent-body" class="approvals-grid"></div>
 </div>
 
@@ -5750,7 +5751,15 @@ function cardHtml(entry, includeActions){
         '([live_executor] enabled = false).</div>';
     }
   }
-  const timeoutEpoch = entry.timeout_at_epoch || 0;
+  // A005: approved entries carry their own freshness deadline --
+  // the countdown flips to the approved-TTL clock after approval.
+  const timeoutEpoch = (entry.status === "approved")
+    ? (entry.approved_expires_at_epoch || 0)
+    : (entry.timeout_at_epoch || 0);
+  const cdLabel = (entry.status === "approved")
+    ? "approval expires in " : "timeout in ";
+  const showCountdown = includeActions ||
+    (entry.status === "approved" && timeoutEpoch > 0);
   const params = '<div class="params">'+
     '<span class="dim">side</span><span>'+esc(entry.side)+'</span>'+
     '<span class="dim">size</span><span>'+esc(entry.size)+'</span>'+
@@ -5761,13 +5770,13 @@ function cardHtml(entry, includeActions){
       (entry.risk_snapshot||{}).worst_case_loss)+'</span>'+
     '</div>';
   return '<div class="'+cls+'" data-id="'+esc(entry.id)+
-    '" data-timeout="'+timeoutEpoch+'">'+
+    '" data-timeout="'+timeoutEpoch+'" data-cd-label="'+cdLabel+'">'+
     '<h3>'+esc(entry.symbol)+' '+statusPill(entry.status)+'</h3>'+
     '<div class="meta">'+esc(entry.source_agent)+' &middot; '+
       esc(entry.timestamp)+'</div>'+
     params+
     '<div class="rationale">'+esc(entry.rationale)+'</div>'+
-    (includeActions ? '<div class="countdown" data-cd="'+
+    (showCountdown ? '<div class="countdown" data-cd="'+
       esc(entry.id)+'">--</div>' : "")+
     actions+'</div>';
 }
@@ -5852,10 +5861,11 @@ function tickCountdowns(){
     const card = el.closest(".approval-card");
     if(!card) return;
     const to = parseFloat(card.getAttribute("data-timeout") || "0");
+    const label = card.getAttribute("data-cd-label") || "timeout in ";
     const s = Math.max(0, Math.floor(to - now));
     const mm = String(Math.floor(s/60)).padStart(2,"0");
     const ss = String(s%60).padStart(2,"0");
-    el.textContent = "timeout in " + mm + ":" + ss;
+    el.textContent = label + mm + ":" + ss;
     if(s === 0) el.textContent = "expired -- reap on next poll";
   });
 }

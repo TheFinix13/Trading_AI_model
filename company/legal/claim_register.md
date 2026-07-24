@@ -399,16 +399,18 @@ Public accessors: `submit(entry) -> str`,
 `list_entries(status="all", limit=100) -> list[dict]`,
 `get_timeout_seconds() -> int`,
 `set_timeout_seconds(seconds) -> None`,
+`get_approved_ttl_seconds() -> int`,
+`set_approved_ttl_seconds(seconds) -> None`,
 `is_live_mode_enabled() -> bool`,
 `set_live_mode(enabled) -> bool`,
 `enable_ceremony(acknowledged, confirmation) -> tuple[bool, str]`,
 `disable() -> bool`,
 `can_send_live_order(entry, ...) -> tuple[bool, str]`.
 
-Public module constants: `DEFAULT_TIMEOUT_SECONDS`, `STATUSES`,
-`AUDIT_FILENAME`, `LIVE_MODE_NAMESPACE`, `LIVE_MODE_KEY`,
-`CONFIRMATION_PHRASE`. Test-only helper marked `# claim-exempt`:
-`reset_state`.
+Public module constants: `DEFAULT_TIMEOUT_SECONDS`,
+`DEFAULT_APPROVED_TTL_SECONDS`, `STATUSES`, `AUDIT_FILENAME`,
+`LIVE_MODE_NAMESPACE`, `LIVE_MODE_KEY`, `CONFIRMATION_PHRASE`.
+Test-only helper marked `# claim-exempt`: `reset_state`.
 
 | Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
 |---|---|---|---|---|
@@ -419,14 +421,25 @@ Public module constants: `DEFAULT_TIMEOUT_SECONDS`, `STATUSES`,
 | `submit` | `str` (approval_id) | Enqueue a proposal. Assigns id, validates payload, appends to JSONL audit. Sprint 2 does NOT call this from any live pathway (D065). | `approval_queue.submit`. | None -- internal endpoint gated by `[internal].token`. |
 | `approve` | `bool` | Move pending -> approved. Idempotent (returns False on second call). Audit-logged. | `approval_queue.approve`. | Verbatim `company/legal/approval-queue-warning.md` renders above the pending list. |
 | `reject` | `bool` | Move pending -> rejected with reason. Audit-logged. Rejected orders have zero market side-effect. | `approval_queue.reject`. | Same as approve. |
-| `can_send_order` | `bool` | Fourth of four live-mode-off gates. True iff status == "approved". Auto-reaps stale pending before answering. | `approval_queue.can_send_order`. | Composed into the invariant test. |
+| `can_send_order` | `bool` | Fourth of four live-mode-off gates. True iff status == "approved". Auto-reaps stale pending AND stale approved (A005 freshness window) before answering. | `approval_queue.can_send_order`. | Composed into the invariant test. |
+| `get_approved_ttl_seconds` / `set_approved_ttl_seconds` | `int` / None | A005 approved-freshness window (`[approvals] approved_ttl_seconds`, default 300 s). An `approved` entry past the window flips to `approval_expired` and every gate refuses it. | `approval_queue.get_approved_ttl_seconds`. | Freshness-window rolling constraint below. |
 | `can_send_live_order` | `(bool, str)` | Composes ALL FOUR gates (live-mode + kill-switch + risk-budget + approval). The `test_live_mode_off_invariant` pin. | `approval_queue.can_send_live_order`. | Composed disclaimer of all four dependencies. |
-| `timeout_reap` | `list[str]` | Expire stale pending entries. Called under the hood by `can_send_order` and `list_entries`. | `approval_queue.timeout_reap`. | None -- state. |
+| `timeout_reap` | `list[str]` | Expire stale pending entries (-> `timed_out`) AND stale approved entries (-> `approval_expired`, A005). Called under the hood by `can_send_order`, `list_entries`, and `_resolve` (so a late click can never approve an expired entry). | `approval_queue.timeout_reap`. | None -- state. |
 | `list_entries` | `list[dict]` | Newest-first, optional status filter, `limit` cap. Returns copies (mutation-safe). | `approval_queue.list_entries`. | None -- state. |
 
 Rolling constraint (Legal): the "5-minute timeout" claim is only
 accurate while `DEFAULT_TIMEOUT_SECONDS == 300`. Any change (config
 knob or default) must strike or update the claim wherever cited.
+
+Freshness-window constraint (Legal, A005 2026-07-24): an approval is
+only executable for `approved_ttl_seconds` (default 300 s) after the
+click; past that it reads `approval_expired` with reason
+`approved_ttl_expired` and `can_send_order` (hence
+`can_send_live_order` and the F018 executor) refuses. Removing the
+reap-in-`_resolve` call or the approved-TTL check would let an
+hours-old approval fire an order -- that is a safety regression
+pinned by `tests/security/test_live_mode_off_invariant.py`
+(`TestStaleApprovalRefused`).
 
 Ceremony-strictness constraint: `enable_ceremony` requires BOTH the
 acknowledgement checkbox AND the exact confirmation phrase
