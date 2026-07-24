@@ -79,7 +79,8 @@ PLATFORM_VERSION = "0.2.0"
 _MATCH_RE = re.compile(
     r"^/api/v2/match/([A-Za-z0-9_.-]+)/(summary|events|event/(\d+))$")
 _LIVE_RE = re.compile(
-    r"^/api/v2/live/(summary|events|status|workspace|event/(\d+))$")
+    r"^/api/v2/live/(summary|events|status|workspace|upcoming_events"
+    r"|event/(\d+))$")
 _PLAYER_URL_RE = re.compile(r"^/players/([A-Za-z0-9_-]+)/?$")
 _PLAYER_API_RE = re.compile(r"^/api/players/([A-Za-z0-9_-]+)$")
 _BROKER_ALIAS_RE = re.compile(r"^/api/broker/([A-Za-z0-9_.\-]+)$")
@@ -655,6 +656,13 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                                {"dir": None, "exists": False,
                                 "running": False,
                                 "error": "no live dir configured"})
+                    return
+                if kind == "upcoming_events":
+                    # High-impact USD events ahead of now, from the
+                    # local news cache (read-only; no network). Works
+                    # even before the live dir exists so the /v2 page
+                    # can show the week's calendar from cold start.
+                    self._json(paper_loop.upcoming_events())
                     return
                 if kind == "workspace":
                     # Latest workspace snapshot -- the "what is the squad

@@ -94,6 +94,12 @@ class TestSchemaValidator:
              "players_who_proposed": [],
              "proposal_count": 0, "post_sentinel_count": 0,
              "workspace_thought_count": 3},
+            # system_status is an infrastructure-health row (news feed
+            # dead / cache stale) — agent-optional like tick_summary.
+            {"t": "2024-01-01T00:00:00+00:00", "type": "system_status",
+             "component": "news_calendar", "status": "stale",
+             "failure_streak": 1, "cache_age_seconds": 50000.0,
+             "message": "news calendar cache stale"},
         ]
         assert {s["type"] for s in samples} == set(EVENT_TYPES)
         for s in samples:

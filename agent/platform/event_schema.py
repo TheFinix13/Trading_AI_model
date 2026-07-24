@@ -35,10 +35,11 @@ from datetime import datetime
 
 EVENT_TYPES = (
     "proposal", "blocked", "open", "close", "thought", "tick_summary",
+    "system_status",
 )
 
 # Types where the common ``agent`` field is not required (see docstring).
-_AGENT_OPTIONAL_TYPES = frozenset({"tick_summary"})
+_AGENT_OPTIONAL_TYPES = frozenset({"tick_summary", "system_status"})
 
 # type -> {field: (allowed python types, required?)}
 _FIELDS: dict[str, dict[str, tuple[tuple, bool]]] = {
@@ -77,6 +78,17 @@ _FIELDS: dict[str, dict[str, tuple[tuple, bool]]] = {
         "workspace_thought_count": ((int,), True),
         "players_evaluated": ((list,), True),
         "players_who_proposed": ((list,), True),
+    },
+    # Lightweight infrastructure health row (e.g. news-calendar fetch
+    # failures / stale cache). Emitted into events.jsonl by the live
+    # runtime; the timeline parser tolerates (skips) it today, but the
+    # contract is defined here so a future UI surface can validate it.
+    "system_status": {
+        "component": ((str,), True),
+        "status": ((str,), True),
+        "failure_streak": ((int,), False),
+        "cache_age_seconds": ((int, float, type(None)), False),
+        "message": ((str,), False),
     },
 }
 

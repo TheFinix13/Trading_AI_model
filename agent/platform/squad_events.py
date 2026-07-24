@@ -68,6 +68,16 @@ ROSTER: dict[str, dict] = {
                          "color": "#3fb950", "role": "midfield general · copier"},
     "kunigami_rensuke": {"name": "Kunigami", "num": 5,  "x": 50, "y": 16,
                          "color": "#8b949e", "role": "defender · Sentinel R5"},
+    # Karasu (news-window defender, Sentinel R7 side channel): sits in
+    # the back line next to Kunigami. Never proposes.
+    "karasu_tabito":    {"name": "Karasu",   "num": 4,  "x": 26, "y": 20,
+                         "color": "#79c0ff", "role": "defender · news window R7"},
+    # Sae (event-specialist striker): most advanced position on the
+    # pitch. DISABLED BY DEFAULT (Phase AE pre-reg gate) -- the /v2 UI
+    # renders him dimmed with an "(off)" label while state.json says
+    # sae_enabled=false.
+    "sae_itoshi":       {"name": "Sae",      "num": 20, "x": 76, "y": 90,
+                         "color": "#e3b341", "role": "event striker · fade/ride"},
 }
 
 # Rejection reasons that are Sentinel/system rules rather than a peer

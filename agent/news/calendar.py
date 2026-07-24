@@ -43,7 +43,13 @@ from typing import Iterable
 log = logging.getLogger(__name__)
 
 DEFAULT_FEED_URL = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
-DEFAULT_CACHE_PATH = Path("data/news_calendar.json")
+# Pre-2026-07-24 default: CWD-relative, so the cache landed in whatever
+# directory the runner happened to launch from. Kept only as a read
+# fallback (see resolve_cache_path).
+LEGACY_CACHE_PATH = Path("data/news_calendar.json")
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+# Anchored default: always the repo's data/ dir regardless of CWD.
+DEFAULT_CACHE_PATH = _REPO_ROOT / "data" / "news_calendar.json"
 DEFAULT_TTL_SECONDS = 6 * 60 * 60  # 6 hours
 
 VALID_IMPACTS = {"Low", "Medium", "High", "Holiday", "Non-Economic"}
@@ -217,12 +223,50 @@ def _is_cache_fresh(fetched_at: datetime | None, ttl_seconds: int, now: datetime
     return 0 <= age < ttl_seconds
 
 
+def resolve_cache_path(cache_path: Path | str = DEFAULT_CACHE_PATH) -> Path:
+    """Read-path resolution with legacy-migration fallback.
+
+    Only when the caller asked for the anchored DEFAULT and it does not
+    exist yet, but the pre-anchoring CWD-relative file does, read the
+    legacy one (the next successful fetch writes the anchored path).
+    Explicit caller-supplied paths are never redirected -- tests and
+    custom deployments keep exact-path semantics.
+    """
+    p = Path(cache_path)
+    if p != DEFAULT_CACHE_PATH or p.exists():
+        return p
+    try:
+        legacy_differs = LEGACY_CACHE_PATH.resolve() != p.resolve()
+    except OSError:
+        legacy_differs = True
+    if legacy_differs and LEGACY_CACHE_PATH.exists():
+        log.info(
+            "news cache migration: %s missing; reading legacy "
+            "CWD-relative %s (next successful fetch writes the "
+            "anchored path)", p, LEGACY_CACHE_PATH.resolve(),
+        )
+        return LEGACY_CACHE_PATH
+    return p
+
+
+def cache_fetched_at(
+    cache_path: Path | str = DEFAULT_CACHE_PATH,
+) -> datetime | None:
+    """The cache's ``fetched_at`` stamp, or None when missing/corrupt.
+
+    Health-check helper for the live refresher and the dashboard --
+    lets callers detect a dead feed (stale/absent cache) without
+    parsing the whole event list themselves."""
+    _, fetched_at = _read_cache(resolve_cache_path(cache_path))
+    return fetched_at
+
+
 def load_calendar(cache_path: Path | str = DEFAULT_CACHE_PATH) -> list[NewsEvent]:
     """Read the cached calendar from disk. Returns [] if missing/corrupt.
 
     This is the cheap path used by the rule engine / dashboard at decision
     time -- they never block on the network."""
-    events, _ = _read_cache(Path(cache_path))
+    events, _ = _read_cache(resolve_cache_path(cache_path))
     return events
 
 
@@ -252,7 +296,9 @@ def fetch_calendar(
         now = datetime.now(timezone.utc)
     cache_path = Path(cache_path)
 
-    cached_events, fetched_at = _read_cache(cache_path)
+    # Reads honour the legacy-migration fallback; writes always land on
+    # the caller's (anchored) path so the migration converges.
+    cached_events, fetched_at = _read_cache(resolve_cache_path(cache_path))
     if not force_refresh and _is_cache_fresh(fetched_at, ttl_seconds, now):
         return cached_events
 
@@ -348,14 +394,17 @@ def refresh_cache_if_stale(
 # to express TTLs symbolically.
 __all__ = [
     "NewsEvent",
+    "cache_fetched_at",
     "fetch_calendar",
     "load_calendar",
     "parse_calendar_xml",
     "filter_events",
     "load_fixture",
     "refresh_cache_if_stale",
+    "resolve_cache_path",
     "DEFAULT_FEED_URL",
     "DEFAULT_CACHE_PATH",
     "DEFAULT_TTL_SECONDS",
+    "LEGACY_CACHE_PATH",
     "timedelta",
 ]
