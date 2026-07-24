@@ -2278,7 +2278,7 @@
     "test_coverage_pct": null,
     "active_roles": 14,
     "total_roles": 19,
-    "intake_items_open": 11,
+    "intake_items_open": 12,
     "intake_items_closed_last_7d": 1,
     "experiments_in_flight": 0,
     "published_findings_total": 1,
@@ -2488,6 +2488,23 @@
       "resolved_at": null,
       "summary": "experiments_in_flight KPI semantics (A012): ledger vs derived count disagree on not-started/awaiting-panel states -- CPO makes the semantic call, then pin with a test. Bundled: recurring-audit-cadence proposal (quarterly + before any live-wiring milestone), D108 pending CEO ratification.",
       "file": "company/rd/intake/I012-experiments-kpi-semantics-audit-cadence.md"
+    },
+    {
+      "id": "I013",
+      "source": "ceo",
+      "submitter": "research_lead",
+      "submitted_at": "2026-07-24T04:58:00Z",
+      "classification": "RESEARCH_IDEA",
+      "priority": "P3",
+      "status": "open",
+      "route": "research",
+      "linked_features": [],
+      "linked_decisions": ["D111"],
+      "linked_experiments": ["phase_ae_sae_event_specialist"],
+      "contact": "internal (CEO question after Phase AE FAIL, 2026-07-24 session)",
+      "resolved_at": null,
+      "summary": "Sae v2 hypothesis: finer-timeframe precision mechanics (M5/M1 microstructure, surprise-z gating, spread-aware brackets). NOT a v1 retune (D111 stop rule). Parked until M5 + surprise data plan exists and the research queue drains Phase AC follow-ups; no compute before a fresh locked pre-registration.",
+      "file": "company/rd/intake/I013-sae-v2-finer-timeframe-hypothesis.md"
     }
   ],
   "experiments": [
