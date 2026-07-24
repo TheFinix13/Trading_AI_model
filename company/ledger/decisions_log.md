@@ -2150,6 +2150,34 @@ baseline. Numbering note: BACKLOG.md's placeholder F019–F024 labels
 are stale (per D095's memo); canonical numbering follows specs on
 tape — F018 was last, so Sprint 3 owns F019–F024.
 
+## D115 · 2026-07-24 · cto · [ARCHITECTURE]
+
+**Multi-user auth migration charter adopted as the planning baseline
+— accounts bind the P0 live-mode invariant; implementation deferred
+to its own sprint.**
+
+Charter at `company/strategy/auth-migration-charter.md` (design only,
+zero code). Locks: (1) target = local account store (owner/viewer
+roles only) with per-account keyring/Fernet namespaces
+(`bluelock/<account_id>`) and per-account session tokens on the F009
+expiry/rotation machinery; (2) **the P0 invariant extension: live-mode
+enablement, approval, and execution authority bind to an OWNER
+ACCOUNT, not an install** — ceremony records `account_id`, the F018
+executor refuses approvals from non-owners re-checked fresh at
+execution, viewers structurally cannot arm/approve/execute, kill
+switches stay global and ceremony-free; (3) localhost-open (D052)
+ends in multi-account mode; (4) migration = zero-step adoption of the
+existing single-user install into a default owner account (VM
+deployment unbroken, additive + rollback-safe); (5) phasing — Phase 1
+local multi-account chartered, **Phase 2 hosted flagged as requiring
+external legal/compliance review + the Sprint 5 pen test BEFORE any
+commitment**. Explicitly NOT decided: hosting, billing, IdP choice,
+2FA mechanics, team constructs. Implementation enters the review
+chain at spec (`auth+credentials+security+legal` all fire, CEO
+signoff) in its own sprint; until then new code avoids hard-coding
+install-scoped identity where an account seam is trivially available
+(CTO checks at architecture review).
+
 ## Template for subsequent entries
 
 ```markdown

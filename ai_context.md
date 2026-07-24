@@ -1,4 +1,22 @@
-# AI Context — brain dump (updated 2026-07-24, v0.50)
+# AI Context — brain dump (updated 2026-07-24, v0.51)
+
+> v0.51 — **Chartering session** 2026-07-24 (D113–D115, docs only, no
+> code). **Cycle-2 triage (D113):** I005+I006 RESOLVED via the D110
+> merge; I002 → awaiting-verification (closes at VM cutover); queue
+> 12 → 10 open; `experiments_in_flight` semantics locked (open
+> panel/scheduled compute only). **Sprint 3 "Stickiness" scope-locked
+> (D114), build gated on CEO charter review:** F019 wizard recovery
+> path (+I004 seam), F020 match highlights (/highlights from
+> events.jsonl), F021 player form guide (incl. Sae "benched — AE
+> FAIL" surface) = P0; F022 leaderboard groundwork, F023 alerts
+> sink+SSE cap (I010), F024 watchdog YAML parser (I011) = P1. All
+> read-only over runtime artifacts; charter at
+> `company/sprints/sprint-3-stickiness/`. **Auth migration charter
+> (D115)** at `company/strategy/auth-migration-charter.md`: owner/
+> viewer accounts, per-account keyring namespaces, P0 invariant binds
+> to OWNER ACCOUNT not install, zero-step VM adoption, Phase 2
+> (hosted) needs legal review + pen test first; implementation is its
+> own sprint.
 
 > v0.50 — **Phase AE verdict: FAIL** 2026-07-24 (D111–D112). Sae's
 > event mechanics validated against a frozen 349-event NFP/CPI/FOMC
@@ -105,7 +123,8 @@ branch (feature branches → `product` from now on). Research on
 
 | Area | Files |
 |---|---|
-| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I004},findings/2026-07-phase-ac-pitch-assignment.md,personas/,loop-validation.md}`, `company/strategy/sellability-gaps.md`, `company/ledger/{company_state.json (110 D### + 19 roles + intake×12 + experiments),decisions_log.md}` |
+| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I013,2026-W30-cycle2-triage.md},findings/,personas/,loop-validation.md}`, `company/strategy/{sellability-gaps,auth-migration-charter}.md`, `company/ledger/{company_state.json (115 D### + 19 roles + intake×13 + experiments),decisions_log.md}` |
+| Sprint 3 (chartered, not built) | `company/sprints/sprint-3-stickiness/{README,F019…F024}.md`, `company/handoffs/F019–F024-cpo-to-build_executor.json` |
 | Sprint 2b live readiness | `agent/platform/{watchdog,live_executor}.py`, `scripts/run_watchdog.py`, `company/sprints/sprint-2b-live-readiness/{README,F017-ops-watchdog,F018-demo-order-executor,REPORT}.md`, `company/legal/{F017,F018}-review.md` + `executor-demo-warning.md`, `docs/RUNBOOK_demo_launch.md` sec 7c, tests `tests/platform/test_{watchdog_*,run_watchdog_script,live_executor_module,executor_api}.py` |
 | Sprint 2 real-trading | `agent/platform/{rate_limiter,kill_switches,kill_switch_admin,risk_budget,broker_health,approval_queue,alerts,alerts_sse,alerts_telegram,auth}.py`, `agent/platform/pages.py` (KILL_SWITCHES / RISK / APPROVALS / LIVE_MODE_TOGGLE / ALERTS + HQ R&D pulse), `scripts/{serve_platform,check_claim_register,install_git_hooks}.py`, `scripts/git-hooks/pre-commit`, `company/legal/{live-mode,approval-queue}-warning.md` + `claim_register.md` |
 | Sprint 0/1 backend | `agent/platform/{performance,players,research,hq (R&D pulse extension),credentials,broker_connection,onboarding}.py` |
@@ -116,19 +135,17 @@ branch (feature branches → `product` from now on). Research on
 
 ## 3) Next immediate goal
 
-**VM cutover to `product` (runbook 7b.8), then start the shadow
-clock (D095 step 2):** the CEO redeploys the VM clones onto
-`product` (fetch + checkout + restart runtime and server; venv
-REBUILD for the pandas<3 pin), then runs runbook 7c on the VM — store
-V2 Platform creds via
-`/settings/broker`, enable `[live_executor]` + ceremony, execute a
-test order, run the kill-switch drill — then wire
-`scripts/run_watchdog.py --loop` into Task Scheduler so the 30–90 day
-shadow window is observable from day one. In parallel: charter the
-install-token → multi-user auth migration; Sprint 3 scoping picks up
-I003 (broker dead-end copy); I002 fix LANDED via the D110 merge
-(close after VM verification); A004 tz verification still open;
-cycle-2 R&D drain (I003–I012 open).
+**1) CEO reviews the two charters** (Sprint 3 at
+`company/sprints/sprint-3-stickiness/README.md`, auth migration at
+`company/strategy/auth-migration-charter.md`) — the build executor
+starts F019→F024 only after that sign-off. **2) VM cutover to
+`product` (runbook 7b.8), then start the shadow clock (D095 step
+2):** redeploy VM clones onto `product` (venv REBUILD for the
+pandas<3 pin — closes I009), verify /v2 legibility (closes I002),
+run runbook 7c ceremony + kill drill, wire `run_watchdog.py --loop`
+into Task Scheduler. One ops session advances I002/I007/I009. A004
+tz verify-then-fix waits on a live event (FOMC Jul 28–29). Post-triage
+queue: 10 open (I002–I004, I007–I013).
 
 **Parked (no start without discussion):** wiring four-gate composition
 to squad's real-order path; Sprint 4 `/feedback` route (D084 defers —
