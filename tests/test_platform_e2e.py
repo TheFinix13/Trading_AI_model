@@ -88,11 +88,13 @@ def test_v2_page_plays_a_match(server):
         page.goto(server + "/v2")
 
         # The match loads: clock reports the event count, pitch has the
-        # eight roster players drawn.
+        # full ten-striker roster drawn (Sae + Karasu joined the pitch
+        # with the I002 legibility fix -- squad_events.ROSTER is the
+        # source of truth).
         page.wait_for_function(
             "document.getElementById('clock').innerText.includes('ready')",
             timeout=10_000)
-        assert page.locator("#pitch g[id^='pl_']").count() == 8
+        assert page.locator("#pitch g[id^='pl_']").count() == 10
 
         # League table rendered from the summary (header + agent rows).
         assert page.locator("#league tr").count() >= 3

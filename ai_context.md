@@ -1,17 +1,32 @@
-# AI Context — brain dump (updated 2026-07-24, v0.51)
+# AI Context — brain dump (updated 2026-07-24, v0.52)
+
+> v0.52 — **Sprint 3 "Stickiness" COMPLETE** 2026-07-24 (D116–D123,
+> 6/6 shipped in one executor-day, verdict on tape). **P0s:** F019
+> wizard recovery path + missing-broker chip + I004 token seam
+> (D117); F020 `/highlights` match reports from events.jsonl (D118);
+> F021 player form guide + manifest-derived gate status — Sae renders
+> "Benched — fails pre-registered AE2 criterion" from the manifest's
+> own strings (D119). **P1s:** F022 `/leaderboard` standings
+> (agent/pair × all/30d/7d; cum-R sort, TQS tie-break; shared
+> `MIN_FORM_SAMPLE=5` n-rule; nav 8→9 pills) (D120); F023 alerts
+> opt-in JSONL sink (default OFF, failure-isolated) + SSE cap
+> (`max_sse_streams=8`, 429-refuse-not-evict) + page backoff (D121);
+> F024 watchdog front matter → `yaml.safe_load` via fast path
+> (23-insertion non-test diff) (D122). **I012 rider:** in-flight KPI
+> pinned (D113 semantics; exposed + fixed /hq overcount 1→0).
+> Intake I003/I004/I010/I011 RESOLVED (queue 10→6). Suite
+> 1784+1skip → **1969**; P0 23/23 untouched; claim audit green (F022
+> + F023×2 register sections); zero-diff vs 9c0a591 empty. Honest
+> notes (executor died mid-F021, parent shipped it; stale e2e
+> pitch-pin from I002 repaired): sprint REPORT.md. CEO signoff D123.
+> Build note: three hands, one review chain.
 
 > v0.51 — **Chartering session** 2026-07-24 (D113–D115, docs only, no
 > code). **Cycle-2 triage (D113):** I005+I006 RESOLVED via the D110
 > merge; I002 → awaiting-verification (closes at VM cutover); queue
 > 12 → 10 open; `experiments_in_flight` semantics locked (open
 > panel/scheduled compute only). **Sprint 3 "Stickiness" scope-locked
-> (D114), build gated on CEO charter review:** F019 wizard recovery
-> path (+I004 seam), F020 match highlights (/highlights from
-> events.jsonl), F021 player form guide (incl. Sae "benched — AE
-> FAIL" surface) = P0; F022 leaderboard groundwork, F023 alerts
-> sink+SSE cap (I010), F024 watchdog YAML parser (I011) = P1. All
-> read-only over runtime artifacts; charter at
-> `company/sprints/sprint-3-stickiness/`. **Auth migration charter
+> (D114):** F019–F024 as shipped above. **Auth migration charter
 > (D115)** at `company/strategy/auth-migration-charter.md`: owner/
 > viewer accounts, per-account keyring namespaces, P0 invariant binds
 > to OWNER ACCOUNT not install, zero-step VM adoption, Phase 2
@@ -46,40 +61,20 @@
 > D109 = secret-hygiene sweep (no secret-shaped literals in tests,
 > `tests/CONVENTIONS.md`). VM cutover pending (runbook 7b.8).
 
-> v0.48 — **Product hardening night** 2026-07-24 (D105–D108 on
-> `product`). **Ops-Telegram split** (D105): `[alerts.telegram.ops]`
-> second bot/chat; `OPS_EVENTS` (watchdog_alert) → ops with primary
-> FALLBACK; `DUAL_ROUTE_EVENTS` (kill_switch_trip, platform_down) →
-> BOTH; trading → primary; no-token-echo pin extended; runbook 7b.7.
-> **Audit fixes** (D106): A005 approvals — reap-before-resolve +
-> `approved_ttl_seconds` (300 s) + `approval_expired` status, P0 pin
-> extended +5 (23 cases); A006 credentials — atomic tmp+`os.replace`
-> bag write + `_BAG_LOCK` on RMW; A007 risk gate — `_today_losses`
-> cached on (path, mtime_ns, size, UTC day). **Audit filed** (D107,
-> D108): `reviews/audits/2026-07-24-full-system-audit.md`, intake
-> I005–I012 (KPI 3→11), `pandas>=2.2,<3` pinned (VM venv holds 3.0.3
-> — REBUILD, runbook sec 4), quarterly-audit cadence pending CEO
-> ratification. Tests 1691 → **1720**. v0.47 detail below.
+> v0.48 — **Product hardening night** 2026-07-24 (D105–D108):
+> ops-Telegram split (`[alerts.telegram.ops]`, OPS/DUAL_ROUTE event
+> routing); audit fixes A005 (approval TTL 300 s + `approval_expired`,
+> P0 pin → 23), A006 (atomic bag write), A007 (loss-cache); full audit
+> filed (I005–I012, `pandas>=2.2,<3` pinned — VM venv REBUILD
+> pending). Tests 1691 → 1720.
 
 > v0.47 — **Sprint 2b Live Readiness COMPLETE** 2026-07-24
-> (D097–D104 on `product`). **F017 Ops Watchdog** (79 tests):
-> `watchdog.py` 7-check registry (runtime_heartbeat, calendar_feed,
-> broker_health, risk_state, intake_sla, sprint_pulse, ledger_drift);
-> `watchdog_alert` = 7th bus event (Legal D100), published on state
-> TRANSITIONS only; `GET /api/watchdog/status`, `/hq` chip strip,
-> `run_watchdog.py` (exit 0/1/2, `--loop` + heartbeat). **F018
-> demo-order executor** (71 tests): the four Sprint-2 gates' ONE
-> caller — `execute_approved` re-runs `can_send_live_order` fresh;
-> DEMO-ONLY guard in code (literal `demo_only=true` ack +
-> case-sensitive `*Trial*/*Demo*/*demo*` allowlist vs the
-> ACTUALLY-connected server, fail-closed); 0.01-lot cap;
-> default-disabled (gate #5); single-use approvals persisted in
-> `executions.jsonl`; no auto-retry; `Mt5OrderAdapter` seam (MT5
-> lazy-imported, Fake for tests); `/approvals` Execute button; Legal
-> D102; runbook 7c = V2 Platform demo account (436983644 /
-> Exness-MT5Trial9, password keyring-only) + ceremony + kill drill.
-> P0: live-mode-off pin UNTOUCHED +12 extensions; zero-diff vs
-> `c56e561` empty. v0.46 detail: [docs/00-journey.md](docs/00-journey.md).
+> (D097–D104): F017 Ops Watchdog (7-check registry, `watchdog_alert`
+> transitions-only bus event, `/hq` chip strip, `run_watchdog.py`);
+> F018 demo-order executor (the four gates' ONE caller, DEMO-ONLY
+> guard in code, 0.01-lot cap, default-disabled, single-use approvals
+> in `executions.jsonl`, `Mt5OrderAdapter` seam; runbook 7c ceremony
+> + kill drill). Detail: `docs/00-journey.md` + sprint REPORT.md.
 
 Read this first in a fresh chat. Deeper history: `docs/00-journey.md`
 + `docs/CHECKPOINT.md`. **Branches:** `main` = live demo agent;
@@ -93,7 +88,8 @@ branch (feature branches → `product` from now on). Research on
 - **Blue Lock Trading Co. (`product`):** 19-role company; review
   chain spec → research → design → architecture → build → qa →
   security\* → 7b research\* → legal\* → signoff → ship
-  (\* = conditional). Sprint 0+1+2+2b COMPLETE (5/5+3/3+6/6+2/2).
+  (\* = conditional). Sprint 0+1+2+2b+3 COMPLETE
+  (5/5+3/3+6/6+2/2+6/6).
 - **Real-Trading stack (default-OFF at every layer):** four-gate
   composition pinned by
   `tests/security/test_live_mode_off_invariant.py` (18 tests:
@@ -102,29 +98,39 @@ branch (feature branches → `product` from now on). Research on
   F014 SSE alerts + Telegram, **F017 watchdog, F018 demo executor**
   (DEMO-only in code; enable via `[live_executor]` in platform.toml
   + live-mode ceremony; see runbook 7c).
-- **R&D loop validated (cycle 1 PASS):** intake I001 resolved,
-  I002–I004 routed (queue depth 3); first finding published (Phase
-  AC honest negative, on `/research` manifest); W30 rollup on tape.
-- **Public routes:** `/performance`, `/players[/:id]`, `/research`,
-  `/onboarding`, `/settings/{broker,live-mode,kill-switches,reset-install}`,
+- **R&D loop (2 cycles):** I001/I003/I004/I005/I006/I010/I011
+  resolved; queue 6 open (I002 awaiting VM cutover, I007–I009,
+  I012–I013); findings published: Phase AC + Phase AE honest
+  negatives (on `/research` manifest); W30 rollup + cycle-2 triage on
+  tape.
+- **Stickiness surfaces (Sprint 3):** `/highlights` match reports,
+  `/players/:id` form guide + gate status (Sae benched from the
+  published AE manifest), `/leaderboard` standings (internal-only
+  framing pinned; shared n<5 rule), alerts JSONL sink (opt-in) + SSE
+  cap, watchdog YAML front-matter parser.
+- **Public routes:** `/performance`, `/players[/:id]`, `/highlights`,
+  `/leaderboard`, `/research`, `/onboarding`,
+  `/settings/{broker,live-mode,kill-switches,reset-install}`,
   `/risk`, `/approvals`, `/alerts`, `/hq` (R&D pulse + F015 Org &
   Flow via `/api/hq/org`). F005 `withStates()` +
-  `_BASE_CSS_VERSION = "1.1.0"`.
+  `_BASE_CSS_VERSION = "1.1.0"` (unchanged — Sprint 3 CSS all
+  page-local); nav = 9 pills.
 - **Dogfood cast (F016):** 6 personas + `scripts/dogfood_personas.py`
   (in-process server, keychain-safe, no live mode by construction);
   first run 113/113 across onboarding/broker/kill/approvals/alerts.
 - **Live (`main`):** unchanged. **Squad runtime:** now served from
   `product` (post-merge); warm-up seeds from history, Sae hydrated
   but OFF, calendar failures visible on /v2.
-- **Tests:** **1784 pass + 1 env-skip** (P0 invariant 23 cases;
-  claim audit green, 19 modules).
+- **Tests:** **1969** (P0 invariant 23 cases untouched; claim audit
+  green, 21 modules; e2e needs `PLAYWRIGHT_BROWSERS_PATH` else
+  1 env-skip).
 
 ## 2) Key file paths
 
 | Area | Files |
 |---|---|
-| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I013,2026-W30-cycle2-triage.md},findings/,personas/,loop-validation.md}`, `company/strategy/{sellability-gaps,auth-migration-charter}.md`, `company/ledger/{company_state.json (115 D### + 19 roles + intake×13 + experiments),decisions_log.md}` |
-| Sprint 3 (chartered, not built) | `company/sprints/sprint-3-stickiness/{README,F019…F024}.md`, `company/handoffs/F019–F024-cpo-to-build_executor.json` |
+| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I013,2026-W30-cycle2-triage.md},findings/,personas/,loop-validation.md}`, `company/strategy/{sellability-gaps,auth-migration-charter}.md`, `company/ledger/{company_state.json (123 D### + 19 roles + intake×13 + experiments),decisions_log.md}` |
+| Sprint 3 stickiness (COMPLETE) | `agent/platform/{highlights,leaderboard}.py` + players.py F021 additions + alerts.py sink + alerts_sse.py cap + watchdog.py YAML parser, `company/sprints/sprint-3-stickiness/{README,F019…F024,REPORT}.md`, `company/legal/{F020,F021,F022,F023}-review.md`, tests `tests/platform/test_{highlights_*,leaderboard_*,players_form_guide,alerts_jsonl_sink,experiments_kpi_semantics}.py` |
 | Sprint 2b live readiness | `agent/platform/{watchdog,live_executor}.py`, `scripts/run_watchdog.py`, `company/sprints/sprint-2b-live-readiness/{README,F017-ops-watchdog,F018-demo-order-executor,REPORT}.md`, `company/legal/{F017,F018}-review.md` + `executor-demo-warning.md`, `docs/RUNBOOK_demo_launch.md` sec 7c, tests `tests/platform/test_{watchdog_*,run_watchdog_script,live_executor_module,executor_api}.py` |
 | Sprint 2 real-trading | `agent/platform/{rate_limiter,kill_switches,kill_switch_admin,risk_budget,broker_health,approval_queue,alerts,alerts_sse,alerts_telegram,auth}.py`, `agent/platform/pages.py` (KILL_SWITCHES / RISK / APPROVALS / LIVE_MODE_TOGGLE / ALERTS + HQ R&D pulse), `scripts/{serve_platform,check_claim_register,install_git_hooks}.py`, `scripts/git-hooks/pre-commit`, `company/legal/{live-mode,approval-queue}-warning.md` + `claim_register.md` |
 | Sprint 0/1 backend | `agent/platform/{performance,players,research,hq (R&D pulse extension),credentials,broker_connection,onboarding}.py` |
@@ -135,17 +141,17 @@ branch (feature branches → `product` from now on). Research on
 
 ## 3) Next immediate goal
 
-**1) CEO reviews the two charters** (Sprint 3 at
-`company/sprints/sprint-3-stickiness/README.md`, auth migration at
-`company/strategy/auth-migration-charter.md`) — the build executor
-starts F019→F024 only after that sign-off. **2) VM cutover to
-`product` (runbook 7b.8), then start the shadow clock (D095 step
-2):** redeploy VM clones onto `product` (venv REBUILD for the
-pandas<3 pin — closes I009), verify /v2 legibility (closes I002),
-run runbook 7c ceremony + kill drill, wire `run_watchdog.py --loop`
-into Task Scheduler. One ops session advances I002/I007/I009. A004
-tz verify-then-fix waits on a live event (FOMC Jul 28–29). Post-triage
-queue: 10 open (I002–I004, I007–I013).
+**1) VM cutover to `product` (runbook 7b.8), then start the shadow
+clock (D095 step 2):** redeploy VM clones onto `product` (venv
+REBUILD for the pandas<3 pin — closes I009), verify /v2 legibility
+(closes I002), run runbook 7c ceremony + kill drill, wire
+`run_watchdog.py --loop` into Task Scheduler. One ops session
+advances I002/I007/I009. A004 tz verify-then-fix waits on a live
+event (FOMC Jul 28–29). **2) Auth migration sprint** (D115 charter)
+is the next chartered build lane — cross-user leaderboard ranking and
+any multi-user copy stay blocked on it. Post-Sprint-3 queue: 6 open
+(I002, I007–I009, I012–I013; I012 only awaits the D108 audit-cadence
+CEO ratification — the pinned test shipped).
 
 **Parked (no start without discussion):** wiring four-gate composition
 to squad's real-order path; Sprint 4 `/feedback` route (D084 defers —

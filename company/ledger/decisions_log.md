@@ -2346,6 +2346,32 @@ resolved, unquoted YAML timestamp, malformed YAML degradation,
 missing fence, non-mapping front matter, real post-triage I003
 regression); watchdog suite 53 passed. Resolves intake I011.
 
+## D123 · 2026-07-24 · ceo · [SIGNOFF]
+
+**Sprint 3 (Stickiness) CLOSED — COMPLETE, 6/6 features shipped in
+one executor-day. P0s F019/F020/F021 and P1s F022/F023/F024 all
+signed off under the D116 standing delegation (charter approved with
+no further approval gates); intake I003/I004/I010/I011 resolved with
+the sprint; I012 housekeeping rider delivered.**
+
+Evidence at close: full suite green (baseline 1784+1 skip → 1969
+tests; suite only went up); P0 live-mode-off invariant 23/23 with the
+file untouched; claim audit green (F022 + F023 register sections
+landed same-commit as their features; F024 introduced no claims);
+zero-diff on `agent/{live,risk,squad}` + `scripts/run_live.py` +
+`scripts/run_squad_live.py` verified against the 9c0a591 baseline
+(empty output on tape in the sprint REPORT). Honest notes carried in
+`company/sprints/sprint-3-stickiness/REPORT.md`: the executor
+API-budget death mid-F021 and the parent-session takeover (D119), the
+F021 ledger-stage reconciliation, one pre-existing stale e2e pin
+(I002's Sae/Karasu pitch addition) repaired at close, and the I012
+pin exposing + fixing an overstated /hq in-flight count.
+KPIs: features_shipped_sprint_3 0 → 6; intake_items_open 10 → 6;
+intake_items_closed_last_7d 3 → 7. Sprint verdict appended
+(sprint-3-stickiness, COMPLETE, actual_end 2026-07-24). The shadow
+clock (sellability gap 4) keeps running in parallel; next chartered
+lane is the D115 auth migration.
+
 ## Template for subsequent entries
 
 ```markdown

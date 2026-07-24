@@ -286,10 +286,10 @@
       "goal": "Reasons to return daily while the shadow clock runs: F019 broker-wizard recovery path (+I004 token seam), F020 match highlights from events.jsonl, F021 player form guide (incl. the Phase AE honest negative as product surface), F022 leaderboard groundwork, F023 alerts durability + SSE cap, F024 watchdog YAML parser. Read-only over runtime artifacts; zero diffs on agent/{live,risk,squad} and scripts/run_*.py. Chartered D114; build gated on CEO charter review.",
       "started_at": "2026-07-24",
       "target_end": "2026-07-27",
-      "actual_end": null,
-      "verdict": null,
+      "actual_end": "2026-07-24",
+      "verdict": "COMPLETE",
       "feature_ids": ["F019", "F020", "F021", "F022", "F023", "F024"],
-      "day_count": 0,
+      "day_count": 1,
       "day_target": 1
     }
   ],
@@ -1547,8 +1547,8 @@
       "title": "Player career depth -- per-agent form guide on /players/:id",
       "priority": "P0",
       "sprint_id": "sprint-3-stickiness",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "shipped",
+      "current_owner_role": "cto",
       "reviewers": ["cpo", "ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "legal", "ceo"],
       "auth": false,
       "credentials": false,
@@ -1561,6 +1561,13 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-3-stickiness/F021-player-form-guide.md",
           "note": "Spec locked (D114). Rolling TQS/win-rate sparkline + recent decisions + gate status incl. 'Sae: benched -- Phase AE FAIL' linking the published finding; n<5 insufficient-sample rule; claims flagged. Build gated on CEO charter review."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-24T14:10:00Z",
+          "role": "cto",
+          "deliverable": "agent/platform/players.py F021 additions + pages.py + tests/platform/test_players_* (shipped at D119, commit 489c278)",
+          "note": "RECONCILIATION entry written at sprint close-out: F021 SHIPPED at D119 (form guide, gate status from published manifests, recent decisions; Legal approved company/legal/F021-review.md; +27 tests), but the ledger's feature stage was left at 'spec' when the executor session lost its API budget mid-F021 and the parent session finished the ship. Stage corrected shipped-retroactively today; the D119 decision entry has been the authoritative record all along."
         }
       ]
     },
@@ -2541,6 +2548,13 @@
       "role": "cto",
       "decision": "[SHIP] F024 watchdog front-matter parser SHIPPED via the fast path: the hand-rolled scalar-only reader in intake_sla is replaced by yaml.safe_load, so list-bearing / nested intake front matter (linked_features, multi-entry history) parses correctly and a list-bearing P0 can no longer age past its 4-hour SLA unseen.",
       "context": "agent/platform/watchdog.py _parse_front_matter only: front-matter block between the --- fences fed to yaml.safe_load; never-raise contract preserved (missing fence / malformed YAML / non-mapping -> {}, item skipped exactly as pre-F024); date/datetime scalars normalised back to ISO strings so _parse_iso_epoch behaviour is unchanged; SLA thresholds and colour semantics byte-identical. PyYAML already a dependency (requirements.txt PyYAML>=6.0) -- no new dependency. Fast-path eligibility held: non-test diff 23 insertions / 13 deletions in one function + one import (<= 30-line budget). No new public accessor, no claims, no copy -- claim audit green with no register change. +9 tests vs >=8 target (list-bearing ok/alarm/warn/resolved, unquoted YAML timestamp, malformed YAML degradation, missing fence, non-mapping front matter, real post-triage I003 regression); watchdog suite 53 passed. Resolves intake I011."
+    },
+    {
+      "id": "D123",
+      "date": "2026-07-24",
+      "role": "ceo",
+      "decision": "[SIGNOFF] Sprint 3 (Stickiness) CLOSED -- COMPLETE, 6/6 features shipped in one executor-day. P0s F019/F020/F021 and P1s F022/F023/F024 all signed off under the D116 standing delegation; intake I003/I004/I010/I011 resolved with the sprint; I012 housekeeping rider delivered.",
+      "context": "Evidence at close: full suite green (baseline 1784+1 skip -> 1969 tests; suite only went up); P0 live-mode-off invariant 23/23 with the file untouched; claim audit green (F022 + F023 register sections same-commit as their features; F024 introduced no claims); zero-diff on agent/{live,risk,squad} + scripts/run_live.py + scripts/run_squad_live.py verified against the 9c0a591 baseline. Honest notes in company/sprints/sprint-3-stickiness/REPORT.md: executor API-budget death mid-F021 + parent-session takeover (D119), F021 ledger-stage reconciliation, one pre-existing stale e2e pin (I002's Sae/Karasu pitch addition) repaired at close, and the I012 pin exposing + fixing an overstated /hq in-flight count. KPIs: features_shipped_sprint_3 0 -> 6; intake_items_open 10 -> 6; intake_items_closed_last_7d 3 -> 7. Sprint verdict appended (sprint-3-stickiness, COMPLETE, actual_end 2026-07-24). Next chartered lane: the D115 auth migration; the shadow clock keeps running in parallel."
     }
   ],
   "sprint_verdicts": [
@@ -2573,6 +2587,25 @@
       "blockers_surfaced": [],
       "test_count_delta": "1259 -> 1482 (+223)",
       "notes": "Fully autonomous run under the Sprint 2 Executor persona. Six P0 features shipped default-OFF per D065 SCAFFOLDING invariant. tests/security/test_live_mode_off_invariant.py on tape (6 cases green) pinning the four-gate composition (live_mode_enabled AND not kill_switches.is_killed() AND risk_budget.can_send_order() AND approval_queue.can_send_order()). Zero diffs to agent/live/, agent/risk/, agent/squad/, scripts/run_squad_live.py, scripts/run_live.py -- verified by `git diff --stat c56e561 -- <paths>` returning empty. Security suite grew 132 -> 204 (+72). Sprint duration: 1 wall-clock day (2026-07-21 -> 2026-07-22) against a 13-day target -- honest-review flag continues from Sprint 1: this compression is only possible because the Executor persona owns every lane; a real 3-persona split would have taken longer. Commit range 242ac98..1303ca4."
+    },
+    {
+      "sprint_id": "sprint-3-stickiness",
+      "verdict": "COMPLETE",
+      "actual_end": "2026-07-24",
+      "features_shipped": [
+        "F019",
+        "F020",
+        "F021",
+        "F022",
+        "F023",
+        "F024"
+      ],
+      "features_missed": [],
+      "blockers_surfaced": [
+        "executor API-budget death mid-F021 (parent session completed the ship, D119; completion executor took F022-F024)"
+      ],
+      "test_count_delta": "1784+1 skip -> 1969 (~+184)",
+      "notes": "Three hands, one review chain: first executor shipped F019 (D117) + F020 (D118) and died mid-F021; the parent session reviewed the draft and shipped it (D119); a completion executor shipped F022 (D120), F023 (D121), F024 (D122, fast path, 23-insertion non-test diff) plus the I012 experiments_in_flight pinned test (which exposed and fixed an overstated /hq in-flight count). All six features one commit-unit each with claims/legal notes same-commit; claim audit green; P0 live-mode-off invariant 23/23 untouched; zero-diff on agent/{live,risk,squad} + scripts/run_live.py + scripts/run_squad_live.py vs 9c0a591 verified empty. Intake I003/I004/I010/I011 resolved (intake_items_open 10 -> 6). Honest notes incl. a pre-existing stale e2e pin (I002's Sae/Karasu pitch addition) repaired at close: company/sprints/sprint-3-stickiness/REPORT.md. Sprint duration: 1 executor-day, on the D087/I001 planning-unit target for the first time."
     }
   ],
   "kpis": {
@@ -2584,7 +2617,7 @@
     "features_total_sprint_2": 6,
     "features_shipped_sprint_2b": 2,
     "features_total_sprint_2b": 2,
-    "features_shipped_sprint_3": 0,
+    "features_shipped_sprint_3": 6,
     "features_total_sprint_3": 6,
     "backlog_size": 2,
     "bugs_open": 0,
@@ -2592,8 +2625,8 @@
     "test_coverage_pct": null,
     "active_roles": 14,
     "total_roles": 19,
-    "intake_items_open": 10,
-    "intake_items_closed_last_7d": 3,
+    "intake_items_open": 6,
+    "intake_items_closed_last_7d": 7,
     "experiments_in_flight": 0,
     "published_findings_total": 1,
     "published_findings_last_30d": 1
@@ -2640,14 +2673,14 @@
       "submitted_at": "2026-07-23T23:10:00Z",
       "classification": "UX",
       "priority": "P1",
-      "status": "routed",
+      "status": "resolved",
       "route": "product",
       "linked_features": ["F016", "F019"],
       "linked_decisions": ["D093", "D113", "D114"],
       "linked_experiments": [],
       "contact": "internal (dogfood harness, D092)",
-      "resolved_at": null,
-      "summary": "Broker wizard dead-ends on non-Windows hosts: test_connection's 'MT5 runs on Windows only' copy offers no recovery path, and onboarding completes silently with broker_connected false. Cycle-2 triage: promoted P2->P1 and scoped into Sprint 3 as F019 (recovery-path copy + missing-broker state chip, bundling I004's internal-token seam).",
+      "resolved_at": "2026-07-24T14:15:00Z",
+      "summary": "Broker wizard dead-ends on non-Windows hosts: test_connection's 'MT5 runs on Windows only' copy offers no recovery path, and onboarding completes silently with broker_connected false. Cycle-2 triage: promoted P2->P1 and scoped into Sprint 3 as F019 (recovery-path copy + missing-broker state chip, bundling I004's internal-token seam). Resolved by F019 ship (D117): recovery-path copy + missing-broker state chip on tape; sprint close-out 2026-07-24.",
       "file": "company/rd/intake/I003-broker-wizard-nonwindows-deadend.md"
     },
     {
@@ -2657,14 +2690,14 @@
       "submitted_at": "2026-07-23T23:12:00Z",
       "classification": "DX",
       "priority": "P3",
-      "status": "routed",
+      "status": "resolved",
       "route": "product",
       "linked_features": ["F016", "F019"],
       "linked_decisions": ["D094", "D113", "D114"],
       "linked_experiments": [],
       "contact": "internal (dogfood harness, D092)",
-      "resolved_at": null,
-      "summary": "Internal-token config pinned to repo-root platform.toml: everything else relocates via BLUELOCK_CONFIG_DIR, but the /api/approvals/submit gate reads load_config(REPO_ROOT) only. Cycle-2 triage: bundled into Sprint 3's F019 (config-dir-first resolution, repo-root fallback, fail-closed-when-unset unchanged); closes with F019's ship.",
+      "resolved_at": "2026-07-24T14:15:00Z",
+      "summary": "Internal-token config pinned to repo-root platform.toml: everything else relocates via BLUELOCK_CONFIG_DIR, but the /api/approvals/submit gate reads load_config(REPO_ROOT) only. Cycle-2 triage: bundled into Sprint 3's F019 (config-dir-first resolution, repo-root fallback, fail-closed-when-unset unchanged); closes with F019's ship. Resolved by F019 ship (D117): internal token resolves via the config-dir seam; sprint close-out 2026-07-24.",
       "file": "company/rd/intake/I004-internal-token-config-pinned.md"
     },
     {
@@ -2759,14 +2792,14 @@
       "submitted_at": "2026-07-24T00:30:00Z",
       "classification": "PERFORMANCE",
       "priority": "P2",
-      "status": "routed",
+      "status": "resolved",
       "route": "product",
       "linked_features": ["F023"],
       "linked_decisions": ["D107", "D113", "D114"],
       "linked_experiments": [],
       "contact": "internal (2026-07-24 full-system audit, A010)",
-      "resolved_at": null,
-      "summary": "Alerts durability + SSE cap (A010): bus ring buffer is memory-only (restart drops events) and SSE consumer threads are unbounded. Cycle-2: scoped into Sprint 3 as F023 (optional JSONL sink + concurrent-stream cap), P1-in-sprint.",
+      "resolved_at": "2026-07-24T14:15:00Z",
+      "summary": "Alerts durability + SSE cap (A010): bus ring buffer is memory-only (restart drops events) and SSE consumer threads are unbounded. Cycle-2: scoped into Sprint 3 as F023 (optional JSONL sink + concurrent-stream cap), P1-in-sprint. Resolved by F023 ship (D121): opt-in JSONL sink (default OFF, failure-isolated) + max_sse_streams refuse-with-429 cap; sprint close-out 2026-07-24.",
       "file": "company/rd/intake/I010-alerts-durability-sse-cap.md"
     },
     {
@@ -2776,14 +2809,14 @@
       "submitted_at": "2026-07-24T00:30:00Z",
       "classification": "BUG",
       "priority": "P2",
-      "status": "routed",
+      "status": "resolved",
       "route": "product",
       "linked_features": ["F024"],
       "linked_decisions": ["D107", "D113", "D114"],
       "linked_experiments": [],
       "contact": "internal (2026-07-24 full-system audit, A011)",
-      "resolved_at": null,
-      "summary": "Watchdog front-matter parser scalar-only (A011): intake_sla check mis-reads YAML lists/nested values, so SLA state can be wrong. Cycle-2: scoped into Sprint 3 as F024 (yaml.safe_load swap, never-raise contract preserved), P1-in-sprint.",
+      "resolved_at": "2026-07-24T14:15:00Z",
+      "summary": "Watchdog front-matter parser scalar-only (A011): intake_sla check mis-reads YAML lists/nested values, so SLA state can be wrong. Cycle-2: scoped into Sprint 3 as F024 (yaml.safe_load swap, never-raise contract preserved), P1-in-sprint. Resolved by F024 ship (D122, fast path): yaml.safe_load swap, never-raise + colour semantics byte-identical; sprint close-out 2026-07-24.",
       "file": "company/rd/intake/I011-watchdog-frontmatter-parser.md"
     },
     {

@@ -5,7 +5,7 @@ submitter: user_advocate
 submitted_at: 2026-07-23T23:12:00Z
 classification: DX
 priority: P3
-status: routed
+status: resolved
 route: product
 linked_features:
   - F016
@@ -16,7 +16,7 @@ linked_decisions:
   - D114
 linked_experiments: []
 contact: internal (dogfood harness, D092)
-resolved_at: null
+resolved_at: 2026-07-24T14:15:00Z
 history:
   - stage: filed
     at: 2026-07-23T23:12:00Z
@@ -30,6 +30,10 @@ history:
     at: 2026-07-24T04:10:00Z
     by: cpo
     note: "Cycle-2 triage (D113): priority stays P3 but the fix rides EARLY -- bundled into Sprint 3's F019 (D114) because the change is one config-resolution seam (config-dir first, repo-root fallback, fail-closed-when-unset unchanged) and F019 already touches the same wizard/config surface. Closes with F019's ship instead of waiting for the packaging sprint."
+  - stage: resolved
+    at: 2026-07-24T14:15:00Z
+    by: cto
+    note: "Resolved by F019's ship (D117, Sprint 3): the internal token now resolves through the config-dir seam (config-dir platform.toml first, repo-root fallback; fail-closed-when-unset unchanged). Sprint close-out 2026-07-24."
 ---
 
 # I004 — Internal-token config is pinned to the repo root
@@ -78,11 +82,11 @@ file. Fail-closed behavior when unset stays exactly as is.
 
 ## Closure notes
 
-Open. Closes when the internal token resolves through the config-dir
-seam (with the repo-root file still honoured for backwards compat)
-and the dogfood harness drops its temp-file workaround.
+Resolved 2026-07-24 by F019 (D117): the internal token resolves
+through the config-dir seam with the repo-root file still honoured
+for backwards compat; fail-closed behaviour when unset unchanged.
 
-- **Outcome:** _pending_
+- **Outcome:** shipped in F019 (Sprint 3, D117)
 - **Measurement (if applicable):** dogfood harness runs with zero
   repo-root writes.
 - **User notified:** n/a — internal harness finding.

@@ -5,7 +5,7 @@ submitter: user_advocate
 submitted_at: 2026-07-23T23:10:00Z
 classification: UX
 priority: P1
-status: routed
+status: resolved
 route: product
 linked_features:
   - F016
@@ -16,7 +16,7 @@ linked_decisions:
   - D114
 linked_experiments: []
 contact: internal (dogfood harness, D092)
-resolved_at: null
+resolved_at: 2026-07-24T14:15:00Z
 history:
   - stage: filed
     at: 2026-07-23T23:10:00Z
@@ -30,6 +30,10 @@ history:
     at: 2026-07-24T04:10:00Z
     by: cpo
     note: "Cycle-2 triage (D113): promoted P2 -> P1 and scoped into Sprint 3 as F019 (broker-wizard recovery path + missing-broker state chip), bundled with I004's internal-token config-dir resolution while the spec stays small (D114). Rationale: real dogfood-found friction on the first screen a paying customer sees; smallest item in the pool with the clearest churn story."
+  - stage: resolved
+    at: 2026-07-24T14:15:00Z
+    by: cto
+    note: "Resolved by F019's ship (D117, Sprint 3): the non-Windows failure copy now states the constraint AND the recovery path, and the post-onboarding surfaces carry the missing-broker state chip linking back to the wizard. Closure criteria from this file met; sprint close-out 2026-07-24."
 ---
 
 # I003 — Broker wizard dead-ends on non-Windows hosts
@@ -88,10 +92,11 @@ Two problems the run made concrete:
 
 ## Closure notes
 
-Open. Closes when the failure copy carries a recovery path and the
-post-onboarding surfaces expose the missing-broker state.
+Resolved 2026-07-24 by F019 (D117): the failure copy carries a
+recovery path and the post-onboarding surfaces expose the
+missing-broker state chip.
 
-- **Outcome:** _pending_
+- **Outcome:** shipped in F019 (Sprint 3, D117)
 - **Measurement (if applicable):** rerun the dogfood cast; P002/P005
   broker journeys should find actionable copy (assertable substring).
 - **User notified:** n/a — internal harness finding.

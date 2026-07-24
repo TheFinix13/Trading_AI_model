@@ -141,6 +141,18 @@ def _stream_in_thread(handler, max_seconds=0.5):
     return t
 
 
+def _wait_for_streams(n: int, timeout: float = 2.0) -> None:
+    # Deterministic attach wait: a fixed sleep flakes under full-suite
+    # load, so poll the counter instead.
+    deadline = time.time() + timeout
+    while alerts_sse.active_stream_count() < n:
+        if time.time() > deadline:
+            raise AssertionError(
+                f"stream never attached (want {n}, have "
+                f"{alerts_sse.active_stream_count()})")
+        time.sleep(0.005)
+
+
 class TestStreamCap:
     def test_default_cap_is_eight(self) -> None:
         assert alerts_sse.DEFAULT_MAX_STREAMS == 8
@@ -156,8 +168,8 @@ class TestStreamCap:
     def test_stream_past_cap_gets_429_with_retry_after(self) -> None:
         alerts_sse.set_max_streams(1)
         first = _FakeHandler()
-        t = _stream_in_thread(first, max_seconds=0.5)
-        time.sleep(0.05)
+        t = _stream_in_thread(first, max_seconds=2.0)
+        _wait_for_streams(1)
         assert alerts_sse.active_stream_count() == 1
         # Stream N+1 is refused -- and the FIRST stream stays attached
         # (refuse, not evict).
@@ -170,7 +182,8 @@ class TestStreamCap:
         payload = json.loads(refused.wfile.getvalue().decode())
         assert payload["max_streams"] == 1
         assert alerts_sse.active_stream_count() == 1  # not evicted
-        t.join(timeout=1.0)
+        t.join(timeout=4.0)
+        assert not t.is_alive()
 
     def test_closing_a_stream_admits_the_next(self) -> None:
         alerts_sse.set_max_streams(1)
@@ -206,13 +219,13 @@ class TestStreamCap:
 
     def test_refusal_does_not_touch_the_bus(self) -> None:
         alerts_sse.set_max_streams(1)
-        t = _stream_in_thread(_FakeHandler(), max_seconds=0.4)
-        time.sleep(0.05)
+        t = _stream_in_thread(_FakeHandler(), max_seconds=2.0)
+        _wait_for_streams(1)
         alerts_sse.sse_stream_response(_FakeHandler(), max_seconds=0.05)
         # The refused request never subscribed: exactly one consumer
         # (the live stream) receives the event.
         published = alerts.publish("stop_hit", {})
         assert published["type"] == "stop_hit"
-        t.join(timeout=2.0)
+        t.join(timeout=4.0)
         assert not t.is_alive()
         assert alerts_sse.active_stream_count() == 0
