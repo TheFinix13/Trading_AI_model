@@ -1,0 +1,16 @@
+{
+  "from_role": "cpo",
+  "to_role": "build_executor",
+  "feature_id": "F023",
+  "timestamp": "2026-07-24T04:30:00Z",
+  "spec_path": "company/sprints/sprint-3-stickiness/F023-alerts-durability-sse-cap.md",
+  "verdict": "handoff-open",
+  "gated_on": "CEO review of the Sprint 3 charter (D114) before build starts; P1 -- cut cleanly if the executor-day runs short",
+  "notes": "P1, size S. Drains I010 (audit A010). Two bounded halves: (1) opt-in JSONL sink for published bus events (default FALSE; sink failure never blocks publish); (2) max_sse_streams cap (default 8, refuse-with-429, never evict an existing stream, finally-guarded counter). SECURITY stage fires (resource-exhaustion surface). Do NOT touch event types, payload shapes, or the Telegram bridge -- the F014/D100 Legal rolling constraints stay untouched. No new public claims.",
+  "acceptance": [
+    "Sink on: publish -> restart -> event on disk; sink off (default): byte-identical behaviour",
+    "Sink write failure isolated -- publish returns normally, consumers still receive",
+    "Stream N+1 past cap gets 429 + Retry-After; teardown admits next; no counter leak on abrupt close",
+    ">= 14 tests; Security review on tape"
+  ]
+}

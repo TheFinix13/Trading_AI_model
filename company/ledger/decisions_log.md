@@ -2118,6 +2118,38 @@ the build executor; D108 cadence still pending CEO ratification.
 I013 stays parked (research, P3, D111 stop rule). KPIs:
 `intake_items_open` 12 → 10; `intake_items_closed_last_7d` 1 → 3.
 
+## D114 · 2026-07-24 · cpo · [SPRINT]
+
+**Sprint 3 "Stickiness" scope LOCKED — six features (F019–F024),
+three P0 / three P1, one executor-day, awaiting CEO charter review
+before build.**
+
+Charter at `company/sprints/sprint-3-stickiness/README.md`; one spec
+per feature on tape; spec→build handoffs at
+`company/handoffs/F019–F024-cpo-to-build_executor.json`. **Scope:**
+F019 broker-wizard recovery path + missing-broker chip, bundling
+I004's internal-token seam (S, P0, from I003); F020 match highlights
+— auto-generated match reports from `events.jsonl` on a new
+`/highlights` route (M, P0, claims flagged, LLM-free templating);
+F021 player form guide on `/players/:id` — rolling TQS/win-rate
+sparkline, recent decisions, gate status incl. "Sae: benched — Phase
+AE FAIL" linking the published finding (M, P0, claims flagged); F022
+leaderboard groundwork — per-agent/per-pair standings, single-install,
+no accounts dependency (M, P1, claims flagged); F023 alerts JSONL
+sink + SSE stream cap (S, P1, from I010, security stage fires); F024
+watchdog front-matter parser → `yaml.safe_load` (S, P1, from I011).
+**NOT in scope:** accounts/multi-user (D115 charter owns it),
+marketplace, copy-trading, community; anything needing the shadow
+clock; squad→approval-queue wiring; any write to
+`agent/{live,risk,squad}/*` or `scripts/run_*.py` (zero-diff exit
+check); I007/I009 (VM-bound); new dependencies. **Constraints:** all
+features read-only over existing runtime artifacts; every public
+number claim-registered in the introducing commit; F005
+`withStates()` + 375px mobile; per-spec test plans, suite ≥ 1784+1
+baseline. Numbering note: BACKLOG.md's placeholder F019–F024 labels
+are stale (per D095's memo); canonical numbering follows specs on
+tape — F018 was last, so Sprint 3 owns F019–F024.
+
 ## Template for subsequent entries
 
 ```markdown

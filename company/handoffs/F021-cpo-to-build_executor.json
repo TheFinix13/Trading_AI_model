@@ -1,0 +1,16 @@
+{
+  "from_role": "cpo",
+  "to_role": "build_executor",
+  "feature_id": "F021",
+  "timestamp": "2026-07-24T04:30:00Z",
+  "spec_path": "company/sprints/sprint-3-stickiness/F021-player-form-guide.md",
+  "verdict": "handoff-open",
+  "gated_on": "CEO review of the Sprint 3 charter (D114) before build starts",
+  "notes": "P0, size M. Extends players.py read-only: form_guide (rolling TQS/win-rate), gate_status (Sae 'benched -- Phase AE FAIL' sourced from roster metadata + research manifest, NOT hardcoded prose), recent_decisions. Inline-SVG sparkline, no chart dependency. INTRODUCES PUBLIC CLAIMS (register with the shadow-paper activity/quality disclaimer). Small-sample honesty rule: below n=5 closed trades, win-rate renders 'insufficient sample (n=...)' -- record the rule in the register. Legal stage fires; Brand co-checks character-voice copy.",
+  "acceptance": [
+    "Form-guide numbers equal independent recomputation from fixture events",
+    "Sae page shows benched badge + FAIL reason + working link to the published /research finding",
+    "Zero-closed-trade agents render honest empty state; n-rule enforced",
+    ">= 20 tests; claim audit green; Legal review on tape"
+  ]
+}

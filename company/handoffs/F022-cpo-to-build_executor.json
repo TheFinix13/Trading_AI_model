@@ -1,0 +1,16 @@
+{
+  "from_role": "cpo",
+  "to_role": "build_executor",
+  "feature_id": "F022",
+  "timestamp": "2026-07-24T04:30:00Z",
+  "spec_path": "company/sprints/sprint-3-stickiness/F022-leaderboard-groundwork.md",
+  "verdict": "handoff-open",
+  "gated_on": "CEO review of the Sprint 3 charter (D114) before build starts; P1 -- cut cleanly if the executor-day runs short",
+  "notes": "P1, size M, build AFTER F020 (reuse its stats helpers where they overlap). New read-only leaderboard.py: standings by agent/pair, all-history + 7/30-day windows, sorted by cumulative R with mean-TQS tie-break. Single-install only -- NO accounts dependency; cross-user ranking is explicitly deferred to the D115 auth migration. INTRODUCES PUBLIC CLAIMS: ranked metrics registered with 'internal squad standings on a demo feed / not investment performance' framing (Legal pre-approves header copy). Shares F021's n<5 insufficient-sample rule.",
+  "acceptance": [
+    "Standings equal independent recomputation for both groupings and all windows; ordering deterministic and pinned",
+    "Empty history renders empty state; sub-sample win rates render n-rule",
+    "All ranked metrics claim-registered; Legal review on tape",
+    ">= 18 tests"
+  ]
+}

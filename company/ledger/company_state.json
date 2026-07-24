@@ -279,6 +279,18 @@
     "feature_ids": ["F017", "F018"],
     "day_count": 1,
     "day_target": 2
+    },
+    {
+      "id": "sprint-3-stickiness",
+      "name": "Stickiness",
+      "goal": "Reasons to return daily while the shadow clock runs: F019 broker-wizard recovery path (+I004 token seam), F020 match highlights from events.jsonl, F021 player form guide (incl. the Phase AE honest negative as product surface), F022 leaderboard groundwork, F023 alerts durability + SSE cap, F024 watchdog YAML parser. Read-only over runtime artifacts; zero diffs on agent/{live,risk,squad} and scripts/run_*.py. Chartered D114; build gated on CEO charter review.",
+      "started_at": "2026-07-24",
+      "target_end": "2026-07-27",
+      "actual_end": null,
+      "verdict": null,
+      "feature_ids": ["F019", "F020", "F021", "F022", "F023", "F024"],
+      "day_count": 0,
+      "day_target": 1
     }
   ],
   "features": [
@@ -1443,6 +1455,138 @@
           "note": "Shipped (D103). 71 tests vs >=45 target: gate-composition matrix, demo-guard refusals incl. case-sensitivity pin, volume cap, single-use (fill + errored send + restart persistence), refusals never consume, fill->risk_budget + trade_fill alert, endpoints incl. 401/409, page smoke. Claim audit fully green; zero-diff invariant verified."
         }
       ]
+    },
+    {
+      "id": "F019",
+      "title": "Broker-wizard recovery path + missing-broker chip (bundles I004 internal-token seam)",
+      "priority": "P0",
+      "sprint_id": "sprint-3-stickiness",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["cpo", "ux_researcher", "ui_designer", "cto", "frontend", "backend", "qa", "legal", "ceo"],
+      "auth": false,
+      "credentials": false,
+      "created_at": "2026-07-24T04:30:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-24T04:30:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-3-stickiness/F019-broker-wizard-recovery-path.md",
+          "note": "Spec locked (D114). Drains I003 (P1) + bundled I004. Recovery-path failure copy, missing-broker state chip, internal-token config-dir resolution (fail-closed-when-unset unchanged). Build gated on CEO charter review."
+        }
+      ]
+    },
+    {
+      "id": "F020",
+      "title": "Match highlights -- auto-generated match reports from events.jsonl (/highlights)",
+      "priority": "P0",
+      "sprint_id": "sprint-3-stickiness",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["cpo", "ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "legal", "research_lead", "ceo"],
+      "auth": false,
+      "credentials": false,
+      "created_at": "2026-07-24T04:30:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-24T04:30:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-3-stickiness/F020-match-highlights.md",
+          "note": "Spec locked (D114). Read-only highlights.py over squad_live/events.jsonl; deterministic templating, no LLM; public claims flagged for the register; legal + research-lead stages fire. Build gated on CEO charter review."
+        }
+      ]
+    },
+    {
+      "id": "F021",
+      "title": "Player career depth -- per-agent form guide on /players/:id",
+      "priority": "P0",
+      "sprint_id": "sprint-3-stickiness",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["cpo", "ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "legal", "ceo"],
+      "auth": false,
+      "credentials": false,
+      "created_at": "2026-07-24T04:30:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-24T04:30:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-3-stickiness/F021-player-form-guide.md",
+          "note": "Spec locked (D114). Rolling TQS/win-rate sparkline + recent decisions + gate status incl. 'Sae: benched -- Phase AE FAIL' linking the published finding; n<5 insufficient-sample rule; claims flagged. Build gated on CEO charter review."
+        }
+      ]
+    },
+    {
+      "id": "F022",
+      "title": "Leaderboard groundwork -- per-agent/per-pair standings (single-install)",
+      "priority": "P1",
+      "sprint_id": "sprint-3-stickiness",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["cpo", "ux_researcher", "ui_designer", "cto", "backend", "frontend", "qa", "legal", "ceo"],
+      "auth": false,
+      "credentials": false,
+      "created_at": "2026-07-24T04:30:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-24T04:30:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-3-stickiness/F022-leaderboard-groundwork.md",
+          "note": "Spec locked (D114). Read-only leaderboard.py standings by agent/pair, no accounts dependency (cross-user deferred to the D115 auth migration); claims flagged with not-investment-performance framing. Build gated on CEO charter review."
+        }
+      ]
+    },
+    {
+      "id": "F023",
+      "title": "Alerts durability (opt-in JSONL sink) + SSE concurrent-stream cap",
+      "priority": "P1",
+      "sprint_id": "sprint-3-stickiness",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["cpo", "cto", "backend", "qa", "security", "ceo"],
+      "auth": false,
+      "credentials": false,
+      "created_at": "2026-07-24T04:30:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-24T04:30:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-3-stickiness/F023-alerts-durability-sse-cap.md",
+          "note": "Spec locked (D114). Drains I010. Opt-in JSONL sink (default off, failure-isolated) + max_sse_streams refuse-with-429 cap; security stage fires; F014/D100 Legal rolling constraints untouched. Build gated on CEO charter review."
+        }
+      ]
+    },
+    {
+      "id": "F024",
+      "title": "Watchdog front-matter parser -> yaml.safe_load",
+      "priority": "P1",
+      "sprint_id": "sprint-3-stickiness",
+      "current_stage": "spec",
+      "current_owner_role": "cpo",
+      "reviewers": ["cpo", "cto", "backend", "qa"],
+      "auth": false,
+      "credentials": false,
+      "created_at": "2026-07-24T04:30:00Z",
+      "age_in_stage_days": 0,
+      "history": [
+        {
+          "stage": "spec",
+          "at": "2026-07-24T04:30:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-3-stickiness/F024-watchdog-frontmatter-yaml.md",
+          "note": "Spec locked (D114). Drains I011. yaml.safe_load swap in the intake_sla check, never-raise contract and colour semantics byte-identical; fast-path eligible if the non-test diff stays <= 30 lines. Build gated on CEO charter review."
+        }
+      ]
     }
   ],
   "decisions": [
@@ -2236,6 +2380,13 @@
       "role": "cpo",
       "decision": "[PROCESS] R&D cycle-2 triage: I005 + I006 RESOLVED (via D110), I002 -> awaiting-verification, three items scoped into Sprint 3, queue 12 -> 10 open.",
       "context": "Full disposition table at company/rd/intake/2026-W30-cycle2-triage.md. I005 (P0 branch drift) closed by the D110 reconciliation merge (c97e8f7); I006 (news-cache path split) closed by fix commit be5706e arriving inside the same merge. I002 moves to awaiting-verification -- the /v2 legibility fix landed with D110 but closure waits on the VM cutover (runbook 7b.8). Sprint 3 promotions per D114: I003 P2->P1 -> F019 (bundling I004's internal-token seam), I010 -> F023, I011 -> F024. Re-affirmed open: I007 (verify-then-fix, needs a live event on the VM), I008 (VM preflight checklist half remains), I009 (repo pin done, VM venv rebuild pending). I012: KPI semantic call MADE -- experiments_in_flight counts open-panel/scheduled-compute only (queued states excluded; truthful value 0); pinned test flagged to the build executor. I013 stays parked (research, P3, D111 stop rule). KPIs: intake_items_open 12 -> 10; intake_items_closed_last_7d 1 -> 3."
+    },
+    {
+      "id": "D114",
+      "date": "2026-07-24",
+      "role": "cpo",
+      "decision": "[SPRINT] Sprint 3 'Stickiness' scope LOCKED -- six features (F019-F024), three P0 / three P1, one executor-day, awaiting CEO charter review before build.",
+      "context": "Charter at company/sprints/sprint-3-stickiness/README.md; one spec per feature; handoffs at company/handoffs/F019-F024-cpo-to-build_executor.json. Scope: F019 broker-wizard recovery path + missing-broker chip bundling I004 (S, P0, from I003); F020 match highlights from events.jsonl on /highlights (M, P0, claims flagged, LLM-free templating); F021 player form guide on /players/:id incl. 'Sae: benched -- Phase AE FAIL' linking the published finding (M, P0, claims flagged); F022 leaderboard groundwork, single-install, no accounts dependency (M, P1, claims flagged); F023 alerts JSONL sink + SSE stream cap (S, P1, from I010, security fires); F024 watchdog front-matter parser -> yaml.safe_load (S, P1, from I011). NOT in scope: accounts/multi-user (D115 charter owns it), marketplace, copy-trading, community; anything needing the shadow clock; squad->approval-queue wiring; any write to agent/{live,risk,squad}/* or scripts/run_*.py (zero-diff exit check); I007/I009 (VM-bound); new dependencies. Constraints: read-only over existing runtime artifacts; every public number claim-registered in the introducing commit; withStates() + 375px mobile; per-spec test plans, suite >= 1784+1 baseline. Numbering: BACKLOG.md placeholder F019-F024 labels are stale (D095 memo); canonical numbering follows specs on tape."
     }
   ],
   "sprint_verdicts": [
@@ -2279,6 +2430,8 @@
     "features_total_sprint_2": 6,
     "features_shipped_sprint_2b": 2,
     "features_total_sprint_2b": 2,
+    "features_shipped_sprint_3": 0,
+    "features_total_sprint_3": 6,
     "backlog_size": 2,
     "bugs_open": 0,
     "cycle_time_days_p50": null,

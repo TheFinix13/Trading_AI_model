@@ -1,0 +1,15 @@
+{
+  "from_role": "cpo",
+  "to_role": "build_executor",
+  "feature_id": "F024",
+  "timestamp": "2026-07-24T04:30:00Z",
+  "spec_path": "company/sprints/sprint-3-stickiness/F024-watchdog-frontmatter-yaml.md",
+  "verdict": "handoff-open",
+  "gated_on": "CEO review of the Sprint 3 charter (D114) before build starts; P1 -- cut cleanly if the executor-day runs short",
+  "notes": "P1, size S, fast-path eligible if the non-test diff stays <= 30 lines (else kick back to standard path). Drains I011 (audit A011). Swap the hand-rolled scalar front-matter parser in watchdog.py intake_sla for yaml.safe_load (PyYAML already a dependency). NEVER-RAISE contract preserved: malformed YAML / missing fence degrades to the documented colour. Thresholds and colour semantics byte-identical. No new public field; no conditional stages fire.",
+  "acceptance": [
+    "List-bearing + nested-history front matter (real post-triage I003 shape) parses correctly",
+    "Malformed-YAML fixture degrades to documented colour, no exception",
+    "All existing watchdog tests pass unchanged; >= 8 new intake_sla cases"
+  ]
+}

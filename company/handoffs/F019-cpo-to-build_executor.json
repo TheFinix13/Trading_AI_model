@@ -1,0 +1,16 @@
+{
+  "from_role": "cpo",
+  "to_role": "build_executor",
+  "feature_id": "F019",
+  "timestamp": "2026-07-24T04:30:00Z",
+  "spec_path": "company/sprints/sprint-3-stickiness/F019-broker-wizard-recovery-path.md",
+  "verdict": "handoff-open",
+  "gated_on": "CEO review of the Sprint 3 charter (D114) before build starts",
+  "notes": "P0, size S, build FIRST. Drains I003 (P1 dogfood churn point) + bundled I004 (internal-token config-dir seam). Copy needs Brand pre-sweep; legal stage fires (public first-run copy); security expected NOT to fire -- no auth logic change, only config-file resolution order (CTO confirms at architecture). Fail-closed-when-unset behaviour of the internal token must be byte-identical.",
+  "acceptance": [
+    "Dogfood re-run: P002/P005 broker journeys assert actionable recovery copy (I003 measurement)",
+    "Missing-broker chip on completion screen + / hub when broker_connected is false; clears on connect",
+    "Dogfood harness runs with zero repo-root writes (I004 measurement)",
+    "Repo-root-only installs (the VM) behave identically"
+  ]
+}

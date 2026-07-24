@@ -1,0 +1,16 @@
+{
+  "from_role": "cpo",
+  "to_role": "build_executor",
+  "feature_id": "F020",
+  "timestamp": "2026-07-24T04:30:00Z",
+  "spec_path": "company/sprints/sprint-3-stickiness/F020-match-highlights.md",
+  "verdict": "handoff-open",
+  "gated_on": "CEO review of the Sprint 3 charter (D114) before build starts",
+  "notes": "P0, size M. New read-only module highlights.py over squad_live/events.jsonl -- deterministic templating, NO LLM calls, banned-words gate (no 'ensemble'/'aggregator'). INTRODUCES PUBLIC CLAIMS: every match-report stat lands in company/legal/claim_register.md in the same commit; legal AND research-lead (7b) stages fire. The return-visit hypothesis is DECLARED only -- no engagement measurement wired this sprint. Quiet days reuse the I002 quiet_reason vocabulary; provenance banner uses the /performance wording family.",
+  "acceptance": [
+    "Report numbers equal independent recomputation from raw event rows (equality-tested)",
+    "Quiet day renders honest quiet report; absent events.jsonl renders empty state; never raises",
+    "All public fields claim-registered; claim audit green; Legal + Research Lead reviews on tape before ship",
+    ">= 25 tests across module/api/page layers"
+  ]
+}
