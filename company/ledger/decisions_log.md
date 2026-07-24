@@ -2395,6 +2395,32 @@ through `terminal_launch_args()`. Protected v1 runtime paths untouched.
 Tests: `tests/platform/test_broker_terminal_pin.py` (9 cases: config
 parsing, resolver fallback, adapter positional-path passthrough).
 
+## D125 · 2026-07-24 · engineering · [FIX-SESSION]
+
+**Post-cutover fix session: I014 first-run auth redirect fixed;
+A004/I007 calendar-vs-broker timezone VERIFIED CLEAN (no fix needed).
+Both P1s closed same day.**
+
+I014: the F008 first-visit 302 dropped the query string and bypassed
+`_send`, so the session cookie planted by `_authorized` was never
+emitted — an authorized `/?token=` first-run landed on `/onboarding`
+with neither credential and 401'd until the token was re-pasted by
+hand (CEO hit this live at the VM cutover). Fix in
+`scripts/serve_platform.py`: Location preserves the query string and
+the 302 flushes Set-Cookie. Contract pinned in
+`tests/security/test_i014_first_run_auth.py` (5 cases, incl.
+wrong-token-gets-no-cookie).
+A004/I007: didn't wait for the FOMC live capture — two known-schedule
+anchors in the live weekly feed (Unemployment Claims 08:30 ET =
+12:30 UTC → row `12:30pm`; Flash PMI 09:45 ET = 13:45 UTC → row
+`1:45pm`) prove FF publishes GMT/UTC, matching the parser; VM evidence
+(Exness Trial server clock at UTC+0, H4 closes on the UTC grid) shows
+the broker layer's epoch-as-UTC conversion is also correct. Anchors
+pinned in `tests/test_news_calendar_tz_anchors.py`; verification note
+`reviews/audits/2026-07-24-a004-calendar-tz-verification.md`. Residual
+risk (non-UTC-server broker) documented, no live trigger. Intake
+queue: I007 + I014 resolved.
+
 ## Template for subsequent entries
 
 ```markdown

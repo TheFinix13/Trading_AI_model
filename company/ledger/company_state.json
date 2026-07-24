@@ -3025,6 +3025,13 @@
       "role": "engineering",
       "decision": "[INCIDENT-FIX] MT5 dual-terminal pin: [broker] terminal_path routes every platform-side MT5 session (F007 probe, F018 executor) to a dedicated second terminal so the v1 zones agent's terminal + account are never switched (I015, P0).",
       "context": "Same-day fix for the 2026-07-24 account-contention incident: the broker-wizard probe logged the single MT5 terminal into the new V2 Platform account; v1 saw equity fall to $500 and correctly wrote kill.txt. Fix: [broker] terminal_path/portable in platform.toml, broker_connection.terminal_launch_args() resolver, probe + executor pass the pin positionally to mt5.initialize (unset = historic behaviour byte-identical), hub subtitle clarifies separate accounts, docs/runbooks/dual-mt5-terminals.md carries setup + v1 recovery. v2 bar feed verified non-interfering (read-only login with v1's own creds). Invariant: new MT5 call sites in agent/platform/* must route through terminal_launch_args(). 9 new tests in tests/platform/test_broker_terminal_pin.py; protected v1 runtime paths untouched."
+    },
+    {
+      "id": "D125",
+      "date": "2026-07-24",
+      "role": "engineering",
+      "decision": "[FIX-SESSION] I014 first-run auth redirect fixed (302 preserves ?token= + flushes Set-Cookie); A004/I007 calendar-vs-broker timezone VERIFIED CLEAN via feed anchors + VM server-clock evidence -- no fix needed. Both P1s resolved same day.",
+      "context": "I014 root cause: the F008 first-visit 302 dropped the query string and bypassed _send, so the session cookie planted by _authorized was never emitted; fix in scripts/serve_platform.py, contract pinned in tests/security/test_i014_first_run_auth.py (5 cases). A004/I007: Unemployment Claims (08:30 ET = 12:30 UTC -> feed row 12:30pm) and Flash PMI (09:45 ET = 13:45 UTC -> 1:45pm) prove FF publishes GMT/UTC; Exness Trial server clock at UTC+0 + H4 closes on the UTC grid validate the broker layer's epoch-as-UTC conversion. Anchors pinned in tests/test_news_calendar_tz_anchors.py; note at reviews/audits/2026-07-24-a004-calendar-tz-verification.md. Residual non-UTC-broker risk documented only."
     }
   ],
   "sprint_verdicts": [
@@ -3112,8 +3119,8 @@
     "test_coverage_pct": null,
     "active_roles": 14,
     "total_roles": 19,
-    "intake_items_open": 7,
-    "intake_items_closed_last_7d": 8,
+    "intake_items_open": 5,
+    "intake_items_closed_last_7d": 10,
     "experiments_in_flight": 0,
     "published_findings_total": 1,
     "published_findings_last_30d": 1
@@ -3257,17 +3264,18 @@
       "submitted_at": "2026-07-24T00:30:00Z",
       "classification": "BUG",
       "priority": "P1",
-      "status": "routed",
-      "route": "next-gen-fix-lane",
+      "status": "resolved",
+      "route": "engineering",
       "linked_features": [],
       "linked_decisions": [
         "D107",
-        "D113"
+        "D113",
+        "D125"
       ],
       "linked_experiments": [],
       "contact": "internal (2026-07-24 full-system audit, A004)",
-      "resolved_at": null,
-      "summary": "Calendar/broker timezone verification (A004): FF calendar timestamps never verified against broker server time; a mismatch guards the wrong hour. Cycle-2: P1 re-affirmed; code now on product (next-gen lane retired). VERIFY-THEN-FIX needs a live event captured on the VM -- next window FOMC Jul 28-29; not Sprint 3 scope.",
+      "resolved_at": "2026-07-24T15:45:00Z",
+      "summary": "Calendar/broker timezone verification (A004): FF calendar timestamps never verified against broker server time; a mismatch guards the wrong hour. Cycle-2: P1 re-affirmed; code now on product (next-gen lane retired). VERIFY-THEN-FIX needs a live event captured on the VM -- next window FOMC Jul 28-29; not Sprint 3 scope. RESOLVED 2026-07-24 (D125): verified clean via feed anchors + VM server-clock evidence; no fix needed.",
       "file": "company/rd/intake/I007-calendar-broker-timezone-verification.md"
     },
     {
@@ -3406,17 +3414,19 @@
       "submitted_at": "2026-07-24T13:22:00Z",
       "classification": "BUG",
       "priority": "P1",
-      "status": "open",
+      "status": "resolved",
       "route": "engineering",
       "linked_features": [
         "F006",
         "F008"
       ],
-      "linked_decisions": [],
+      "linked_decisions": [
+        "D125"
+      ],
       "linked_experiments": [],
       "contact": "internal (CEO hit it live during the 2026-07-24 VM cutover)",
-      "resolved_at": null,
-      "summary": "First-run auth UX: the F008 /onboarding redirect drops ?token= and the auth cookie does not persist across HTML hops -- every page 401s on a fresh install until the user manually re-appends the token. Fix: redirect preserves the token / cookie set on first authorized HTML request; security review fires.",
+      "resolved_at": "2026-07-24T15:40:00Z",
+      "summary": "First-run auth UX: the F008 /onboarding redirect drops ?token= and the auth cookie does not persist across HTML hops -- every page 401s on a fresh install until the user manually re-appends the token. Fix: redirect preserves the token / cookie set on first authorized HTML request; security review fires. RESOLVED 2026-07-24 (D125): 302 preserves ?token= and flushes Set-Cookie; 5 security tests.",
       "file": "company/rd/intake/I014-onboarding-redirect-drops-token.md"
     },
     {

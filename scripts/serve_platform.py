@@ -531,8 +531,20 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
             # routes and the broker wizard (referenced from step 3)
             # stay reachable so the wizard can drive itself.
             if self._html_route_needs_onboarding(path):
+                # I014: the redirect must not strand an authorized
+                # first-run. Preserve the query string (?token=...) on
+                # the Location AND flush the session cookie planted by
+                # _authorized -- this response bypasses _send, which is
+                # what silently dropped the cookie and forced manual
+                # ?token= re-entry on every hop at the VM cutover.
                 self.send_response(302)
-                self.send_header("Location", "/onboarding")
+                location = "/onboarding"
+                if query:
+                    location += f"?{query}"
+                self.send_header("Location", location)
+                if self._set_cookie:
+                    self.send_header("Set-Cookie", self._set_cookie)
+                    self._set_cookie = None
                 self.end_headers()
                 return
 

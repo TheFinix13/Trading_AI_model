@@ -5,18 +5,22 @@ submitter: user_advocate
 submitted_at: 2026-07-24T13:22:00Z
 classification: BUG
 priority: P1
-status: open
+status: resolved
 route: engineering
 linked_features: ["F006", "F008"]
-linked_decisions: []
+linked_decisions: ["D125"]
 linked_experiments: []
 contact: internal (CEO hit it live during the 2026-07-24 VM cutover)
-resolved_at: null
+resolved_at: 2026-07-24T15:40:00Z
 history:
   - stage: filed
     at: 2026-07-24T13:30:00Z
     by: user_advocate
     note: "Filed from the CEO's first-run on the VM. Workaround in use: append ?token= to every URL manually."
+  - stage: resolved
+    at: 2026-07-24T15:40:00Z
+    by: engineering
+    note: "Fixed same day (D125). Root cause was in the F008 first-visit 302 itself: it dropped the query string AND bypassed _send, so the session cookie planted by _authorized was never emitted. Fix: Location preserves ?token= and the 302 flushes Set-Cookie. Security contract pinned in tests/security/test_i014_first_run_auth.py (5 cases incl. wrong-token-gets-no-cookie and cookie-alone-reaches-onboarding)."
 ---
 
 # I014 — First-run auth UX: the /onboarding redirect drops ?token= and the auth cookie doesn't persist across HTML hops

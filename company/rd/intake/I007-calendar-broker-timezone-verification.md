@@ -5,15 +5,16 @@ submitter: user_advocate
 submitted_at: 2026-07-24T00:30:00Z
 classification: BUG
 priority: P1
-status: routed
-route: next-gen-fix-lane
+status: resolved
+route: engineering
 linked_features: []
 linked_decisions:
   - D107
   - D113
+  - D125
 linked_experiments: []
 contact: internal (2026-07-24 full-system audit, A004)
-resolved_at: null
+resolved_at: 2026-07-24T15:45:00Z
 history:
   - stage: filed
     at: 2026-07-24T00:30:00Z
@@ -23,6 +24,10 @@ history:
     at: 2026-07-24T04:10:00Z
     by: cpo
     note: "Cycle-2 triage (D113): P1 re-affirmed, route updated -- the next-gen fix lane is retired (D110), the calendar code now lives on product. Still VERIFY-THEN-FIX: needs one live high-impact event captured on the VM (FF timestamp vs broker server time vs UTC side by side) before any offset patch. NOT Sprint 3 scope (Sprint 3 is read-only over existing artifacts; this needs a live capture during VM operation). Rides the post-cutover shadow window; first qualifying event is FOMC Jul 28-29."
+  - stage: resolved
+    at: 2026-07-24T15:45:00Z
+    by: engineering
+    note: "VERIFIED CLEAN, no fix needed (D125) -- didn't wait for FOMC. Feed side: two known-schedule anchors in the live weekly feed (Unemployment Claims 08:30 ET = 12:30 UTC -> feed row `12:30pm`; Flash PMI 09:45 ET = 13:45 UTC -> feed row `1:45pm`) prove FF publishes GMT/UTC, matching the parser. Broker side: VM screenshot shows the Exness Trial server clock at UTC+0 and H4 closes on the UTC grid, so the broker layer's epoch-as-UTC conversion is correct for this broker. Anchors pinned in tests/test_news_calendar_tz_anchors.py; full note reviews/audits/2026-07-24-a004-calendar-tz-verification.md. Residual (documented, no intake): a future non-UTC-server broker would need a connect-time clock-skew check."
 ---
 
 # I007 — ForexFactory-calendar vs broker timezone never verified (A004)

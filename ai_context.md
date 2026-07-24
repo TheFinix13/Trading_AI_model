@@ -1,4 +1,17 @@
-# AI Context — brain dump (updated 2026-07-24, v0.53)
+# AI Context — brain dump (updated 2026-07-24, v0.54)
+
+> v0.54 — **Fix session D125** 2026-07-24: I014 first-run auth FIXED
+> (the F008 first-visit 302 now preserves `?token=` and flushes the
+> session Set-Cookie it used to drop; 5 security tests in
+> `tests/security/test_i014_first_run_auth.py`). A004/I007 tz audit
+> item VERIFIED CLEAN, no fix: live-feed anchors (Claims 12:30pm,
+> Flash PMI 1:45pm = their known UTC schedule) prove FF publishes
+> GMT/UTC as the parser assumes; VM evidence (Exness server clock
+> UTC+0, H4 closes on UTC grid) validates broker epoch-as-UTC. Anchors
+> pinned in `tests/test_news_calendar_tz_anchors.py`; note at
+> `reviews/audits/2026-07-24-a004-calendar-tz-verification.md`.
+> Intake open 7→5. Dual terminals live on VM; v1 recovered and
+> trading its own account.
 
 > v0.53 — **I015/D124 MT5 account-contention fix** 2026-07-24: the V2
 > broker probe switched the VM's single MT5 terminal to the new "V2
