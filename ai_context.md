@@ -1,4 +1,19 @@
-# AI Context — brain dump (updated 2026-07-24, v0.47)
+# AI Context — brain dump (updated 2026-07-24, v0.48)
+
+> v0.48 — **Product hardening night** 2026-07-24 (D105–D108 on
+> `product`). **Ops-Telegram split** (D105): `[alerts.telegram.ops]`
+> second bot/chat; `OPS_EVENTS` (watchdog_alert) → ops with primary
+> FALLBACK; `DUAL_ROUTE_EVENTS` (kill_switch_trip, platform_down) →
+> BOTH; trading → primary; no-token-echo pin extended; runbook 7b.7.
+> **Audit fixes** (D106): A005 approvals — reap-before-resolve +
+> `approved_ttl_seconds` (300 s) + `approval_expired` status, P0 pin
+> extended +5 (23 cases); A006 credentials — atomic tmp+`os.replace`
+> bag write + `_BAG_LOCK` on RMW; A007 risk gate — `_today_losses`
+> cached on (path, mtime_ns, size, UTC day). **Audit filed** (D107,
+> D108): `reviews/audits/2026-07-24-full-system-audit.md`, intake
+> I005–I012 (KPI 3→11), `pandas>=2.2,<3` pinned (VM venv holds 3.0.3
+> — REBUILD, runbook sec 4), quarterly-audit cadence pending CEO
+> ratification. Tests 1691 → **1720**. v0.47 detail below.
 
 > v0.47 — **Sprint 2b Live Readiness COMPLETE** 2026-07-24
 > (D097–D104 on `product`). **F017 Ops Watchdog** (79 tests):
@@ -52,14 +67,14 @@ lane** (Sprint 0–2 + charter elevation). Research on
   (in-process server, keychain-safe, no live mode by construction);
   first run 113/113 across onboarding/broker/kill/approvals/alerts.
 - **Live (`main`) + Squad (`next-gen`):** unchanged; zero diffs.
-- **Tests:** **1691 pass** (security 216; claim audit green,
-  19 modules).
+- **Tests:** **1720 pass** (P0 invariant 23 cases; claim audit
+  green, 19 modules).
 
 ## 2) Key file paths
 
 | Area | Files |
 |---|---|
-| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I004},findings/2026-07-phase-ac-pitch-assignment.md,personas/,loop-validation.md}`, `company/strategy/sellability-gaps.md`, `company/ledger/{company_state.json (104 D### + 19 roles + intake×4 + experiments),decisions_log.md}` |
+| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I004},findings/2026-07-phase-ac-pitch-assignment.md,personas/,loop-validation.md}`, `company/strategy/sellability-gaps.md`, `company/ledger/{company_state.json (108 D### + 19 roles + intake×12 + experiments),decisions_log.md}` |
 | Sprint 2b live readiness | `agent/platform/{watchdog,live_executor}.py`, `scripts/run_watchdog.py`, `company/sprints/sprint-2b-live-readiness/{README,F017-ops-watchdog,F018-demo-order-executor,REPORT}.md`, `company/legal/{F017,F018}-review.md` + `executor-demo-warning.md`, `docs/RUNBOOK_demo_launch.md` sec 7c, tests `tests/platform/test_{watchdog_*,run_watchdog_script,live_executor_module,executor_api}.py` |
 | Sprint 2 real-trading | `agent/platform/{rate_limiter,kill_switches,kill_switch_admin,risk_budget,broker_health,approval_queue,alerts,alerts_sse,alerts_telegram,auth}.py`, `agent/platform/pages.py` (KILL_SWITCHES / RISK / APPROVALS / LIVE_MODE_TOGGLE / ALERTS + HQ R&D pulse), `scripts/{serve_platform,check_claim_register,install_git_hooks}.py`, `scripts/git-hooks/pre-commit`, `company/legal/{live-mode,approval-queue}-warning.md` + `claim_register.md` |
 | Sprint 0/1 backend | `agent/platform/{performance,players,research,hq (R&D pulse extension),credentials,broker_connection,onboarding}.py` |
