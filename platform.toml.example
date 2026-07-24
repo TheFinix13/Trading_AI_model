@@ -96,6 +96,18 @@
 # aggregator = "phi41"
 # cache = "g7_replay_cache_g7retry1-arm4"
 
+# MT5 terminal pin (dual-terminal ops, 2026-07-24 incident). When set,
+# EVERY platform-side MT5 session — the /settings/broker connection
+# probe and the F018 demo-order executor — initializes against THIS
+# terminal install instead of the machine default. That is what lets
+# the v1 zones agent keep its own terminal + account untouched while
+# the v2 platform talks to a second portable terminal logged into the
+# "V2 Platform" account. Unset = historic single-terminal behaviour.
+# Setup guide: docs/runbooks/dual-mt5-terminals.md
+# [broker]
+# terminal_path = "C:/MT5-V2/terminal64.exe"
+# portable = true
+
 # Live-market squad paper runtime (scripts/run_squad_live.py).
 # CLI flags always win; empty feed = platform default (mt5 on Windows,
 # cache elsewhere). Shadow-only — never places broker orders.

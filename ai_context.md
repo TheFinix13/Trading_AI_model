@@ -1,4 +1,18 @@
-# AI Context — brain dump (updated 2026-07-24, v0.52)
+# AI Context — brain dump (updated 2026-07-24, v0.53)
+
+> v0.53 — **I015/D124 MT5 account-contention fix** 2026-07-24: the V2
+> broker probe switched the VM's single MT5 terminal to the new "V2
+> Platform" account; v1 saw a phantom drawdown ($969→$500) and
+> correctly wrote kill.txt. Fix: `[broker] terminal_path`+`portable`
+> in platform.toml pins EVERY platform-side MT5 session (F007 probe,
+> F018 executor) to a dedicated second portable terminal via
+> `broker_connection.terminal_launch_args()` (unset = old behaviour
+> byte-identical; v2 bar feed already non-interfering — read-only
+> login with v1's own creds). Runbook:
+> `docs/runbooks/dual-mt5-terminals.md` (setup + v1 recovery: restore
+> account in terminal A, delete kill.txt, restart). Invariant: new
+> MT5 call sites in agent/platform/* route through
+> `terminal_launch_args()`. 9 tests; v1 runtime paths untouched.
 
 > v0.52 — **Sprint 3 "Stickiness" COMPLETE** 2026-07-24 (D116–D123,
 > 6/6 shipped in one executor-day, verdict on tape). **P0s:** F019

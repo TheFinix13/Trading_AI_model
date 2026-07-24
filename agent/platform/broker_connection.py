@@ -62,6 +62,37 @@ ALLOWED_SERVERS: tuple[str, ...] = (
 
 _ACCOUNT_TYPES: tuple[str, ...] = ("demo", "live", "unknown")
 
+
+def terminal_launch_args() -> tuple[list, dict]:  # claim-exempt: internal MT5 session plumbing, no user-facing numbers
+    """Resolve the ``[broker]`` terminal pin from ``platform.toml``.
+
+    Dual-terminal ops (2026-07-24 account-contention incident): a probe
+    or executor login against the machine-default MT5 terminal switches
+    THAT terminal's logged-in account, which yanked the v1 zones agent
+    off its own account mid-session. When ``[broker] terminal_path`` is
+    set, every platform-side ``mt5.initialize`` call targets that
+    dedicated terminal install instead, leaving the default terminal
+    (v1's) untouched.
+
+    Returns ``(positional_args, extra_kwargs)`` to splice into
+    ``mt5.initialize``: ``([path], {"portable": bool})`` when pinned,
+    ``([], {})`` when unpinned (historic behaviour, byte-identical).
+    ``path`` must be positional -- the MetaTrader5 package declares it
+    as an unnamed first parameter.
+    """
+    try:
+        from pathlib import Path
+
+        from agent.platform.config import load_config
+        repo_root = Path(__file__).resolve().parents[2]
+        broker_cfg = load_config(repo_root).get("broker", {})
+    except Exception:
+        return [], {}
+    path = str(broker_cfg.get("terminal_path", "") or "").strip()
+    if not path:
+        return [], {}
+    return [path], {"portable": bool(broker_cfg.get("portable", False))}
+
 _MAX_LOGIN = 20  # decimal digits
 _LOGIN_RE = re.compile(r"^\d{1,20}$")
 _ALIAS_RE = re.compile(r"^[A-Za-z0-9_.\-]{1,64}$")
@@ -266,8 +297,10 @@ def test_connection(login: Any,
         "server": server_str,
     }
     try:  # pragma: no cover -- Windows-only branch
-        ok = mt5.initialize(login=int(login_str), password=password,
-                            server=server_str, timeout=int(timeout * 1000))
+        term_args, term_kwargs = terminal_launch_args()
+        ok = mt5.initialize(*term_args, login=int(login_str),
+                            password=password, server=server_str,
+                            timeout=int(timeout * 1000), **term_kwargs)
         if not ok:
             err = mt5.last_error()
             result["error_code"] = int(err[0]) if err else None

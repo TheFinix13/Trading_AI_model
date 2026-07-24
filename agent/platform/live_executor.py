@@ -122,7 +122,11 @@ class RealMt5OrderAdapter:
         if creds is None:
             return False
         mt5 = self._mt5()
-        if not mt5.initialize():
+        # Dual-terminal pin: when [broker] terminal_path is set the
+        # executor attaches to the platform's dedicated terminal, never
+        # the machine default (which belongs to the v1 zones agent).
+        term_args, term_kwargs = broker_connection.terminal_launch_args()
+        if not mt5.initialize(*term_args, **term_kwargs):
             return False
         ok = mt5.login(int(creds["login"]), password=creds["password"],
                        server=creds["server"])

@@ -426,8 +426,10 @@ details.glossary dd{margin:0;color:var(--fg)}
 .broker-chip b{color:var(--amber)}
 </style></head><body>
 <h1>Multi-pair trading platform</h1>
-<div class="sub">Two AI agents on Exness demo MT5 &mdash; v1 trades real demo orders,
-v2 shadow-simulates alongside for research. Auto-refreshes every 15&nbsp;s.</div>
+<div class="sub">Two independent AI agents, each on its <b>own demo account</b> &mdash;
+v1 trades real demo orders on its own MT5 terminal; v2 shadow-simulates on the
+platform's terminal. The cards below are separate per-agent views (click one for
+that agent's full dashboard) &mdash; numbers never mix. Auto-refreshes every 15&nbsp;s.</div>
 __NAV__
 <div id="updated">loading&hellip;</div>
 

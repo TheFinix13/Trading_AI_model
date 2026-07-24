@@ -2372,6 +2372,29 @@ intake_items_closed_last_7d 3 → 7. Sprint verdict appended
 clock (sellability gap 4) keeps running in parallel; next chartered
 lane is the D115 auth migration.
 
+## D124 · 2026-07-24 · engineering · [INCIDENT-FIX]
+
+**MT5 dual-terminal pin: `[broker] terminal_path` routes every
+platform-side MT5 session to a dedicated second terminal so the v1
+zones agent's terminal + account are never switched (I015, P0).**
+
+Same-day fix for the account-contention incident the CEO hit right
+after the VM cutover: the F007 broker-wizard probe logged the machine's
+single MT5 terminal into the new "V2 Platform" account, v1 saw its
+equity "fall" to $500 and correctly killed itself. Changes:
+`[broker] terminal_path`/`portable` config (config.py),
+`broker_connection.terminal_launch_args()` resolver, probe + F018
+executor `mt5.initialize` now pass the pin positionally (unset key =
+historic behaviour byte-identical), hub subtitle states the two agents
+run on separate accounts, and `docs/runbooks/dual-mt5-terminals.md`
+carries the portable-terminal setup + v1 recovery ceremony (restore
+account in terminal A, delete `kill.txt`, restart). v2's bar feed was
+verified non-interfering (logs in read-only with v1's own credentials).
+Standing invariant: new MT5 call sites in `agent/platform/*` MUST route
+through `terminal_launch_args()`. Protected v1 runtime paths untouched.
+Tests: `tests/platform/test_broker_terminal_pin.py` (9 cases: config
+parsing, resolver fallback, adapter positional-path passthrough).
+
 ## Template for subsequent entries
 
 ```markdown

@@ -45,7 +45,13 @@
       "active": true,
       "current_task": "Sprint 0 charter authored; F001\u2013F005 specs locked",
       "throughput_last_7d": 5,
-      "features_owned_now": ["F001", "F002", "F003", "F004", "F005"],
+      "features_owned_now": [
+        "F001",
+        "F002",
+        "F003",
+        "F004",
+        "F005"
+      ],
       "features_reviewed_last_7d": 0
     },
     {
@@ -144,7 +150,11 @@
       "active": true,
       "current_task": "Sprint 1 mandatory reviewer on F006/F007/F008 per D048",
       "throughput_last_7d": 0,
-      "features_owned_now": ["F006", "F007", "F008"],
+      "features_owned_now": [
+        "F006",
+        "F007",
+        "F008"
+      ],
       "features_reviewed_last_7d": 0
     },
     {
@@ -213,8 +223,13 @@
       "throughput_last_7d": 0,
       "features_owned_now": [],
       "features_reviewed_last_7d": 0,
-      "reports_to": ["cto", "cpo"],
-      "keeps_informed": ["ceo"]
+      "reports_to": [
+        "cto",
+        "cpo"
+      ],
+      "keeps_informed": [
+        "ceo"
+      ]
     },
     {
       "id": "user_advocate",
@@ -227,8 +242,15 @@
       "throughput_last_7d": 0,
       "features_owned_now": [],
       "features_reviewed_last_7d": 0,
-      "reports_to": ["cpo"],
-      "coordinates_with": ["support", "legal", "research_lead", "marketing"]
+      "reports_to": [
+        "cpo"
+      ],
+      "coordinates_with": [
+        "support",
+        "legal",
+        "research_lead",
+        "marketing"
+      ]
     }
   ],
   "sprints": [
@@ -240,7 +262,13 @@
       "target_end": "2026-08-04",
       "actual_end": "2026-07-21",
       "verdict": "COMPLETE",
-      "feature_ids": ["F001", "F002", "F003", "F004", "F005"],
+      "feature_ids": [
+        "F001",
+        "F002",
+        "F003",
+        "F004",
+        "F005"
+      ],
       "day_count": 0,
       "day_target": 14
     },
@@ -252,7 +280,11 @@
       "target_end": "2026-08-04",
       "actual_end": "2026-07-21",
       "verdict": "COMPLETE",
-      "feature_ids": ["F006", "F007", "F008"],
+      "feature_ids": [
+        "F006",
+        "F007",
+        "F008"
+      ],
       "day_count": 1,
       "day_target": 13
     },
@@ -264,21 +296,31 @@
       "target_end": "2026-08-04",
       "actual_end": "2026-07-22",
       "verdict": "COMPLETE",
-      "feature_ids": ["F009", "F010", "F011", "F012", "F013", "F014"],
+      "feature_ids": [
+        "F009",
+        "F010",
+        "F011",
+        "F012",
+        "F013",
+        "F014"
+      ],
       "day_count": 1,
       "day_target": 13
     },
     {
-    "id": "sprint-2b-live-readiness",
-    "name": "Live Readiness",
-    "goal": "The D065 successor, step 1 of the D095 ordering: F017 Ops Watchdog (no-black-boxes directive) + F018 demo-order executor (the four gates get their one caller, DEMO-only, default-disabled). Squad->submit wiring out of scope. Zero diffs on agent/live, agent/risk, agent/squad.",
-    "started_at": "2026-07-24",
-    "target_end": "2026-07-25",
-    "actual_end": "2026-07-24",
-    "verdict": "COMPLETE",
-    "feature_ids": ["F017", "F018"],
-    "day_count": 1,
-    "day_target": 2
+      "id": "sprint-2b-live-readiness",
+      "name": "Live Readiness",
+      "goal": "The D065 successor, step 1 of the D095 ordering: F017 Ops Watchdog (no-black-boxes directive) + F018 demo-order executor (the four gates get their one caller, DEMO-only, default-disabled). Squad->submit wiring out of scope. Zero diffs on agent/live, agent/risk, agent/squad.",
+      "started_at": "2026-07-24",
+      "target_end": "2026-07-25",
+      "actual_end": "2026-07-24",
+      "verdict": "COMPLETE",
+      "feature_ids": [
+        "F017",
+        "F018"
+      ],
+      "day_count": 1,
+      "day_target": 2
     },
     {
       "id": "sprint-3-stickiness",
@@ -288,7 +330,14 @@
       "target_end": "2026-07-27",
       "actual_end": "2026-07-24",
       "verdict": "COMPLETE",
-      "feature_ids": ["F019", "F020", "F021", "F022", "F023", "F024"],
+      "feature_ids": [
+        "F019",
+        "F020",
+        "F021",
+        "F022",
+        "F023",
+        "F024"
+      ],
       "day_count": 1,
       "day_target": 1
     }
@@ -301,7 +350,17 @@
       "sprint_id": "sprint-0-trust-foundation",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "legal", "ceo"],
+      "reviewers": [
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "legal",
+        "ceo"
+      ],
       "created_at": "2026-07-21T14:00:00Z",
       "age_in_stage_days": 0,
       "history": [
@@ -393,7 +452,18 @@
       "sprint_id": "sprint-0-trust-foundation",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "ai_ml_engineer", "cto", "frontend", "backend", "qa", "legal", "ceo"],
+      "reviewers": [
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "ai_ml_engineer",
+        "cto",
+        "frontend",
+        "backend",
+        "qa",
+        "legal",
+        "ceo"
+      ],
       "created_at": "2026-07-21T14:00:00Z",
       "age_in_stage_days": 0,
       "history": [
@@ -486,7 +556,18 @@
       "sprint_id": "sprint-0-trust-foundation",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "marketing", "cto", "frontend", "backend", "qa", "legal", "ceo"],
+      "reviewers": [
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "marketing",
+        "cto",
+        "frontend",
+        "backend",
+        "qa",
+        "legal",
+        "ceo"
+      ],
       "created_at": "2026-07-21T14:00:00Z",
       "age_in_stage_days": 0,
       "history": [
@@ -586,7 +667,13 @@
       "sprint_id": "sprint-0-trust-foundation",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ui_designer", "frontend", "qa", "cpo", "ceo"],
+      "reviewers": [
+        "ui_designer",
+        "frontend",
+        "qa",
+        "cpo",
+        "ceo"
+      ],
       "created_at": "2026-07-21T14:00:00Z",
       "age_in_stage_days": 0,
       "history": [
@@ -652,7 +739,14 @@
       "sprint_id": "sprint-0-trust-foundation",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ui_designer", "brand_designer", "frontend", "qa", "cpo", "ceo"],
+      "reviewers": [
+        "ui_designer",
+        "brand_designer",
+        "frontend",
+        "qa",
+        "cpo",
+        "ceo"
+      ],
       "created_at": "2026-07-21T14:00:00Z",
       "age_in_stage_days": 0,
       "history": [
@@ -725,7 +819,17 @@
       "sprint_id": "sprint-1-access",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "qa", "security", "legal", "ceo"],
+      "reviewers": [
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "cto",
+        "backend",
+        "qa",
+        "security",
+        "legal",
+        "ceo"
+      ],
       "auth": true,
       "credentials": true,
       "created_at": "2026-07-21T19:40:00Z",
@@ -829,7 +933,18 @@
       "sprint_id": "sprint-1-access",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
+      "reviewers": [
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "security",
+        "legal",
+        "ceo"
+      ],
       "auth": true,
       "credentials": true,
       "broker_connection": true,
@@ -931,7 +1046,18 @@
       "sprint_id": "sprint-1-access",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
+      "reviewers": [
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "security",
+        "legal",
+        "ceo"
+      ],
       "auth": true,
       "credentials": true,
       "first_visit_redirect": true,
@@ -1033,39 +1159,83 @@
       "sprint_id": "sprint-2-real-trading",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ux_researcher", "cto", "backend", "qa", "security", "legal", "ceo"],
+      "reviewers": [
+        "ux_researcher",
+        "cto",
+        "backend",
+        "qa",
+        "security",
+        "legal",
+        "ceo"
+      ],
       "auth": true,
       "credentials": true,
       "created_at": "2026-07-22T00:40:00Z",
       "age_in_stage_days": 0,
       "history": [
-        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
-         "deliverable": "company/sprints/sprint-2-real-trading/F009-auth-hardening.md",
-         "note": "Spec locked. Sprint 1 carry-over (D062) -- rate limiter + session expiry + token rotation."},
-        {"stage": "research", "at": "2026-07-22T00:44:00Z", "role": "ux_researcher",
-         "deliverable": "company/research/F009-user-journey.md",
-         "note": "Security-conscious operator journey framed. API-only surface for Sprint 2; UI section in Sprint 3."},
-        {"stage": "architecture", "at": "2026-07-22T00:46:00Z", "role": "cto",
-         "deliverable": "company/handoffs/F009-cto-review.json",
-         "note": "Green -- 4 modules touched (1 new + 3 edited). Stdlib only. Session expiry scoped to `is_install_configured()` so platform.toml fallback stays unchanged."},
-        {"stage": "build", "at": "2026-07-22T00:50:00Z", "role": "backend",
-         "deliverable": "agent/platform/rate_limiter.py",
-         "note": "rate_limiter.py (token bucket, 60/min default) + auth.py session/rotation additions + config.py `[rate_limit]` and `[session]` blocks + serve_platform `_install_gate_pass` composition + POST /api/auth/rotate. 28 new tests (14 rate_limiter + 8 session_expiry + 6 rotation)."},
-        {"stage": "security", "at": "2026-07-22T00:54:00Z", "role": "security",
-         "deliverable": "company/handoffs/F009-security-review.json",
-         "note": "Pass -- rate-limit bypass / session replay / plaintext leakage all covered by tests. RedactingFilter survives rotation."},
-        {"stage": "qa", "at": "2026-07-22T00:56:00Z", "role": "qa",
-         "deliverable": "company/qa/F009-verdict.md",
-         "note": "pass -- 28 F009 tests + full platform suite green. No plaintext-token-in-logs regression."},
-        {"stage": "legal", "at": "2026-07-22T00:58:00Z", "role": "legal",
-         "deliverable": "company/legal/F009-review.md",
-         "note": "pass -- rate-limit + session-expiry + rotation claims registered. Rolling constraints logged (cite get_config / get_session_expiry_seconds, not hardcoded numbers)."},
-        {"stage": "signoff", "at": "2026-07-22T01:00:00Z", "role": "cpo",
-         "deliverable": "company/handoffs/F009-legal-to-ceo.json",
-         "note": "CPO signoff on behalf of CEO -- F009 accepted, Sprint 1 auth-carry-over closed."},
-        {"stage": "ship", "at": "2026-07-22T01:00:00Z", "role": "devops",
-         "deliverable": "scripts/serve_platform.py",
-         "note": "Ship-in-place: rate limiter + session expiry + rotation endpoint wired on non-localhost binds; POST /api/auth/rotate live."}
+        {
+          "stage": "spec",
+          "at": "2026-07-22T00:40:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-2-real-trading/F009-auth-hardening.md",
+          "note": "Spec locked. Sprint 1 carry-over (D062) -- rate limiter + session expiry + token rotation."
+        },
+        {
+          "stage": "research",
+          "at": "2026-07-22T00:44:00Z",
+          "role": "ux_researcher",
+          "deliverable": "company/research/F009-user-journey.md",
+          "note": "Security-conscious operator journey framed. API-only surface for Sprint 2; UI section in Sprint 3."
+        },
+        {
+          "stage": "architecture",
+          "at": "2026-07-22T00:46:00Z",
+          "role": "cto",
+          "deliverable": "company/handoffs/F009-cto-review.json",
+          "note": "Green -- 4 modules touched (1 new + 3 edited). Stdlib only. Session expiry scoped to `is_install_configured()` so platform.toml fallback stays unchanged."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-22T00:50:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/rate_limiter.py",
+          "note": "rate_limiter.py (token bucket, 60/min default) + auth.py session/rotation additions + config.py `[rate_limit]` and `[session]` blocks + serve_platform `_install_gate_pass` composition + POST /api/auth/rotate. 28 new tests (14 rate_limiter + 8 session_expiry + 6 rotation)."
+        },
+        {
+          "stage": "security",
+          "at": "2026-07-22T00:54:00Z",
+          "role": "security",
+          "deliverable": "company/handoffs/F009-security-review.json",
+          "note": "Pass -- rate-limit bypass / session replay / plaintext leakage all covered by tests. RedactingFilter survives rotation."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-22T00:56:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F009-verdict.md",
+          "note": "pass -- 28 F009 tests + full platform suite green. No plaintext-token-in-logs regression."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-22T00:58:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/F009-review.md",
+          "note": "pass -- rate-limit + session-expiry + rotation claims registered. Rolling constraints logged (cite get_config / get_session_expiry_seconds, not hardcoded numbers)."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-22T01:00:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F009-legal-to-ceo.json",
+          "note": "CPO signoff on behalf of CEO -- F009 accepted, Sprint 1 auth-carry-over closed."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-22T01:00:00Z",
+          "role": "devops",
+          "deliverable": "scripts/serve_platform.py",
+          "note": "Ship-in-place: rate limiter + session expiry + rotation endpoint wired on non-localhost binds; POST /api/auth/rotate live."
+        }
       ],
       "blockers": [],
       "awaiting_ceo": false,
@@ -1090,28 +1260,57 @@
       "sprint_id": "sprint-2-real-trading",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["cto", "backend", "qa", "ceo"],
+      "reviewers": [
+        "cto",
+        "backend",
+        "qa",
+        "ceo"
+      ],
       "created_at": "2026-07-22T00:40:00Z",
       "age_in_stage_days": 0,
       "history": [
-        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
-         "deliverable": "company/sprints/sprint-2-real-trading/F010-claim-register-audit.md",
-         "note": "Spec locked. Sprint 1 carry-over (D062) -- automates review-chain \u00a76.3 audit."},
-        {"stage": "architecture", "at": "2026-07-22T01:12:00Z", "role": "cto",
-         "deliverable": "company/handoffs/F010-cto-review.json",
-         "note": "Green -- 4 new files, stdlib only. Cross-repo edits are docs (register table rows) + inline claim-exempt markers on 9 internal helpers. No runtime behaviour change."},
-        {"stage": "build", "at": "2026-07-22T01:20:00Z", "role": "backend",
-         "deliverable": "scripts/check_claim_register.py",
-         "note": "Audit + pre-commit template + opt-in installer + 9 tests (spec asked 8). Audit exits 0 on current repo. Red-line SPARE_CLAIM case fails with file:line diagnostic. Installer idempotent, backs up foreign hooks, refuses to remove non-Blue-Lock hooks."},
-        {"stage": "qa", "at": "2026-07-22T01:25:00Z", "role": "qa",
-         "deliverable": "company/qa/F010-verdict.md",
-         "note": "pass -- 9 F010 tests + full suite 1295 passed / 1 skipped (playwright, pre-existing)."},
-        {"stage": "signoff", "at": "2026-07-22T01:26:00Z", "role": "cpo",
-         "deliverable": "company/handoffs/F010-qa-to-cpo.json",
-         "note": "CPO signoff on behalf of CEO -- F010 is infra tooling, no CEO letter required."},
-        {"stage": "ship", "at": "2026-07-22T01:26:00Z", "role": "devops",
-         "deliverable": "scripts/check_claim_register.py",
-         "note": "Ship-in-place: audit runs offline; hook only fires if user opts in via install_git_hooks.py."}
+        {
+          "stage": "spec",
+          "at": "2026-07-22T00:40:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-2-real-trading/F010-claim-register-audit.md",
+          "note": "Spec locked. Sprint 1 carry-over (D062) -- automates review-chain \u00a76.3 audit."
+        },
+        {
+          "stage": "architecture",
+          "at": "2026-07-22T01:12:00Z",
+          "role": "cto",
+          "deliverable": "company/handoffs/F010-cto-review.json",
+          "note": "Green -- 4 new files, stdlib only. Cross-repo edits are docs (register table rows) + inline claim-exempt markers on 9 internal helpers. No runtime behaviour change."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-22T01:20:00Z",
+          "role": "backend",
+          "deliverable": "scripts/check_claim_register.py",
+          "note": "Audit + pre-commit template + opt-in installer + 9 tests (spec asked 8). Audit exits 0 on current repo. Red-line SPARE_CLAIM case fails with file:line diagnostic. Installer idempotent, backs up foreign hooks, refuses to remove non-Blue-Lock hooks."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-22T01:25:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F010-verdict.md",
+          "note": "pass -- 9 F010 tests + full suite 1295 passed / 1 skipped (playwright, pre-existing)."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-22T01:26:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F010-qa-to-cpo.json",
+          "note": "CPO signoff on behalf of CEO -- F010 is infra tooling, no CEO letter required."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-22T01:26:00Z",
+          "role": "devops",
+          "deliverable": "scripts/check_claim_register.py",
+          "note": "Ship-in-place: audit runs offline; hook only fires if user opts in via install_git_hooks.py."
+        }
       ],
       "blockers": [],
       "awaiting_ceo": false,
@@ -1131,41 +1330,92 @@
       "sprint_id": "sprint-2-real-trading",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
+      "reviewers": [
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "security",
+        "legal",
+        "ceo"
+      ],
       "auth": true,
       "created_at": "2026-07-22T00:40:00Z",
       "age_in_stage_days": 0,
       "history": [
-        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
-         "deliverable": "company/sprints/sprint-2-real-trading/F011-kill-switches.md",
-         "note": "Spec locked. Read-only view + write admin + /settings/kill-switches. is_killed() is the 2nd of 4 live-mode-off checks (F013)."},
-        {"stage": "research", "at": "2026-07-22T01:35:00Z", "role": "ux_researcher",
-         "deliverable": "company/research/F011-user-journey.md",
-         "note": "Four scenarios: per-symbol kill during broker glitch, global halt, reboot/recovery, operator handoff. Reason textarea required on activate; clear one-click. Copy discloses 'ships the switch, not the wiring'."},
-        {"stage": "design", "at": "2026-07-22T01:36:00Z", "role": "ui_designer",
-         "deliverable": "company/design/F011-mocks.md",
-         "note": "Desktop + 375px mocks. Red-tinted active cells. Media query at 700px collapses grid to 1fr. No new _BASE_CSS tokens; _BASE_CSS_VERSION stays at 1.0.0."},
-        {"stage": "architecture", "at": "2026-07-22T01:38:00Z", "role": "cto",
-         "deliverable": "company/handoffs/F011-cto-review.json",
-         "note": "Green -- 2 new modules + 2 edited files. Stdlib only. Read/write split for defence-in-depth. Zero import from agent/live/*, agent/risk/*, agent/squad/*."},
-        {"stage": "build", "at": "2026-07-22T01:44:00Z", "role": "backend",
-         "deliverable": "agent/platform/kill_switches.py",
-         "note": "45 tests (spec asked 20) -- 11 module + 13 admin + 8 page + 13 api. Full suite 1295 -> 1340 (+45). /settings/kill-switches wired + 3 admin APIs. Route added to _ONBOARDING_HTML_ALLOWED so safety UI is reachable during onboarding."},
-        {"stage": "security", "at": "2026-07-22T01:48:00Z", "role": "security",
-         "deliverable": "company/handoffs/F011-security-review.json",
-         "note": "Pass -- read/write split, unknown-symbol rejected, install-token gate covers admin POSTs, F009 rate limiter applies via _install_gate_pass."},
-        {"stage": "qa", "at": "2026-07-22T01:50:00Z", "role": "qa",
-         "deliverable": "company/qa/F011-verdict.md",
-         "note": "pass -- 45 F011 tests + full suite 1340. Golden-path (global masks all) + mobile media + no restricted-dir imports."},
-        {"stage": "legal", "at": "2026-07-22T01:52:00Z", "role": "legal",
-         "deliverable": "company/legal/F011-review.md",
-         "note": "pass -- kill_switches + kill_switch_admin claim entries added; rolling constraints (scope-verbatim rule, hot-reload accuracy)."},
-        {"stage": "signoff", "at": "2026-07-22T01:54:00Z", "role": "cpo",
-         "deliverable": "company/handoffs/F011-legal-to-ceo.json",
-         "note": "CPO signoff on behalf of CEO -- F011 accepted, safety-primitive tied to the 4-check pathway that Sprint 2 explicitly does NOT wire."},
-        {"stage": "ship", "at": "2026-07-22T01:54:00Z", "role": "devops",
-         "deliverable": "agent/platform/kill_switches.py",
-         "note": "Ship-in-place: /settings/kill-switches renders; APIs live; no live-order wiring (D065 invariant)."}
+        {
+          "stage": "spec",
+          "at": "2026-07-22T00:40:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-2-real-trading/F011-kill-switches.md",
+          "note": "Spec locked. Read-only view + write admin + /settings/kill-switches. is_killed() is the 2nd of 4 live-mode-off checks (F013)."
+        },
+        {
+          "stage": "research",
+          "at": "2026-07-22T01:35:00Z",
+          "role": "ux_researcher",
+          "deliverable": "company/research/F011-user-journey.md",
+          "note": "Four scenarios: per-symbol kill during broker glitch, global halt, reboot/recovery, operator handoff. Reason textarea required on activate; clear one-click. Copy discloses 'ships the switch, not the wiring'."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-22T01:36:00Z",
+          "role": "ui_designer",
+          "deliverable": "company/design/F011-mocks.md",
+          "note": "Desktop + 375px mocks. Red-tinted active cells. Media query at 700px collapses grid to 1fr. No new _BASE_CSS tokens; _BASE_CSS_VERSION stays at 1.0.0."
+        },
+        {
+          "stage": "architecture",
+          "at": "2026-07-22T01:38:00Z",
+          "role": "cto",
+          "deliverable": "company/handoffs/F011-cto-review.json",
+          "note": "Green -- 2 new modules + 2 edited files. Stdlib only. Read/write split for defence-in-depth. Zero import from agent/live/*, agent/risk/*, agent/squad/*."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-22T01:44:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/kill_switches.py",
+          "note": "45 tests (spec asked 20) -- 11 module + 13 admin + 8 page + 13 api. Full suite 1295 -> 1340 (+45). /settings/kill-switches wired + 3 admin APIs. Route added to _ONBOARDING_HTML_ALLOWED so safety UI is reachable during onboarding."
+        },
+        {
+          "stage": "security",
+          "at": "2026-07-22T01:48:00Z",
+          "role": "security",
+          "deliverable": "company/handoffs/F011-security-review.json",
+          "note": "Pass -- read/write split, unknown-symbol rejected, install-token gate covers admin POSTs, F009 rate limiter applies via _install_gate_pass."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-22T01:50:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F011-verdict.md",
+          "note": "pass -- 45 F011 tests + full suite 1340. Golden-path (global masks all) + mobile media + no restricted-dir imports."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-22T01:52:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/F011-review.md",
+          "note": "pass -- kill_switches + kill_switch_admin claim entries added; rolling constraints (scope-verbatim rule, hot-reload accuracy)."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-22T01:54:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F011-legal-to-ceo.json",
+          "note": "CPO signoff on behalf of CEO -- F011 accepted, safety-primitive tied to the 4-check pathway that Sprint 2 explicitly does NOT wire."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-22T01:54:00Z",
+          "role": "devops",
+          "deliverable": "agent/platform/kill_switches.py",
+          "note": "Ship-in-place: /settings/kill-switches renders; APIs live; no live-order wiring (D065 invariant)."
+        }
       ],
       "blockers": [],
       "awaiting_ceo": false,
@@ -1192,39 +1442,85 @@
       "sprint_id": "sprint-2-real-trading",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "legal", "ceo"],
+      "reviewers": [
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "legal",
+        "ceo"
+      ],
       "auth": true,
       "legal_relevant": true,
       "created_at": "2026-07-22T00:40:00Z",
       "age_in_stage_days": 0,
       "history": [
-        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
-         "deliverable": "company/sprints/sprint-2-real-trading/F012-risk-budget-and-broker-health.md",
-         "note": "Spec locked. 3-tier max-loss caps + broker probe with 30s cache + /risk dashboard. can_send_order() is the 3rd of 4 live-mode-off checks."},
-        {"stage": "research", "at": "2026-07-22T02:00:00Z", "role": "ux_researcher",
-         "deliverable": "company/research/F012-user-journey.md",
-         "note": "Three-state journey (fresh install / mid-day partial consumption / cap-breached). Trust-receipt framing: 'here is what gate #3 will say'. Wins-don't-restore caveat pinned to page."},
-        {"stage": "design", "at": "2026-07-22T02:05:00Z", "role": "ui_designer",
-         "deliverable": "company/design/F012-mocks.md",
-         "note": "Three-panel /risk dashboard using existing base CSS tokens. Mobile 700px media collapses grid to single column. `cached=true` badge for 30-s probe honesty. No _BASE_CSS_VERSION bump."},
-        {"stage": "architecture", "at": "2026-07-22T02:10:00Z", "role": "cto",
-         "deliverable": "company/handoffs/F012-cto-review.json",
-         "note": "Green -- 2 new modules + 2 edited files. Stdlib + existing tomllib. Zero imports from agent/live/*, agent/risk/*, agent/squad/*. Product-branch equivalent, not wire-up."},
-        {"stage": "build", "at": "2026-07-22T02:15:00Z", "role": "backend",
-         "deliverable": "agent/platform/risk_budget.py",
-         "note": "38 tests (spec asked 25) -- 10 risk_budget module + 7 broker_health module + 9 page + 12 api. Full suite 1340 -> 1378. Scenario pinned (two fills drain daily cap -> third refused -> reset restores)."},
-        {"stage": "qa", "at": "2026-07-22T02:20:00Z", "role": "qa",
-         "deliverable": "company/qa/F012-verdict.md",
-         "note": "pass -- 38 F012 tests + full suite 1378. Password-never-in-return regression pinned. UTC-day rollover + auth gate on POST /api/risk/budgets both verified."},
-        {"stage": "legal", "at": "2026-07-22T02:25:00Z", "role": "legal",
-         "deliverable": "company/legal/claim_register.md",
-         "note": "pass -- risk_budget + broker_health claim entries added; rolling constraints logged (3-tier verbatim, wins-don't-restore, 30-s cache, password-never-in-return)."},
-        {"stage": "signoff", "at": "2026-07-22T02:27:00Z", "role": "cpo",
-         "deliverable": "company/handoffs/F012-legal-to-ceo.json",
-         "note": "CPO signoff on behalf of CEO -- F012 accepted, third of four live-mode-off gates in place."},
-        {"stage": "ship", "at": "2026-07-22T02:27:00Z", "role": "devops",
-         "deliverable": "agent/platform/risk_budget.py",
-         "note": "Ship-in-place: /risk renders; APIs live; no live-order wiring (D065 invariant)."}
+        {
+          "stage": "spec",
+          "at": "2026-07-22T00:40:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-2-real-trading/F012-risk-budget-and-broker-health.md",
+          "note": "Spec locked. 3-tier max-loss caps + broker probe with 30s cache + /risk dashboard. can_send_order() is the 3rd of 4 live-mode-off checks."
+        },
+        {
+          "stage": "research",
+          "at": "2026-07-22T02:00:00Z",
+          "role": "ux_researcher",
+          "deliverable": "company/research/F012-user-journey.md",
+          "note": "Three-state journey (fresh install / mid-day partial consumption / cap-breached). Trust-receipt framing: 'here is what gate #3 will say'. Wins-don't-restore caveat pinned to page."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-22T02:05:00Z",
+          "role": "ui_designer",
+          "deliverable": "company/design/F012-mocks.md",
+          "note": "Three-panel /risk dashboard using existing base CSS tokens. Mobile 700px media collapses grid to single column. `cached=true` badge for 30-s probe honesty. No _BASE_CSS_VERSION bump."
+        },
+        {
+          "stage": "architecture",
+          "at": "2026-07-22T02:10:00Z",
+          "role": "cto",
+          "deliverable": "company/handoffs/F012-cto-review.json",
+          "note": "Green -- 2 new modules + 2 edited files. Stdlib + existing tomllib. Zero imports from agent/live/*, agent/risk/*, agent/squad/*. Product-branch equivalent, not wire-up."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-22T02:15:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/risk_budget.py",
+          "note": "38 tests (spec asked 25) -- 10 risk_budget module + 7 broker_health module + 9 page + 12 api. Full suite 1340 -> 1378. Scenario pinned (two fills drain daily cap -> third refused -> reset restores)."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-22T02:20:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F012-verdict.md",
+          "note": "pass -- 38 F012 tests + full suite 1378. Password-never-in-return regression pinned. UTC-day rollover + auth gate on POST /api/risk/budgets both verified."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-22T02:25:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/claim_register.md",
+          "note": "pass -- risk_budget + broker_health claim entries added; rolling constraints logged (3-tier verbatim, wins-don't-restore, 30-s cache, password-never-in-return)."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-22T02:27:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F012-legal-to-ceo.json",
+          "note": "CPO signoff on behalf of CEO -- F012 accepted, third of four live-mode-off gates in place."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-22T02:27:00Z",
+          "role": "devops",
+          "deliverable": "agent/platform/risk_budget.py",
+          "note": "Ship-in-place: /risk renders; APIs live; no live-order wiring (D065 invariant)."
+        }
       ],
       "blockers": [],
       "awaiting_ceo": false,
@@ -1250,43 +1546,94 @@
       "sprint_id": "sprint-2-real-trading",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
+      "reviewers": [
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "security",
+        "legal",
+        "ceo"
+      ],
       "auth": true,
       "credentials": true,
       "legal_relevant": true,
       "created_at": "2026-07-22T00:40:00Z",
       "age_in_stage_days": 0,
       "history": [
-        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
-         "deliverable": "company/sprints/sprint-2-real-trading/F013-trade-approval-and-live-mode.md",
-         "note": "Spec locked. Central Real-Trading feature. Contains the P0 test_live_mode_off_invariant.py pin. Live-mode default OFF, ceremony to enable, 1-click to disable."},
-        {"stage": "research", "at": "2026-07-22T02:35:00Z", "role": "ux_researcher",
-         "deliverable": "company/research/F013-user-journey.md",
-         "note": "Meguru persona -- 'curious but wants friction before enabling real money'. Ceremony journey + queue interaction + Sprint 2 caveat 'submit not wired' pinned in copy."},
-        {"stage": "design", "at": "2026-07-22T02:38:00Z", "role": "ui_designer",
-         "deliverable": "company/design/F013-mocks.md",
-         "note": "Two pages: /approvals + /settings/live-mode. Asymmetric danger palette (red for ON / Reject, green for Approve, dim for OFF). Mobile 700px collapse for grid + button stack."},
-        {"stage": "architecture", "at": "2026-07-22T02:40:00Z", "role": "cto",
-         "deliverable": "company/handoffs/F013-cto-review.json",
-         "note": "Green -- 1 new module + 2 new pages + 9 new endpoints + [internal] config block. Zero imports from agent/live/*, agent/risk/*, agent/squad/*. submit endpoint gated by internal-only token (fails closed on empty). Sprint 2 does NOT call submit from any live pathway (D065)."},
-        {"stage": "build", "at": "2026-07-22T02:44:00Z", "role": "backend",
-         "deliverable": "agent/platform/approval_queue.py",
-         "note": "69 tests (spec asked 30). P0 test_live_mode_off_invariant.py has 6 passing cases including mid-flow kill-switch trip. Full suite 1378 -> 1447 (+69)."},
-        {"stage": "security", "at": "2026-07-22T02:48:00Z", "role": "security",
-         "deliverable": "company/handoffs/F013-security-review.json",
-         "note": "Pass -- default-OFF + fail-closed on keyring exception + ceremony strictness + internal-token fail-closed + install-token gate on user-facing writes + rejection has zero market side-effect all test-pinned."},
-        {"stage": "qa", "at": "2026-07-22T02:50:00Z", "role": "qa",
-         "deliverable": "company/qa/F013-verdict.md",
-         "note": "pass -- 69 F013 tests + full suite 1447 green. P0 invariant output copied into verdict doc verbatim."},
-        {"stage": "legal", "at": "2026-07-22T02:53:00Z", "role": "legal",
-         "deliverable": "company/legal/F013-review.md",
-         "note": "pass -- live-mode-warning + approval-queue-warning verbatim; approval_queue register entries added; rolling constraints (ceremony strictness, fail-closed, 5-min timeout verbatim, no-live-wiring in Sprint 2, internal-token fail-closed) logged."},
-        {"stage": "signoff", "at": "2026-07-22T02:55:00Z", "role": "cpo",
-         "deliverable": "company/handoffs/F013-legal-to-ceo.json",
-         "note": "CPO signoff on behalf of CEO -- F013 accepted, central Real-Trading feature complete, P0 invariant on tape."},
-        {"stage": "ship", "at": "2026-07-22T02:55:00Z", "role": "devops",
-         "deliverable": "agent/platform/approval_queue.py",
-         "note": "Ship-in-place: /approvals + /settings/live-mode render; APIs live; live-mode default OFF; no live-order wiring anywhere (D065 hard invariant preserved)."}
+        {
+          "stage": "spec",
+          "at": "2026-07-22T00:40:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-2-real-trading/F013-trade-approval-and-live-mode.md",
+          "note": "Spec locked. Central Real-Trading feature. Contains the P0 test_live_mode_off_invariant.py pin. Live-mode default OFF, ceremony to enable, 1-click to disable."
+        },
+        {
+          "stage": "research",
+          "at": "2026-07-22T02:35:00Z",
+          "role": "ux_researcher",
+          "deliverable": "company/research/F013-user-journey.md",
+          "note": "Meguru persona -- 'curious but wants friction before enabling real money'. Ceremony journey + queue interaction + Sprint 2 caveat 'submit not wired' pinned in copy."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-22T02:38:00Z",
+          "role": "ui_designer",
+          "deliverable": "company/design/F013-mocks.md",
+          "note": "Two pages: /approvals + /settings/live-mode. Asymmetric danger palette (red for ON / Reject, green for Approve, dim for OFF). Mobile 700px collapse for grid + button stack."
+        },
+        {
+          "stage": "architecture",
+          "at": "2026-07-22T02:40:00Z",
+          "role": "cto",
+          "deliverable": "company/handoffs/F013-cto-review.json",
+          "note": "Green -- 1 new module + 2 new pages + 9 new endpoints + [internal] config block. Zero imports from agent/live/*, agent/risk/*, agent/squad/*. submit endpoint gated by internal-only token (fails closed on empty). Sprint 2 does NOT call submit from any live pathway (D065)."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-22T02:44:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/approval_queue.py",
+          "note": "69 tests (spec asked 30). P0 test_live_mode_off_invariant.py has 6 passing cases including mid-flow kill-switch trip. Full suite 1378 -> 1447 (+69)."
+        },
+        {
+          "stage": "security",
+          "at": "2026-07-22T02:48:00Z",
+          "role": "security",
+          "deliverable": "company/handoffs/F013-security-review.json",
+          "note": "Pass -- default-OFF + fail-closed on keyring exception + ceremony strictness + internal-token fail-closed + install-token gate on user-facing writes + rejection has zero market side-effect all test-pinned."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-22T02:50:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F013-verdict.md",
+          "note": "pass -- 69 F013 tests + full suite 1447 green. P0 invariant output copied into verdict doc verbatim."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-22T02:53:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/F013-review.md",
+          "note": "pass -- live-mode-warning + approval-queue-warning verbatim; approval_queue register entries added; rolling constraints (ceremony strictness, fail-closed, 5-min timeout verbatim, no-live-wiring in Sprint 2, internal-token fail-closed) logged."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-22T02:55:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F013-legal-to-ceo.json",
+          "note": "CPO signoff on behalf of CEO -- F013 accepted, central Real-Trading feature complete, P0 invariant on tape."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-22T02:55:00Z",
+          "role": "devops",
+          "deliverable": "agent/platform/approval_queue.py",
+          "note": "Ship-in-place: /approvals + /settings/live-mode render; APIs live; live-mode default OFF; no live-order wiring anywhere (D065 hard invariant preserved)."
+        }
       ],
       "blockers": [],
       "awaiting_ceo": false,
@@ -1318,38 +1665,84 @@
       "sprint_id": "sprint-2-real-trading",
       "current_stage": "ship",
       "current_owner_role": "devops",
-      "reviewers": ["ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "security", "ceo"],
+      "reviewers": [
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "security",
+        "ceo"
+      ],
       "auth": true,
       "created_at": "2026-07-22T00:40:00Z",
       "age_in_stage_days": 0,
       "history": [
-        {"stage": "spec", "at": "2026-07-22T00:40:00Z", "role": "cpo",
-         "deliverable": "company/sprints/sprint-2-real-trading/F014-sse-alerts-and-telegram.md",
-         "note": "Spec locked. In-process event bus + SSE endpoint + Telegram bridge reusing existing bot_token. No real Telegram calls in tests (httpx mocked)."},
-        {"stage": "research", "at": "2026-07-22T03:00:00Z", "role": "ux_researcher",
-         "deliverable": "company/research/F014-user-journey.md",
-         "note": "Rin persona -- away-from-keyboard operator wants Telegram push while tab is closed. Sprint 2 caveat 'no live pathway publishes events' pinned in copy."},
-        {"stage": "design", "at": "2026-07-22T03:02:00Z", "role": "ui_designer",
-         "deliverable": "company/design/F014-mocks.md",
-         "note": "Single-column /alerts with 6 filter chips + test button + connection badge. Mobile 700px stacks the action bar."},
-        {"stage": "architecture", "at": "2026-07-22T03:05:00Z", "role": "cto",
-         "deliverable": "company/handoffs/F014-cto-review.json",
-         "note": "Green -- 3 new modules + 1 new page + 4 new endpoints + [alerts.telegram] config block. Reuses existing [telegram] bot_token / chat_id (no new secret). Zero imports from restricted directories. SSE stream in _RATE_LIMIT_EXEMPT_PATHS (long-lived, still auth-gated)."},
-        {"stage": "build", "at": "2026-07-22T03:08:00Z", "role": "backend",
-         "deliverable": "agent/platform/alerts.py",
-         "note": "35 tests (spec asked 20). Ring buffer bounded + subscriber exception isolation + WHATWG SSE frame shape + Telegram httpx.post mocked. Full suite 1447 -> 1482 (+35)."},
-        {"stage": "security", "at": "2026-07-22T03:12:00Z", "role": "security",
-         "deliverable": "company/handoffs/F014-security-review.json",
-         "note": "Pass -- load_config() never echoes raw bot_token / chat_id (booleans only); is_enabled() fail-closed; SSE stream auth-gated via ?token=; no real Telegram call in tests."},
-        {"stage": "qa", "at": "2026-07-22T03:15:00Z", "role": "qa",
-         "deliverable": "company/qa/F014-verdict.md",
-         "note": "pass -- 35 F014 tests + full suite 1482 green. Legal register entries added for alerts + alerts_sse + alerts_telegram."},
-        {"stage": "signoff", "at": "2026-07-22T03:17:00Z", "role": "cpo",
-         "deliverable": "company/handoffs/F014-qa-to-cpo.json",
-         "note": "CPO signoff on behalf of CEO -- F014 accepted; alerts scaffolding shipped default-OFF (bridge disabled by default) with no live-pathway publisher (D065)."},
-        {"stage": "ship", "at": "2026-07-22T03:17:00Z", "role": "devops",
-         "deliverable": "agent/platform/alerts.py",
-         "note": "Ship-in-place: /alerts renders; SSE endpoint live; Telegram bridge disabled by default in platform.toml."}
+        {
+          "stage": "spec",
+          "at": "2026-07-22T00:40:00Z",
+          "role": "cpo",
+          "deliverable": "company/sprints/sprint-2-real-trading/F014-sse-alerts-and-telegram.md",
+          "note": "Spec locked. In-process event bus + SSE endpoint + Telegram bridge reusing existing bot_token. No real Telegram calls in tests (httpx mocked)."
+        },
+        {
+          "stage": "research",
+          "at": "2026-07-22T03:00:00Z",
+          "role": "ux_researcher",
+          "deliverable": "company/research/F014-user-journey.md",
+          "note": "Rin persona -- away-from-keyboard operator wants Telegram push while tab is closed. Sprint 2 caveat 'no live pathway publishes events' pinned in copy."
+        },
+        {
+          "stage": "design",
+          "at": "2026-07-22T03:02:00Z",
+          "role": "ui_designer",
+          "deliverable": "company/design/F014-mocks.md",
+          "note": "Single-column /alerts with 6 filter chips + test button + connection badge. Mobile 700px stacks the action bar."
+        },
+        {
+          "stage": "architecture",
+          "at": "2026-07-22T03:05:00Z",
+          "role": "cto",
+          "deliverable": "company/handoffs/F014-cto-review.json",
+          "note": "Green -- 3 new modules + 1 new page + 4 new endpoints + [alerts.telegram] config block. Reuses existing [telegram] bot_token / chat_id (no new secret). Zero imports from restricted directories. SSE stream in _RATE_LIMIT_EXEMPT_PATHS (long-lived, still auth-gated)."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-22T03:08:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/alerts.py",
+          "note": "35 tests (spec asked 20). Ring buffer bounded + subscriber exception isolation + WHATWG SSE frame shape + Telegram httpx.post mocked. Full suite 1447 -> 1482 (+35)."
+        },
+        {
+          "stage": "security",
+          "at": "2026-07-22T03:12:00Z",
+          "role": "security",
+          "deliverable": "company/handoffs/F014-security-review.json",
+          "note": "Pass -- load_config() never echoes raw bot_token / chat_id (booleans only); is_enabled() fail-closed; SSE stream auth-gated via ?token=; no real Telegram call in tests."
+        },
+        {
+          "stage": "qa",
+          "at": "2026-07-22T03:15:00Z",
+          "role": "qa",
+          "deliverable": "company/qa/F014-verdict.md",
+          "note": "pass -- 35 F014 tests + full suite 1482 green. Legal register entries added for alerts + alerts_sse + alerts_telegram."
+        },
+        {
+          "stage": "signoff",
+          "at": "2026-07-22T03:17:00Z",
+          "role": "cpo",
+          "deliverable": "company/handoffs/F014-qa-to-cpo.json",
+          "note": "CPO signoff on behalf of CEO -- F014 accepted; alerts scaffolding shipped default-OFF (bridge disabled by default) with no live-pathway publisher (D065)."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-22T03:17:00Z",
+          "role": "devops",
+          "deliverable": "agent/platform/alerts.py",
+          "note": "Ship-in-place: /alerts renders; SSE endpoint live; Telegram bridge disabled by default in platform.toml."
+        }
       ],
       "blockers": [],
       "awaiting_ceo": false,
@@ -1378,7 +1771,14 @@
       "sprint_id": "sprint-2b-live-readiness",
       "current_stage": "shipped",
       "current_owner_role": "cto",
-      "reviewers": ["cto", "backend", "frontend", "qa", "legal", "ceo"],
+      "reviewers": [
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "legal",
+        "ceo"
+      ],
       "auth": true,
       "created_at": "2026-07-24T00:30:00Z",
       "age_in_stage_days": 0,
@@ -1420,7 +1820,15 @@
       "sprint_id": "sprint-2b-live-readiness",
       "current_stage": "shipped",
       "current_owner_role": "cto",
-      "reviewers": ["cto", "backend", "frontend", "qa", "security", "legal", "ceo"],
+      "reviewers": [
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "security",
+        "legal",
+        "ceo"
+      ],
       "auth": true,
       "credentials": true,
       "created_at": "2026-07-24T00:30:00Z",
@@ -1463,7 +1871,17 @@
       "sprint_id": "sprint-3-stickiness",
       "current_stage": "shipped",
       "current_owner_role": "cto",
-      "reviewers": ["cpo", "ux_researcher", "ui_designer", "cto", "frontend", "backend", "qa", "legal", "ceo"],
+      "reviewers": [
+        "cpo",
+        "ux_researcher",
+        "ui_designer",
+        "cto",
+        "frontend",
+        "backend",
+        "qa",
+        "legal",
+        "ceo"
+      ],
       "auth": false,
       "credentials": false,
       "created_at": "2026-07-24T04:30:00Z",
@@ -1506,7 +1924,19 @@
       "sprint_id": "sprint-3-stickiness",
       "current_stage": "shipped",
       "current_owner_role": "cto",
-      "reviewers": ["cpo", "ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "legal", "research_lead", "ceo"],
+      "reviewers": [
+        "cpo",
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "legal",
+        "research_lead",
+        "ceo"
+      ],
       "auth": false,
       "credentials": false,
       "created_at": "2026-07-24T04:30:00Z",
@@ -1549,7 +1979,18 @@
       "sprint_id": "sprint-3-stickiness",
       "current_stage": "shipped",
       "current_owner_role": "cto",
-      "reviewers": ["cpo", "ux_researcher", "ui_designer", "brand_designer", "cto", "backend", "frontend", "qa", "legal", "ceo"],
+      "reviewers": [
+        "cpo",
+        "ux_researcher",
+        "ui_designer",
+        "brand_designer",
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "legal",
+        "ceo"
+      ],
       "auth": false,
       "credentials": false,
       "created_at": "2026-07-24T04:30:00Z",
@@ -1578,7 +2019,17 @@
       "sprint_id": "sprint-3-stickiness",
       "current_stage": "shipped",
       "current_owner_role": "cto",
-      "reviewers": ["cpo", "ux_researcher", "ui_designer", "cto", "backend", "frontend", "qa", "legal", "ceo"],
+      "reviewers": [
+        "cpo",
+        "ux_researcher",
+        "ui_designer",
+        "cto",
+        "backend",
+        "frontend",
+        "qa",
+        "legal",
+        "ceo"
+      ],
       "auth": false,
       "credentials": false,
       "created_at": "2026-07-24T04:30:00Z",
@@ -1621,7 +2072,14 @@
       "sprint_id": "sprint-3-stickiness",
       "current_stage": "shipped",
       "current_owner_role": "cto",
-      "reviewers": ["cpo", "cto", "backend", "qa", "security", "ceo"],
+      "reviewers": [
+        "cpo",
+        "cto",
+        "backend",
+        "qa",
+        "security",
+        "ceo"
+      ],
       "auth": false,
       "credentials": false,
       "created_at": "2026-07-24T04:30:00Z",
@@ -1664,7 +2122,12 @@
       "sprint_id": "sprint-3-stickiness",
       "current_stage": "shipped",
       "current_owner_role": "cto",
-      "reviewers": ["cpo", "cto", "backend", "qa"],
+      "reviewers": [
+        "cpo",
+        "cto",
+        "backend",
+        "qa"
+      ],
       "auth": false,
       "credentials": false,
       "created_at": "2026-07-24T04:30:00Z",
@@ -2113,7 +2576,7 @@
       "date": "2026-07-21",
       "role": "cpo",
       "decision": "Sprint 1 (Access) closes COMPLETE -- 3/3 P0 features shipped.",
-      "context": "F006 (D057) + F007 (D058) + F008 (D059) all accepted. Test delta 974 -> 1259 (+285). Zero commits off product. Zero spend. No Cursor attribution. Retro amendments landed FIRST per D047 (review-chain §3.5/§4.2/§5.5/§6.3). Sprint duration 1 wall-clock day against 13-day honest target -- compression only possible because Executor persona ran every lane serially; real 3-persona split would have taken longer. Honest-review flag noted in sprint_verdicts."
+      "context": "F006 (D057) + F007 (D058) + F008 (D059) all accepted. Test delta 974 -> 1259 (+285). Zero commits off product. Zero spend. No Cursor attribution. Retro amendments landed FIRST per D047 (review-chain \u00a73.5/\u00a74.2/\u00a75.5/\u00a76.3). Sprint duration 1 wall-clock day against 13-day honest target -- compression only possible because Executor persona ran every lane serially; real 3-persona split would have taken longer. Honest-review flag noted in sprint_verdicts."
     },
     {
       "id": "D061",
@@ -2127,7 +2590,7 @@
       "date": "2026-07-21",
       "role": "cto",
       "decision": "Sprint 1 retro carry-overs ratified; three deferred security controls scoped into Sprint 2.",
-      "context": "Deferred: per-install-token rate limit, session expiry/token rotation, automated claim-register audit hook (§6.3 pre-commit script). Sprint 2 mandatory inclusions alongside Real-Trading features."
+      "context": "Deferred: per-install-token rate limit, session expiry/token rotation, automated claim-register audit hook (\u00a76.3 pre-commit script). Sprint 2 mandatory inclusions alongside Real-Trading features."
     },
     {
       "id": "D063",
@@ -2555,6 +3018,13 @@
       "role": "ceo",
       "decision": "[SIGNOFF] Sprint 3 (Stickiness) CLOSED -- COMPLETE, 6/6 features shipped in one executor-day. P0s F019/F020/F021 and P1s F022/F023/F024 all signed off under the D116 standing delegation; intake I003/I004/I010/I011 resolved with the sprint; I012 housekeeping rider delivered.",
       "context": "Evidence at close: full suite green (baseline 1784+1 skip -> 1969 tests; suite only went up); P0 live-mode-off invariant 23/23 with the file untouched; claim audit green (F022 + F023 register sections same-commit as their features; F024 introduced no claims); zero-diff on agent/{live,risk,squad} + scripts/run_live.py + scripts/run_squad_live.py verified against the 9c0a591 baseline. Honest notes in company/sprints/sprint-3-stickiness/REPORT.md: executor API-budget death mid-F021 + parent-session takeover (D119), F021 ledger-stage reconciliation, one pre-existing stale e2e pin (I002's Sae/Karasu pitch addition) repaired at close, and the I012 pin exposing + fixing an overstated /hq in-flight count. KPIs: features_shipped_sprint_3 0 -> 6; intake_items_open 10 -> 6; intake_items_closed_last_7d 3 -> 7. Sprint verdict appended (sprint-3-stickiness, COMPLETE, actual_end 2026-07-24). Next chartered lane: the D115 auth migration; the shadow clock keeps running in parallel."
+    },
+    {
+      "id": "D124",
+      "date": "2026-07-24",
+      "role": "engineering",
+      "decision": "[INCIDENT-FIX] MT5 dual-terminal pin: [broker] terminal_path routes every platform-side MT5 session (F007 probe, F018 executor) to a dedicated second terminal so the v1 zones agent's terminal + account are never switched (I015, P0).",
+      "context": "Same-day fix for the 2026-07-24 account-contention incident: the broker-wizard probe logged the single MT5 terminal into the new V2 Platform account; v1 saw equity fall to $500 and correctly wrote kill.txt. Fix: [broker] terminal_path/portable in platform.toml, broker_connection.terminal_launch_args() resolver, probe + executor pass the pin positionally to mt5.initialize (unset = historic behaviour byte-identical), hub subtitle clarifies separate accounts, docs/runbooks/dual-mt5-terminals.md carries setup + v1 recovery. v2 bar feed verified non-interfering (read-only login with v1's own creds). Invariant: new MT5 call sites in agent/platform/* must route through terminal_launch_args(). 9 new tests in tests/platform/test_broker_terminal_pin.py; protected v1 runtime paths untouched."
     }
   ],
   "sprint_verdicts": [
@@ -2562,7 +3032,13 @@
       "sprint_id": "sprint-0-trust-foundation",
       "verdict": "COMPLETE",
       "actual_end": "2026-07-21",
-      "features_shipped": ["F005", "F001", "F002", "F003", "F004"],
+      "features_shipped": [
+        "F005",
+        "F001",
+        "F002",
+        "F003",
+        "F004"
+      ],
       "features_missed": [],
       "blockers_surfaced": [],
       "test_count_delta": "100 -> 348 (+248)",
@@ -2572,7 +3048,11 @@
       "sprint_id": "sprint-1-access",
       "verdict": "COMPLETE",
       "actual_end": "2026-07-21",
-      "features_shipped": ["F006", "F007", "F008"],
+      "features_shipped": [
+        "F006",
+        "F007",
+        "F008"
+      ],
       "features_missed": [],
       "blockers_surfaced": [],
       "test_count_delta": "974 -> 1259 (+285)",
@@ -2582,7 +3062,14 @@
       "sprint_id": "sprint-2-real-trading",
       "verdict": "COMPLETE",
       "actual_end": "2026-07-22",
-      "features_shipped": ["F009", "F010", "F011", "F012", "F013", "F014"],
+      "features_shipped": [
+        "F009",
+        "F010",
+        "F011",
+        "F012",
+        "F013",
+        "F014"
+      ],
       "features_missed": [],
       "blockers_surfaced": [],
       "test_count_delta": "1259 -> 1482 (+223)",
@@ -2626,7 +3113,7 @@
     "active_roles": 14,
     "total_roles": 19,
     "intake_items_open": 7,
-    "intake_items_closed_last_7d": 7,
+    "intake_items_closed_last_7d": 8,
     "experiments_in_flight": 0,
     "published_findings_total": 1,
     "published_findings_last_30d": 1
@@ -2642,7 +3129,10 @@
       "status": "resolved",
       "route": "process",
       "linked_features": [],
-      "linked_decisions": ["D062", "D087"],
+      "linked_decisions": [
+        "D062",
+        "D087"
+      ],
       "linked_experiments": [],
       "contact": null,
       "resolved_at": "2026-07-23T22:45:00Z",
@@ -2659,7 +3149,11 @@
       "status": "awaiting-verification",
       "route": "product",
       "linked_features": [],
-      "linked_decisions": ["D088", "D110", "D113"],
+      "linked_decisions": [
+        "D088",
+        "D110",
+        "D113"
+      ],
       "linked_experiments": [],
       "contact": "internal (CEO)",
       "resolved_at": null,
@@ -2675,8 +3169,15 @@
       "priority": "P1",
       "status": "resolved",
       "route": "product",
-      "linked_features": ["F016", "F019"],
-      "linked_decisions": ["D093", "D113", "D114"],
+      "linked_features": [
+        "F016",
+        "F019"
+      ],
+      "linked_decisions": [
+        "D093",
+        "D113",
+        "D114"
+      ],
       "linked_experiments": [],
       "contact": "internal (dogfood harness, D092)",
       "resolved_at": "2026-07-24T14:15:00Z",
@@ -2692,8 +3193,15 @@
       "priority": "P3",
       "status": "resolved",
       "route": "product",
-      "linked_features": ["F016", "F019"],
-      "linked_decisions": ["D094", "D113", "D114"],
+      "linked_features": [
+        "F016",
+        "F019"
+      ],
+      "linked_decisions": [
+        "D094",
+        "D113",
+        "D114"
+      ],
       "linked_experiments": [],
       "contact": "internal (dogfood harness, D092)",
       "resolved_at": "2026-07-24T14:15:00Z",
@@ -2710,7 +3218,11 @@
       "status": "resolved",
       "route": "engineering",
       "linked_features": [],
-      "linked_decisions": ["D107", "D110", "D113"],
+      "linked_decisions": [
+        "D107",
+        "D110",
+        "D113"
+      ],
       "linked_experiments": [],
       "contact": "internal (2026-07-24 full-system audit, A001/A002)",
       "resolved_at": "2026-07-24T04:10:00Z",
@@ -2727,7 +3239,11 @@
       "status": "resolved",
       "route": "next-gen-fix-lane",
       "linked_features": [],
-      "linked_decisions": ["D107", "D110", "D113"],
+      "linked_decisions": [
+        "D107",
+        "D110",
+        "D113"
+      ],
       "linked_experiments": [],
       "contact": "internal (2026-07-24 full-system audit, A003)",
       "resolved_at": "2026-07-24T04:10:00Z",
@@ -2744,7 +3260,10 @@
       "status": "routed",
       "route": "next-gen-fix-lane",
       "linked_features": [],
-      "linked_decisions": ["D107", "D113"],
+      "linked_decisions": [
+        "D107",
+        "D113"
+      ],
       "linked_experiments": [],
       "contact": "internal (2026-07-24 full-system audit, A004)",
       "resolved_at": null,
@@ -2761,7 +3280,10 @@
       "status": "routed",
       "route": "engineering-process",
       "linked_features": [],
-      "linked_decisions": ["D107", "D113"],
+      "linked_decisions": [
+        "D107",
+        "D113"
+      ],
       "linked_experiments": [],
       "contact": "internal (2026-07-24 full-system audit, A008)",
       "resolved_at": null,
@@ -2778,7 +3300,10 @@
       "status": "in_progress",
       "route": "engineering",
       "linked_features": [],
-      "linked_decisions": ["D107", "D113"],
+      "linked_decisions": [
+        "D107",
+        "D113"
+      ],
       "linked_experiments": [],
       "contact": "internal (2026-07-24 full-system audit, A009)",
       "resolved_at": null,
@@ -2794,8 +3319,14 @@
       "priority": "P2",
       "status": "resolved",
       "route": "product",
-      "linked_features": ["F023"],
-      "linked_decisions": ["D107", "D113", "D114"],
+      "linked_features": [
+        "F023"
+      ],
+      "linked_decisions": [
+        "D107",
+        "D113",
+        "D114"
+      ],
       "linked_experiments": [],
       "contact": "internal (2026-07-24 full-system audit, A010)",
       "resolved_at": "2026-07-24T14:15:00Z",
@@ -2811,8 +3342,14 @@
       "priority": "P2",
       "status": "resolved",
       "route": "product",
-      "linked_features": ["F024"],
-      "linked_decisions": ["D107", "D113", "D114"],
+      "linked_features": [
+        "F024"
+      ],
+      "linked_decisions": [
+        "D107",
+        "D113",
+        "D114"
+      ],
       "linked_experiments": [],
       "contact": "internal (2026-07-24 full-system audit, A011)",
       "resolved_at": "2026-07-24T14:15:00Z",
@@ -2829,7 +3366,11 @@
       "status": "routed",
       "route": "cpo",
       "linked_features": [],
-      "linked_decisions": ["D107", "D108", "D113"],
+      "linked_decisions": [
+        "D107",
+        "D108",
+        "D113"
+      ],
       "linked_experiments": [],
       "contact": "internal (2026-07-24 full-system audit, A012)",
       "resolved_at": null,
@@ -2846,8 +3387,13 @@
       "status": "routed",
       "route": "research",
       "linked_features": [],
-      "linked_decisions": ["D111", "D113"],
-      "linked_experiments": ["phase_ae_sae_event_specialist"],
+      "linked_decisions": [
+        "D111",
+        "D113"
+      ],
+      "linked_experiments": [
+        "phase_ae_sae_event_specialist"
+      ],
       "contact": "internal (CEO question after Phase AE FAIL, 2026-07-24 session)",
       "resolved_at": null,
       "summary": "Sae v2 hypothesis: finer-timeframe precision mechanics (M5/M1 microstructure, surprise-z gating, spread-aware brackets). NOT a v1 retune (D111 stop rule). Parked until M5 + surprise data plan exists and the research queue drains Phase AC follow-ups; no compute before a fresh locked pre-registration.",
@@ -2862,13 +3408,38 @@
       "priority": "P1",
       "status": "open",
       "route": "engineering",
-      "linked_features": ["F006", "F008"],
+      "linked_features": [
+        "F006",
+        "F008"
+      ],
       "linked_decisions": [],
       "linked_experiments": [],
       "contact": "internal (CEO hit it live during the 2026-07-24 VM cutover)",
       "resolved_at": null,
       "summary": "First-run auth UX: the F008 /onboarding redirect drops ?token= and the auth cookie does not persist across HTML hops -- every page 401s on a fresh install until the user manually re-appends the token. Fix: redirect preserves the token / cookie set on first authorized HTML request; security review fires.",
       "file": "company/rd/intake/I014-onboarding-redirect-drops-token.md"
+    },
+    {
+      "id": "I015",
+      "source": "ceo",
+      "submitter": "user_advocate",
+      "submitted_at": "2026-07-24T13:42:00Z",
+      "classification": "BUG",
+      "priority": "P0",
+      "status": "resolved",
+      "route": "engineering",
+      "linked_features": [
+        "F007",
+        "F018"
+      ],
+      "linked_decisions": [
+        "D124"
+      ],
+      "linked_experiments": [],
+      "contact": "internal (CEO hit it live right after the 2026-07-24 VM cutover)",
+      "resolved_at": "2026-07-24T15:30:00Z",
+      "summary": "Single MT5 terminal shared by two accounts: the V2 broker probe switched v1's account, v1 tripped its kill switch on a phantom drawdown. Resolved same day by D124 dual-terminal pin + runbook.",
+      "file": "company/rd/intake/I015-mt5-account-contention-v1-killed.md"
     }
   ],
   "experiments": [
@@ -2881,7 +3452,7 @@
       "verdict": "AC.2 A2 FAIL (delta -0.006, p=0.861); stay with A1 baseline",
       "protocol_commit": "083c0e9",
       "report_commit": "2c8e363",
-      "fdr_budget_q": 0.10,
+      "fdr_budget_q": 0.1,
       "fdr_rejects": 3,
       "fdr_family_size": 28,
       "condensed_finding_path": "company/rd/findings/2026-07-phase-ac-pitch-assignment.md",

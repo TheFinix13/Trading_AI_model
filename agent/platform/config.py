@@ -128,6 +128,17 @@ def _defaults(repo_root: Path) -> dict:
                 },
             },
         },
+        # [broker] -- MT5 terminal pinning (dual-terminal ops,
+        # 2026-07-24 account-contention incident). When `terminal_path`
+        # is set, EVERY platform-side MT5 session (broker-wizard probe,
+        # F018 demo executor) initializes against THAT terminal install
+        # instead of the machine default. This is what lets v1 keep its
+        # own terminal + account while the v2 platform talks to a
+        # second portable terminal. Empty (default) keeps the historic
+        # single-terminal behaviour byte-identical. `portable = true`
+        # passes the portable-mode flag through to mt5.initialize for
+        # copied-directory installs.
+        "broker": {"terminal_path": "", "portable": False},
         # F018 (Sprint 2b) -- demo-order executor. DEFAULT-DISABLED
         # (gate #5). `demo_only = true` is a REQUIRED acknowledgement:
         # the executor refuses when it is false or absent, and refuses
@@ -278,6 +289,13 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
                 for key in ("bot_token", "chat_id"):
                     if ops.get(key):
                         cfg["alerts"]["telegram"]["ops"][key] = str(ops[key])
+    br = raw.get("broker")
+    if isinstance(br, dict):
+        if br.get("terminal_path"):
+            cfg["broker"]["terminal_path"] = str(br["terminal_path"]).strip()
+        # Same acknowledgement posture as demo_only: only a literal
+        # TOML `true` counts.
+        cfg["broker"]["portable"] = br.get("portable") is True
     le = raw.get("live_executor")
     if isinstance(le, dict):
         if "enabled" in le:
