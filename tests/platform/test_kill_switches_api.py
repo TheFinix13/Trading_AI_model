@@ -12,6 +12,7 @@ Coverage:
 from __future__ import annotations
 
 import json
+import secrets as _secrets
 import sys
 import threading
 import urllib.error
@@ -75,7 +76,7 @@ def _make_server(tmp_path: Path, *,
 def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("kill-tests-passphrase")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     monkeypatch.setenv(kill_switches.KILL_DIR_ENV,
                        str(tmp_path / "cfg" / "kill"))

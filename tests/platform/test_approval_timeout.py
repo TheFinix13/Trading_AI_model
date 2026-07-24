@@ -9,6 +9,8 @@ Focused pinning on the timeout semantics (spec asked 2 tests here):
 """
 from __future__ import annotations
 
+import secrets as _secrets
+
 from pathlib import Path
 
 import pytest
@@ -20,7 +22,7 @@ from agent.platform import approval_queue, credentials
 def _clean(tmp_path: Path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("timeout-tests-passphrase")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     approval_queue.reset_state()
     approval_queue.set_timeout_seconds(1)

@@ -7,6 +7,7 @@ rename or a signature drift without exercising crypto.
 from __future__ import annotations
 
 import inspect
+import secrets as _secrets
 import sys
 from pathlib import Path
 
@@ -44,7 +45,7 @@ def test_encrypted_file_path_matches_config_dir(tmp_path):
 def test_index_key_reserved(tmp_path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path)
-    credentials.set_encrypted_file_passphrase("ppppppppppppp1")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     with pytest.raises(ValueError):
         credentials.store_secret("ns", "__index__", "v")
@@ -52,7 +53,7 @@ def test_index_key_reserved(tmp_path):
 
 
 def test_reset_state_helper_clears_module_state():
-    credentials.set_encrypted_file_passphrase("x")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     credentials._reset_state_for_tests()
     assert credentials._process_passphrase is None

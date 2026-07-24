@@ -6,12 +6,16 @@ signature checks.
 from __future__ import annotations
 
 import inspect
+import secrets as _secrets
 import sys
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+# Throwaway fixture password -- obviously non-secret shape for scanners.
+_FIXTURE_PW = "x" * 12
 
 from agent.platform import broker_connection, credentials  # noqa: E402
 
@@ -20,7 +24,7 @@ from agent.platform import broker_connection, credentials  # noqa: E402
 def _isolate(tmp_path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("broker-module-passphrase-yy")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     broker_connection.reset_rate_limiter()
     yield
@@ -45,7 +49,7 @@ def test_test_connection_signature():
 
 def test_test_connection_result_shape():
     r = broker_connection.test_connection(
-        login="12345", password="pw12345", server="Exness-MT5Demo")
+        login="12345", password=_FIXTURE_PW, server="Exness-MT5Demo")
     assert set(r.keys()) == {
         "success", "error_code", "error_message", "account_type",
         "account_number", "balance_currency", "server"}
@@ -66,19 +70,19 @@ def test_allowed_servers_non_empty_tuple():
 
 def test_save_and_load_round_trip():
     ok = broker_connection.save_credentials(
-        "primary", "12345", "pw12345", "Exness-MT5Demo", "demo")
+        "primary", "12345", _FIXTURE_PW, "Exness-MT5Demo", "demo")
     assert ok is True
     loaded = broker_connection.load_credentials("primary")
     assert loaded is not None
     assert loaded["login"] == "12345"
-    assert loaded["password"] == "pw12345"
+    assert loaded["password"] == _FIXTURE_PW
     assert loaded["server"] == "Exness-MT5Demo"
     assert loaded["account_type"] == "demo"
 
 
 def test_list_aliases_returns_metadata_only():
     broker_connection.save_credentials(
-        "primary", "12345", "pw12345", "Exness-MT5Demo", "demo")
+        "primary", "12345", _FIXTURE_PW, "Exness-MT5Demo", "demo")
     rows = broker_connection.list_aliases()
     assert len(rows) == 1
     row = rows[0]

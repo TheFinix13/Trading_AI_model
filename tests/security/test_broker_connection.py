@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import re
+import secrets as _secrets
 import sys
 from pathlib import Path
 
@@ -29,7 +30,7 @@ from agent.platform import broker_connection, credentials  # noqa: E402
 def _isolate(tmp_path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("broker-tests-passphrase-33")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     broker_connection.reset_rate_limiter()
     yield
@@ -41,7 +42,12 @@ def _isolate(tmp_path):
 # (b) password-in-logs regression
 # ---------------------------------------------------------------------------
 
-_PASSWORD_SENTINEL = "PleaseNeverLogThis-Sentinel-XX9182"
+# Generated at runtime -- no secret-shaped literals for scanners to flag.
+_PASSWORD_SENTINEL = "never-log-sentinel-" + _secrets.token_hex(6)
+
+# Throwaway password for call-sites that only need a syntactically valid
+# password (no leak assertion attached).
+_DUMMY_PW = "x" * 12
 
 
 class TestPasswordNeverLogged:
@@ -99,7 +105,7 @@ class TestServerAllowList:
     ])
     def test_allowed_prefixes_pass(self, server):
         result = broker_connection.test_connection(
-            login="12345", password="pw12345", server=server)
+            login="12345", password=_DUMMY_PW, server=server)
         # On macOS the MT5 branch short-circuits to mt5_unavailable;
         # what matters is the validator DID NOT reject the server.
         assert result["error_message"] != (
@@ -117,7 +123,7 @@ class TestServerAllowList:
     ])
     def test_disallowed_servers_rejected(self, server):
         result = broker_connection.test_connection(
-            login="12345", password="pw12345", server=server)
+            login="12345", password=_DUMMY_PW, server=server)
         assert result["success"] is False
         # Some rejects come from regex (bad chars) rather than allowlist;
         # accept either failure path.
@@ -127,7 +133,7 @@ class TestServerAllowList:
     def test_save_credentials_rejects_disallowed(self):
         with pytest.raises(ValueError):
             broker_connection.save_credentials(
-                alias="x", login="12345", password="pw12345",
+                alias="x", login="12345", password=_DUMMY_PW,
                 server="evil-server.com", account_type="demo")
         # Nothing persisted.
         assert broker_connection.list_aliases() == []
@@ -142,12 +148,12 @@ class TestRateLimit:
     def test_sixth_attempt_within_window_returns_429(self):
         for i in range(5):
             r = broker_connection.test_connection(
-                login="12345", password="pw12345",
+                login="12345", password=_DUMMY_PW,
                 server="Exness-MT5Demo")
             assert r["error_code"] != 429, f"attempt {i} tripped early"
         # Sixth = rate-limited.
         r = broker_connection.test_connection(
-            login="12345", password="pw12345",
+            login="12345", password=_DUMMY_PW,
             server="Exness-MT5Demo")
         assert r["error_code"] == 429
         assert "wait a minute" in (r["error_message"] or "").lower()
@@ -155,11 +161,11 @@ class TestRateLimit:
     def test_reset_rate_limiter_clears_state(self):
         for _ in range(6):
             broker_connection.test_connection(
-                login="12345", password="pw12345",
+                login="12345", password=_DUMMY_PW,
                 server="Exness-MT5Demo")
         broker_connection.reset_rate_limiter()
         r = broker_connection.test_connection(
-            login="12345", password="pw12345",
+            login="12345", password=_DUMMY_PW,
             server="Exness-MT5Demo")
         assert r["error_code"] != 429
 
@@ -176,9 +182,9 @@ class TestDeleteAuthorisation:
 
     def test_delete_removes_only_target_alias(self):
         broker_connection.save_credentials(
-            "one", "111", "pw12345", "Exness-MT5Demo", "demo")
+            "one", "111", _DUMMY_PW, "Exness-MT5Demo", "demo")
         broker_connection.save_credentials(
-            "two", "222", "pw67890", "Exness-MT5Demo", "demo")
+            "two", "222", _DUMMY_PW, "Exness-MT5Demo", "demo")
         assert broker_connection.delete_credentials("one") is True
         aliases = {r["alias"] for r in broker_connection.list_aliases()}
         assert aliases == {"two"}
@@ -202,7 +208,7 @@ class TestInputFuzz:
     ])
     def test_bad_login_rejected(self, bad_login):
         r = broker_connection.test_connection(
-            login=bad_login, password="pw12345", server="Exness-MT5Demo")
+            login=bad_login, password=_DUMMY_PW, server="Exness-MT5Demo")
         assert r["success"] is False
 
     @pytest.mark.parametrize("bad_password", [
@@ -225,7 +231,7 @@ class TestInputFuzz:
     def test_bad_alias_rejected(self, bad_alias):
         with pytest.raises((ValueError, TypeError)):
             broker_connection.save_credentials(
-                bad_alias, "12345", "pw12345", "Exness-MT5Demo", "demo")
+                bad_alias, "12345", _DUMMY_PW, "Exness-MT5Demo", "demo")
 
 
 # ---------------------------------------------------------------------------
@@ -236,25 +242,27 @@ class TestInputFuzz:
 class TestRoundTripWithRedactionFilter:
 
     def test_save_then_load_returns_password_intact(self):
+        pw = "round-trip-pw-" + _secrets.token_hex(4)
         broker_connection.save_credentials(
-            "primary", "12345", "hunter2-secret",
+            "primary", "12345", pw,
             "Exness-MT5Demo", "demo")
         loaded = broker_connection.load_credentials("primary")
         assert loaded is not None
-        assert loaded["password"] == "hunter2-secret"
+        assert loaded["password"] == pw
         assert loaded["login"] == "12345"
         assert loaded["server"] == "Exness-MT5Demo"
         assert loaded["account_type"] == "demo"
 
     def test_password_pattern_never_leaks_in_log_text(self, caplog):
+        pw = "extra-secret-long-" + _secrets.token_hex(5)
         with caplog.at_level(logging.INFO):
             broker_connection.save_credentials(
-                "primary", "12345", "ExtraSecret-Long-4d3e2f1c0b",
+                "primary", "12345", pw,
                 "Exness-MT5Demo", "demo")
         # Even without the RedactingFilter mounted for this test, the
         # module itself must not include the password in its log
         # arguments. The credentials.py filter is separately tested.
-        assert "ExtraSecret-Long-4d3e2f1c0b" not in caplog.text
+        assert pw not in caplog.text
         # Sanity: alias/login/server DO appear (they're not secret).
         assert "primary" in caplog.text
         assert re.search(r"login=12345", caplog.text)

@@ -11,6 +11,7 @@ Pins the security invariants:
 """
 from __future__ import annotations
 
+import secrets as _secrets
 import sys
 from pathlib import Path
 
@@ -27,7 +28,7 @@ from agent.platform import (  # noqa: E402
 def _isolate(tmp_path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("onboarding-tests-passphrase-33")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     broker_connection.reset_rate_limiter()
     yield
@@ -53,7 +54,7 @@ class TestResetFlow:
     def test_reset_clears_broker_namespace(self):
         broker_connection.save_credentials(
             alias="primary", login="12345",
-            password="s3cret-password-xyz",
+            password="x" * 12,
             server="Demo-Server1", account_type="demo")
         assert broker_connection.list_aliases()
         assert onboarding.reset_install()
@@ -71,7 +72,7 @@ class TestResetFlow:
         assert onboarding.reset_install()
 
     def test_reset_does_not_leak_previous_secret_value(self, caplog):
-        payload = "top-secret-marker-xyz-2026"
+        payload = "reset-leak-marker-" + _secrets.token_hex(4)
         credentials.store_secret(
             onboarding.ONBOARDING_NAMESPACE, "manual_test", payload)
         assert onboarding.reset_install()
@@ -108,8 +109,9 @@ class TestPassphraseGate:
         assert ok is False
 
     def test_long_enough_accepted(self):
+        # 24 chars -- comfortably past the 12-char minimum.
         ok, msg = onboarding.validate_passphrase(
-            "a-strong-passphrase-here", keyring_available=False)
+            "x" * 24, keyring_available=False)
         assert ok is True
         assert msg
 
@@ -223,7 +225,7 @@ class TestOnboardingStateShape:
 
     def test_state_reflects_broker_saved(self):
         broker_connection.save_credentials(
-            alias="primary", login="12345", password="pw12345678",
+            alias="primary", login="12345", password="x" * 12,
             server="Demo-Server1", account_type="demo")
         state = onboarding.get_onboarding_state()
         assert state["broker_connected"] is True

@@ -14,6 +14,7 @@ Threat model covered:
 from __future__ import annotations
 
 import logging
+import secrets as _secrets
 import sys
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from agent.platform import auth, credentials, rate_limiter  # noqa: E402
 def _isolate(tmp_path, caplog):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path)
-    credentials.set_encrypted_file_passphrase("rotation-tests-passphrase-xyz")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     rate_limiter.reset()
     auth.set_session_expiry_seconds(auth.DEFAULT_SESSION_EXPIRY_SECONDS)

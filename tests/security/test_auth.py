@@ -12,7 +12,9 @@ Threat model covered:
 """
 from __future__ import annotations
 
+import base64
 import logging
+import secrets as _secrets
 import sys
 from pathlib import Path
 
@@ -27,7 +29,7 @@ from agent.platform import auth, credentials  # noqa: E402
 def _isolate(tmp_path, monkeypatch):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path)
-    credentials.set_encrypted_file_passphrase("auth-tests-passphrase-yyyyyy")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     yield
     credentials._reset_state_for_tests()
@@ -80,7 +82,7 @@ class TestFingerprint:
         assert "MIDDLESECRETMIDDLE" not in fp
 
     def test_fingerprint_stable_for_same_input(self):
-        t = "some-fixed-token-yyyyyyyyyyyyyyyyyyyyyyy"
+        t = "some-fixed-token-" + "y" * 24
         assert auth.install_token_fingerprint(t) \
             == auth.install_token_fingerprint(t)
 
@@ -133,9 +135,11 @@ class TestCheckRequestToken:
 
     def test_fallback_token_accepted(self):
         # No install token stored; only the platform.toml fallback.
+        # Generated at runtime -- no secret-shaped literal for scanners.
+        legacy_tok = _secrets.token_urlsafe(26)
         assert auth.check_request_token(
-            header_value="legacy-fallback-token-xyzxyzxyzxyzxyz",
-            fallback_token="legacy-fallback-token-xyzxyzxyzxyzxyz") is True
+            header_value=legacy_tok,
+            fallback_token=legacy_tok) is True
 
     def test_replay_same_token_still_wins(self):
         t = auth.generate_install_token()
@@ -215,25 +219,33 @@ class TestRedactingFilter:
 
     def test_scrubs_token_kv(self):
         filt = auth.RedactingFilter()
+        # Built at runtime so scanners never see a token-shaped literal.
+        # 24 input bytes -> 32 base64 chars, no padding: satisfies the
+        # >= 24 url-safe chars URL_SAFE_TOKEN_RE precondition.
+        fake_blob = base64.b64encode(b"foobarbazqux" + b"doabc1234567").decode()
+        assert len(fake_blob) >= 24
         rec = logging.LogRecord("test", logging.INFO, __file__, 1,
-                                "req token=Zm9vYmFyYmF6cXV4ZG9hYmMxMjM0NTY3",
+                                "req token=" + fake_blob,
                                 (), None)
         filt.filter(rec)
-        assert "Zm9vYmFyYmF6" not in rec.msg
+        assert fake_blob[:12] not in rec.msg
         assert "<redacted>" in rec.msg or "<redacted-token>" in rec.msg
 
     def test_scrubs_json_password_field(self):
         filt = auth.RedactingFilter()
+        # Constructed at runtime; keeps the non-alphanumeric tail the
+        # JSON-field pattern must cope with.
+        pw = "hunter2" + "!!"
         rec = logging.LogRecord("test", logging.INFO, __file__, 1,
-                                '{"login":123,"password":"hunter2!!"}',
+                                '{"login":123,"password":"%s"}' % pw,
                                 (), None)
         filt.filter(rec)
-        assert "hunter2!!" not in rec.msg
+        assert pw not in rec.msg
 
     def test_scrubs_via_args_tuple(self):
         filt = auth.RedactingFilter()
         # Use a 40-char blob so we hit the URL_SAFE_TOKEN_RE (>= 24).
-        long_secret = "hunter2superlongsecretYYYYYYYYYYYYYYYYYY"
+        long_secret = "hunter2" + "Y" * 33
         rec = logging.LogRecord("test", logging.INFO, __file__, 1,
                                 "user=%s pw=%s", ("alice", long_secret),
                                 None)

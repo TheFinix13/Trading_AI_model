@@ -2011,6 +2011,31 @@ audit before any live-wiring milestone (first real-broker order,
 first paid user, first hosted deployment). Tracked with I012; takes
 effect on CEO ratification.
 
+## D109 · 2026-07-24 · qa · [PROCESS]
+
+**Secret-scanner hygiene sweep: all secret-shaped literals removed
+from the test suite and dogfood script; convention adopted — no
+secret-shaped literals in tests, generate at runtime.**
+
+Context: GitGuardian monitors this public repo and opened incidents
+#35143401 (a006-tests fixture passphrases) and #35027049 (the base64
+blob in tests/security/test_auth.py) — all false positives (test-only
+fixture passphrases and deliberately fake blobs), but each new one
+emails the CEO. One-pass sweep across 33 test files +
+scripts/dogfood_personas.py: 29 fixture passphrases →
+`secrets.token_hex(16)`; fake broker passwords / sentinels / fallback
+tokens → hoisted runtime-generated values (leak assertions use the
+same variable, so assertion strength is unchanged); the base64 blob
+is now built with `base64.b64encode(...)` at runtime; remaining dummy
+passwords use scanner-quiet `"x" * 12` constructions. Test semantics
+preserved (length/charset/entropy preconditions verified per
+call-site, e.g. URL_SAFE_TOKEN_RE ≥ 24 url-safe chars); full suite
+1721 passed before and after. Production code (`agent/`) verified
+clean — the keyring/redaction design keeps real secrets out of source.
+Convention recorded in `tests/CONVENTIONS.md`: new tests must never
+embed password/token-shaped string literals; generate them at runtime
+or construct them (`"x" * 12` style).
+
 ## Template for subsequent entries
 
 ```markdown

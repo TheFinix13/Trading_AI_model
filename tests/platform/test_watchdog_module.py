@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets as _secrets
 import sys
 import time
 from pathlib import Path
@@ -21,7 +22,7 @@ NOW = 1_800_000_000.0  # fixed epoch for deterministic ages
 def _isolate(tmp_path: Path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("watchdog-module-tests")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     watchdog.reset_cache_for_tests()
     yield

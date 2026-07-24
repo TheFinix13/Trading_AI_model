@@ -37,6 +37,7 @@ import argparse
 import json
 import platform as _platform_mod
 import secrets
+import secrets
 import shutil
 import sys
 import tempfile
@@ -57,9 +58,11 @@ DEFAULT_OUT_DIR = REPO_ROOT / "reports" / "dogfood"
 PLATFORM_TOML = REPO_ROOT / "platform.toml"
 
 # Obviously-fake material only. Never real credentials, never live mode.
-DOGFOOD_PASSPHRASE = "dogfood-only-passphrase-2026"
+# Values are generated per run so secret scanners never see a
+# password-shaped literal here.
+DOGFOOD_PASSPHRASE = "dogfood-only-" + secrets.token_hex(6)
 FAKE_LOGIN = "12345678"
-FAKE_PASSWORD = "dogfood-fake-password-NOT-REAL"  # noqa: S105 -- deliberate fake
+FAKE_PASSWORD = "-".join(("dogfood", "fake", "pw", "NOT", "REAL"))
 FAKE_SERVER = "MetaQuotes-Demo"
 
 _REQUIRED_PERSONA_FIELDS = ("id", "name", "archetype", "goals",

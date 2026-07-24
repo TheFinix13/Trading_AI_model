@@ -10,6 +10,7 @@ Threat model covered:
 """
 from __future__ import annotations
 
+import secrets as _secrets
 import sys
 import time
 from pathlib import Path
@@ -25,7 +26,7 @@ from agent.platform import auth, credentials  # noqa: E402
 def _isolate(tmp_path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path)
-    credentials.set_encrypted_file_passphrase("session-tests-passphrase-xyz")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     auth.set_session_expiry_seconds(auth.DEFAULT_SESSION_EXPIRY_SECONDS)
     yield

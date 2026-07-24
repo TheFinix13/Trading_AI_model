@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import secrets as _secrets
 import sys
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from scripts import run_watchdog  # noqa: E402
 def _isolate(tmp_path: Path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("run-watchdog-tests")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     alerts.reset()
     watchdog.reset_cache_for_tests()

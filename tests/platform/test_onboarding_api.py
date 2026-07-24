@@ -16,6 +16,7 @@ Exercises the routes wired in ``scripts/serve_platform.py``:
 from __future__ import annotations
 
 import json
+import secrets as _secrets
 import sys
 import threading
 import urllib.error
@@ -93,7 +94,7 @@ def _make_server(tmp_path: Path, enforce: bool = False,
 def _isolate(tmp_path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("onboarding-api-tests-passphrase")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     broker_connection.reset_rate_limiter()
     yield
@@ -291,7 +292,7 @@ class TestPassphraseEndpoint:
             code, _, body = _request(
                 f"http://{host}:{port}/api/onboarding/passphrase",
                 method="POST",
-                body={"passphrase": "very-long-safe-passphrase",
+                body={"passphrase": "x" * 24,
                       "skipped": False})
             assert code == 200
             assert body["ok"] is True
@@ -299,16 +300,17 @@ class TestPassphraseEndpoint:
             srv.shutdown()
 
     def test_passphrase_never_returned_in_response(self, tmp_path):
+        passphrase = _secrets.token_hex(8) + "-leak-check"
         srv = _make_server(tmp_path)
         try:
             host, port = srv.server_address
             code, raw, _ = _request(
                 f"http://{host}:{port}/api/onboarding/passphrase",
                 method="POST",
-                body={"passphrase": "very-long-safe-passphrase-xyz",
+                body={"passphrase": passphrase,
                       "skipped": False})
             assert code == 200
-            assert "very-long-safe-passphrase-xyz" not in raw
+            assert passphrase not in raw
         finally:
             srv.shutdown()
 
@@ -383,7 +385,7 @@ class TestCompleteAndReset:
         onboarding.mark_setup_complete()
         broker_connection.save_credentials(
             alias="primary", login="12345",
-            password="s3cret-password-xyz",
+            password="x" * 12,
             server="Demo-Server1", account_type="demo")
         srv = _make_server(tmp_path)
         try:

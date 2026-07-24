@@ -11,6 +11,8 @@ Coverage (5+):
 """
 from __future__ import annotations
 
+import secrets as _secrets
+
 from pathlib import Path
 from unittest.mock import patch
 
@@ -25,7 +27,7 @@ from agent.platform import (
 def _isolated(tmp_path: Path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("bh-tests-passphrase")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     broker_connection.reset_rate_limiter()
     broker_health.clear_cache()
@@ -75,7 +77,7 @@ class TestNoCredentials:
 class TestCache:
     def test_second_call_hits_cache(self) -> None:
         broker_connection.save_credentials(
-            alias="live-1", login=12345, password="secret",
+            alias="live-1", login=12345, password="x" * 12,
             server="MetaQuotes-Demo", account_type="demo")
         with patch("agent.platform.broker_health.broker_connection."
                    "test_connection",
@@ -89,7 +91,7 @@ class TestCache:
 
     def test_custom_ttl_forces_refetch(self) -> None:
         broker_connection.save_credentials(
-            alias="live-1", login=12345, password="secret",
+            alias="live-1", login=12345, password="x" * 12,
             server="MetaQuotes-Demo", account_type="demo")
         with patch("agent.platform.broker_health.broker_connection."
                    "test_connection",
@@ -101,7 +103,7 @@ class TestCache:
 
     def test_clear_cache_invalidates(self) -> None:
         broker_connection.save_credentials(
-            alias="live-1", login=12345, password="secret",
+            alias="live-1", login=12345, password="x" * 12,
             server="MetaQuotes-Demo", account_type="demo")
         with patch("agent.platform.broker_health.broker_connection."
                    "test_connection",
@@ -114,15 +116,16 @@ class TestCache:
 
 class TestPasswordNeverInReturn:
     def test_password_scrubbed(self) -> None:
+        pw = "scrub-check-pw-" + _secrets.token_hex(4)
         broker_connection.save_credentials(
-            alias="live-1", login=12345, password="topsecret-abc-1234",
+            alias="live-1", login=12345, password=pw,
             server="MetaQuotes-Demo", account_type="demo")
         with patch("agent.platform.broker_health.broker_connection."
                    "test_connection",
                    side_effect=_fake_test_connection_success):
             result = broker_health.check_broker_health("live-1")
         for k, v in result.items():
-            assert "topsecret" not in str(v), (
+            assert pw not in str(v), (
                 f"password leaked into field {k!r}: {v!r}")
 
 

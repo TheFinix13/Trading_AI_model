@@ -17,6 +17,7 @@ real OS keychain is never touched thanks to `force_fallback(True)`.
 from __future__ import annotations
 
 import logging
+import secrets as _secrets
 import string
 import sys
 from pathlib import Path
@@ -36,7 +37,7 @@ def _isolate(tmp_path, monkeypatch):
     """
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path)
-    credentials.set_encrypted_file_passphrase("test-passphrase-" + "x" * 12)
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     yield
     credentials._reset_state_for_tests()
@@ -101,7 +102,7 @@ class TestEncryptedFallback:
             == "hunter2-not-a-log"
 
     def test_stored_bytes_do_not_contain_plaintext(self, tmp_path):
-        sentinel = "ClearTextValue-must-not-hit-disk-8f7a"
+        sentinel = "cleartext-not-on-disk-" + _secrets.token_hex(4)
         credentials.store_secret("ns", "k", sentinel)
         path = credentials.encrypted_file_path()
         assert path.is_file(), "encrypted file should exist after store"
@@ -111,7 +112,8 @@ class TestEncryptedFallback:
 
     def test_wrong_passphrase_fails_safely(self):
         credentials.store_secret("ns", "k", "value")
-        credentials.set_encrypted_file_passphrase("some-other-passphrase-y" * 3)
+        # Fresh draw is different from the fixture passphrase.
+        credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
         assert credentials.retrieve_secret("ns", "k") is None
 
     def test_delete_removes_from_disk(self):
@@ -178,18 +180,18 @@ class TestLogScrubbing:
     """
 
     def test_store_does_not_log_value(self, caplog):
+        sentinel = "sentinel-do-not-log-" + _secrets.token_hex(4)
         with caplog.at_level(logging.DEBUG, logger="agent.platform.credentials"):
-            credentials.store_secret("ns", "k",
-                                     "SentinelPlaintext-do-not-log-8b3a")
-        assert "SentinelPlaintext-do-not-log-8b3a" not in caplog.text
+            credentials.store_secret("ns", "k", sentinel)
+        assert sentinel not in caplog.text
 
     def test_retrieve_does_not_log_value(self, caplog):
-        credentials.store_secret("ns", "k",
-                                 "SentinelPlaintext-do-not-log-9c4d")
+        sentinel = "sentinel-do-not-log-" + _secrets.token_hex(4)
+        credentials.store_secret("ns", "k", sentinel)
         caplog.clear()
         with caplog.at_level(logging.DEBUG, logger="agent.platform.credentials"):
             _ = credentials.retrieve_secret("ns", "k")
-        assert "SentinelPlaintext-do-not-log-9c4d" not in caplog.text
+        assert sentinel not in caplog.text
 
 
 # ---------------------------------------------------------------------------

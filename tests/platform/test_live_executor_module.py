@@ -3,6 +3,7 @@ single-use consumption, audit trail, status surface."""
 from __future__ import annotations
 
 import json
+import secrets as _secrets
 import sys
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from agent.platform import (  # noqa: E402
 def _isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("live-executor-tests")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     monkeypatch.setenv(kill_switches.KILL_DIR_ENV,
                        str(tmp_path / "cfg" / "kill"))
@@ -63,9 +64,14 @@ def _open_gates_and_approve(size: float = 0.01) -> str:
     return aid
 
 
+# Runtime-generated fixture password; the leak assertion below uses the
+# same value, so no secret-shaped literal ever appears in this file.
+_FIXTURE_PW = "fixture-pw-" + _secrets.token_hex(6)
+
+
 def _store_creds(alias: str = "v2-demo") -> None:
     assert broker_connection.save_credentials(
-        alias, 436983644, "not-a-real-password-fixture",
+        alias, 436983644, _FIXTURE_PW,
         "Exness-MT5Trial9", "demo") is True
 
 
@@ -393,7 +399,7 @@ class TestExecutorStatus:
         _store_creds()
         status = live_executor.executor_status(_demo_cfg())
         text = json.dumps(status)
-        assert "not-a-real-password-fixture" not in text
+        assert _FIXTURE_PW not in text
         assert "password" not in text
         assert status["broker_alias_configured"] is True
 

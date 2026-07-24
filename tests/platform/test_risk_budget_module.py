@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta, timezone
+import secrets as _secrets
+
 from pathlib import Path
 
 import pytest
@@ -27,7 +29,7 @@ from agent.platform import credentials, risk_budget
 def _isolated_config(tmp_path: Path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("risk-tests-passphrase")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     yield
     credentials._reset_state_for_tests()

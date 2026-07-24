@@ -12,6 +12,7 @@ Two lanes exercised:
 from __future__ import annotations
 
 import json
+import secrets as _secrets
 import sys
 import threading
 import urllib.error
@@ -58,7 +59,7 @@ def _make_server(tmp_path: Path, enforce: bool, auth_token: str | None = None):
 def _isolate(tmp_path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("api-tests-passphrase-33")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     yield
     credentials._reset_state_for_tests()
@@ -186,8 +187,9 @@ class TestInstallTokenGate:
 
     def test_platform_toml_fallback_accepted(self, tmp_path):
         # No install token stored; only the legacy platform.toml token.
-        srv = _make_server(tmp_path, enforce=True,
-                           auth_token="legacy-toml-tok-33333333333333333333")
+        # Generated at runtime -- no token-shaped literal for scanners.
+        legacy_tok = _secrets.token_urlsafe(27)
+        srv = _make_server(tmp_path, enforce=True, auth_token=legacy_tok)
         try:
             host, port = srv.server_address
             # The old auth_token path lives on the _authorized() layer
@@ -195,8 +197,7 @@ class TestInstallTokenGate:
             # layer (as `fallback_token`). Either wins.
             code, _ = _get(
                 f"http://{host}:{port}/api/performance/state",
-                headers={"Authorization":
-                         "Bearer legacy-toml-tok-33333333333333333333"})
+                headers={"Authorization": f"Bearer {legacy_tok}"})
             assert code == 200
         finally:
             srv.shutdown()

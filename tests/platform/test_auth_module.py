@@ -5,6 +5,7 @@ Complements tests/security/test_auth.py with contract-level checks.
 from __future__ import annotations
 
 import inspect
+import secrets as _secrets
 import sys
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from agent.platform import auth, credentials  # noqa: E402
 def _isolate(tmp_path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path)
-    credentials.set_encrypted_file_passphrase("module-smoke-passphrase")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     yield
     credentials._reset_state_for_tests()

@@ -5,6 +5,7 @@ pinned by tests/security/test_onboarding.py.
 """
 from __future__ import annotations
 
+import secrets as _secrets
 import sys
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from agent.platform import broker_connection, credentials, onboarding  # noqa: E
 def _isolate(tmp_path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("smoke-tests-passphrase-33-chars")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     broker_connection.reset_rate_limiter()
     yield

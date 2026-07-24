@@ -21,6 +21,8 @@ single guarantee that the D065 SCAFFOLDING-only invariant holds.
 """
 from __future__ import annotations
 
+import secrets as _secrets
+
 from pathlib import Path
 
 import pytest
@@ -35,7 +37,7 @@ from agent.platform import (
 def _clean(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("live-mode-invariant-tests")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     monkeypatch.setenv(kill_switches.KILL_DIR_ENV,
                        str(tmp_path / "cfg" / "kill"))
@@ -217,7 +219,7 @@ def _approved_entry(size: float = 0.01) -> str:
 def _store_demo_creds() -> None:
     broker_connection.reset_rate_limiter()
     assert broker_connection.save_credentials(
-        "v2-demo", 436983644, "not-a-real-password-fixture",
+        "v2-demo", 436983644, "x" * 16,
         "Exness-MT5Trial9", "demo") is True
 
 

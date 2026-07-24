@@ -14,6 +14,7 @@ Exercises the routes wired in ``scripts/serve_platform.py``:
 from __future__ import annotations
 
 import json
+import secrets as _secrets
 import sys
 import threading
 import urllib.error
@@ -24,6 +25,10 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+# Runtime-generated fixture password; the no-leak assertions below use the
+# same value, so no secret-shaped literal ever appears in this file.
+_FIXTURE_PW = "fixture-pw-" + _secrets.token_hex(6)
 
 from agent.platform import auth, broker_connection, credentials  # noqa: E402
 from scripts.serve_platform import make_handler  # noqa: E402
@@ -69,7 +74,7 @@ def _make_server(tmp_path: Path, enforce: bool, auth_token: str | None = None):
 def _isolate(tmp_path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path / "cfg")
-    credentials.set_encrypted_file_passphrase("broker-api-tests-passphrase-33")
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     broker_connection.reset_rate_limiter()
     yield
@@ -117,7 +122,7 @@ class TestListEndpoint:
     def test_list_shows_stored_alias_but_no_password(self, tmp_path):
         broker_connection.save_credentials(
             alias="primary", login="12345",
-            password="s3cret-password-xyz",
+            password=_FIXTURE_PW,
             server="Demo-Server1", account_type="demo")
         srv = _make_server(tmp_path, enforce=False)
         try:
@@ -132,7 +137,7 @@ class TestListEndpoint:
             assert row["server"] == "Demo-Server1"
             assert row["login"] == "12345"
             assert "password" not in row
-            assert "s3cret-password-xyz" not in raw
+            assert _FIXTURE_PW not in raw
         finally:
             srv.shutdown()
 
@@ -147,7 +152,7 @@ class TestSaveEndpoint:
                 f"http://{host}:{port}/api/broker/save",
                 method="POST",
                 body={"alias": "primary", "login": "12345",
-                      "password": "pw12345678", "server": "Demo-Server1",
+                      "password": _FIXTURE_PW, "server": "Demo-Server1",
                       "account_type": "demo"})
             assert code == 200
             assert body == {"success": True}
@@ -166,7 +171,7 @@ class TestSaveEndpoint:
                 f"http://{host}:{port}/api/broker/save",
                 method="POST",
                 body={"alias": "hacker", "login": "12345",
-                      "password": "pw12345678",
+                      "password": _FIXTURE_PW,
                       "server": "evil.example.com",
                       "account_type": "demo"})
             assert code == 400
@@ -183,7 +188,7 @@ class TestSaveEndpoint:
                 f"http://{host}:{port}/api/broker/save",
                 method="POST",
                 body={"alias": "../etc/passwd", "login": "12345",
-                      "password": "pw12345678",
+                      "password": _FIXTURE_PW,
                       "server": "Demo-Server1",
                       "account_type": "demo"})
             assert code == 400
@@ -209,7 +214,7 @@ class TestDeleteEndpoint:
 
     def test_delete_removes_alias(self, tmp_path):
         broker_connection.save_credentials(
-            alias="to-remove", login="12345", password="pw12345678",
+            alias="to-remove", login="12345", password=_FIXTURE_PW,
             server="Demo-Server1", account_type="demo")
         srv = _make_server(tmp_path, enforce=False)
         try:
@@ -246,13 +251,13 @@ class TestTestConnectionEndpoint:
             code, raw, body = _request(
                 f"http://{host}:{port}/api/broker/test-connection",
                 method="POST",
-                body={"login": "12345", "password": "pw12345678",
+                body={"login": "12345", "password": _FIXTURE_PW,
                       "server": "Demo-Server1"})
             assert code == 200
             assert body["success"] is False
             assert body["account_type"] == "unknown"
             # Password must never appear in response payload.
-            assert "pw12345678" not in raw
+            assert _FIXTURE_PW not in raw
         finally:
             srv.shutdown()
 
@@ -263,7 +268,7 @@ class TestTestConnectionEndpoint:
             code, _, body = _request(
                 f"http://{host}:{port}/api/broker/test-connection",
                 method="POST",
-                body={"login": "12345", "password": "pw12345678",
+                body={"login": "12345", "password": _FIXTURE_PW,
                       "server": "evil.example.com"})
             assert code == 200
             assert body["success"] is False
@@ -337,7 +342,7 @@ class TestBrokerGate:
                 f"http://{host}:{port}/api/broker/save",
                 method="POST",
                 body={"alias": "primary", "login": "12345",
-                      "password": "pw12345678",
+                      "password": _FIXTURE_PW,
                       "server": "Demo-Server1",
                       "account_type": "demo"})
             assert code == 401

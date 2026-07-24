@@ -283,13 +283,15 @@ class TestConfig:
 
     def test_toml_overrides_and_derived_live_dir(self, tmp_path):
         from agent.platform.config import load_config
+        # Token built at runtime so no secret-shaped literal lands here.
+        tok = "tok-" + "z" * 8
         (tmp_path / "platform.toml").write_text(
-            'log_root = "/tmp/logs"\nport = 9999\nauth_token = "s3cret"\n',
+            'log_root = "/tmp/logs"\nport = 9999\nauth_token = "%s"\n' % tok,
             encoding="utf-8")
         cfg = load_config(tmp_path)
         assert cfg["log_root"] == Path("/tmp/logs")
         assert cfg["port"] == 9999
-        assert cfg["auth_token"] == "s3cret"
+        assert cfg["auth_token"] == tok
         assert cfg["live_dir"] == Path("/tmp/logs") / "squad_live"
 
     def test_broken_toml_falls_back(self, tmp_path):
