@@ -2215,6 +2215,20 @@
       "role": "cto",
       "decision": "[ARCHITECTURE] next-gen merged into product (merge commit c97e8f7); product is now the single serving branch -- the VM cuts over from next-gen and the A001/A002 P0 branch drift is closed.",
       "context": "The 2026-07-24 full-system audit found the Sprint 0-2b safety layer (auth, onboarding gate, kill switches, risk budgets, approvals, executor) lived only on product while the VM served next-gen, which had the warm-up/Sae/calendar/legibility fixes instead. This merge unifies both lanes. Conflicts resolved as pre-scoped: scripts/serve_platform.py -- product's hardened handler wins, next-gen's /api/v2/live/upcoming_events endpoint ported inside the install-token gate; docs/RUNBOOK_demo_launch.md -- union, next-gen redeploy section renumbered to 7b.8 and retargeted at product. Verification on the merged tree: full suite 1784 passed + 1 env-skip, P0 live-mode-off invariant 23/23, claim audit green. next-gen is retired as a serving branch; future next-gen-lane work lands via feature branches into product."
+    },
+    {
+      "id": "D111",
+      "date": "2026-07-24",
+      "role": "research_lead",
+      "decision": "[RESEARCH] Phase AE verdict: FAIL -- Sae stays disabled; no Aug 7 NFP arming; the hour-13 news bleed reads 'avoidable, not tradable'.",
+      "context": "User-authorized campaign (2026-07-24) to validate Sae's event-specialist mechanics before the Aug 7 NFP. Pre-registration locked and committed before compute (dfe5ce1 on finance-research-experiments::multi-agent-ensemble), frozen 349-event NFP/CPI/FOMC calendar from primary sources (sha256 cfd18602...), baseline arm byte-identical to the sealed g7retry2 driver. Result: AE1 PASS (54 OOS trades >= 30 floor); AE2 FAIL (OOS mean TQS 0.097, bootstrap 95% CI [0.042, 0.162] vs 0.30/0.20 floors; 25 TP / 62 SL = 28.7% wins at 1.5R where breakeven needs 40%); AE3 both mechanics negative (fade -4.18, ride -8.52 pips mean), nothing parked; AE4 PASS (max incumbent delta +0.001). Consequence: sae_enabled remains False; v1 fade/ride + 1.5R may NOT be retuned against this panel (stop rule); any Sae v2 needs a fresh pre-registration. Karasu (Phase AD, defender) remains the only live event-window lever. Verdict commit 16a404b; registry 2b3ef4b."
+    },
+    {
+      "id": "D112",
+      "date": "2026-07-24",
+      "role": "cpo",
+      "decision": "[PUBLICATION] Phase AE published to /research: manifest entry phase_ae_sae_event_specialist (publish: true, verdict_kind: fail) + condensed finding filed.",
+      "context": "Per the D007 manifest protocol (adding an entry is a D### decision) and the literature-standards commitment to publishing honest negatives. Condensed finding at company/rd/findings/2026-07-phase-ae-sae-event-specialist.md (numbers-first, incident disclosure included, Efron 1979 bootstrap citation); brand_summary and headline_stat state the FAIL plainly -- no softening. Claim-register audit re-run green after the edit."
     }
   ],
   "sprint_verdicts": [

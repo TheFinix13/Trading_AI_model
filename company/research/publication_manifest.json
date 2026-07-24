@@ -57,6 +57,16 @@
       "headline_stat": "A2 - A1 = -0.006 TQS; 95% CI [-0.017, +0.005]; p(delta <= 0) = 0.861.",
       "report_commit_sha_hint": "2c8e363",
       "condensed_finding_path": "company/rd/findings/2026-07-phase-ac-pitch-assignment.md"
+    },
+    {
+      "campaign_id": "phase_ae_sae_event_specialist",
+      "publish": true,
+      "verdict_kind": "fail",
+      "verdict_label": "Fails pre-registered AE2 quality criterion",
+      "brand_summary": "Phase AE asked whether our designed event specialist -- a striker that only trades inside high-impact USD news windows using two pure-price mechanics -- has an edge. Pre-registered thresholds were locked before compute against a frozen 349-event NFP/CPI/FOMC calendar (2015-2025). He fired plenty (54 out-of-sample trades) but won only 28.7% at a 1.5R target where breakeven needs 40%. The agent stays disabled; no news-window trading ships.",
+      "headline_stat": "OOS mean TQS 0.097, 95% CI [0.042, 0.162] vs a 0.30 floor; 25 TP / 62 SL at 1.5R.",
+      "report_commit_sha_hint": "16a404b",
+      "condensed_finding_path": "company/rd/findings/2026-07-phase-ae-sae-event-specialist.md"
     }
   ]
 }

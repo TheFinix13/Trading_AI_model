@@ -2057,6 +2057,42 @@ next-gen's 64 new tests), P0 live-mode-off invariant 23/23, claim
 audit green. `next-gen` is retired as a serving branch; future
 next-gen-lane work lands via feature branches into `product`.
 
+## D111 · 2026-07-24 · research_lead · [RESEARCH]
+
+**Phase AE verdict: FAIL — Sae stays disabled; no Aug 7 NFP arming;
+the hour-13 news bleed reads "avoidable, not tradable".**
+
+Context: user-authorized campaign (2026-07-24) to validate Sae's
+event-specialist mechanics before the Aug 7 NFP. Pre-registration
+locked and committed before compute (`dfe5ce1` on
+`finance-research-experiments::multi-agent-ensemble`), frozen
+349-event NFP/CPI/FOMC calendar built from primary sources (sha256
+`cfd18602…`), baseline arm byte-identical to the sealed g7retry2
+driver. Result: AE1 PASS (54 OOS trades ≥ 30 floor); **AE2 FAIL**
+(OOS mean TQS 0.097, bootstrap 95% CI [0.042, 0.162] vs 0.30/0.20
+floors; 25 TP / 62 SL = 28.7% wins at 1.5R where breakeven needs
+40%); AE3 both mechanics negative (fade −4.18, ride −8.52 pips
+mean), nothing parked; AE4 PASS (max incumbent delta +0.001).
+Consequence: `sae_enabled` remains False; v1 fade/ride + 1.5R may
+NOT be retuned against this panel (stop rule); any Sae v2 needs a
+fresh pre-registration. Karasu (Phase AD, defender) remains the only
+live event-window lever. Verdict commit `16a404b`; registry
+`2b3ef4b`.
+
+## D112 · 2026-07-24 · cpo · [PUBLICATION]
+
+**Phase AE published to /research: manifest entry
+`phase_ae_sae_event_specialist` (publish: true, verdict_kind: fail)
++ condensed finding filed.**
+
+Context: per the D007 manifest protocol (adding an entry is a D###
+decision) and the literature-standards commitment to publishing
+honest negatives. Condensed finding at
+`company/rd/findings/2026-07-phase-ae-sae-event-specialist.md`
+(numbers-first, incident disclosure included, Efron 1979 bootstrap
+citation); brand_summary and headline_stat state the FAIL plainly —
+no softening. Claim-register audit re-run green after the edit.
+
 ## Template for subsequent entries
 
 ```markdown

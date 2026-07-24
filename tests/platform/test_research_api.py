@@ -202,9 +202,9 @@ def test_read_only_invariant_on_research_root(configured_server):
 
 def test_api_verdicts_shipped_manifest_publishes_expected(tmp_path: Path):
     """When the sibling repo is on this machine, hitting /api/research
-    /verdicts with the shipped (default) manifest publishes the six
-    Sprint 0 approved campaigns. Skips when the sibling repo is not
-    checked out."""
+    /verdicts with the shipped (default) manifest publishes every
+    CPO-approved campaign (six Sprint 0 entries + Phase AE, D112).
+    Skips when the sibling repo is not checked out."""
     sibling = Path("/Users/the1finix/Documents/GitHub/finance-research-experiments")
     if not sibling.is_dir():
         pytest.skip("finance-research-experiments not on this machine")
@@ -217,8 +217,9 @@ def test_api_verdicts_shipped_manifest_publishes_expected(tmp_path: Path):
             "E001_concept_ablation", "E004_walk_forward",
             "E007_impulse_origin_bounce", "E022_structure_aware_tp_snap",
             "E024_near_tp_stall_exit", "phase_ac_pitch_assignment",
+            "phase_ae_sae_event_specialist",
         }
         assert expected.issubset(ids)
-        assert payload["published_total"] == 6
+        assert payload["published_total"] == 7
     finally:
         srv.shutdown()

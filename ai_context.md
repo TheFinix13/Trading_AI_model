@@ -1,4 +1,17 @@
-# AI Context — brain dump (updated 2026-07-24, v0.49)
+# AI Context — brain dump (updated 2026-07-24, v0.50)
+
+> v0.50 — **Phase AE verdict: FAIL** 2026-07-24 (D111–D112). Sae's
+> event mechanics validated against a frozen 349-event NFP/CPI/FOMC
+> calendar (2015–2025, primary sources): AE1 PASS (54 OOS trades)
+> but **AE2 FAIL** — OOS mean TQS 0.097, CI [0.042, 0.162] vs
+> 0.30/0.20 floors; 28.7% wins at 1.5R (breakeven 40%); both
+> mechanics negative. AE4 clean (max incumbent delta +0.001).
+> **`sae_enabled` stays False — no Aug 7 NFP arming;** hour-13 bleed
+> = "avoidable, not tradable"; Karasu (Phase AD) is the only
+> event-window lever. No retuning against this panel; Sae v2 needs
+> fresh pre-reg. Published to `/research` (manifest + condensed
+> finding). Research commits `dfe5ce1`→`2b3ef4b` on
+> `finance-research-experiments::multi-agent-ensemble`.
 
 > v0.49 — **Reconciliation merge** 2026-07-24 (D110, merge commit
 > `c97e8f7`): `next-gen` merged into `product`; **`product` is the
@@ -123,5 +136,6 @@ F013/F014 signals drain via User Advocate + CPO Monday triage);
 external peer-review budget (Sprint 6+ whitepaper); squad → real
 broker orders; v1 zones live-path rewrite; any touch of
 `agent/{live,risk,squad}/*` from a non-integration sprint; enabling
-Sae before AC verdict; PLG cooldown retune (E013 f/u); any spend
+Sae AT ALL (Phase AE FAIL — v2 needs fresh pre-reg, D111); PLG
+cooldown retune (E013 f/u); any spend
 (Finance zero-authority).
