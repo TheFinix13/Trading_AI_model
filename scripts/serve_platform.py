@@ -1159,6 +1159,13 @@ def main() -> None:
     approval_queue.set_approved_ttl_seconds(
         int(cfg.get("approvals", {}).get("approved_ttl_seconds", 300)))
 
+    # F023 -- alerts durability + SSE cap ([alerts] jsonl_sink /
+    # max_sse_streams). Sink default OFF; cap default 8.
+    alerts.configure_sink(
+        cfg.get("alerts", {}).get("jsonl_sink", False) is True)
+    alerts_sse.set_max_streams(
+        cfg.get("alerts", {}).get("max_sse_streams", 8))
+
     server = ThreadingHTTPServer(
         (args.host, args.port),
         make_handler(args.log_root, args.repo_root, args.research_reviews,

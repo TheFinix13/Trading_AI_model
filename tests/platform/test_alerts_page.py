@@ -30,6 +30,17 @@ class TestConnection:
         assert "new EventSource(" in ALERTS_PAGE
         assert "/api/alerts/stream" in ALERTS_PAGE
 
+    def test_reconnect_backoff_is_bounded(self) -> None:
+        # F023: on error (incl. a 429 refusal at the stream cap) the
+        # page closes the source and retries itself with exponential
+        # backoff capped at RECONNECT_MAX_MS -- never the browser's
+        # tight default loop.
+        assert "RECONNECT_MAX_MS" in ALERTS_PAGE
+        assert "es.close()" in ALERTS_PAGE
+        assert "setTimeout(openStream, reconnectDelay)" in ALERTS_PAGE
+        assert "Math.min(reconnectDelay * 2, RECONNECT_MAX_MS)" \
+            in ALERTS_PAGE
+
 
 class TestMobile:
     def test_mobile_media_query(self) -> None:

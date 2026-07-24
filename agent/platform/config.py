@@ -103,6 +103,13 @@ def _defaults(repo_root: Path) -> dict:
         # enabled AND both fields are set; when absent/disabled,
         # ops events fall back to the primary destination.
         "alerts": {
+            # F023 (I010) -- durability + resource caps. `jsonl_sink`
+            # is opt-in (literal true only; default OFF keeps today's
+            # memory-only behaviour byte-identical). `max_sse_streams`
+            # bounds concurrent /api/alerts/stream consumers; past the
+            # cap new streams get 429 + Retry-After (refuse, not evict).
+            "jsonl_sink": False,
+            "max_sse_streams": 8,
             "telegram": {
                 "enabled": False,
                 "per_event": {
@@ -244,6 +251,16 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
             cfg["internal"]["token"] = str(seam_internal["token"])
     ac = raw.get("alerts")
     if isinstance(ac, dict):
+        # F023: jsonl_sink is an opt-in acknowledgement -- only a
+        # literal TOML `true` counts (same posture as demo_only).
+        cfg["alerts"]["jsonl_sink"] = ac.get("jsonl_sink") is True
+        if ac.get("max_sse_streams") is not None:
+            try:
+                cap = int(ac["max_sse_streams"])
+                if cap > 0:
+                    cfg["alerts"]["max_sse_streams"] = cap
+            except (TypeError, ValueError):
+                pass
         tg = ac.get("telegram")
         if isinstance(tg, dict):
             if "enabled" in tg:

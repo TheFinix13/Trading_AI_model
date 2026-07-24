@@ -37,6 +37,20 @@
 # [approvals]
 # approved_ttl_seconds = 300
 
+# F023 alerts durability + resource caps.
+#   jsonl_sink      -- opt-in (literal true only; default false). When
+#                      on, every published bus event ALSO appends to
+#                      <config_dir>/alerts_log.jsonl so a crash right
+#                      after a safety event keeps the evidence trail.
+#                      Sink failures never block delivery. No rotation
+#                      policy -- the file is operator-managed.
+#   max_sse_streams -- cap on concurrent /api/alerts/stream consumers
+#                      (default 8). Past the cap, NEW streams get 429 +
+#                      Retry-After; existing streams are never dropped.
+# [alerts]
+# jsonl_sink = true
+# max_sse_streams = 8
+
 # F014 Telegram bridge for the alerts bus. The PRIMARY destination
 # reuses the [telegram] bot_token / chat_id above (no new secret) and
 # carries all TRADING events (trade_fill, stop_hit, risk_budget_breach,

@@ -1612,8 +1612,8 @@
       "title": "Alerts durability (opt-in JSONL sink) + SSE concurrent-stream cap",
       "priority": "P1",
       "sprint_id": "sprint-3-stickiness",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "shipped",
+      "current_owner_role": "cto",
       "reviewers": ["cpo", "cto", "backend", "qa", "security", "ceo"],
       "auth": false,
       "credentials": false,
@@ -1626,6 +1626,27 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-3-stickiness/F023-alerts-durability-sse-cap.md",
           "note": "Spec locked (D114). Drains I010. Opt-in JSONL sink (default off, failure-isolated) + max_sse_streams refuse-with-429 cap; security stage fires; F014/D100 Legal rolling constraints untouched. Build gated on CEO charter review."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-24T13:20:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/alerts.py (configure_sink/sink_is_enabled/sink_path) + alerts_sse.py (set_max_streams/get_max_streams/active_stream_count) + config.py [alerts] defaults + serve_platform.py wiring + platform.toml.example + /alerts page backoff",
+          "note": "Sink: [alerts] jsonl_sink literal-true opt-in (default OFF -- memory-only behaviour byte-identical), appends every published event to <config_dir>/alerts_log.jsonl; failures never block publish() (warn once per process). Cap: [alerts] max_sse_streams (default 8); at the cap NEW streams get 429 + Retry-After BEFORE subscribing (refuse, not evict); release finally-guarded. Page reconnects with bounded exponential backoff 2s->60s."
+        },
+        {
+          "stage": "security",
+          "at": "2026-07-24T13:25:00Z",
+          "role": "security",
+          "deliverable": "company/legal/F023-review.md + claim_register.md F023 sections x2 (same commit)",
+          "note": "Approved. F014/D100 rolling constraints re-verified preserved: event-type whitelist untouched (no new types), SSE wire format untouched, auth gate enforced before the cap check (_UNAUTHENTICATED_API_PATHS unchanged), bot-token-never-in-payload extends to the sink file (tokens never ride bus payloads). Honesty rail on tape: sink is best-effort durability, NOT a guaranteed audit log -- 'every alert durably recorded' copy requires fresh review."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-24T13:30:00Z",
+          "role": "cto",
+          "deliverable": "tests/platform/test_alerts_jsonl_sink.py + test_alerts_sse_module.py TestStreamCap + test_alerts_page.py backoff pin",
+          "note": "Shipped (D121). +25 tests vs >=12 target: default-off/literal-true opt-in, restart survival, failure isolation + warn-once, config-dir seam, config parsing, 429 + Retry-After at the cap, refuse-not-evict, finally-guarded slot release incl. BrokenPipe, refusal-never-subscribes, page backoff pin. Claim audit green. Resolves intake I010."
         }
       ]
     },
@@ -2492,6 +2513,13 @@
       "role": "cto",
       "decision": "[SHIP] F022 leaderboard groundwork SHIPPED: /leaderboard per-agent/per-pair standings from the shadow-paper tape (single-install, no accounts dependency). All ranked metrics registered in the same commit under the internal-standings/NOT-investment-performance disclaimer.",
       "context": "agent/platform/leaderboard.py (new, read-only over squad_live/events.jsonl): standings(by=agent|pair, window_days=None|7|30) -- closed trades, cumulative R (primary sort, desc), mean TQS (tie-break), win rate, last-active per entity; insufficient-sample rule SHARED with F021 (players.MIN_FORM_SAMPLE=5 -- win-rate withheld below the floor, literal 'insufficient sample (n=...)' note); deterministic ordering + injectable clock; never-raise/F005 degradation. /leaderboard page under withStates() with agent/pair + all/30d/7d toggles, mobile 375px, page-local CSS (no base-CSS bump); GET /api/leaderboard behind the install-token gate; Standings nav pill added (nav-count pins 8 -> 9). Header framing pinned: internal squad standings on a demo feed, no external comparison; cross-user ranking stays blocked on the D115 auth migration. Legal approved (company/legal/F022-review.md); claim register F022 section same-commit. +43 tests vs >=18 target (25 module + 9 API + 9 page); claim audit green."
+    },
+    {
+      "id": "D121",
+      "date": "2026-07-24",
+      "role": "cto",
+      "decision": "[SHIP] F023 alerts durability + SSE cap SHIPPED: opt-in JSONL sink on the alerts bus (default OFF -- memory-only behaviour unchanged) and a concurrent SSE stream cap that refuses with 429 + Retry-After instead of evicting existing consumers. All F014/D100 rolling constraints verified preserved.",
+      "context": "agent/platform/alerts.py: configure_sink/sink_is_enabled/sink_path -- [alerts] jsonl_sink = true (literal true only) appends every published event to <config_dir>/alerts_log.jsonl; sink failures NEVER block or fail publish() (one warning per process, then quiet); no retention policy (operator-managed, documented). agent/platform/alerts_sse.py: set_max_streams/get_max_streams/active_stream_count -- [alerts] max_sse_streams (default 8) bounds concurrent /api/alerts/stream consumers; at the cap a NEW stream gets 429 + Retry-After BEFORE subscribing (refuse, not evict); slot release finally-guarded so abrupt disconnects can't leak capacity. /alerts page reconnects with bounded exponential backoff (2s -> 60s). Config via config.py [alerts] defaults + platform.toml.example. No new event types, no new secrets, no new copy; auth gate untouched (_UNAUTHENTICATED_API_PATHS unchanged). Legal+Security approved (company/legal/F023-review.md); claim register F023 sections x2 same-commit. +25 tests vs >=12 target (17 sink/config + 7 cap + 1 page backoff pin); resolves intake I010."
     }
   ],
   "sprint_verdicts": [

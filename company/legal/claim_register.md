@@ -502,6 +502,51 @@ change requires the client (`ALERTS_PAGE` EventSource wiring) to
 change with it and Legal to re-review the "browser-compatible live
 stream" claim.
 
+### F023 — `agent/platform/alerts.py` additions (Sprint 3: JSONL sink)
+
+Public accessors: `configure_sink(enabled, path=None) -> None`,
+`sink_is_enabled() -> bool`, `sink_path() -> Path`.
+
+Public module constants: `SINK_FILENAME`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `configure_sink` | None | Toggle the opt-in JSONL sink (`[alerts] jsonl_sink`, literal `true` only; default OFF). Path override is a test seam. | `alerts.configure_sink`. | None -- transport config. |
+| `sink_is_enabled` | `bool` | Whether the sink is currently on (default False -- memory-only F014 behaviour unchanged). | `alerts.sink_is_enabled`. | None. |
+| `sink_path` | `Path` | Where the sink appends: `<config_dir>/alerts_log.jsonl` unless a test injected an override. | `alerts.sink_path`. | None. |
+| `SINK_FILENAME` | `str` (`alerts_log.jsonl`) | The sink file name under the config dir. | Same. | None -- meta. |
+
+Rolling constraint (Legal/Security, F023): the sink is best-effort
+durability, NOT a guaranteed audit log — a sink write failure never
+blocks or fails `publish()` (one warning per process, then quiet). Any
+copy claiming "every alert is durably recorded" or similar is
+inaccurate while this posture holds and requires a fresh Legal review.
+The sink stores only what the bus already holds (event id/type/ts +
+payload); Telegram bot tokens and chat ids never ride bus payloads, so
+they can never land in the sink file.
+
+### F023 — `agent/platform/alerts_sse.py` additions (Sprint 3: stream cap)
+
+Public accessors: `set_max_streams(n) -> None`,
+`get_max_streams() -> int`, `active_stream_count() -> int`.
+
+Public module constants: `DEFAULT_MAX_STREAMS`, `RETRY_AFTER_SECONDS`.
+Test-only helper marked `# claim-exempt`: `reset_streams_for_tests`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `set_max_streams` | None | Configure the concurrent-stream cap (`[alerts] max_sse_streams`); non-positive / non-numeric values are ignored so the cap never silently becomes unbounded. | `alerts_sse.set_max_streams`. | None -- transport config. |
+| `get_max_streams` | `int` | The current cap (default 8). | `alerts_sse.get_max_streams`. | None. |
+| `active_stream_count` | `int` | How many SSE streams are currently attached. | `alerts_sse.active_stream_count`. | None. |
+| `DEFAULT_MAX_STREAMS` | `int` (8) | Default concurrent-stream cap. | Same. | None -- meta. |
+| `RETRY_AFTER_SECONDS` | `int` (5) | `Retry-After` value on a 429 refusal. | Same. | None -- meta. |
+
+Rolling constraint (Legal/Security, F023): past the cap a NEW stream
+is refused with `429` + `Retry-After` — existing consumers are NEVER
+evicted to admit a newcomer, and a refusal never subscribes to the
+bus. Switching to an eviction policy would change the "live stream"
+claim for already-connected clients and requires a fresh Legal review.
+
 ### F014 — `agent/platform/alerts_telegram.py` (Sprint 2; ops split 2026-07-24)
 
 Public accessors:

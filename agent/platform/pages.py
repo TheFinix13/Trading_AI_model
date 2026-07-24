@@ -6892,18 +6892,28 @@ function renderList(){
   }).join("");
 }
 
+var RECONNECT_BASE_MS = 2000, RECONNECT_MAX_MS = 60000;
+var reconnectDelay = RECONNECT_BASE_MS;
 function openStream(){
   const conn = document.getElementById("alerts-connection");
   try{
     const es = new EventSource("/api/alerts/stream?token="+
       encodeURIComponent(window.__BLUELOCK_TOKEN__ || ""));
     es.onopen = function(){
+      reconnectDelay = RECONNECT_BASE_MS;
       conn.classList.add("live");
       conn.textContent = "connected";
     };
     es.onerror = function(){
+      // F023: bounded exponential backoff instead of the browser's
+      // tight default retry -- copes with a 429 refusal at the
+      // concurrent-stream cap without hammering the server.
+      es.close();
       conn.classList.remove("live");
-      conn.textContent = "reconnecting...";
+      conn.textContent = "reconnecting in "+
+        Math.round(reconnectDelay/1000)+"s...";
+      setTimeout(openStream, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
     };
     EVENT_TYPES.forEach(function(t){
       es.addEventListener(t, function(msg){

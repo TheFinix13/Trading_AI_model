@@ -2296,6 +2296,33 @@ ranking stays blocked on the D115 auth migration. Legal approved
 +43 tests vs ≥18 target (25 module + 9 API + 9 page); claim audit
 green.
 
+## D121 · 2026-07-24 · cto · [SHIP]
+
+**F023 alerts durability + SSE cap SHIPPED: opt-in JSONL sink on the
+alerts bus (default OFF — memory-only behaviour unchanged) and a
+concurrent SSE stream cap that refuses with 429 + Retry-After instead
+of evicting existing consumers. All F014/D100 rolling constraints
+verified preserved.**
+
+`agent/platform/alerts.py`: `configure_sink` / `sink_is_enabled` /
+`sink_path` — `[alerts] jsonl_sink = true` (literal true only)
+appends every published event to `<config_dir>/alerts_log.jsonl`;
+sink failures NEVER block or fail `publish()` (one warning per
+process, then quiet); no retention policy (operator-managed,
+documented). `agent/platform/alerts_sse.py`: `set_max_streams` /
+`get_max_streams` / `active_stream_count` — `[alerts]
+max_sse_streams` (default 8) bounds concurrent `/api/alerts/stream`
+consumers; at the cap a NEW stream gets 429 + Retry-After BEFORE
+subscribing (refuse, not evict); slot release finally-guarded so
+abrupt disconnects can't leak capacity. `/alerts` page reconnects
+with bounded exponential backoff (2s → 60s). Config via
+`config.py` `[alerts]` defaults + `platform.toml.example`. No new
+event types, no new secrets, no new copy; auth gate untouched
+(`_UNAUTHENTICATED_API_PATHS` unchanged). Legal+Security approved
+(`company/legal/F023-review.md`); claim register §F023 x2
+same-commit. +25 tests vs ≥12 target (17 sink/config + 7 cap + 1
+page backoff pin); resolves intake I010.
+
 ## Template for subsequent entries
 
 ```markdown
