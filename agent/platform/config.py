@@ -5,6 +5,14 @@ CLI flags (the scripts pass ``default=cfg[...]`` to argparse, so an
 explicit flag always wins). The file is optional; a missing or broken
 file silently falls back to defaults so the server always starts.
 
+I004 seam (F019, Sprint 3): the ``[internal] token`` additionally
+resolves through ``<config_dir>/platform.toml`` FIRST (the same
+``BLUELOCK_CONFIG_DIR`` seam every other piece of platform state
+relocates through), falling back to the repo-root file. Only that one
+key rides the seam; every other key keeps repo-root semantics, so
+repo-root-only installs (the VM) behave identically. Unset in both
+places stays ``""`` — the submit gate fails closed exactly as before.
+
 Example file: ``platform.toml.example`` at the repo root.
 """
 from __future__ import annotations
@@ -13,6 +21,22 @@ import tomllib
 from pathlib import Path
 
 CONFIG_NAME = "platform.toml"
+
+
+def _config_dir_platform_toml() -> Path | None:
+    """I004 (F019): ``<config_dir>/platform.toml`` -- the relocatable
+    home for the ``[internal]`` token.
+
+    Rides the credentials layer's config-dir seam (``BLUELOCK_CONFIG_DIR``
+    env var or the in-process test override) so every piece of platform
+    state relocates through the same knob. Returns None when the seam
+    can't be resolved (never raises -- the repo-root fallback stands).
+    """
+    try:
+        from agent.platform import credentials
+        return credentials._config_dir() / CONFIG_NAME
+    except Exception:
+        return None
 
 
 def _defaults(repo_root: Path) -> dict:
@@ -203,6 +227,21 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
     if isinstance(internal, dict):
         if internal.get("token"):
             cfg["internal"]["token"] = str(internal["token"])
+    # I004 (F019): the [internal] token prefers <config_dir>/platform.toml
+    # over the repo-root file (config-dir wins, repo-root fallback). Only
+    # the token key rides the seam -- every other setting keeps repo-root
+    # semantics, so repo-root-only installs (the VM) behave identically.
+    # Unset in both places stays "" and the submit gate fails closed.
+    seam_path = _config_dir_platform_toml()
+    if (seam_path is not None and seam_path != cfg_path
+            and seam_path.is_file()):
+        try:
+            seam_raw = tomllib.loads(seam_path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError):
+            seam_raw = {}
+        seam_internal = seam_raw.get("internal")
+        if isinstance(seam_internal, dict) and seam_internal.get("token"):
+            cfg["internal"]["token"] = str(seam_internal["token"])
     ac = raw.get("alerts")
     if isinstance(ac, dict):
         tg = ac.get("telegram")

@@ -11,6 +11,7 @@ devices:
   - Android phone (only device — 360px viewport)
 tests:
   - onboarding
+  - broker
   - kill_switch
   - pages
 ---
@@ -24,7 +25,9 @@ the onboarding wizard must work top-to-bottom with plain-English
 labels, and the reason every page must collapse cleanly at 700px.
 
 Her journeys: the full onboarding round-trip (passphrase → pairs →
-complete), the kill-switch activate/clear cycle (can she stop the
-system and see that it stopped?), and a smoke pass over the HTML pages
-at mobile width. Any jargon, dead end, or desktop-only affordance she
-hits is an intake candidate.
+complete), the broker wizard failure path (her phone can't run MT5 —
+the copy must give her a way forward, per I003/F019), the kill-switch
+activate/clear cycle (can she stop the system and see that it
+stopped?), and a smoke pass over the HTML pages at mobile width. Any
+jargon, dead end, or desktop-only affordance she hits is an intake
+candidate.

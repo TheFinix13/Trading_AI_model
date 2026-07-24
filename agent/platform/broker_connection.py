@@ -72,6 +72,19 @@ _RATE_LIMIT_WINDOW_SEC = 60.0
 _RATE_LIMIT_MAX_ATTEMPTS = 5
 _rate_attempts: collections.deque[float] = collections.deque()
 
+# F019 (I003): the non-Windows failure copy must state the constraint
+# AND the recovery path -- never a dead end. Plain words first, "MT5"
+# explained in one clause, then the two ways forward. The dogfood cast
+# asserts the actionable substrings ("connect your broker later",
+# "/settings/broker") so this copy can't regress to a bare statement.
+_MT5_UNAVAILABLE_MESSAGE = (
+    "This machine can't run MetaTrader 5 (MT5) -- the Windows-only "
+    "trading terminal this platform connects through. Two ways "
+    "forward: run the platform on a Windows machine or VM (see the "
+    "setup guide, docs/RUNBOOK_demo_launch.md), or finish setup now "
+    "and connect your broker later from Settings > Broker "
+    "(/settings/broker).")
+
 
 def is_mt5_available() -> bool:
     """Whether the ``MetaTrader5`` package is importable on this host.
@@ -220,9 +233,7 @@ def test_connection(login: Any,
         return {
             "success": False,
             "error_code": None,
-            "error_message": (
-                "MT5 client is not available on this platform. "
-                "MT5 runs on Windows only."),
+            "error_message": _MT5_UNAVAILABLE_MESSAGE,
             "account_type": "unknown",
             "account_number": int(login_str),
             "balance_currency": None,

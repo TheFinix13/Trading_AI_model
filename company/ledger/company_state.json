@@ -1461,8 +1461,8 @@
       "title": "Broker-wizard recovery path + missing-broker chip (bundles I004 internal-token seam)",
       "priority": "P0",
       "sprint_id": "sprint-3-stickiness",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "shipped",
+      "current_owner_role": "cto",
       "reviewers": ["cpo", "ux_researcher", "ui_designer", "cto", "frontend", "backend", "qa", "legal", "ceo"],
       "auth": false,
       "credentials": false,
@@ -1475,6 +1475,27 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-3-stickiness/F019-broker-wizard-recovery-path.md",
           "note": "Spec locked (D114). Drains I003 (P1) + bundled I004. Recovery-path failure copy, missing-broker state chip, internal-token config-dir resolution (fail-closed-when-unset unchanged). Build gated on CEO charter review."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-24T06:00:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/{broker_connection,config,pages}.py + scripts/dogfood_personas.py",
+          "note": "Recovery copy (_MT5_UNAVAILABLE_MESSAGE: constraint + Windows/VM route + connect-later route, MT5 explained in one clause); missing-broker chip on onboarding completion + / hub (fail-quiet, shows only when completed && !broker_connected); I004 seam: [internal] token resolves <config_dir>/platform.toml first, repo-root fallback, fail-closed-when-unset byte-identical; dogfood harness drops the repo-root temp-file workaround (zero repo-root writes). CTO confirms at arch: security NOT fired -- no auth logic change."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-24T06:05:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/F019-review.md",
+          "note": "Approved. No new claims (no numbers); Brand sweep clean (no banned words). Rolling constraint: the two recovery routes are load-bearing for I003 closure -- dogfood asserts the substrings."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-24T06:12:00Z",
+          "role": "cto",
+          "deliverable": "tests/platform/{test_broker_connection_module,test_config_module,test_onboarding_api,test_onboarding_page,test_hub_page}.py extensions",
+          "note": "Shipped (D117). +23 tests net (69 -> 92 across the five touched suites; new test_config_module.py). Dogfood re-run 127/127: P002 broker journey 7/7 + P005 7/7 both assert actionable copy (personas gain the broker surface -- I003 measurement now on tape). Claim audit green."
         }
       ]
     },
@@ -2401,6 +2422,13 @@
       "role": "ceo",
       "decision": "[SPRINT] Sprint 3 charter + F019-F024 specs reviewed and APPROVED; build authorized (standing delegation, 2026-07-24). Bundled ratification: the D108 recurring-audit cadence (quarterly + before any live-wiring milestone) is RATIFIED.",
       "context": "CEO reviewed the D114-locked charter (company/sprints/sprint-3-stickiness/README.md) and all six specs in the parent session on 2026-07-24 and approved the build under the user's standing delegation. Build order F019 -> F020 -> F021 -> F022 -> F023 -> F024; P0s (F019/F020/F021) mandatory, P1s cut cleanly with a ledger note if the executor-day runs out. Binding constraints inherited from D114: zero writes to agent/{live,risk,squad}/* or scripts/run_*.py (zero-diff exit check vs 9c0a591), claim-register-in-same-commit for F020/F021/F022, withStates() + 375px mobile, suite only goes up from 1784+1 baseline, no new dependencies. Bundled: the D108 quarterly-audit cadence (quarterly + before any live-wiring milestone) moves from pending-ratification to RATIFIED."
+    },
+    {
+      "id": "D117",
+      "date": "2026-07-24",
+      "role": "cto",
+      "decision": "[SHIP] F019 broker-wizard recovery path + missing-broker chip + I004 internal-token seam SHIPPED. Drains I003 (recovery copy measured by dogfood: P002 7/7, P005 7/7 broker steps green, cast 127/127) and I004 (harness zero repo-root writes).",
+      "context": "Non-Windows broker failure now returns actionable copy: what MT5 is (one clause), the Windows/VM route with the runbook path, and the finish-now-connect-later route pointing at /settings/broker. Missing-broker chip renders on the onboarding completion screen and the / hub only when setup is complete and no broker is linked (fail-quiet fetch). [internal] token resolves <BLUELOCK_CONFIG_DIR>/platform.toml before repo-root platform.toml; fail-closed-when-unset behaviour byte-identical; repo-root-only installs (VM) unaffected. P002/P005 personas gain the broker test surface (required for the I003 measurement -- additive persona-doc edit noted in the sprint report). +23 tests net incl. new tests/platform/test_config_module.py. Legal approved (company/legal/F019-review.md), no new claims, Brand sweep clean. Claim audit green."
     }
   ],
   "sprint_verdicts": [

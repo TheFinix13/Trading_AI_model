@@ -107,3 +107,48 @@ def test_load_nonexistent_returns_none():
 
 def test_broker_namespace_constant():
     assert broker_connection.BROKER_NAMESPACE == "broker_mt5"
+
+
+# ---------------------------------------------------------------------------
+# F019 (I003) -- the non-Windows failure copy carries a recovery path
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="non-Windows short-circuit branch under test")
+class TestNonWindowsRecoveryCopy:
+    """The mt5-unavailable payload must never be a dead end: it states
+    the constraint, explains MT5 in plain words, and names both
+    recovery routes (Windows machine/VM + connect-later from
+    Settings > Broker)."""
+
+    def _failure_message(self) -> str:
+        r = broker_connection.test_connection(
+            login="12345", password=_FIXTURE_PW, server="Exness-MT5Demo")
+        assert r["success"] is False
+        assert r["account_type"] == "unknown"
+        return r["error_message"]
+
+    def test_states_the_constraint_in_plain_words(self):
+        msg = self._failure_message()
+        assert "MetaTrader 5" in msg
+        assert "Windows-only" in msg
+        # "MT5" explained in one clause, not left as bare jargon.
+        assert "trading terminal" in msg
+
+    def test_names_the_windows_vm_recovery_route(self):
+        msg = self._failure_message()
+        assert "Windows machine or VM" in msg
+        assert "docs/RUNBOOK_demo_launch.md" in msg
+
+    def test_names_the_connect_later_recovery_route(self):
+        msg = self._failure_message()
+        assert "connect your broker later" in msg
+        assert "/settings/broker" in msg
+
+    def test_dogfood_assertable_substrings_stable(self):
+        # The dogfood cast (I003's registered measurement) asserts
+        # these two substrings verbatim -- pin them so a copy tweak
+        # can't silently break the measurement.
+        msg = self._failure_message()
+        for needle in ("connect your broker later", "/settings/broker"):
+            assert needle in msg

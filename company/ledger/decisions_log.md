@@ -2199,6 +2199,28 @@ dependencies. Bundled: the D108 quarterly-audit cadence (quarterly +
 before any live-wiring milestone) moves from pending-ratification to
 RATIFIED.
 
+## D117 · 2026-07-24 · cto · [SHIP]
+
+**F019 broker-wizard recovery path + missing-broker chip + I004
+internal-token seam SHIPPED. Drains I003 (recovery copy measured by
+dogfood: P002 7/7, P005 7/7 broker steps green, cast 127/127) and
+I004 (harness zero repo-root writes).**
+
+Non-Windows broker failure now returns actionable copy: what MT5 is
+(one clause), the Windows/VM route with the runbook path, and the
+finish-now-connect-later route pointing at `/settings/broker`.
+Missing-broker chip renders on the onboarding completion screen and
+the `/` hub only when setup is complete and no broker is linked
+(fail-quiet fetch). `[internal]` token resolves
+`<BLUELOCK_CONFIG_DIR>/platform.toml` before repo-root
+`platform.toml`; fail-closed-when-unset behaviour byte-identical;
+repo-root-only installs (VM) unaffected. P002/P005 personas gain the
+broker test surface (required for the I003 measurement — additive
+persona-doc edit noted in the sprint report). +23 tests net incl. new
+`tests/platform/test_config_module.py`. Legal approved
+(`company/legal/F019-review.md`), no new claims, Brand sweep clean.
+Claim audit green.
+
 ## Template for subsequent entries
 
 ```markdown

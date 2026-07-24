@@ -20,11 +20,11 @@ Safety design (why the server runs IN-PROCESS, not as a subprocess):
   isolated temp config dir, so no dogfood run can touch real state.
 - All credentials used are obviously fake; live mode is never touched
   (there is deliberately no journey step for ``/api/live-mode/enable``).
-- ``/api/approvals/submit`` reads its internal token from
-  ``<repo>/platform.toml`` (gitignored). When that file is absent we
-  create a temporary one with a random token and remove it afterwards;
-  when it exists we NEVER modify it — we reuse its token if set, else
-  run the fail-closed 401 check only.
+- ``/api/approvals/submit`` reads its internal token through the I004
+  config seam (F019): ``<config_dir>/platform.toml`` wins over the
+  repo-root file. The harness writes its random token into its OWN
+  temp config dir — zero repo-root writes, and the operator's
+  ``platform.toml`` (if any) is never read or modified.
 
 Usage::
 
@@ -55,7 +55,6 @@ sys.path.insert(0, str(REPO_ROOT))
 
 PERSONAS_DIR = REPO_ROOT / "company" / "rd" / "personas"
 DEFAULT_OUT_DIR = REPO_ROOT / "reports" / "dogfood"
-PLATFORM_TOML = REPO_ROOT / "platform.toml"
 
 # Obviously-fake material only. Never real credentials, never live mode.
 # Values are generated per run so secret scanners never see a
@@ -258,9 +257,12 @@ def _broker_journey() -> dict:
     fake = {"login": FAKE_LOGIN, "password": FAKE_PASSWORD,
             "server": FAKE_SERVER}
     steps = [
-        _step("fake creds fail with friendly copy", "POST",
+        # F019/I003 measurement: the failure copy must carry a recovery
+        # path, not a dead end -- assert the actionable substrings.
+        _step("fake creds fail with actionable recovery copy", "POST",
               "/api/broker/test-connection", payload=dict(fake),
-              json_false=["success"], json_nonempty=["error_message"]),
+              json_false=["success"], json_nonempty=["error_message"],
+              contains=["connect your broker later", "/settings/broker"]),
         _step("off-allow-list server rejected", "POST",
               "/api/broker/test-connection",
               payload={**fake, "server": "evil-broker"},
@@ -424,7 +426,6 @@ class DogfoodHarness:
         self.thread: threading.Thread | None = None
         self.base_url: str = ""
         self.internal_token: str | None = None
-        self._created_platform_toml = False
 
     def start(self) -> None:
         from agent.platform import credentials
@@ -437,7 +438,7 @@ class DogfoodHarness:
         credentials.force_fallback(True)  # never the real OS keychain
         credentials.set_encrypted_file_passphrase(DOGFOOD_PASSPHRASE)
 
-        self._setup_internal_token()
+        self._setup_internal_token()  # zero repo-root writes (I004/F019)
 
         handler = make_handler(
             log_root=self.tmp / "logs",
@@ -451,34 +452,24 @@ class DogfoodHarness:
         self.base_url = f"http://127.0.0.1:{self.server.server_port}"
 
     def _setup_internal_token(self) -> None:
-        """The approvals submit gate reads ``<repo>/platform.toml``
-        (gitignored). Absent → create a temp one with a random token
-        and remove it on stop. Present → reuse its token if set, never
-        modify the operator's file."""
-        if PLATFORM_TOML.exists():
-            import tomllib
-            try:
-                raw = tomllib.loads(
-                    PLATFORM_TOML.read_text(encoding="utf-8"))
-            except (OSError, tomllib.TOMLDecodeError):
-                raw = {}
-            token = (raw.get("internal") or {}).get("token") or ""
-            self.internal_token = token or None
-            return
+        """The approvals submit gate resolves ``[internal] token``
+        through the I004 config seam (F019): ``<config_dir>/platform.toml``
+        wins over the repo-root file. The harness already owns an
+        isolated config dir, so the token lands there — the repo root
+        is never written, and an operator's real ``platform.toml``
+        (if present) is shadowed for the duration of the run."""
         token = "dogfood-" + secrets.token_hex(16)
-        PLATFORM_TOML.write_text(
-            "# TEMPORARY — written by scripts/dogfood_personas.py; "
-            "deleted at the end of the run.\n"
+        config_dir = self.tmp / "config"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        (config_dir / "platform.toml").write_text(
+            "# Dogfood-run internal token — isolated temp config dir.\n"
             f'[internal]\ntoken = "{token}"\n', encoding="utf-8")
-        self._created_platform_toml = True
         self.internal_token = token
 
     def stop(self) -> None:
         if self.server is not None:
             self.server.shutdown()
             self.server.server_close()
-        if self._created_platform_toml and PLATFORM_TOML.exists():
-            PLATFORM_TOML.unlink()
         from agent.platform import credentials
         credentials.set_config_dir(None)
         credentials.force_fallback(False)

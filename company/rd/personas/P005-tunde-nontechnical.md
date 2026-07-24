@@ -11,6 +11,7 @@ devices:
   - Windows laptop (browser only)
 tests:
   - onboarding
+  - broker
   - pages
 ---
 
@@ -22,8 +23,10 @@ striker" and "FDR budget" mean nothing to him. He is the plain-English
 gate: every label in the onboarding wizard and on the main pages must
 be readable by him or it fails.
 
-His journeys: the onboarding round-trip and an HTML smoke pass over
-the customer-facing pages, checking that each loads and carries
-human-readable copy (a title, no bare error text). Every place the
-product speaks jargon to him is an intake candidate for the User
-Advocate's plain-language backlog.
+His journeys: the onboarding round-trip, the broker wizard failure
+path (a connection error must tell him what to do next in plain
+words, per I003/F019), and an HTML smoke pass over the customer-facing
+pages, checking that each loads and carries human-readable copy (a
+title, no bare error text). Every place the product speaks jargon to
+him is an intake candidate for the User Advocate's plain-language
+backlog.

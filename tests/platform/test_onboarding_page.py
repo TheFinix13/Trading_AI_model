@@ -128,6 +128,30 @@ class TestMobileCare:
         assert "@media (max-width: 700px)" in ONBOARDING_PAGE
 
 
+class TestF019MissingBrokerChip:
+    """F019 (I003): finishing setup without a broker is allowed but
+    never silent -- the completion screen renders a chip that names
+    the gap and links the wizard."""
+
+    def test_chip_markup_present(self):
+        assert "onb-chip" in ONBOARDING_PAGE
+        assert "Broker not connected yet" in ONBOARDING_PAGE
+
+    def test_chip_links_the_wizard(self):
+        idx = ONBOARDING_PAGE.find("onb-chip\"><b>Broker not connected")
+        assert idx != -1
+        slc = ONBOARDING_PAGE[idx: idx + 400]
+        assert "/settings/broker" in slc
+
+    def test_chip_is_conditional_on_broker_state(self):
+        # The chip renders only when state.brokerConnected is false --
+        # connecting a broker before Finish keeps the screen clean.
+        assert "state.brokerConnected ? ''" in ONBOARDING_PAGE
+
+    def test_chip_css_is_additive_page_local(self):
+        assert ".onb-chip{" in ONBOARDING_PAGE
+
+
 # ---------------------------------------------------------------------------
 # RESET_INSTALL_PAGE
 # ---------------------------------------------------------------------------

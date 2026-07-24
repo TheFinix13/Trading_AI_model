@@ -412,12 +412,26 @@ details.glossary dd{margin:0;color:var(--fg)}
   font-size:11.5px;color:var(--dim);text-align:center;line-height:1.7}
 .footer code{background:#0d1117;padding:1px 6px;border-radius:4px;font-size:11px;color:var(--fg)}
 #updated{position:fixed;top:14px;right:20px;font-size:12px;color:var(--dim)}
+/* F019 (I003): missing-broker state chip. Additive, hub-local CSS --
+ * no _BASE_CSS_VERSION bump. Hidden by default; JS shows it only when
+ * setup completed without a broker connection. */
+.broker-chip{display:inline-block;background:rgba(210,153,34,.10);
+  border:1px solid rgba(210,153,34,.4);border-left:3px solid var(--amber);
+  border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:13px;
+  line-height:1.5;max-width:640px}
+.broker-chip b{color:var(--amber)}
 </style></head><body>
 <h1>Multi-pair trading platform</h1>
 <div class="sub">Two AI agents on Exness demo MT5 &mdash; v1 trades real demo orders,
 v2 shadow-simulates alongside for research. Auto-refreshes every 15&nbsp;s.</div>
 __NAV__
 <div id="updated">loading&hellip;</div>
+
+<div id="broker-chip" class="broker-chip" style="display:none">
+  <b>Broker not connected yet</b> &mdash; trading stays paused until a
+  broker account is linked.
+  <a href="/settings/broker">Connect one now &rarr;</a>
+</div>
 
 <div class="kpis">
   <div class="kpi" id="kpi-v1">
@@ -882,13 +896,26 @@ function renderHqTile(hq){
     blSuffix;
 }
 
+function renderBrokerChip(ob){
+  // F019 (I003): the chip is a nudge, not a data panel -- it shows
+  // only when setup finished WITHOUT a broker connection, and any
+  // fetch problem hides it (fail-quiet; error/empty states of the
+  // real panels stay unchanged).
+  const el = document.getElementById("broker-chip");
+  if(!el) return;
+  const show = ob && !ob.__auth__ && !ob.__error__ &&
+    ob.completed === true && ob.broker_connected === false;
+  el.style.display = show ? "" : "none";
+}
+
 async function refreshAll(){
-  const [v1, v2, evs, health, hq] = await Promise.all([
+  const [v1, v2, evs, health, hq, ob] = await Promise.all([
     fetchJson("/api/v1/status"),
     fetchJson("/api/v2/live/status"),
     fetchJson("/api/v2/live/events?cursor=0&limit=5"),
     fetchJson("/healthz"),
     fetchJson("/api/hq/state"),
+    fetchJson("/api/onboarding/state"),
   ]);
   const evsTotal = (evs && !evs.__auth__ && !evs.__error__)
     ? (evs.total != null ? evs.total : (evs.events || []).length) : null;
@@ -897,6 +924,7 @@ async function refreshAll(){
   renderSysKpi(health, v1);
   renderActivity(evs);
   renderHqTile(hq);
+  renderBrokerChip(ob);
   renderFooter(health, v1);
   document.getElementById("updated").innerText =
     "updated " + new Date().toLocaleTimeString();
@@ -4986,6 +5014,11 @@ _ONBOARDING_CSS = r"""
   border:1px solid rgba(88,166,255,.25);border-left:3px solid var(--accent);
   border-radius:6px;padding:10px 12px;font-size:12.5px;
   color:var(--fg);margin:10px 0}
+.onb-chip{display:inline-block;background:rgba(210,153,34,.10);
+  border:1px solid rgba(210,153,34,.4);border-left:3px solid var(--amber);
+  border-radius:6px;padding:8px 12px;margin-top:10px;font-size:13px;
+  line-height:1.5}
+.onb-chip b{color:var(--amber)}
 @media (max-width: 700px){
   .onb{padding:0 4px}
   .onb-step{padding:16px 14px}
@@ -5288,9 +5321,17 @@ function finishSetup(){
   fetch("/api/onboarding/complete", {method: "POST", cache: "no-store"})
     .then(function(r){ return r.json(); }).then(function(data){
       if(data.ok){
+        // F019 (I003): completing without a broker is allowed, but
+        // never silent -- the chip states the gap and links the wizard.
+        var chip = state.brokerConnected ? '' :
+          '<div class="onb-chip"><b>Broker not connected yet</b> ' +
+          '\u2014 trading stays paused until a broker account is ' +
+          'linked. <a href="/settings/broker">Connect one any time ' +
+          '&rarr;</a></div>';
         box.innerHTML = '<div class="onb-result ok">Setup complete. ' +
-          'Taking you to the hub.</div>';
-        setTimeout(function(){ window.location.assign("/"); }, 1200);
+          'Taking you to the hub.</div>' + chip;
+        setTimeout(function(){ window.location.assign("/"); },
+                   state.brokerConnected ? 1200 : 3500);
       } else {
         box.innerHTML = '<div class="onb-result fail">' +
           esc(data.message || 'Could not mark setup complete.') +

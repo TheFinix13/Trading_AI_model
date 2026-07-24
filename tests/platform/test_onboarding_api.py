@@ -249,6 +249,39 @@ class TestStateEndpoint:
         finally:
             srv.shutdown()
 
+    def test_f019_chip_inputs_complete_without_broker(self, tmp_path):
+        # F019 (I003): completing setup without a broker yields exactly
+        # the payload the missing-broker chip keys on -- completed=True
+        # AND broker_connected=False.
+        onboarding.mark_setup_complete()
+        srv = _make_server(tmp_path)
+        try:
+            host, port = srv.server_address
+            code, _, body = _request(
+                f"http://{host}:{port}/api/onboarding/state")
+            assert code == 200
+            assert body["completed"] is True
+            assert body["broker_connected"] is False
+        finally:
+            srv.shutdown()
+
+    def test_f019_chip_clears_when_broker_connects(self, tmp_path):
+        # Saving a broker alias flips broker_connected -> the chip's
+        # show-condition goes false and it disappears on next refresh.
+        onboarding.mark_setup_complete()
+        broker_connection.save_credentials(
+            "primary", "12345", "x" * 12, "Exness-MT5Demo", "demo")
+        srv = _make_server(tmp_path)
+        try:
+            host, port = srv.server_address
+            code, _, body = _request(
+                f"http://{host}:{port}/api/onboarding/state")
+            assert code == 200
+            assert body["completed"] is True
+            assert body["broker_connected"] is True
+        finally:
+            srv.shutdown()
+
     def test_state_post_persists_step(self, tmp_path):
         srv = _make_server(tmp_path)
         try:

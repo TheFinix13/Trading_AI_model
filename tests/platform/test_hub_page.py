@@ -112,6 +112,37 @@ class TestHubStructure:
         assert "live shadow-paper" in HUB_PAGE
 
 
+class TestF019BrokerChip:
+    """F019 (I003): the hub carries a missing-broker state chip that
+    shows only when setup completed without a broker connection."""
+
+    def test_chip_element_present_and_hidden_by_default(self):
+        idx = HUB_PAGE.find('id="broker-chip"')
+        assert idx != -1
+        slc = HUB_PAGE[idx: idx + 200]
+        assert 'style="display:none"' in slc
+
+    def test_chip_names_the_gap_and_links_the_wizard(self):
+        assert "Broker not connected yet" in HUB_PAGE
+        assert 'href="/settings/broker"' in HUB_PAGE
+
+    def test_chip_feeds_off_onboarding_state(self):
+        # The chip's data source rides the same /api/onboarding/state
+        # payload the wizard uses (exempt from the install gate, so it
+        # works on a fresh install too).
+        assert "/api/onboarding/state" in HUB_PAGE
+        assert "renderBrokerChip" in HUB_PAGE
+
+    def test_chip_shows_only_when_complete_and_disconnected(self):
+        # Pinned condition: completed === true AND broker_connected
+        # === false. Any fetch problem hides the chip (fail-quiet).
+        assert "ob.completed === true" in HUB_PAGE
+        assert "ob.broker_connected === false" in HUB_PAGE
+
+    def test_chip_css_is_additive_hub_local(self):
+        assert ".broker-chip{" in HUB_PAGE
+
+
 # ---------------------------------------------------------------------------
 # 2) HTTP integration + 3) API contract
 # ---------------------------------------------------------------------------
