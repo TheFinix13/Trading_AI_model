@@ -53,6 +53,7 @@ _NAV = """<div class="nav">
 <a href="/hq" class="{hq}">HQ · Blue Lock Trading Co.</a>
 <a href="/performance" class="{performance}">Performance</a>
 <a href="/players" class="{players}">Squad</a>
+<a href="/highlights" class="{highlights}">Highlights</a>
 <a href="/research" class="{research}">Research</a>
 </div>"""
 
@@ -61,12 +62,12 @@ def nav(active: str) -> str:
     """Render the top nav pills; ``active`` marks one pill with .here.
 
     Accepted values: ``hub`` / ``v1`` / ``v2`` / ``hq`` / ``performance`` /
-    ``players`` / ``research``. New Sprint 1 destinations (``broker``,
-    ``onboarding``) render the nav with no active pill so their
-    dedicated wizard pages don't accidentally advertise themselves as
-    a permanent top-level route. Unknown values render the nav with
-    no active pill (safe default -- users can still see where they
-    are from the URL).
+    ``players`` / ``highlights`` / ``research``. New Sprint 1
+    destinations (``broker``, ``onboarding``) render the nav with no
+    active pill so their dedicated wizard pages don't accidentally
+    advertise themselves as a permanent top-level route. Unknown values
+    render the nav with no active pill (safe default -- users can still
+    see where they are from the URL).
     """
     return _NAV.format(
         hub="here" if active == "hub" else "",
@@ -75,6 +76,7 @@ def nav(active: str) -> str:
         hq="here" if active == "hq" else "",
         performance="here" if active == "performance" else "",
         players="here" if active == "players" else "",
+        highlights="here" if active == "highlights" else "",
         research="here" if active == "research" else "",
     )
 
@@ -1441,6 +1443,15 @@ __NAV__
   <div class="card" id="ticker-card"><h2 style="margin:0 0 8px;font-size:15px">Match ticker <span class="dim" style="font-size:11px">click a row for detail</span></h2><div class="tkr" id="ticker"></div></div>
   <div class="card" id="league-card"><h2 style="margin:0 0 8px;font-size:15px">League table (this match)</h2>
     <table id="league"><tr><th>Player</th><th>Props</th><th>Blocked</th><th>Trades</th><th>Goals</th><th>Win%</th><th>Pips</th><th>TQS</th></tr></table></div>
+  <!-- F020: latest match report teaser. Fill is fail-quiet: if the
+       highlights API is unreachable the static link still works. -->
+  <a class="card" id="highlights-teaser" href="/highlights"
+     style="display:block;color:var(--fg);text-decoration:none">
+    <h2 style="margin:0 0 6px;font-size:15px">Latest match report</h2>
+    <div class="dim" id="highlights-teaser-line" style="font-size:12.5px">
+      Yesterday retold as a match report &mdash; every line from the
+      recorded tape. Read it on the Highlights page &rarr;</div>
+  </a>
   <!-- Upcoming USD events (LIVE mode only): Sae's hunting calendar.
        Rows tagged "sae window" when now falls inside [T-30m, T+60m]. -->
   <div class="card" id="events-card" style="display:none">
@@ -2676,6 +2687,20 @@ async function init(){
   else await loadLive();
 }
 init();
+// F020: fill the highlights teaser with the newest report headline.
+// Fail-quiet -- the static link copy stays if anything goes wrong.
+(async () => {
+  try {
+    const r = await fetch("/api/highlights/reports?n=1", {cache:"no-store"});
+    if(!r.ok) return;
+    const d = await r.json();
+    const first = d && d.reports && d.reports[0];
+    if(first && first.headline){
+      const el = document.getElementById("highlights-teaser-line");
+      if(el) el.textContent = first.headline + " Read the full report \u2192";
+    }
+  } catch(e) { /* teaser stays static */ }
+})();
 </script></body></html>"""
 
 V2_PAGE = (_V2_TEMPLATE
@@ -4540,6 +4565,213 @@ RESEARCH_PAGE = (_RESEARCH_TEMPLATE
                  .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
                  .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
                  .replace("__NAV__", nav('research')))
+
+
+# ---------------------------------------------------------------------------
+# F020 -- /highlights match reports
+# ---------------------------------------------------------------------------
+#
+# Daily match reports auto-derived from the shadow-paper tape by
+# agent/platform/highlights.py. Deterministic templating only -- every
+# line click-traces to recorded events. All CSS is page-local
+# (_HIGHLIGHTS_CSS) so _BASE_CSS_VERSION does not bump.
+
+_HIGHLIGHTS_CSS = r"""
+.hl-header{margin-bottom:16px}
+.hl-header .preamble{color:var(--dim);font-size:13.5px;line-height:1.55;
+  max-width:820px}
+.hl-provenance{margin:0 0 16px;padding:10px 14px;background:var(--panel);
+  border:1px solid var(--border);border-left:3px solid var(--amber);
+  border-radius:8px;font-size:12px;color:var(--dim);line-height:1.55}
+.hl-provenance .k{color:var(--amber);text-transform:uppercase;
+  font-size:10.5px;letter-spacing:.05em;font-weight:700;margin-right:8px}
+.hl-index{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+  gap:12px;margin-bottom:20px}
+.hl-day-card{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:12px 14px;cursor:pointer;text-align:left;
+  color:var(--fg);font:inherit;line-height:1.5}
+.hl-day-card:hover{border-color:var(--accent)}
+.hl-day-card.sel{border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent) inset}
+.hl-day-card .d{font-weight:700;font-variant-numeric:tabular-nums;
+  margin-bottom:4px}
+.hl-day-card .h{font-size:12.5px;color:var(--dim)}
+.hl-day-card .h.quiet{font-style:italic}
+.hl-report{background:var(--panel);border:1px solid var(--border);
+  border-radius:10px;padding:16px 18px;margin-bottom:18px}
+.hl-report .headline{font-size:16px;font-weight:600;margin-bottom:10px}
+.hl-report .quiet-note{color:var(--dim);font-style:italic;font-size:13px;
+  margin-bottom:10px}
+.hl-ft{display:flex;flex-wrap:wrap;gap:8px 18px;background:var(--bg);
+  border:1px solid var(--border);border-radius:8px;padding:10px 12px;
+  font-size:12.5px;font-variant-numeric:tabular-nums;margin-bottom:12px}
+.hl-ft .k{color:var(--dim);margin-right:5px}
+.hl-line{display:grid;grid-template-columns:max-content 1fr;gap:10px;
+  padding:5px 0;border-bottom:1px solid #1c2129;font-size:13px;
+  align-items:baseline}
+.hl-line:last-child{border-bottom:none}
+.hl-line .t{color:var(--dim);font-variant-numeric:tabular-nums;
+  white-space:nowrap;font-size:11.5px}
+.hl-line.goal .txt{color:var(--green)}
+.hl-line.miss .txt{color:var(--red)}
+.hl-players{width:100%;border-collapse:collapse;font-size:12.5px;
+  margin-top:12px;font-variant-numeric:tabular-nums}
+.hl-players th{text-align:left;color:var(--dim);font-size:10.5px;
+  text-transform:uppercase;letter-spacing:.05em;padding:4px 8px 4px 0;
+  border-bottom:1px solid var(--border)}
+.hl-players td{padding:5px 8px 5px 0;border-bottom:1px solid #1c2129}
+.hl-players tr:last-child td{border-bottom:none}
+@media (max-width: 700px){
+  .hl-index{grid-template-columns:1fr}
+  .hl-ft{gap:6px 12px}
+  .hl-players{display:block;overflow-x:auto}
+}
+"""
+
+_HIGHLIGHTS_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Match highlights -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+__SKELETON_CSS__
+__HIGHLIGHTS_CSS__
+</style></head>
+<body>
+__NAV__
+<div class="hl-header">
+  <h1>Match highlights</h1>
+  <div class="preamble">Every day the squad plays, the tape writes the
+  match report. Each line below is derived from recorded events --
+  nothing is retold that didn't happen. Tomorrow's match hasn't been
+  written yet.</div>
+</div>
+<div class="hl-provenance" role="note"><span class="k">Provenance</span>
+<span id="hl-provenance-text">Shadow-paper activity and quality metrics
+from the v2 squad (demo data feed, no orders sent to any broker)
+&mdash; NOT profit performance. Past activity is not indicative of
+future results.</span></div>
+<div id="hl-index"></div>
+<div id="hl-report"></div>
+<script>__ERROR_COPY_JS__
+__WITH_STATES_JS__
+function hesc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function fetchJson(url){
+  return fetch(url, {cache:"no-store"}).then(function(r){
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    return r.json();
+  });
+}
+var selectedDay = null;
+function renderFullTime(ft){
+  if(!ft) return "";
+  var cells = [
+    ["Shots", ft.shots], ["On target", ft.on_target],
+    ["Tackles", ft.tackles], ["Goals", ft.goals],
+    ["Misses", ft.misses], ["Net pips", ft.net_pips],
+    ["Net R", ft.net_r == null ? "\u2014" : ft.net_r],
+    ["Mean TQS", ft.mean_tqs == null ? "\u2014" : ft.mean_tqs],
+    ["Bars evaluated", ft.ticks_evaluated]
+  ];
+  var out = '<div class="hl-ft">';
+  for(var i=0;i<cells.length;i++){
+    out += '<span><span class="k">'+hesc(cells[i][0])+'</span>'+
+           hesc(cells[i][1])+'</span>';
+  }
+  return out + '</div>';
+}
+function renderReport(data, box){
+  if(!data || data.empty) return "empty";
+  var out = '<article class="hl-report">';
+  out += '<div class="headline">'+hesc(data.headline)+'</div>';
+  if(data.quiet && data.quiet_note){
+    out += '<div class="quiet-note">'+hesc(data.quiet_note)+'</div>';
+  }
+  out += renderFullTime(data.full_time);
+  var tl = data.timeline || [];
+  for(var i=0;i<tl.length;i++){
+    var ev = tl[i];
+    var cls = "";
+    if(ev.type === "close"){
+      cls = (typeof ev.pnl_pips === "number" && ev.pnl_pips > 0)
+        ? " goal" : " miss";
+    }
+    out += '<div class="hl-line'+cls+'">'+
+           '<span class="t">'+hesc((ev.t||"").slice(11,16))+'</span>'+
+           '<span class="txt">'+hesc(ev.line)+'</span></div>';
+  }
+  var pl = data.players || [];
+  if(pl.length){
+    out += '<table class="hl-players"><tr><th>Player</th><th>Shots</th>'+
+           '<th>Tackled</th><th>On target</th><th>Resolved</th>'+
+           '<th>Goals</th><th>Net pips</th></tr>';
+    for(var j=0;j<pl.length;j++){
+      var p = pl[j];
+      out += '<tr><td>'+hesc(p.name)+'</td><td>'+hesc(p.shots)+'</td>'+
+             '<td>'+hesc(p.tackled)+'</td><td>'+hesc(p.opens)+'</td>'+
+             '<td>'+hesc(p.resolved)+'</td><td>'+hesc(p.goals)+'</td>'+
+             '<td>'+hesc(p.net_pips)+'</td></tr>';
+    }
+    out += '</table>';
+  }
+  out += '</article>';
+  box.innerHTML = out;
+  if(data.provenance){
+    document.getElementById("hl-provenance-text").textContent =
+      data.provenance;
+  }
+}
+function loadReport(day){
+  selectedDay = day;
+  var cards = document.querySelectorAll(".hl-day-card");
+  for(var i=0;i<cards.length;i++){
+    cards[i].classList.toggle("sel", cards[i].dataset.day === day);
+  }
+  return withStates(document.getElementById("hl-report"), function(){
+    return fetchJson("/api/highlights/report/"+encodeURIComponent(day));
+  }, renderReport, {
+    emptyMessage: "No tape on record for "+day+"."
+  });
+}
+function renderIndex(data, box){
+  var reports = (data && data.reports) || [];
+  if(!reports.length) return "empty";
+  var out = '<div class="hl-index">';
+  for(var i=0;i<reports.length;i++){
+    var r = reports[i];
+    out += '<button type="button" class="hl-day-card" data-day="'+
+           hesc(r.day)+'"><span class="d">'+hesc(r.day)+'</span>'+
+           '<span class="h'+(r.quiet ? " quiet" : "")+'">'+
+           hesc(r.headline)+'</span></button>';
+  }
+  out += '</div>';
+  box.innerHTML = out;
+  var cards = box.querySelectorAll(".hl-day-card");
+  for(var j=0;j<cards.length;j++){
+    cards[j].addEventListener("click", function(){
+      loadReport(this.dataset.day);
+    });
+  }
+  loadReport(selectedDay || reports[0].day);
+}
+withStates(document.getElementById("hl-index"), function(){
+  return fetchJson("/api/highlights/reports?n=14");
+}, renderIndex, {
+  emptyMessage: "No match days on tape yet \u2014 the squad is " +
+    "watching the market. Come back after the next H4 bar close."
+});
+</script></body></html>"""
+
+HIGHLIGHTS_PAGE = (_HIGHLIGHTS_TEMPLATE
+                   .replace("__BASE_CSS__", _BASE_CSS)
+                   .replace("__SKELETON_CSS__", _SKELETON_CSS)
+                   .replace("__HIGHLIGHTS_CSS__", _HIGHLIGHTS_CSS)
+                   .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+                   .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+                   .replace("__NAV__", nav('highlights')))
 
 
 # ---------------------------------------------------------------------------

@@ -53,13 +53,14 @@ def test_index_page_skeleton_css_embedded():
 
 
 def test_index_page_nav_pills_count():
-    # nav pill count is 7 (Hub / v1 / v2 / HQ / Performance / Squad / Research)
+    # nav pill count is 8 (Hub / v1 / v2 / HQ / Performance / Squad /
+    # Highlights / Research) -- Highlights added by F020 (Sprint 3).
     p = pages.PLAYERS_INDEX_PAGE
     nav_start = p.find('<div class="nav">')
     nav_end = p.find("</div>", nav_start)
     assert nav_start != -1 and nav_end != -1
     nav_block = p[nav_start:nav_end]
-    assert nav_block.count("<a ") == 7
+    assert nav_block.count("<a ") == 8
 
 
 def test_index_page_players_pill_active():

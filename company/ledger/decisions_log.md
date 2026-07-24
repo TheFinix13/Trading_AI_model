@@ -2221,6 +2221,26 @@ persona-doc edit noted in the sprint report). +23 tests net incl. new
 (`company/legal/F019-review.md`), no new claims, Brand sweep clean.
 Claim audit green.
 
+## D118 · 2026-07-24 · cto · [SHIP]
+
+**F020 match highlights SHIPPED: `/highlights` daily match reports +
+`/v2` teaser, deterministic templating over the shadow-paper tape.
+All public claims registered in the same commit under the
+shadow-paper/NOT-profit-performance disclaimer.**
+
+`agent/platform/highlights.py` (read-only over
+`squad_live/events.jsonl`): `match_report` / `list_reports` /
+`trade_story`, every number recomputable from raw rows (test-pinned
+equality); quiet days reuse the I002 quiet-reason vocabulary;
+missing/malformed tape degrades to the F005 empty state. Page under
+`withStates()`, mobile at 375px, page-local CSS (no base-CSS bump);
+API routes behind the install-token gate; Highlights nav pill added
+(players/research nav-count pins updated 7 → 8). Legal approved
+(`company/legal/F020-review.md`) with rolling constraint: templating
+stays deterministic (no LLM) and no engagement numbers publish before
+the declared hypothesis's pre-registered experiment reports. +49
+tests vs ≥25 target; platform dir 973 passed; claim audit green.
+
 ## Template for subsequent entries
 
 ```markdown

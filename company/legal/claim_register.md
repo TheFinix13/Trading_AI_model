@@ -684,6 +684,37 @@ execution) is consumed and can never fire a second order. Removing
 the consumption marking would allow replay of a single human approval
 into multiple orders — P0 regression.
 
+### F020 — `agent/platform/highlights.py` (Sprint 3)
+
+Public accessors: `highlights.match_report(day, live_dir=None) -> dict`,
+`highlights.list_reports(n, live_dir=None) -> list[dict]`,
+`highlights.trade_story(trade_id, live_dir=None) -> dict | None`,
+`highlights.trade_id_for(close_row) -> str`.
+
+Public module constants: `PROVENANCE_NOTE`, `QUIET_VOCAB`.
+
+Provenance disclaimer (applies to EVERY field below): all numbers are
+**shadow-paper activity/quality metrics** from the v2 squad's demo
+feed — **NOT profit performance**. `PROVENANCE_NOTE` is echoed in
+every payload and rendered as a banner on `/highlights`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `match_report` | `headline`, `timeline[].line`, `timeline[].pnl_pips`, `timeline[].r`, `timeline[].trade_id` | One day's narrative from recorded `events.jsonl` rows; deterministic template assembly, every number recomputable from the raw rows (test-pinned equality, not snapshot). Quiet days reuse the I002 `QUIET_VOCAB` phrase; missing tape → `empty=True`, never a fabricated day. | `highlights.match_report`. | PROVENANCE_NOTE in payload + page banner. |
+| `match_report` | `full_time` (`shots`, `tackles`, `on_target`, `resolved`, `goals`, `misses`, `net_pips`, `net_r`, `mean_tqs`, `ticks_evaluated`) | Full-time stat line: counts of proposal / blocked / open / close / tick_summary rows and pip/R/TQS sums over closes. Activity + quality metrics only. | `highlights._full_time` via `match_report`. | Same. |
+| `match_report` | `players[]` (`shots`, `tackled`, `opens`, `resolved`, `goals`, `net_pips`) | Per-agent involvement recomputed from the same rows; names via `players.roster_meta`. | `highlights._players_involved`. | Same. |
+| `list_reports` | `[{day, quiet, headline, shots, goals, resolved, net_pips}]` | Newest-first index of match days present on tape; same recomputation as `match_report` per day. | `highlights.list_reports`. | Same. |
+| `trade_story` | `{goal, pnl_pips, r, tqs, exit_reason, chapters[]}` | One closed trade retold (opening → shot → full time) by stitching the latest same-agent/same-symbol proposal and open rows at or before the close. All chapters are recorded evidence. | `highlights.trade_story`. | Same. |
+| `trade_id_for` | `str` | Deterministic close-row id (`<agent>-<ts>-<sym>`) so click-through links stay stable. Not a number. | `highlights.trade_id_for`. | None — identifier. |
+
+Rolling constraint (Legal): narrative strings are DETERMINISTIC
+template assembly from recorded fields only — introducing generative
+(LLM) retelling, or publishing any engagement/return-rate number for
+the declared F020 hypothesis before its pre-registered experiment
+reports, requires a fresh Legal review. Banned words ("ensemble",
+"aggregator") stay out of every template string (Brand sweep pinned
+by test).
+
 ## Audit hook (Sprint 2 — F010 implementation)
 
 Sprint 2's F010 ships `scripts/check_claim_register.py` +

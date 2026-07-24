@@ -39,14 +39,15 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from agent.platform import (  # noqa: E402
     alerts, alerts_sse, alerts_telegram, approval_queue, auth,
-    broker_connection, broker_health, credentials, hq, kill_switch_admin,
-    kill_switches, live_status, onboarding, paper_loop,
+    broker_connection, broker_health, credentials, highlights, hq,
+    kill_switch_admin, kill_switches, live_status, onboarding, paper_loop,
     live_executor, performance, players, rate_limiter, research,
     risk_budget, squad_events, watchdog,
 )
 from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
-    ALERTS_PAGE, APPROVALS_PAGE, BROKER_WIZARD_PAGE, HQ_PAGE, HUB_PAGE,
+    ALERTS_PAGE, APPROVALS_PAGE, BROKER_WIZARD_PAGE, HIGHLIGHTS_PAGE,
+    HQ_PAGE, HUB_PAGE,
     KILL_SWITCHES_PAGE, LIVE_MODE_TOGGLE_PAGE, ONBOARDING_PAGE,
     PERFORMANCE_PAGE, PLAYERS_INDEX_PAGE, RESEARCH_PAGE, RESET_INSTALL_PAGE,
     RISK_PAGE, V1_PAGE, V2_PAGE,
@@ -83,6 +84,7 @@ _LIVE_RE = re.compile(
     r"|event/(\d+))$")
 _PLAYER_URL_RE = re.compile(r"^/players/([A-Za-z0-9_-]+)/?$")
 _PLAYER_API_RE = re.compile(r"^/api/players/([A-Za-z0-9_-]+)$")
+_HIGHLIGHT_REPORT_RE = re.compile(r"^/api/highlights/report/(\d{4}-\d{2}-\d{2})$")
 _BROKER_ALIAS_RE = re.compile(r"^/api/broker/([A-Za-z0-9_.\-]+)$")
 _APPROVAL_ACTION_RE = re.compile(
     r"^/api/approvals/([A-Za-z0-9_-]+)/(approve|reject)$")
@@ -609,6 +611,27 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                         self._json({"error": "unknown striker"}, 404)
                     else:
                         self._json(payload)
+            elif path in ("/highlights", "/highlights/"):
+                # F020: /highlights match reports -- daily narratives
+                # derived from the shadow-paper tape.
+                self._send(HIGHLIGHTS_PAGE.encode(),
+                           "text/html; charset=utf-8")
+            elif path == "/api/highlights/reports":
+                # F020: newest-first index of match days on tape.
+                try:
+                    n = int(params.get("n", "14"))
+                except ValueError:
+                    n = 14
+                self._json({
+                    "reports": highlights.list_reports(n, live_dir=live_dir),
+                    "provenance": highlights.PROVENANCE_NOTE,
+                })
+            elif (hm := _HIGHLIGHT_REPORT_RE.match(path)):
+                # F020: one day's full match report. Malformed days
+                # never reach here (route regex pins YYYY-MM-DD);
+                # unknown days return the module's empty-state payload.
+                self._json(highlights.match_report(
+                    hm.group(1), live_dir=live_dir))
             elif path == "/research":
                 # F003: /research verdict timeline (CPO-gated).
                 self._send(RESEARCH_PAGE.encode(),
