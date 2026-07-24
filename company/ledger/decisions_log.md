@@ -1975,6 +1975,42 @@ rationale in the module docstring. Tests:
 `test_risk_budget_gate_perf.py` (6 — day boundary, invalidation on
 new fill, 10k-row fixture not re-parsed on second call).
 
+## D107 · 2026-07-24 · user_advocate · [INTAKE]
+
+**2026-07-24 full-system audit filed through the R&D loop — 8 intake
+items (I005–I012), full report on tape.**
+
+Audit report: `reviews/audits/2026-07-24-full-system-audit.md`
+(12 findings A001–A012 with severities and routing). Intake: I005
+(A001+A002 branch drift, P0, engineering — reconciliation merge in
+flight in the parent session), I006 (A003 news-cache path split, P1,
+next-gen lane), I007 (A004 calendar/broker timezone verify-then-fix,
+P1, next-gen lane), I008 (A008 Windows test blind spot, P2,
+engineering/process — pre-demo VM checklist + mockable MT5 seam),
+I009 (A009 pandas pin — FIXED same-session: `pandas>=2.2,<3` in
+requirements.txt + pyproject.toml; VM venv holds 3.0.3 and MUST be
+rebuilt, runbook section 4 preflight note added), I010 (A010 alerts
+durability + SSE cap, P2, product backlog), I011 (A011 watchdog YAML
+parser, P2, product backlog), I012 (A012 experiments_in_flight KPI
+semantics + audit cadence, P3, cpo). A005/A006/A007 were fixed on
+product this session (D106) and are marked FIXED in the report.
+`intake_items_open` KPI 3 → 11. A003/A004 belong to the next-gen
+lane and were NOT touched from this session beyond filing.
+
+## D108 · 2026-07-24 · cpo · [PROCESS]
+
+**Recurring audit cadence adopted pending CEO ratification: quarterly
+full-system audits + one before any live-wiring milestone.**
+
+Rationale: tonight's audit found two shipped P1 defects inside the
+four-gate pathway (A005 late-click approval, A006 corruptible
+credential bag) that 1691 green tests did not catch — suites verify
+what they were shaped to verify; periodic adversarial reads catch the
+rest. Cadence: one full-system audit per quarter, plus a mandatory
+audit before any live-wiring milestone (first real-broker order,
+first paid user, first hosted deployment). Tracked with I012; takes
+effect on CEO ratification.
+
 ## Template for subsequent entries
 
 ```markdown

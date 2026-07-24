@@ -7,7 +7,7 @@ authors = [{ name = "the1finix" }]
 license = { text = "MIT" }
 readme = "README.md"
 dependencies = [
-    "pandas>=2.2",
+    "pandas>=2.2,<3",
     "numpy>=1.26",
     "pyarrow>=15.0",
     "pydantic>=2.6",

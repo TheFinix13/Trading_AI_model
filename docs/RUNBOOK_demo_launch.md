@@ -76,6 +76,16 @@ git fetch; git reset --hard origin/main; pip install -r requirements.txt
 
 ## 4. Preflight checklist (before starting / restarting the agents)
 
+> **⚠ VM venv rebuild required (2026-07-24, audit A009 / I009).**
+> The dependency pin is now `pandas>=2.2,<3`, but the VM's existing
+> venv already resolved **pandas 3.0.3** — a major version this code
+> has never been tested against. The pin does NOT downgrade an
+> existing install. Before the next VM session, rebuild the venv:
+> `./.venv/Scripts/python -m pip install -r requirements.txt --force-reinstall`
+> (or delete `.venv` and recreate), then confirm with
+> `./.venv/Scripts/python -c "import pandas; print(pandas.__version__)"`
+> — it must print 2.x.
+
 - [ ] **Tests green** on the branch being deployed:
       `./.venv/bin/python -m pytest` (423 passing as of 2026-07-06).
 - [ ] **Kill switch clear.** Two kill files exist:
