@@ -1116,6 +1116,24 @@ def _load_live_warning() -> str:
                 "Only continue if you have read the docs and are certain.")
 
 
+def launch_url(host: str, port: int, token: str | None = None) -> str:
+    """Ready-to-paste browser URL for this bind (printed at startup).
+
+    When an auth token is active it rides along as ``?token=`` so the
+    first visit authorizes AND (I014) plants the session cookie — the
+    operator copies one string instead of assembling URL + token by
+    hand. Printing it adds no exposure: the token already appeared on
+    this same console as a CLI argument / config value. A wildcard
+    bind is shown as 127.0.0.1 because that is what a browser running
+    on the box itself should dial.
+    """
+    shown = "127.0.0.1" if host in ("0.0.0.0", "::", "") else host
+    url = f"http://{shown}:{port}/"
+    if token:
+        url += f"?token={token}"
+    return url
+
+
 def main() -> None:
     # Defaults come from platform.toml (if present); flags override.
     cfg = load_config(REPO_ROOT)
@@ -1194,6 +1212,8 @@ def main() -> None:
         print("F008 onboarding gate: enabled -- HTML routes redirect "
               "to /onboarding until setup completes")
     print(f"Platform v{PLATFORM_VERSION} on http://{args.host}:{args.port}")
+    print(f"  Open in browser:    "
+          f"{launch_url(args.host, args.port, effective_token)}")
     print(f"  v1 log root:        {args.log_root}")
     print(f"  v2 research reviews: {args.research_reviews} "
           f"({'found' if args.research_reviews.exists() else 'MISSING — v2 will list no matches'})")
