@@ -5,19 +5,25 @@ submitter: user_advocate
 submitted_at: 2026-07-24T00:30:00Z
 classification: BUG
 priority: P0
-status: routed
+status: resolved
 route: engineering
 linked_features: []
 linked_decisions:
   - D107
+  - D110
+  - D113
 linked_experiments: []
 contact: internal (2026-07-24 full-system audit, A001/A002)
-resolved_at: null
+resolved_at: 2026-07-24T04:10:00Z
 history:
   - stage: filed
     at: 2026-07-24T00:30:00Z
     by: user_advocate
     note: "Filed from the 2026-07-24 full-system audit (A001+A002). Fix in flight: parent session merging next-gen -> product."
+  - stage: resolved
+    at: 2026-07-24T04:10:00Z
+    by: cpo
+    note: "Cycle-2 triage (D113): RESOLVED by D110 -- next-gen merged into product at merge commit c97e8f7; product is the single serving branch; next-gen retired as a serving branch. Merged tree verified: 1784 tests + 1 env-skip, P0 live-mode-off invariant 23/23, claim audit green. The VM cutover itself (runbook 7b.8) is an ops step tracked by the runbook and by I002's verification, not by this item -- the drift this item names (safety layer not on the served branch's lineage) is closed at the repo level."
 ---
 
 # I005 — Branch drift: the safety layer is not on the branch being served (A001+A002)
@@ -54,8 +60,12 @@ relative to it, so a reconciliation merge is mechanical.
 
 ## Closure notes
 
-Open. Closes when the VM serves a branch containing the safety layer
-and the P0 invariant suite passes on the serving host.
+Resolved 2026-07-24 (D113). The reconciliation merge (D110, merge
+commit `c97e8f7`) made `product` the single serving branch with the
+full safety layer; suite 1784 + 1 env-skip, P0 invariant 23/23 on the
+merged tree. Remaining VM cutover verification rides runbook 7b.8 and
+I002.
 
-- **Related decisions:** D107 (audit filing).
+- **Related decisions:** D107 (audit filing), D110 (merge), D113
+  (cycle-2 triage close).
 - Full audit: `reviews/audits/2026-07-24-full-system-audit.md`.

@@ -10,6 +10,7 @@ route: engineering
 linked_features: []
 linked_decisions:
   - D107
+  - D113
 linked_experiments: []
 contact: internal (2026-07-24 full-system audit, A009)
 resolved_at: null
@@ -18,6 +19,10 @@ history:
     at: 2026-07-24T00:30:00Z
     by: user_advocate
     note: "Filed from the 2026-07-24 full-system audit (A009). Pin fixed same-session on product (pandas>=2.2,<3); VM venv rebuild outstanding."
+  - stage: re-affirmed
+    at: 2026-07-24T04:10:00Z
+    by: cpo
+    note: "Cycle-2 triage (D113): SPLIT STATE, stays open. Repo side is done (pandas>=2.2,<3 pinned in requirements.txt + pyproject.toml, on product). The VM venv still holds pandas 3.0.3 -- the pin cannot fix an existing venv. Closes when the runbook-7b.8 cutover rebuilds the VM venv and it reports pandas<3. Not sprint work; an ops step on the CEO's cutover checklist."
 ---
 
 # I009 — pandas pin unbounded; VM resolved pandas 3.x (A009)

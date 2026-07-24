@@ -9,8 +9,11 @@ status: routed
 route: product
 linked_features:
   - F016
+  - F019
 linked_decisions:
   - D094
+  - D113
+  - D114
 linked_experiments: []
 contact: internal (dogfood harness, D092)
 resolved_at: null
@@ -23,6 +26,10 @@ history:
     at: 2026-07-23T23:12:00Z
     by: cpo
     note: "Triaged same-day: DX / P3 / route product. Config-surface unification; fold into the packaging/hosting sprint rather than a standalone fix."
+  - stage: scoped
+    at: 2026-07-24T04:10:00Z
+    by: cpo
+    note: "Cycle-2 triage (D113): priority stays P3 but the fix rides EARLY -- bundled into Sprint 3's F019 (D114) because the change is one config-resolution seam (config-dir first, repo-root fallback, fail-closed-when-unset unchanged) and F019 already touches the same wizard/config surface. Closes with F019's ship instead of waiting for the packaging sprint."
 ---
 
 # I004 — Internal-token config is pinned to the repo root

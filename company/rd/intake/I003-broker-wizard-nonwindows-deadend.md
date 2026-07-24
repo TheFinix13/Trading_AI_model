@@ -4,13 +4,16 @@ source: dogfood
 submitter: user_advocate
 submitted_at: 2026-07-23T23:10:00Z
 classification: UX
-priority: P2
+priority: P1
 status: routed
 route: product
 linked_features:
   - F016
+  - F019
 linked_decisions:
   - D093
+  - D113
+  - D114
 linked_experiments: []
 contact: internal (dogfood harness, D092)
 resolved_at: null
@@ -23,6 +26,10 @@ history:
     at: 2026-07-23T23:10:00Z
     by: cpo
     note: "Triaged same-day: UX / P2 / route product. Copy + wizard-flow fix, no research needed."
+  - stage: scoped
+    at: 2026-07-24T04:10:00Z
+    by: cpo
+    note: "Cycle-2 triage (D113): promoted P2 -> P1 and scoped into Sprint 3 as F019 (broker-wizard recovery path + missing-broker state chip), bundled with I004's internal-token config-dir resolution while the spec stays small (D114). Rationale: real dogfood-found friction on the first screen a paying customer sees; smallest item in the pool with the clearest churn story."
 ---
 
 # I003 — Broker wizard dead-ends on non-Windows hosts

@@ -10,6 +10,7 @@ route: next-gen-fix-lane
 linked_features: []
 linked_decisions:
   - D107
+  - D113
 linked_experiments: []
 contact: internal (2026-07-24 full-system audit, A004)
 resolved_at: null
@@ -18,6 +19,10 @@ history:
     at: 2026-07-24T00:30:00Z
     by: user_advocate
     note: "Filed from the 2026-07-24 full-system audit (A004). Verify-then-fix."
+  - stage: re-affirmed
+    at: 2026-07-24T04:10:00Z
+    by: cpo
+    note: "Cycle-2 triage (D113): P1 re-affirmed, route updated -- the next-gen fix lane is retired (D110), the calendar code now lives on product. Still VERIFY-THEN-FIX: needs one live high-impact event captured on the VM (FF timestamp vs broker server time vs UTC side by side) before any offset patch. NOT Sprint 3 scope (Sprint 3 is read-only over existing artifacts; this needs a live capture during VM operation). Rides the post-cutover shadow window; first qualifying event is FOMC Jul 28-29."
 ---
 
 # I007 — ForexFactory-calendar vs broker timezone never verified (A004)

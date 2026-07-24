@@ -5,11 +5,13 @@ submitter: ceo
 submitted_at: 2026-07-23T22:50:00Z
 classification: FEATURE-REQUEST
 priority: P1
-status: routed
+status: awaiting-verification
 route: product
 linked_features: []
 linked_decisions:
   - D088
+  - D110
+  - D113
 linked_experiments: []
 contact: internal (CEO)
 resolved_at: null
@@ -26,6 +28,10 @@ history:
     at: 2026-07-23T23:20:00Z
     by: user_advocate
     note: "Root cause REVISED after read-only next-gen investigation (D096). The silence was NOT merely correct quiet-market behavior: two coded-in defects also guaranteed it (200-live-bar warm-up gate silencing strikers ~33 days; Sae hard-disabled and unhydrated on the live path). Fix session in flight on next-gen 2026-07-24 -- this item's /v2 legibility feature is being implemented there, ahead of Sprint 3."
+  - stage: awaiting-verification
+    at: 2026-07-24T04:10:00Z
+    by: cpo
+    note: "Cycle-2 triage (D113): the fix LANDED on product via the D110 reconciliation merge (c97e8f7) -- quiet_reason line, warm-up progress, upcoming-USD-events panel, Sae/Karasu on the pitch, all inside the token gate. NOT closed: closure requires the VM cutover (runbook 7b.8) to confirm the /v2 legibility signals render on the serving host. Counts as open until then."
 ---
 
 # I002 — Dashboard silence is illegible
@@ -141,11 +147,12 @@ user asking.
 
 ## Closure notes
 
-Open. Closes when the /v2 legibility feature ships (status →
-shipped, with the feature spec linked) or is consciously declined at
-Sprint 3 scoping.
+Awaiting verification (2026-07-24, D113). The legibility feature
+shipped to `product` inside the D110 merge; the item closes when the
+VM cutover (runbook 7b.8) confirms the /v2 signals live on the
+serving host.
 
-- **Outcome:** _pending_
+- **Outcome:** _fix landed on product (c97e8f7); VM verification pending_
 - **Measurement (if applicable):** _pending — candidate: recurrence
   of "is it broken?" dogfood reports after ship_
 - **User notified:** pending — submitter is the CEO (internal);

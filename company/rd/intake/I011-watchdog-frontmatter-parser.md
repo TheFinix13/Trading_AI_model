@@ -7,9 +7,12 @@ classification: BUG
 priority: P2
 status: routed
 route: product
-linked_features: []
+linked_features:
+  - F024
 linked_decisions:
   - D107
+  - D113
+  - D114
 linked_experiments: []
 contact: internal (2026-07-24 full-system audit, A011)
 resolved_at: null
@@ -18,6 +21,10 @@ history:
     at: 2026-07-24T00:30:00Z
     by: user_advocate
     note: "Filed from the 2026-07-24 full-system audit (A011)."
+  - stage: scoped
+    at: 2026-07-24T04:10:00Z
+    by: cpo
+    note: "Cycle-2 triage (D113): P2 re-affirmed and scoped into Sprint 3 as F024 (D114) -- swap the hand-rolled scalar front-matter parser for yaml.safe_load (PyYAML already a dependency), preserving the never-raise contract. The intake_sla check guards the company loop itself; a mis-parse can silently age a P0. Small, well-bounded, P1-in-sprint."
 ---
 
 # I011 — Watchdog front-matter parser is scalar-only (A011)

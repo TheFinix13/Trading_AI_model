@@ -19,6 +19,10 @@ history:
     at: 2026-07-24T00:30:00Z
     by: user_advocate
     note: "Filed from the 2026-07-24 full-system audit (A012) + the audit-cadence process proposal (D108, pending CEO ratification)."
+  - stage: re-affirmed
+    at: 2026-07-24T04:10:00Z
+    by: cpo
+    note: "Cycle-2 triage (D113): P3 re-affirmed; the KPI semantic call is MADE -- experiments_in_flight counts experiments with an OPEN evaluation panel or scheduled compute; not-started and awaiting-panel states are 'queued', not in flight (current truthful value: 0). The pinned test that locks ledger and derived values to this rule is flagged to the Sprint 3 build executor as housekeeping. Item stays open for that test + the D108 cadence CEO ratification."
 ---
 
 # I012 — `experiments_in_flight` KPI semantics + recurring-audit cadence (A012 + process)

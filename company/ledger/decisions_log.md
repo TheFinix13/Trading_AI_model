@@ -2093,6 +2093,31 @@ honest negatives. Condensed finding at
 citation); brand_summary and headline_stat state the FAIL plainly —
 no softening. Claim-register audit re-run green after the edit.
 
+## D113 · 2026-07-24 · cpo · [PROCESS]
+
+**R&D cycle-2 triage: I005 + I006 RESOLVED (via D110), I002 →
+awaiting-verification, three items scoped into Sprint 3, queue
+12 → 10 open.**
+
+Full disposition table at `company/rd/intake/2026-W30-cycle2-triage.md`.
+Resolutions: I005 (P0 branch drift) closed by the D110 reconciliation
+merge (`c97e8f7` — product is the single serving branch, merged tree
+verified 1784+1 skip / P0 23/23); I006 (news-cache path split) closed
+by fix commit `be5706e` arriving inside the same merge. I002
+(dashboard silence) moves to awaiting-verification — the /v2
+legibility fix landed with D110 but closure waits on the VM cutover
+(runbook 7b.8) confirming the signals on the serving host. Sprint 3
+promotions (per D114): I003 P2→P1 → F019 (bundling I004's
+internal-token seam), I010 → F023, I011 → F024. Re-affirmed open:
+I007 (verify-then-fix, needs a live event on the VM — next FOMC
+Jul 28–29), I008 (VM preflight checklist half remains), I009 (repo
+pin done, VM venv rebuild pending). I012: KPI semantic call MADE —
+`experiments_in_flight` counts open-panel/scheduled-compute only
+(queued states excluded; truthful value 0); pinned test flagged to
+the build executor; D108 cadence still pending CEO ratification.
+I013 stays parked (research, P3, D111 stop rule). KPIs:
+`intake_items_open` 12 → 10; `intake_items_closed_last_7d` 1 → 3.
+
 ## Template for subsequent entries
 
 ```markdown

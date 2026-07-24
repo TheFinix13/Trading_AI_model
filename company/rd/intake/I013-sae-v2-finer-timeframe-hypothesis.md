@@ -5,11 +5,12 @@ submitter: research_lead
 submitted_at: 2026-07-24T04:58:00Z
 classification: RESEARCH_IDEA
 priority: P3
-status: open
+status: routed
 route: research
 linked_features: []
 linked_decisions:
   - D111
+  - D113
 linked_experiments:
   - phase_ae_sae_event_specialist
 contact: internal (CEO question after Phase AE FAIL, 2026-07-24 session)
@@ -19,6 +20,10 @@ history:
     at: 2026-07-24T04:58:00Z
     by: research_lead
     note: "Filed from the CEO's post-verdict question: was M15 the wrong scale for a precision striker? Parked as a v2 hypothesis, NOT a v1 retune."
+  - stage: triaged
+    at: 2026-07-24T05:05:00Z
+    by: cpo
+    note: "Cycle-2 triage (D113): stays PARKED -- research lane, P3, behind the Phase AC follow-ups and behind Sprint 3 on the product side. Gate to un-park is unchanged: a data plan for M5/M1 + actual-vs-consensus surprise data, then a fresh locked pre-registration (D111 stop rule: no v1 retune against the spent panel). No compute before both exist."
 ---
 
 # I013 — Sae v2 hypothesis: finer-timeframe precision mechanics (post-AE)
