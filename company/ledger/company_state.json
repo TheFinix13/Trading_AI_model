@@ -269,16 +269,16 @@
       "day_target": 13
     },
     {
-      "id": "sprint-2b-live-readiness",
-      "name": "Live Readiness",
-      "goal": "The D065 successor, step 1 of the D095 ordering: F017 Ops Watchdog (no-black-boxes directive) + F018 demo-order executor (the four gates get their one caller, DEMO-only, default-disabled). Squad->submit wiring out of scope. Zero diffs on agent/live, agent/risk, agent/squad.",
-      "started_at": "2026-07-24",
-      "target_end": "2026-07-25",
-      "actual_end": null,
-      "verdict": "in_progress",
-      "feature_ids": ["F017", "F018"],
-      "day_count": null,
-      "day_target": 2
+    "id": "sprint-2b-live-readiness",
+    "name": "Live Readiness",
+    "goal": "The D065 successor, step 1 of the D095 ordering: F017 Ops Watchdog (no-black-boxes directive) + F018 demo-order executor (the four gates get their one caller, DEMO-only, default-disabled). Squad->submit wiring out of scope. Zero diffs on agent/live, agent/risk, agent/squad.",
+    "started_at": "2026-07-24",
+    "target_end": "2026-07-25",
+    "actual_end": "2026-07-24",
+    "verdict": "COMPLETE",
+    "feature_ids": ["F017", "F018"],
+    "day_count": 1,
+    "day_target": 2
     }
   ],
   "features": [
@@ -2166,6 +2166,13 @@
       "role": "cto",
       "decision": "[FEATURE] F018 shipped -- demo-order executor: the four gates have their ONE caller, DEMO-only, default-disabled. 71 tests (target was >=45).",
       "context": "agent/platform/live_executor.py: Mt5OrderAdapter seam (RealMt5OrderAdapter lazy-imports MetaTrader5 inside methods; FakeMt5OrderAdapter exported for tests/dogfood); execute_approved refusal order = gate #5 enabled -> approval exists -> single-use -> can_send_live_order fresh (all four gates) -> alias+creds present -> connect -> DEMO guard against the server the adapter ACTUALLY connected to -> volume hard-cap -> send. Fill -> risk_budget.record_fill + trade_fill alert; errored send also consumes; consumption persists in <config_dir>/executions.jsonl across restarts; NO auto-retry. Routes: POST /api/executor/execute/<id> (409 on refusal), GET /api/executor/status, GET /api/executor/warning (pre-auth). /approvals Execute button with 3 states (disabled / not-on-windows / ready) + confirm dialog. Runbook section 7c: V2 Platform account wiring, ceremony order, kill-switch drill. Tests: test_live_executor_module.py (47), test_executor_api.py (12), P0 invariant file EXTENDED +12 (18 total, Sprint-2 pin untouched above the extension marker). Claim audit fully green (19 modules). Zero-diff invariant vs c56e561 verified empty."
+    },
+    {
+      "id": "D104",
+      "date": "2026-07-24",
+      "role": "ceo",
+      "decision": "[SPRINT] Sprint 2b (Live Readiness) closed COMPLETE -- same-day, both mandated features shipped, both P0 invariants verified.",
+      "context": "Post-mortem at company/sprints/sprint-2b-live-readiness/REPORT.md. F017 (79 tests vs >=35) makes the platform and the company loop observable -- 7 checks, transition-only alerts, /hq strip, cron runner. F018 (71 tests vs >=45) gives the four Sprint-2 gates their ONE caller: DEMO-only in code (allowlist + literal ack, fail-closed against the ACTUALLY-connected server), default-disabled, 0.01-lot cap, single-use approvals surviving restarts, no auto-retry. Zero-diff invariant vs c56e561 verified empty; the Sprint-2 live-mode-off pin is untouched and extended (+12 cases). Full suite green at close; claim audit green (19 modules). Five rolling Legal constraints on tape (D100, D102). Next per D095's ordering: shadow phase on the V2 Platform demo account after the CEO completes the runbook-7c ceremony on the VM; squad -> approval_queue submission wiring remains parked pending an explicit integration decision."
     }
   ],
   "sprint_verdicts": [
@@ -2207,6 +2214,8 @@
     "features_total_sprint_1": 3,
     "features_shipped_sprint_2": 6,
     "features_total_sprint_2": 6,
+    "features_shipped_sprint_2b": 2,
+    "features_total_sprint_2b": 2,
     "backlog_size": 2,
     "bugs_open": 0,
     "cycle_time_days_p50": null,

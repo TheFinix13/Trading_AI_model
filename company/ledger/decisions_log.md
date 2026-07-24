@@ -1901,6 +1901,26 @@ P0 invariant file EXTENDED +12 (18 total, Sprint-2 pin untouched
 above the extension marker). Claim audit fully green (19 modules).
 Zero-diff invariant vs `c56e561` verified empty.
 
+## D104 · 2026-07-24 · ceo · [SPRINT]
+
+**Sprint 2b (Live Readiness) closed COMPLETE — same-day, both
+mandated features shipped, both P0 invariants verified.**
+
+Post-mortem at `company/sprints/sprint-2b-live-readiness/REPORT.md`.
+F017 (79 tests vs ≥35) makes the platform and the company loop
+observable — 7 checks, transition-only alerts, `/hq` strip, cron
+runner. F018 (71 tests vs ≥45) gives the four Sprint-2 gates their
+ONE caller: DEMO-only in code (allowlist + literal ack, fail-closed
+against the ACTUALLY-connected server), default-disabled, 0.01-lot
+cap, single-use approvals surviving restarts, no auto-retry.
+Zero-diff invariant vs `c56e561` verified empty; the Sprint-2
+live-mode-off pin is untouched and extended (+12 cases). Full suite
+green at close; claim audit green (19 modules). Five rolling Legal
+constraints on tape (D100, D102). Next per D095's ordering: shadow
+phase on the V2 Platform demo account after the CEO completes the
+runbook-7c ceremony on the VM; squad → approval_queue submission
+wiring remains parked pending an explicit integration decision.
+
 ## Template for subsequent entries
 
 ```markdown
