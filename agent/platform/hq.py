@@ -332,12 +332,22 @@ def _count_open_intake(intake: list[dict], kpis: dict) -> int:
                if str(i.get("status") or "").lower() != "closed")
 
 
+
+# I012 / D113 semantic call: queued experiments are NOT in flight.
+_QUEUED_EXPERIMENT_STATUSES = frozenset(
+    {"not-started", "awaiting-panel", "queued", "parked"})
+
+
 def _count_experiments_in_flight(experiments: list[dict],
                                  kpis: dict) -> int:
-    """R&D pulse: experiments whose status is not closed/shipped/done.
+    """R&D pulse: experiments with an OPEN evaluation panel or
+    scheduled compute only (I012 semantic call, D113).
 
-    ``closed-negative`` also counts as "not in flight" -- the campaign
-    landed, even if the answer was unwelcome.
+    Excluded on BOTH ends: terminal statuses (``closed*`` -- including
+    ``closed-negative``: the campaign landed, even if the answer was
+    unwelcome -- ``shipped``, ``done``) AND queued statuses
+    (``not-started`` / ``awaiting-panel``: nothing is running, so
+    "in flight" would overstate R&D activity).
     """
     recorded = kpis.get("experiments_in_flight")
     if recorded not in (None, 0):
@@ -346,7 +356,7 @@ def _count_experiments_in_flight(experiments: list[dict],
     in_flight = 0
     for e in experiments:
         status = str(e.get("status") or "").lower()
-        if not status:
+        if not status or status in _QUEUED_EXPERIMENT_STATUSES:
             continue
         if any(status == p or status.startswith(p + "-")
                for p in terminal_prefixes):

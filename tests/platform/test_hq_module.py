@@ -325,7 +325,10 @@ class TestRdPulse:
     def test_experiments_in_flight_excludes_closed_variants(
             self, tmp_path: Path):
         # `closed-negative`, `closed-positive`, `shipped`, `done` are all
-        # terminal. Only genuinely open experiments count.
+        # terminal, and (I012/D113) queued states like `not-started`
+        # are not in flight either. Only genuinely running experiments
+        # count -- see test_experiments_kpi_semantics.py for the full
+        # D113 pin.
         ledger = tmp_path / "company_state.json"
         _write_ledger(ledger, {
             "meta": {}, "roles": [], "sprints": [], "features": [],
@@ -342,8 +345,8 @@ class TestRdPulse:
             ],
         })
         state = hq_state(ledger_path=ledger)
-        # Only e1 + e2 count.
-        assert state["kpis"]["experiments_in_flight"] == 2
+        # Only e2 counts (e1 is queued, not in flight).
+        assert state["kpis"]["experiments_in_flight"] == 1
 
     def test_published_findings_30d_window(self, tmp_path: Path):
         # A published finding within 30d counts; older than 30d doesn't.
