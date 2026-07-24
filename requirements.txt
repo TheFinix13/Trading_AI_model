@@ -31,4 +31,8 @@ MetaTrader5>=5.0.45 ; sys_platform == 'win32'
 # Manager / Freedesktop Secret Service) with a Python fallback. Zero-cost,
 # BSD-3, mature (10+ years). No new SaaS relationship.
 keyring>=25.0
+# F006's encrypted-file fallback (Fernet) imports this directly in
+# agent/platform/credentials.py -- it was missing here until the
+# 2026-07-24 VM cutover hit ModuleNotFoundError on a clean venv.
+cryptography>=42.0
 
