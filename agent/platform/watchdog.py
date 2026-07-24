@@ -35,8 +35,10 @@ import json
 import re
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
+
+import yaml
 
 from agent.platform import broker_health, credentials, paper_loop
 
@@ -283,23 +285,31 @@ def check_risk_state(state_path: Path | str | None = None,
 
 
 def _parse_front_matter(text: str) -> dict:
-    """Minimal YAML front-matter reader: top-level ``key: value``
-    pairs between the leading ``---`` fences. Lists / nesting are
-    ignored -- the SLA check only needs scalars."""
-    out: dict[str, str] = {}
+    """YAML front-matter reader (F024, I011): the block between the
+    leading ``---`` fences fed to ``yaml.safe_load``, so list-bearing
+    and nested front matter (``linked_features``, ``history``) parses
+    correctly. Never raises: missing fence, malformed YAML, or
+    non-mapping front matter degrade to ``{}`` (the item is skipped,
+    same as pre-F024). Date/datetime scalars are normalised back to
+    ISO strings so ``_parse_iso_epoch`` behaviour is unchanged."""
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
-        return out
+        return {}
+    body: list[str] = []
     for line in lines[1:]:
         if line.strip() == "---":
             break
-        if line.startswith((" ", "\t", "-")):
-            continue
-        key, sep, value = line.partition(":")
-        if not sep:
-            continue
-        out[key.strip()] = value.strip().strip('"').strip("'")
-    return out
+        body.append(line)
+    try:
+        data = yaml.safe_load("\n".join(body))
+    except yaml.YAMLError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): (v.isoformat() if isinstance(v, (datetime, date))
+                     else str(v) if isinstance(v, (int, float, bool))
+                     else v)
+            for k, v in data.items()}
 
 
 def check_intake_sla(intake_dir: Path | str | None = None,

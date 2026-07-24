@@ -1655,8 +1655,8 @@
       "title": "Watchdog front-matter parser -> yaml.safe_load",
       "priority": "P1",
       "sprint_id": "sprint-3-stickiness",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "shipped",
+      "current_owner_role": "cto",
       "reviewers": ["cpo", "cto", "backend", "qa"],
       "auth": false,
       "credentials": false,
@@ -1669,6 +1669,20 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-3-stickiness/F024-watchdog-frontmatter-yaml.md",
           "note": "Spec locked (D114). Drains I011. yaml.safe_load swap in the intake_sla check, never-raise contract and colour semantics byte-identical; fast-path eligible if the non-test diff stays <= 30 lines. Build gated on CEO charter review."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-24T13:50:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/watchdog.py _parse_front_matter (one function + one import)",
+          "note": "Front-matter block between the --- fences fed to yaml.safe_load; never-raise preserved (missing fence / malformed YAML / non-mapping -> {}, item skipped as pre-F024); date/datetime scalars normalised back to ISO strings so _parse_iso_epoch is unchanged; SLA thresholds and colours byte-identical. PyYAML already in requirements.txt (>=6.0) -- no new dependency."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-24T13:55:00Z",
+          "role": "cto",
+          "deliverable": "tests/platform/test_watchdog_module.py TestIntakeSlaYamlFrontMatter",
+          "note": "Shipped (D122) via fast path: non-test diff 23 insertions / 13 deletions (<= 30-line budget held). +9 tests vs >=8 target incl. the real post-triage I003 regression fixture and the list-bearing-P0-alarm case (the I011 bug); watchdog suite 53 passed; no claims (no new public accessor). Resolves intake I011."
         }
       ]
     }
@@ -2520,6 +2534,13 @@
       "role": "cto",
       "decision": "[SHIP] F023 alerts durability + SSE cap SHIPPED: opt-in JSONL sink on the alerts bus (default OFF -- memory-only behaviour unchanged) and a concurrent SSE stream cap that refuses with 429 + Retry-After instead of evicting existing consumers. All F014/D100 rolling constraints verified preserved.",
       "context": "agent/platform/alerts.py: configure_sink/sink_is_enabled/sink_path -- [alerts] jsonl_sink = true (literal true only) appends every published event to <config_dir>/alerts_log.jsonl; sink failures NEVER block or fail publish() (one warning per process, then quiet); no retention policy (operator-managed, documented). agent/platform/alerts_sse.py: set_max_streams/get_max_streams/active_stream_count -- [alerts] max_sse_streams (default 8) bounds concurrent /api/alerts/stream consumers; at the cap a NEW stream gets 429 + Retry-After BEFORE subscribing (refuse, not evict); slot release finally-guarded so abrupt disconnects can't leak capacity. /alerts page reconnects with bounded exponential backoff (2s -> 60s). Config via config.py [alerts] defaults + platform.toml.example. No new event types, no new secrets, no new copy; auth gate untouched (_UNAUTHENTICATED_API_PATHS unchanged). Legal+Security approved (company/legal/F023-review.md); claim register F023 sections x2 same-commit. +25 tests vs >=12 target (17 sink/config + 7 cap + 1 page backoff pin); resolves intake I010."
+    },
+    {
+      "id": "D122",
+      "date": "2026-07-24",
+      "role": "cto",
+      "decision": "[SHIP] F024 watchdog front-matter parser SHIPPED via the fast path: the hand-rolled scalar-only reader in intake_sla is replaced by yaml.safe_load, so list-bearing / nested intake front matter (linked_features, multi-entry history) parses correctly and a list-bearing P0 can no longer age past its 4-hour SLA unseen.",
+      "context": "agent/platform/watchdog.py _parse_front_matter only: front-matter block between the --- fences fed to yaml.safe_load; never-raise contract preserved (missing fence / malformed YAML / non-mapping -> {}, item skipped exactly as pre-F024); date/datetime scalars normalised back to ISO strings so _parse_iso_epoch behaviour is unchanged; SLA thresholds and colour semantics byte-identical. PyYAML already a dependency (requirements.txt PyYAML>=6.0) -- no new dependency. Fast-path eligibility held: non-test diff 23 insertions / 13 deletions in one function + one import (<= 30-line budget). No new public accessor, no claims, no copy -- claim audit green with no register change. +9 tests vs >=8 target (list-bearing ok/alarm/warn/resolved, unquoted YAML timestamp, malformed YAML degradation, missing fence, non-mapping front matter, real post-triage I003 regression); watchdog suite 53 passed. Resolves intake I011."
     }
   ],
   "sprint_verdicts": [

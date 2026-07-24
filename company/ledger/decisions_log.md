@@ -2323,6 +2323,29 @@ event types, no new secrets, no new copy; auth gate untouched
 same-commit. +25 tests vs ≥12 target (17 sink/config + 7 cap + 1
 page backoff pin); resolves intake I010.
 
+## D122 · 2026-07-24 · cto · [SHIP]
+
+**F024 watchdog front-matter parser SHIPPED via the fast path: the
+hand-rolled scalar-only reader in `intake_sla` is replaced by
+`yaml.safe_load`, so list-bearing / nested intake front matter
+(`linked_features`, multi-entry `history`) parses correctly and a
+list-bearing P0 can no longer age past its 4-hour SLA unseen.**
+
+`agent/platform/watchdog.py` `_parse_front_matter` only: front-matter
+block between the `---` fences fed to `yaml.safe_load`; never-raise
+contract preserved (missing fence / malformed YAML / non-mapping →
+`{}`, item skipped exactly as pre-F024); date/datetime scalars
+normalised back to ISO strings so `_parse_iso_epoch` behaviour is
+unchanged; SLA thresholds and colour semantics byte-identical. PyYAML
+already a dependency (requirements.txt `PyYAML>=6.0`) — no new
+dependency. Fast-path eligibility held: non-test diff 23 insertions /
+13 deletions in one function + one import (≤30-line budget). No new
+public accessor, no claims, no copy — claim audit green with no
+register change. +9 tests vs ≥8 target (list-bearing ok/alarm/warn/
+resolved, unquoted YAML timestamp, malformed YAML degradation,
+missing fence, non-mapping front matter, real post-triage I003
+regression); watchdog suite 53 passed. Resolves intake I011.
+
 ## Template for subsequent entries
 
 ```markdown

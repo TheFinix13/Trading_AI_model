@@ -292,6 +292,147 @@ class TestIntakeSla:
         assert r["status"] == "alarm"
 
 
+class TestIntakeSlaYamlFrontMatter:
+    """F024 (I011): the front matter is real YAML now -- list-bearing
+    and nested files must parse correctly, malformed ones must degrade
+    without an exception, and the SLA colours stay byte-identical."""
+
+    @staticmethod
+    def _list_bearing(directory: Path, item_id: str, *, priority: str,
+                      status: str, age_s: float) -> None:
+        """Fixture mirroring the real post-triage I003 shape:
+        list-bearing keys + multi-entry nested history."""
+        (directory / f"{item_id}-fixture.md").write_text(
+            "---\n"
+            f"id: {item_id}\n"
+            "source: audit\n"
+            f"submitted_at: {_iso(NOW - age_s)}\n"
+            f"priority: {priority}\n"
+            f"status: {status}\n"
+            "linked_features:\n"
+            "  - F019\n"
+            "  - F024\n"
+            "linked_decisions:\n"
+            "  - D107\n"
+            "  - D113\n"
+            "linked_experiments: []\n"
+            "resolved_at: null\n"
+            "history:\n"
+            "  - stage: filed\n"
+            f"    at: {_iso(NOW - age_s)}\n"
+            "    by: user_advocate\n"
+            "    note: \"Filed from the audit (A011): colons, too.\"\n"
+            "  - stage: scoped\n"
+            f"    at: {_iso(NOW - age_s / 2)}\n"
+            "    by: cpo\n"
+            "    note: \"Cycle-2 triage (D113): scoped into Sprint 3.\"\n"
+            "---\n\n# fixture\n", encoding="utf-8")
+
+    def test_list_bearing_item_inside_sla_is_ok(self, tmp_path: Path) -> None:
+        self._list_bearing(tmp_path, "I910", priority="P0",
+                           status="filed", age_s=1800)
+        r = watchdog.check_intake_sla(tmp_path, now=NOW)
+        assert r["status"] == "ok"
+        assert "1 intake item(s)" in r["detail"]
+
+    def test_list_bearing_p0_alarm_fires(self, tmp_path: Path) -> None:
+        # THE I011 bug: a list-bearing P0 must still trip the 4h alarm.
+        self._list_bearing(tmp_path, "I911", priority="P0",
+                           status="filed", age_s=5 * 3600)
+        r = watchdog.check_intake_sla(tmp_path, now=NOW)
+        assert r["status"] == "alarm"
+        assert "I911" in r["detail"]
+
+    def test_list_bearing_p1_warn_fires(self, tmp_path: Path) -> None:
+        self._list_bearing(tmp_path, "I912", priority="P1",
+                           status="new", age_s=8 * 86400)
+        r = watchdog.check_intake_sla(tmp_path, now=NOW)
+        assert r["status"] == "warn"
+        assert "I912" in r["detail"]
+
+    def test_list_bearing_resolved_never_flags(self, tmp_path: Path) -> None:
+        self._list_bearing(tmp_path, "I913", priority="P0",
+                           status="resolved", age_s=90 * 86400)
+        r = watchdog.check_intake_sla(tmp_path, now=NOW)
+        assert r["status"] == "ok"
+
+    def test_unquoted_yaml_timestamp_parses(self, tmp_path: Path) -> None:
+        # YAML parses an unquoted ISO stamp as datetime; the parser must
+        # normalise it back so the age math still works.
+        (tmp_path / "I914-fixture.md").write_text(
+            "---\nid: I914\nsource: audit\n"
+            f"submitted_at: {_iso(NOW - 5 * 3600)}\n"
+            "priority: P0\nstatus: filed\n---\n", encoding="utf-8")
+        fm = watchdog._parse_front_matter(
+            (tmp_path / "I914-fixture.md").read_text(encoding="utf-8"))
+        assert isinstance(fm["submitted_at"], str)
+        r = watchdog.check_intake_sla(tmp_path, now=NOW)
+        assert r["status"] == "alarm"
+
+    def test_malformed_yaml_degrades_without_exception(
+            self, tmp_path: Path) -> None:
+        (tmp_path / "I915-fixture.md").write_text(
+            "---\nid: I915\nstatus: [unclosed\npriority: ::: {{\n---\n",
+            encoding="utf-8")
+        _intake_item(tmp_path, "I916", priority="P1", status="routed",
+                     age_s=3600)
+        r = watchdog.check_intake_sla(tmp_path, now=NOW)
+        # The broken file is skipped (same as pre-F024); the healthy
+        # sibling still counts and the check never raises.
+        assert r["status"] == "ok"
+        assert "1 intake item(s)" in r["detail"]
+
+    def test_missing_fence_skipped(self, tmp_path: Path) -> None:
+        (tmp_path / "I917-fixture.md").write_text(
+            "# no front matter here\nstatus: filed\n", encoding="utf-8")
+        r = watchdog.check_intake_sla(tmp_path, now=NOW)
+        assert r["status"] == "ok"
+        assert "0 intake item(s)" in r["detail"]
+
+    def test_non_mapping_front_matter_skipped(self, tmp_path: Path) -> None:
+        (tmp_path / "I918-fixture.md").write_text(
+            "---\n- just\n- a\n- list\n---\n", encoding="utf-8")
+        r = watchdog.check_intake_sla(tmp_path, now=NOW)
+        assert r["status"] == "ok"
+
+    def test_real_i003_post_triage_regression(self, tmp_path: Path) -> None:
+        # Regression constructed from the REAL post-triage I003 front
+        # matter (resolved shape with history + linked_features): must
+        # parse, read status correctly, and never flag.
+        (tmp_path / "I003-fixture.md").write_text(
+            "---\n"
+            "id: I003\n"
+            "source: dogfood\n"
+            "submitter: casual_camila\n"
+            f"submitted_at: {_iso(NOW - 40 * 86400)}\n"
+            "classification: FEATURE_REQUEST\n"
+            "priority: P1\n"
+            "status: in_progress\n"
+            "route: product\n"
+            "linked_features:\n"
+            "  - F019\n"
+            "linked_decisions:\n"
+            "  - D105\n"
+            "  - D113\n"
+            "  - D114\n"
+            "contact: none\n"
+            "resolved_at: null\n"
+            "history:\n"
+            f"  - stage: filed\n    at: {_iso(NOW - 40 * 86400)}\n"
+            "    by: casual_camila\n"
+            "    note: \"Wants a plain-words digest: what changed.\"\n"
+            f"  - stage: scoped\n    at: {_iso(NOW - 86400)}\n"
+            "    by: cpo\n"
+            "    note: \"Scoped into Sprint 3 as F019 (D114).\"\n"
+            "---\n\n# I003\n", encoding="utf-8")
+        r = watchdog.check_intake_sla(tmp_path, now=NOW)
+        # in_progress is triaged (no P1-untriaged warn) but still open
+        # -> the >30d open warn fires, proving status/priority parsed.
+        assert r["status"] == "warn"
+        assert "I003" in r["detail"]
+        assert "30d" in r["detail"]
+
+
 # ---------------------------------------------------------------------
 # sprint_pulse + ledger_drift
 # ---------------------------------------------------------------------
