@@ -7,6 +7,7 @@ an interrupted write never corrupts the existing bag; (b) concurrent
 """
 from __future__ import annotations
 
+import secrets as _secrets
 import sys
 import threading
 from pathlib import Path
@@ -22,7 +23,10 @@ from agent.platform import credentials  # noqa: E402
 def _fallback_store(tmp_path: Path):
     credentials._reset_state_for_tests()
     credentials.set_config_dir(tmp_path)
-    credentials.set_encrypted_file_passphrase("a006-tests")
+    # Randomly generated per test: the bag lives in tmp_path and is
+    # discarded after the test, so no fixed literal is needed (and a
+    # literal here trips secret scanners -- GitGuardian #35143401).
+    credentials.set_encrypted_file_passphrase(_secrets.token_hex(16))
     credentials.force_fallback(True)
     yield
     credentials._reset_state_for_tests()
