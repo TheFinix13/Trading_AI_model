@@ -1569,8 +1569,8 @@
       "title": "Leaderboard groundwork -- per-agent/per-pair standings (single-install)",
       "priority": "P1",
       "sprint_id": "sprint-3-stickiness",
-      "current_stage": "spec",
-      "current_owner_role": "cpo",
+      "current_stage": "shipped",
+      "current_owner_role": "cto",
       "reviewers": ["cpo", "ux_researcher", "ui_designer", "cto", "backend", "frontend", "qa", "legal", "ceo"],
       "auth": false,
       "credentials": false,
@@ -1583,6 +1583,27 @@
           "role": "cpo",
           "deliverable": "company/sprints/sprint-3-stickiness/F022-leaderboard-groundwork.md",
           "note": "Spec locked (D114). Read-only leaderboard.py standings by agent/pair, no accounts dependency (cross-user deferred to the D115 auth migration); claims flagged with not-investment-performance framing. Build gated on CEO charter review."
+        },
+        {
+          "stage": "build",
+          "at": "2026-07-24T12:50:00Z",
+          "role": "backend",
+          "deliverable": "agent/platform/leaderboard.py + pages.py (LEADERBOARD page, Standings nav pill) + scripts/serve_platform.py routes",
+          "note": "standings(by=agent|pair, window=all|30|7) read-only over events.jsonl: closed trades, cumulative R (primary sort), mean TQS (tie-break), win rate under the SHARED F021 insufficient-sample rule (players.MIN_FORM_SAMPLE=5), last-active; deterministic ordering, injectable clock, never-raise/F005 degradation. Page under withStates() with grouping+window toggles, mobile, page-local CSS (no base-CSS bump); /api/leaderboard behind the install-token gate."
+        },
+        {
+          "stage": "legal",
+          "at": "2026-07-24T12:52:00Z",
+          "role": "legal",
+          "deliverable": "company/legal/F022-review.md + claim_register.md F022 section (same commit)",
+          "note": "Approved. All ranked metrics registered under the internal-standings/NOT-investment-performance disclaimer; window + sample scope named in every payload. Rolling constraints: shared F021/F022 insufficient-sample rule (same constant); 'internal squad standings' framing load-bearing -- no cross-install or benchmark comparison copy without fresh review (D115 Phase-2 gate)."
+        },
+        {
+          "stage": "ship",
+          "at": "2026-07-24T12:55:00Z",
+          "role": "cto",
+          "deliverable": "tests/platform/test_leaderboard_{module,api,page}.py",
+          "note": "Shipped (D120). +43 tests vs >=18 target: recomputation-equality pins for both groupings and all windows, ordering + tie-break, n-rule boundary (n=2/n=5), degradation matrix, install-gate 401, read-only invariant, banned-word absence, nav pins 8 -> 9. Claim audit green."
         }
       ]
     },
@@ -2464,6 +2485,13 @@
       "role": "cto",
       "decision": "[SHIP] F021 player career depth SHIPPED: form guide (rolling TQS sparkline + windowed win-rate) and manifest-derived gate status on /players/:id + index cards. The Phase AE honest negative is now product surface: Sae renders 'Benched -- Fails pre-registered AE2 quality criterion' with the headline stat and a link to the published finding.",
       "context": "agent/platform/players.py additions (read-only): form_guide (window-labelled rolling stats; insufficient-sample rule -- win-rate withheld below MIN_FORM_SAMPLE=5 closes, literal 'insufficient sample (n=...)' note instead), gate_status (benched ONLY from a PUBLISHED fail/dead manifest entry via the roster's finding_campaign; reason/headline are the manifest's own D112-gated strings, never hardcoded prose; missing/unpublished manifest -> standby fallback), recent_decisions (outcome + exit_reason on closes). UI: inline-SVG sparkline (no chart dependency), form strip on index cards, benched gate note; page-local CSS, no base-CSS bump. All claims registered in the same commit (F021 section, shared F021/F022 insufficient-sample rolling constraint); Legal approved (company/legal/F021-review.md). +27 tests vs >=20 target (22 module + 5 page); players suite 97 passed; claim audit green. Build note on tape: the executor session lost its API budget mid-F021 after drafting the implementation; the parent session reviewed the draft (manifest seam verified against research.load_manifest), wrote the tests/legal/ledger artifacts, and shipped it -- same review chain, different hands."
+    },
+    {
+      "id": "D120",
+      "date": "2026-07-24",
+      "role": "cto",
+      "decision": "[SHIP] F022 leaderboard groundwork SHIPPED: /leaderboard per-agent/per-pair standings from the shadow-paper tape (single-install, no accounts dependency). All ranked metrics registered in the same commit under the internal-standings/NOT-investment-performance disclaimer.",
+      "context": "agent/platform/leaderboard.py (new, read-only over squad_live/events.jsonl): standings(by=agent|pair, window_days=None|7|30) -- closed trades, cumulative R (primary sort, desc), mean TQS (tie-break), win rate, last-active per entity; insufficient-sample rule SHARED with F021 (players.MIN_FORM_SAMPLE=5 -- win-rate withheld below the floor, literal 'insufficient sample (n=...)' note); deterministic ordering + injectable clock; never-raise/F005 degradation. /leaderboard page under withStates() with agent/pair + all/30d/7d toggles, mobile 375px, page-local CSS (no base-CSS bump); GET /api/leaderboard behind the install-token gate; Standings nav pill added (nav-count pins 8 -> 9). Header framing pinned: internal squad standings on a demo feed, no external comparison; cross-user ranking stays blocked on the D115 auth migration. Legal approved (company/legal/F022-review.md); claim register F022 section same-commit. +43 tests vs >=18 target (25 module + 9 API + 9 page); claim audit green."
     }
   ],
   "sprint_verdicts": [

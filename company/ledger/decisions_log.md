@@ -2270,6 +2270,32 @@ reviewed the draft (manifest seam verified against
 `research.load_manifest`), wrote the tests/legal/ledger artifacts,
 and shipped it — same review chain, different hands.
 
+## D120 · 2026-07-24 · cto · [SHIP]
+
+**F022 leaderboard groundwork SHIPPED: `/leaderboard` per-agent /
+per-pair standings from the shadow-paper tape (single-install, no
+accounts dependency). All ranked metrics registered in the same
+commit under the internal-standings/NOT-investment-performance
+disclaimer.**
+
+`agent/platform/leaderboard.py` (new, read-only over
+`squad_live/events.jsonl`): `standings(by=agent|pair,
+window_days=None|7|30)` — closed trades, cumulative R (primary sort,
+descending), mean TQS (tie-break), win rate, last-active per entity.
+Insufficient-sample rule SHARED with F021 (`players.MIN_FORM_SAMPLE`
+= 5): win-rate withheld below the floor, literal "insufficient
+sample (n=…)" note instead. Deterministic ordering + injectable
+clock; never-raise / F005 degradation. `/leaderboard` page under
+`withStates()` with agent/pair + all/30d/7d toggles, mobile at
+375px, page-local CSS (no base-CSS bump); `GET /api/leaderboard`
+behind the install-token gate; Standings nav pill added (nav-count
+pins updated 8 → 9). Header framing pinned by test: internal squad
+standings on a demo feed, no external comparison implied; cross-user
+ranking stays blocked on the D115 auth migration. Legal approved
+(`company/legal/F022-review.md`); claim register §F022 same-commit.
++43 tests vs ≥18 target (25 module + 9 API + 9 page); claim audit
+green.
+
 ## Template for subsequent entries
 
 ```markdown

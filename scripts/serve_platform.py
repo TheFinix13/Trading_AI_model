@@ -40,7 +40,8 @@ sys.path.insert(0, str(REPO_ROOT))
 from agent.platform import (  # noqa: E402
     alerts, alerts_sse, alerts_telegram, approval_queue, auth,
     broker_connection, broker_health, credentials, highlights, hq,
-    kill_switch_admin, kill_switches, live_status, onboarding, paper_loop,
+    kill_switch_admin, kill_switches, leaderboard, live_status,
+    onboarding, paper_loop,
     live_executor, performance, players, rate_limiter, research,
     risk_budget, squad_events, watchdog,
 )
@@ -48,7 +49,8 @@ from agent.platform.config import load_config  # noqa: E402
 from agent.platform.pages import (  # noqa: E402
     ALERTS_PAGE, APPROVALS_PAGE, BROKER_WIZARD_PAGE, HIGHLIGHTS_PAGE,
     HQ_PAGE, HUB_PAGE,
-    KILL_SWITCHES_PAGE, LIVE_MODE_TOGGLE_PAGE, ONBOARDING_PAGE,
+    KILL_SWITCHES_PAGE, LEADERBOARD_PAGE, LIVE_MODE_TOGGLE_PAGE,
+    ONBOARDING_PAGE,
     PERFORMANCE_PAGE, PLAYERS_INDEX_PAGE, RESEARCH_PAGE, RESET_INSTALL_PAGE,
     RISK_PAGE, V1_PAGE, V2_PAGE,
     player_detail_page, players_not_found_page,
@@ -632,6 +634,24 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 # unknown days return the module's empty-state payload.
                 self._json(highlights.match_report(
                     hm.group(1), live_dir=live_dir))
+            elif path in ("/leaderboard", "/leaderboard/"):
+                # F022: /leaderboard standings -- per-agent / per-pair
+                # internal squad rankings from the shadow-paper tape.
+                self._send(LEADERBOARD_PAGE.encode(),
+                           "text/html; charset=utf-8")
+            elif path == "/api/leaderboard":
+                # F022: standings API. Unknown `by` / `window` values
+                # fold to the defaults inside the module (never-raise,
+                # matching the F020 bad-param posture).
+                window_raw = params.get("window", "")
+                try:
+                    window = int(window_raw) if window_raw else None
+                except ValueError:
+                    window = None
+                self._json(leaderboard.standings(
+                    by=params.get("by", "agent"),
+                    window_days=window,
+                    live_dir=live_dir))
             elif path == "/research":
                 # F003: /research verdict timeline (CPO-gated).
                 self._send(RESEARCH_PAGE.encode(),

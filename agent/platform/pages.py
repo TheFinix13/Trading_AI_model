@@ -54,6 +54,7 @@ _NAV = """<div class="nav">
 <a href="/performance" class="{performance}">Performance</a>
 <a href="/players" class="{players}">Squad</a>
 <a href="/highlights" class="{highlights}">Highlights</a>
+<a href="/leaderboard" class="{leaderboard}">Standings</a>
 <a href="/research" class="{research}">Research</a>
 </div>"""
 
@@ -62,7 +63,7 @@ def nav(active: str) -> str:
     """Render the top nav pills; ``active`` marks one pill with .here.
 
     Accepted values: ``hub`` / ``v1`` / ``v2`` / ``hq`` / ``performance`` /
-    ``players`` / ``highlights`` / ``research``. New Sprint 1
+    ``players`` / ``highlights`` / ``leaderboard`` / ``research``. New Sprint 1
     destinations (``broker``, ``onboarding``) render the nav with no
     active pill so their dedicated wizard pages don't accidentally
     advertise themselves as a permanent top-level route. Unknown values
@@ -77,6 +78,7 @@ def nav(active: str) -> str:
         performance="here" if active == "performance" else "",
         players="here" if active == "players" else "",
         highlights="here" if active == "highlights" else "",
+        leaderboard="here" if active == "leaderboard" else "",
         research="here" if active == "research" else "",
     )
 
@@ -4875,6 +4877,181 @@ HIGHLIGHTS_PAGE = (_HIGHLIGHTS_TEMPLATE
                    .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
                    .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
                    .replace("__NAV__", nav('highlights')))
+
+
+# ---------------------------------------------------------------------------
+# F022 -- /leaderboard standings page (Sprint 3)
+# ---------------------------------------------------------------------------
+#
+# Per-agent / per-pair standings computed on read by
+# agent/platform/leaderboard.py. Internal squad standings on a demo
+# feed -- rankings are activity/quality metrics, not investment
+# performance, and the header says so. All CSS is page-local
+# (_LEADERBOARD_CSS) so _BASE_CSS_VERSION does not bump.
+
+_LEADERBOARD_CSS = r"""
+.lb-header{margin-bottom:16px}
+.lb-header .preamble{color:var(--dim);font-size:13.5px;line-height:1.55;
+  max-width:820px}
+.lb-provenance{margin:0 0 16px;padding:10px 14px;background:var(--panel);
+  border:1px solid var(--border);border-left:3px solid var(--amber);
+  border-radius:8px;font-size:12px;color:var(--dim);line-height:1.55}
+.lb-provenance .k{color:var(--amber);text-transform:uppercase;
+  font-size:10.5px;letter-spacing:.05em;font-weight:700;margin-right:8px}
+.lb-toggles{display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:14px}
+.lb-toggle-group{display:flex;gap:6px;align-items:center}
+.lb-toggle-group .lbl{color:var(--dim);font-size:11px;
+  text-transform:uppercase;letter-spacing:.05em;margin-right:2px}
+.lb-toggle{padding:4px 12px;border:1px solid var(--border);
+  border-radius:999px;background:none;color:var(--fg);cursor:pointer;
+  font:inherit;font-size:12.5px;line-height:1.5}
+.lb-toggle.on{background:var(--panel);border-color:var(--accent)}
+.lb-window-note{color:var(--dim);font-size:12px;margin-bottom:10px}
+.lb-table{width:100%;border-collapse:collapse;font-size:13px;
+  font-variant-numeric:tabular-nums;background:var(--panel);
+  border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.lb-table th{text-align:left;color:var(--dim);font-size:10.5px;
+  text-transform:uppercase;letter-spacing:.05em;padding:8px 10px;
+  border-bottom:1px solid var(--border)}
+.lb-table td{padding:7px 10px;border-bottom:1px solid #1c2129}
+.lb-table tr:last-child td{border-bottom:none}
+.lb-table .rank{color:var(--dim);width:36px}
+.lb-table .pos-r{color:var(--green)} .lb-table .neg-r{color:var(--red)}
+.lb-table .nrule{color:var(--dim);font-style:italic}
+@media (max-width: 700px){
+  .lb-toggles{gap:6px 12px}
+  .lb-table-wrap{overflow-x:auto}
+  .lb-table{min-width:560px}
+}
+"""
+
+_LEADERBOARD_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Standings -- Blue Lock Trading Co.</title>
+<style>__BASE_CSS__
+__SKELETON_CSS__
+__LEADERBOARD_CSS__
+</style></head>
+<body>
+__NAV__
+<div class="lb-header">
+  <h1>Standings</h1>
+  <div class="preamble">The league table the tape writes: which
+  striker is in form, which pair has been kindest to the squad.
+  Rankings move as the shadow window accrues -- internal squad
+  standings only, one install ranked within itself.</div>
+</div>
+<div class="lb-provenance" role="note"><span class="k">Provenance</span>
+<span id="lb-provenance-text">Internal squad standings on a demo feed
+&mdash; shadow-paper activity and quality metrics from the v2 squad
+(no orders sent to any broker), NOT investment performance. No
+comparison against any external benchmark is implied. Past activity
+is not indicative of future results.</span></div>
+<div class="lb-toggles">
+  <div class="lb-toggle-group" id="lb-by-group">
+    <span class="lbl">Rank by</span>
+    <button type="button" class="lb-toggle on" data-by="agent">Strikers</button>
+    <button type="button" class="lb-toggle" data-by="pair">Pairs</button>
+  </div>
+  <div class="lb-toggle-group" id="lb-window-group">
+    <span class="lbl">Window</span>
+    <button type="button" class="lb-toggle on" data-window="all">All time</button>
+    <button type="button" class="lb-toggle" data-window="30">30 days</button>
+    <button type="button" class="lb-toggle" data-window="7">7 days</button>
+  </div>
+</div>
+<div id="lb-window-note" class="lb-window-note"></div>
+<div id="lb-table"></div>
+<script>__ERROR_COPY_JS__
+__WITH_STATES_JS__
+function lesc(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function fetchJson(url){
+  return fetch(url, {cache:"no-store"}).then(function(r){
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    return r.json();
+  });
+}
+var state = {by: "agent", win: "all"};
+function fmtR(v){
+  if(typeof v !== "number") return "\u2014";
+  return (v > 0 ? "+" : "") + v.toFixed(2) + "R";
+}
+function renderTable(data, box){
+  var rows = (data && data.rows) || [];
+  document.getElementById("lb-window-note").textContent =
+    "Window: " + (data.window_label || "") + " \u00b7 " +
+    (data.total_closed || 0) + " closed shadow-paper trade(s) in scope.";
+  if(data.provenance){
+    document.getElementById("lb-provenance-text").textContent =
+      data.provenance;
+  }
+  if(!rows.length) return "empty";
+  var head = state.by === "pair" ? "Pair" : "Striker";
+  var out = '<div class="lb-table-wrap"><table class="lb-table"><tr>'+
+    '<th>#</th><th>'+lesc(head)+'</th><th>Closed</th><th>Cum R</th>'+
+    '<th>Mean TQS</th><th>Win rate</th><th>Last active</th></tr>';
+  for(var i=0;i<rows.length;i++){
+    var r = rows[i];
+    var name = r.player_id
+      ? '<a href="/players/'+lesc(r.player_id)+'">'+lesc(r.name)+'</a>'
+      : lesc(r.name);
+    var rCls = (typeof r.cum_r === "number" && r.cum_r !== 0)
+      ? (r.cum_r > 0 ? ' class="pos-r"' : ' class="neg-r"') : "";
+    var winCell = r.insufficient_sample
+      ? '<span class="nrule">'+lesc(r.note || ("n="+r.closed_trades))+'</span>'
+      : lesc(r.win_rate_pct) + "%";
+    out += '<tr><td class="rank">'+lesc(r.rank)+'</td>'+
+      '<td>'+name+'</td>'+
+      '<td>'+lesc(r.closed_trades)+'</td>'+
+      '<td'+rCls+'>'+lesc(fmtR(r.cum_r))+'</td>'+
+      '<td>'+(r.mean_tqs == null ? "\u2014" : lesc(r.mean_tqs))+'</td>'+
+      '<td>'+winCell+'</td>'+
+      '<td>'+lesc((r.last_active||"").slice(0,16).replace("T"," ")||"\u2014")+
+      '</td></tr>';
+  }
+  out += '</table></div>';
+  box.innerHTML = out;
+}
+function load(){
+  var win = state.win === "all" ? "" : state.win;
+  return withStates(document.getElementById("lb-table"), function(){
+    return fetchJson("/api/leaderboard?by="+encodeURIComponent(state.by)+
+                     "&window="+encodeURIComponent(win));
+  }, renderTable, {
+    emptyMessage: "No closed shadow-paper trades on tape for this " +
+      "window yet \u2014 standings appear after the first close."
+  });
+}
+function wireToggles(groupId, attr, key){
+  var group = document.getElementById(groupId);
+  group.addEventListener("click", function(e){
+    var btn = e.target.closest(".lb-toggle");
+    if(!btn) return;
+    state[key] = btn.dataset[attr];
+    var btns = group.querySelectorAll(".lb-toggle");
+    for(var i=0;i<btns.length;i++){
+      btns[i].classList.toggle("on", btns[i] === btn);
+    }
+    load();
+  });
+}
+wireToggles("lb-by-group", "by", "by");
+wireToggles("lb-window-group", "window", "win");
+load();
+</script></body></html>"""
+
+LEADERBOARD_PAGE = (_LEADERBOARD_TEMPLATE
+                    .replace("__BASE_CSS__", _BASE_CSS)
+                    .replace("__SKELETON_CSS__", _SKELETON_CSS)
+                    .replace("__LEADERBOARD_CSS__", _LEADERBOARD_CSS)
+                    .replace("__ERROR_COPY_JS__", _ERROR_COPY_JS)
+                    .replace("__WITH_STATES_JS__", _WITH_STATES_JS)
+                    .replace("__NAV__", nav('leaderboard')))
 
 
 # ---------------------------------------------------------------------------

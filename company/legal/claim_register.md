@@ -745,6 +745,45 @@ reports, requires a fresh Legal review. Banned words ("ensemble",
 "aggregator") stay out of every template string (Brand sweep pinned
 by test).
 
+### F022 — `agent/platform/leaderboard.py` (Sprint 3)
+
+Public accessors: `leaderboard.standings(by, window_days, live_dir, now) -> dict`.
+
+Public module constants: `PROVENANCE_NOTE`, `GROUPINGS`,
+`WINDOWS_SUPPORTED`.
+
+Provenance disclaimer (applies to EVERY field below): all numbers are
+**internal squad standings on a demo feed** — shadow-paper
+activity/quality metrics from the v2 squad, **NOT investment
+performance**, and no comparison against any external benchmark is
+implied. `PROVENANCE_NOTE` is echoed in every payload and rendered as
+a banner on `/leaderboard`. Every payload names its computation
+window (`window_label`, `window_days`) and its scope
+(`total_closed`).
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `standings` | `rows[].closed_trades` / `rows[].wins` | Count of resolved `close` rows (numeric `pnl_pips`) per entity in the window — the same rows F002 `_stats_for_agent` counts as trades. Activity metric. | `leaderboard.standings`. | PROVENANCE_NOTE in payload + page banner. |
+| `standings` | `rows[].cum_r` | Sum of recorded `r` across the entity's closes in the window (primary ranking key, descending). | `leaderboard.standings`. | Same. |
+| `standings` | `rows[].mean_tqs` | Mean of recorded TQS across the entity's closes in the window (tie-break key); `None` when no close carries TQS. Quality metric, not profit. | `leaderboard.standings`. | Same. |
+| `standings` | `rows[].win_rate_pct` | Fraction of the entity's windowed closes with `pnl_pips > 0`, 0–100. **Insufficient-sample rule (shared with F021): below `players.MIN_FORM_SAMPLE` (5) closed trades the value is `None` and the payload carries the literal note `insufficient sample (n=…)` — no percentage is ever rendered from a sub-5 sample.** | `leaderboard.standings`. | Same + the withheld-below-5 rule. |
+| `standings` | `rows[].last_active` | Timestamp of the entity's most recent windowed close (verbatim from the recorded row). | `leaderboard.standings`. | None — recorded timestamp. |
+| `standings` | `rows[].rank`, `rows[].entity`, `rows[].name`, `rows[].player_id`, `rows[].insufficient_sample`, `rows[].note` | Ordering + identity + honesty-rail bookkeeping. `player_id` deep-links the striker's `/players/:id` evidence page; ordering is deterministic (cum R desc, mean TQS tie-break, entity name for stability). | `leaderboard.standings`. | Blue Lock IP notice covers striker names (same as F002). |
+| `standings` | `by`, `window_days`, `window_label`, `total_closed`, `min_sample`, `provenance`, `generated_at` | Payload meta: the grouping, the named window, the sample scope, and the shared F021/F022 sample floor. | `leaderboard.standings`. | None — meta / honesty rails. |
+
+Rolling constraint (Legal, shared F021/F022 — same rule, same
+constant): the insufficient-sample rule is a truthfulness claim.
+Rendering any percentage from fewer than `players.MIN_FORM_SAMPLE`
+closed trades, or lowering the constant, requires a fresh Legal
+review.
+
+Rolling constraint (Legal): rankings are single-install internal
+standings. Any copy implying a comparison across users/installs or
+against an external benchmark ("best squad", "top traders") is
+inaccurate until the D115 auth migration ships cross-user ranking
+under its own review — the "Internal squad standings" header framing
+is load-bearing and pinned by test.
+
 ## Audit hook (Sprint 2 — F010 implementation)
 
 Sprint 2's F010 ships `scripts/check_claim_register.py` +

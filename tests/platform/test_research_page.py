@@ -70,12 +70,13 @@ def test_page_verdict_pills_span_five_state_families():
 
 
 def test_page_nav_pills_count():
-    # 8 pills since F020 added Highlights (Sprint 3).
+    # 9 pills since F020 added Highlights and F022 added Standings
+    # (Sprint 3).
     p = pages.RESEARCH_PAGE
     nav_start = p.find('<div class="nav">')
     nav_end = p.find("</div>", nav_start)
     nav_block = p[nav_start:nav_end]
-    assert nav_block.count("<a ") == 8
+    assert nav_block.count("<a ") == 9
 
 
 def test_page_research_pill_active():
