@@ -2178,6 +2178,27 @@ signoff) in its own sprint; until then new code avoids hard-coding
 install-scoped identity where an account seam is trivially available
 (CTO checks at architecture review).
 
+## D116 · 2026-07-24 · ceo · [SPRINT]
+
+**Sprint 3 charter + F019–F024 specs reviewed and APPROVED; build
+authorized (standing delegation, 2026-07-24). Bundled ratification:
+the D108 recurring-audit cadence (quarterly + before any live-wiring
+milestone) is RATIFIED.**
+
+CEO reviewed the D114-locked charter
+(`company/sprints/sprint-3-stickiness/README.md`) and all six specs in
+the parent session on 2026-07-24 and approved the build under the
+user's standing delegation. Build order F019 → F020 → F021 → F022 →
+F023 → F024; P0s (F019/F020/F021) mandatory, P1s cut cleanly with a
+ledger note if the executor-day runs out. Binding constraints inherited
+from D114: zero writes to `agent/{live,risk,squad}/*` or
+`scripts/run_*.py` (zero-diff exit check vs `9c0a591`),
+claim-register-in-same-commit for F020/F021/F022, `withStates()` +
+375px mobile, suite only goes up from the 1784+1 baseline, no new
+dependencies. Bundled: the D108 quarterly-audit cadence (quarterly +
+before any live-wiring milestone) moves from pending-ratification to
+RATIFIED.
+
 ## Template for subsequent entries
 
 ```markdown

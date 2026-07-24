@@ -2394,6 +2394,13 @@
       "role": "cto",
       "decision": "[ARCHITECTURE] Multi-user auth migration charter adopted as the planning baseline -- accounts bind the P0 live-mode invariant; implementation deferred to its own sprint.",
       "context": "Charter at company/strategy/auth-migration-charter.md (design only, zero code). Locks: local account store with owner/viewer roles only; per-account keyring/Fernet namespaces (bluelock/<account_id>) + per-account session tokens on the F009 expiry/rotation machinery; THE P0 INVARIANT EXTENSION -- live-mode enablement, approval, and execution authority bind to an OWNER ACCOUNT, not an install (ceremony records account_id; the F018 executor refuses non-owner approvals re-checked fresh at execution; viewers structurally cannot arm/approve/execute; kill switches stay global and ceremony-free); localhost-open (D052) ends in multi-account mode; migration = zero-step adoption of the existing single-user install into a default owner account (VM unbroken, additive, rollback-safe); phasing -- Phase 1 local multi-account chartered, Phase 2 hosted FLAGGED as requiring external legal/compliance review + the Sprint 5 pen test before any commitment. NOT decided: hosting, billing, IdP choice, 2FA mechanics, team constructs. Implementation enters the review chain at spec (auth+credentials+security+legal fire, CEO signoff) in its own sprint; until then new code avoids hard-coding install-scoped identity where an account seam is trivially available (CTO checks at architecture review)."
+    },
+    {
+      "id": "D116",
+      "date": "2026-07-24",
+      "role": "ceo",
+      "decision": "[SPRINT] Sprint 3 charter + F019-F024 specs reviewed and APPROVED; build authorized (standing delegation, 2026-07-24). Bundled ratification: the D108 recurring-audit cadence (quarterly + before any live-wiring milestone) is RATIFIED.",
+      "context": "CEO reviewed the D114-locked charter (company/sprints/sprint-3-stickiness/README.md) and all six specs in the parent session on 2026-07-24 and approved the build under the user's standing delegation. Build order F019 -> F020 -> F021 -> F022 -> F023 -> F024; P0s (F019/F020/F021) mandatory, P1s cut cleanly with a ledger note if the executor-day runs out. Binding constraints inherited from D114: zero writes to agent/{live,risk,squad}/* or scripts/run_*.py (zero-diff exit check vs 9c0a591), claim-register-in-same-commit for F020/F021/F022, withStates() + 375px mobile, suite only goes up from 1784+1 baseline, no new dependencies. Bundled: the D108 quarterly-audit cadence (quarterly + before any live-wiring milestone) moves from pending-ratification to RATIFIED."
     }
   ],
   "sprint_verdicts": [
