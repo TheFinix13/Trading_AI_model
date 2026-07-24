@@ -463,6 +463,62 @@ poll_seconds = 45
 symbols = ["EURUSD", "GBPUSD", "USDCAD"]
 ```
 
+### 7b.7 Redeploy the 2026-07-24 warm-up / legibility fix
+
+The 2026-07-24 `next-gen` push fixes the P1 warm-up bug (a fresh
+runtime used to wait 200 **live** H4 bars ≈ 33 days before any agent
+could propose), wires Sae's hydration (calendar + M15 bars provider —
+he stays **disabled** behind `--enable-sae` until the Phase AE
+pre-registration passes), anchors the news-calendar cache to the repo
+root, and makes /v2 silence legible.
+
+**VM redeploy** (same clones as §7b.6):
+
+```powershell
+cd C:\TradingAgent-platform
+git fetch && git checkout next-gen && git reset --hard origin/next-gen
+
+# Restart the runtime (Ctrl-C the old one, or write kill.txt and wait
+# a poll). --reset is NOT needed: seeding applies on top of existing
+# state and is idempotent across restarts.
+.venv\Scripts\python scripts\run_squad_live.py --feed mt5 --aggregator phi41 --poll 45
+
+# Restart the platform server (or the Windows service from §7b.3).
+.venv\Scripts\python scripts\serve_platform.py --host 0.0.0.0 --port 8787 --auth-token <secret>
+```
+
+**What to expect after the restart:**
+
+* Startup logs a `warm-up seeded: <symbol> bars_seen=200/200
+  burn_in=2 (from N history bars)` line per symbol. `state.json` gains
+  a `warmup` block
+  (`bars_seen / warmup_bars / burn_in_remaining / seeded_bars`).
+* Strikers become proposable after a **2-live-bar burn-in** (~8 h on
+  H4), not 33 days. Tune with `--burn-in-bars N` if needed.
+* `--parity-mode` never seeds — cache-parity runs keep the old
+  count-from-zero semantics byte-identical.
+* The news cache now lives at `<repo>/data/news_calendar.json`
+  regardless of the launch directory; a legacy CWD-relative cache is
+  still read (with a migration log line) until the first fresh fetch.
+* Calendar fetch failures / staleness now emit `system_status` rows
+  into `events.jsonl` and a rate-limited squad-Telegram warning (once
+  per failure streak, not per poll).
+
+**New /v2 dashboard signals:**
+
+* A **"why quiet"** line under the LIVE badge —
+  `live_status().quiet_reason`, priority: dead/stalled > kill file >
+  warming up X/200 > burn-in > "evaluating quietly". Warm-up progress
+  per symbol rides along.
+* An **Upcoming USD events** panel (high-impact, this-week-only FF
+  feed) with countdowns, the calendar's fetched-at age (a dead feed is
+  visible), and a `sae window` tag when an event's [T−30 m, T+60 m]
+  window covers now — `GET /api/v2/live/upcoming_events`.
+* **Sae and Karasu join the pitch.** Sae renders dimmed with an
+  "(off)" label while `state.json` says `sae_enabled=false` (the
+  default; the Phase AE gate). Karasu sits in the back line as the
+  news-window defender.
+
 ## 8. Emergency stop
 
 ```powershell

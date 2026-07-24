@@ -945,9 +945,35 @@ tr:last-child td{border-bottom:none}
 .thought-card.dir-short .foot .v.dir{color:var(--red)}
 #workspace-empty{padding:20px 16px;text-align:center;color:var(--dim);
   font-size:12.5px;font-style:italic}
+/* 2026-07-24 I002 additions -- "why quiet" line + upcoming-events panel
+ * + Sae's disabled-on-pitch state. Grouped like the v0.40 block above. */
+#quiet-line{margin:2px 0 6px;font-size:12.5px;color:var(--fg);
+  background:rgba(210,153,34,.08);border:1px solid rgba(210,153,34,.3);
+  border-radius:8px;padding:5px 10px;display:inline-block}
+.evrow{display:flex;align-items:baseline;gap:8px;padding:5px 2px;
+  border-bottom:1px solid var(--border);font-size:12.5px}
+.evrow:last-child{border-bottom:none}
+.evrow .when{color:var(--dim);white-space:nowrap;
+  font-variant-numeric:tabular-nums;font-size:11.5px}
+.evrow .ttl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.evrow .cd{color:var(--amber);white-space:nowrap;font-size:11.5px;
+  font-variant-numeric:tabular-nums}
+.evrow .sae-tag{font-size:10px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:#e3b341;border:1px solid rgba(227,179,65,.5);
+  background:rgba(227,179,65,.12);border-radius:6px;padding:1px 6px;
+  white-space:nowrap}
+/* Sae dimmed while state.json says sae_enabled=false: still on the
+ * pitch (the roster is honest about the squad) but visibly benched. */
+.player-off{opacity:.35}
 </style></head><body>
 <h1>Blue Lock squad — the pitch <span class="dim">v2 · M001 ensemble</span>
  <span class="badge sim" id="modebadge">sim-only — not trading real lots</span></h1>
+<!-- "Why is the pitch quiet?" line — LIVE mode only, fed by
+     live_status().quiet_reason so silence is legible, not spooky. -->
+<div id="quiet-line" role="status" aria-live="polite" style="display:none">
+  <span class="dim">why quiet:</span> <span id="quiet-reason">—</span>
+</div>
 <div class="sub" id="v2-subtitle">Walk-forward replay played as a match: passes are proposals, tackles are
 aggregator rejections, the wall is Sentinel, goals are winning trades. Click a player for
 their profile; click a ticker row for the full event payload.</div>
@@ -1034,6 +1060,19 @@ __NAV__
   <div class="card" id="ticker-card"><h2 style="margin:0 0 8px;font-size:15px">Match ticker <span class="dim" style="font-size:11px">click a row for detail</span></h2><div class="tkr" id="ticker"></div></div>
   <div class="card" id="league-card"><h2 style="margin:0 0 8px;font-size:15px">League table (this match)</h2>
     <table id="league"><tr><th>Player</th><th>Props</th><th>Blocked</th><th>Trades</th><th>Goals</th><th>Win%</th><th>Pips</th><th>TQS</th></tr></table></div>
+  <!-- Upcoming USD events (LIVE mode only): Sae's hunting calendar.
+       Rows tagged "sae window" when now falls inside [T-30m, T+60m]. -->
+  <div class="card" id="events-card" style="display:none">
+    <h2 style="margin:0 0 4px;font-size:15px">Upcoming USD events
+      <span class="dim" style="font-size:11px">high-impact · this week only</span></h2>
+    <div class="dim" id="events-meta" style="font-size:11.5px;margin-bottom:6px">—</div>
+    <div id="events-list"></div>
+    <div id="events-empty" style="display:none;padding:12px 4px;text-align:center;
+         color:var(--dim);font-size:12.5px;font-style:italic">
+      No high-impact USD events left this week. The ForexFactory feed only
+      covers the current week — the list refills after the weekly rollover.
+    </div>
+  </div>
 </div>
 </div>
 <div class="gflash" id="gflash">GOAL!</div>
@@ -1183,6 +1222,24 @@ function drawPitch(){
     pg.addEventListener("mouseleave",hidePlayerTooltip);
     svg.appendChild(pg);
   }
+  // Re-apply Sae's benched state after any redraw (redraws rebuild the
+  // player groups, wiping the class applySaeState toggled last poll).
+  applySaeState(saeEnabled);
+}
+// null = unknown (replay mode / status not resolved yet). Only an
+// explicit false from live_status dims Sae -- the Phase AE gate made
+// visible instead of a silently static striker.
+let saeEnabled = null;
+function applySaeState(enabled){
+  saeEnabled = (enabled === undefined) ? null : enabled;
+  const pg = document.getElementById("pl_sae_itoshi");
+  if(!pg) return;
+  const off = (matchId === "__live__" && saeEnabled === false);
+  pg.classList.toggle("player-off", off);
+  const labels = pg.querySelectorAll("text");
+  const nm = labels[labels.length - 1];
+  if(nm) nm.textContent = off ? "Sae (off)"
+    : ((roster.sae_itoshi || {name: "Sae"}).name);
 }
 function playerPos(aid){ const r=roster[aid];
   return r? [r.x, 130-(r.y*1.2)-5] : [50,65]; }
@@ -1938,6 +1995,10 @@ function workspaceCardHtml(t){
 function stopLive(){
   if(liveTimer){clearInterval(liveTimer); liveTimer=null;}
   if(workspaceTimer){clearInterval(workspaceTimer); workspaceTimer=null;}
+  if(statusTimer){clearInterval(statusTimer); statusTimer=null;}
+  if(eventsTimer){clearInterval(eventsTimer); eventsTimer=null;}
+  const ql=document.getElementById("quiet-line"); if(ql) ql.style.display="none";
+  const ec=document.getElementById("events-card"); if(ec) ec.style.display="none";
   livePolling=false; setModeBadge(false);
   document.getElementById("seek").disabled=false;
   document.getElementById("play").disabled=false;
@@ -1998,14 +2059,88 @@ async function loadLive(){
   livePolling=true;
   liveTimer=setInterval(pollLive, 2000);
   pollLiveStatus();
+  refreshUpcomingEvents();
+  // quiet_reason / warm-up need their own cadence: event batches are
+  // hours apart on H4, so piggybacking on pollLive would go stale.
+  if(!statusTimer) statusTimer=setInterval(pollLiveStatus, 15_000);
+  if(!eventsTimer) eventsTimer=setInterval(refreshUpcomingEvents, 60_000);
   document.getElementById("clock").innerText=
     `LIVE · ${events.length} events so far`;
   refreshWaitingPanel();
 }
 async function pollLiveStatus(){
   try{ const st=await (await fetch("/api/v2/live/status")).json();
-    setModeBadge(true, !!st.running, st.source); }
-  catch(e){ setModeBadge(true,false,null); }
+    setModeBadge(true, !!st.running, st.source);
+    renderQuietLine(st); applySaeState(st.sae_enabled); }
+  catch(e){ setModeBadge(true,false,null); renderQuietLine(null); }
+}
+// ---------------------------------------------------------------------
+// I002 "why quiet" surfaces (2026-07-24). LIVE mode only: a status line
+// under the badge fed by live_status().quiet_reason, and an upcoming
+// USD-events panel fed by /api/v2/live/upcoming_events. Both degrade
+// to honest text when their API is unreachable.
+// ---------------------------------------------------------------------
+let statusTimer=null, eventsTimer=null;
+function renderQuietLine(st){
+  const line=document.getElementById("quiet-line");
+  const span=document.getElementById("quiet-reason");
+  if(!line || !span) return;
+  if(matchId!=="__live__"){ line.style.display="none"; return; }
+  line.style.display="inline-block";
+  if(!st){ span.innerText="status endpoint unreachable"; return; }
+  let txt = st.quiet_reason || "\u2014";
+  // Compact per-symbol warm-up detail, unless it IS the headline.
+  const w = st.warmup;
+  if(w && !/^warming up/.test(txt)){
+    const parts = Object.keys(w).sort().map(sym=>{
+      const x = w[sym] || {};
+      return sym+" "+(x.bars_seen ?? "?")+"/"+(x.warmup_bars ?? "?")+
+        (x.burn_in_remaining ? (" \u00b7 burn-in "+x.burn_in_remaining) : "");
+    });
+    if(parts.length) txt += " \u00b7 warm-up: "+parts.join(", ");
+  }
+  if(st.sae_enabled===false) txt += " \u00b7 Sae benched (pre-reg gate)";
+  if(st.calendar_fetched_age_seconds==null) txt += " \u00b7 calendar cache missing";
+  span.innerText = txt;
+}
+function fmtAge(s){
+  if(s < 90) return Math.round(s)+"s";
+  if(s < 5400) return Math.round(s/60)+"m";
+  return (s/3600).toFixed(1)+"h";
+}
+async function refreshUpcomingEvents(){
+  const card=document.getElementById("events-card");
+  if(!card) return;
+  if(matchId!=="__live__"){ card.style.display="none"; return; }
+  card.style.display="";
+  let d=null;
+  try{ d=await (await fetch("/api/v2/live/upcoming_events")).json(); }
+  catch(e){ d=null; }
+  const meta=document.getElementById("events-meta");
+  const list=document.getElementById("events-list");
+  const empty=document.getElementById("events-empty");
+  if(!d || d.error){
+    meta.innerText="calendar API unreachable";
+    list.innerHTML=""; empty.style.display=""; return;
+  }
+  // Fetched-at age makes a dead feed visible: a healthy refresher keeps
+  // this under the ~6 h TTL; hours beyond that means fetches are failing.
+  meta.innerText = d.fetched_age_seconds==null
+    ? "calendar cache missing \u2014 news fetch never succeeded"
+    : "calendar fetched "+fmtAge(d.fetched_age_seconds)+" ago";
+  const evs=d.events||[];
+  if(!evs.length){ list.innerHTML=""; empty.style.display=""; return; }
+  empty.style.display="none";
+  list.innerHTML=evs.map(e=>{
+    const mins=Number(e.minutes_to_event ?? 0);
+    const cd=mins>=60 ? Math.floor(mins/60)+"h "+(mins%60)+"m" : mins+"m";
+    return '<div class="evrow">'+
+      '<span class="when">'+esc(String(e.time_utc||"").slice(5,16).replace("T"," "))+' UTC</span>'+
+      '<span class="ttl" title="'+esc(e.title)+'">'+esc(e.title)+'</span>'+
+      (e.in_sae_window ? '<span class="sae-tag">sae window</span>' : "")+
+      '<span class="cd">in '+esc(cd)+'</span>'+
+    '</div>';
+  }).join("");
 }
 async function pollLive(){
   if(!livePolling) return;

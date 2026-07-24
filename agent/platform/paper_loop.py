@@ -29,8 +29,15 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+from agent.news.calendar import (
+    DEFAULT_CACHE_PATH as NEWS_CACHE_PATH,
+    cache_fetched_at,
+    filter_events,
+    load_calendar,
+)
 
 # (filename, timestamp field used to pace the replay clock)
 SOURCE_FILES: tuple[tuple[str, str], ...] = (
@@ -320,7 +327,50 @@ class PaperLoop:
         return outcome
 
 
-def live_status(out_dir: Path, stale_after_s: float = 120.0) -> dict:
+def _warmup_progress(state: dict) -> dict | None:
+    """Pass through the engine's per-symbol warm-up payload (or None
+    for pre-seeding state files)."""
+    w = state.get("warmup")
+    return w if isinstance(w, dict) and w else None
+
+
+def _quiet_reason(*, fresh: bool, kill_reason: str | None,
+                  state: dict) -> str:
+    """One terse, honest line explaining why the pitch looks quiet.
+
+    Priority order (highest wins): dead/stalled > kill file >
+    warming up > burn-in > no events & no setups. Takes ``fresh``
+    (heartbeat recency) rather than ``running`` because a killed-but-
+    alive runner should report the kill, not look dead.
+    """
+    if not fresh:
+        return "runner dead or stalled — no fresh heartbeat"
+    if kill_reason is not None:
+        return f"halted by kill file: {kill_reason}"
+    warmup = _warmup_progress(state) or {}
+    warming = [
+        f"{sym} {int(w.get('bars_seen', 0))}/{int(w.get('warmup_bars', 0))}"
+        for sym, w in sorted(warmup.items())
+        if isinstance(w, dict)
+        and int(w.get("bars_seen", 0)) <= int(w.get("warmup_bars", 0))
+    ]
+    if warming:
+        return "warming up: " + ", ".join(warming)
+    burn_in = max(
+        (int(w.get("burn_in_remaining", 0))
+         for w in warmup.values() if isinstance(w, dict)),
+        default=0,
+    )
+    if burn_in > 0:
+        return (
+            f"burn-in: confirming live feed "
+            f"({burn_in} bar{'s' if burn_in != 1 else ''} left)"
+        )
+    return "no scheduled events in window and no fresh setups — evaluating quietly"
+
+
+def live_status(out_dir: Path, stale_after_s: float = 120.0,
+                calendar_cache_path: Path | str | None = None) -> dict:
     """Status payload for /api/v2/live/status (read-only over out_dir).
 
     The runner (``scripts/run_squad_live.py``) writes ``state.json`` only
@@ -361,6 +411,13 @@ def live_status(out_dir: Path, stale_after_s: float = 120.0) -> dict:
         or (poll_age_s is not None and poll_age_s < stale_after_s)
     )
     running = fresh and kill_reason is None
+    cal_path = (calendar_cache_path if calendar_cache_path is not None
+                else NEWS_CACHE_PATH)
+    cal_fetched = cache_fetched_at(cal_path)
+    cal_age_s = (
+        round((datetime.now(tz=timezone.utc) - cal_fetched).total_seconds(), 1)
+        if cal_fetched is not None else None
+    )
     return {
         "dir": str(out_dir),
         "exists": out_dir.is_dir(),
@@ -386,6 +443,75 @@ def live_status(out_dir: Path, stale_after_s: float = 120.0) -> dict:
         ),
         "cursors": state.get("cursors"),
         "kill": kill_reason,
+        # -- additive fields (2026-07-24, I002 "why quiet" work) --
+        # Per-symbol warm-up progress from the engine's state payload
+        # (None for state files written before warm-up seeding landed).
+        "warmup": _warmup_progress(state),
+        # Sae roster status (None on pre-Sae state files).
+        "sae_enabled": state.get("sae_enabled"),
+        # Age of the news-calendar cache; None = no readable cache
+        # (dead feed is visible instead of silently absent).
+        "calendar_fetched_age_seconds": cal_age_s,
+        # One terse line the UI can show under the LIVE badge.
+        "quiet_reason": _quiet_reason(
+            fresh=fresh, kill_reason=kill_reason, state=state,
+        ),
+    }
+
+
+def upcoming_events(
+    cache_path: Path | str | None = None,
+    *,
+    now: datetime | None = None,
+    currencies: tuple[str, ...] = ("USD",),
+    impacts: tuple[str, ...] = ("High",),
+    sae_window_before_min: int = 30,
+    sae_window_after_min: int = 60,
+) -> dict:
+    """Read-only collector for /api/v2/live/upcoming_events.
+
+    High-impact USD events still ahead of ``now`` from the local news
+    cache (anchored path per agent.news.calendar; never a network
+    call). ``in_sae_window`` marks events whose Sae firing window
+    [T - 30 min, T + 60 min] covers ``now``. ``fetched_age_seconds``
+    exposes the cache's age so a dead feed is visible on the page;
+    note the ForexFactory feed is this-week-only, so an empty list
+    late in the week is normal.
+    """
+    now = now or datetime.now(tz=timezone.utc)
+    path = cache_path if cache_path is not None else NEWS_CACHE_PATH
+    fetched = cache_fetched_at(path)
+    events = filter_events(
+        load_calendar(path),
+        currencies=currencies,
+        impact_levels=impacts,
+        after=now,
+    )
+    rows = []
+    # Cache order is whatever the writer stored; the panel wants
+    # soonest-first regardless.
+    events.sort(key=lambda e: e.time_utc)
+    for e in events:
+        assert e.time_utc is not None  # filter_events(after=) drops timeless
+        window_start = e.time_utc - timedelta(minutes=sae_window_before_min)
+        window_end = e.time_utc + timedelta(minutes=sae_window_after_min)
+        rows.append({
+            "time_utc": e.time_utc.isoformat(),
+            "title": e.title,
+            "currency": e.currency,
+            "impact": e.impact,
+            "minutes_to_event": int(
+                (e.time_utc - now).total_seconds() // 60
+            ),
+            "in_sae_window": bool(window_start <= now <= window_end),
+        })
+    return {
+        "exists": fetched is not None,
+        "fetched_at": fetched.isoformat() if fetched else None,
+        "fetched_age_seconds": (
+            round((now - fetched).total_seconds(), 1) if fetched else None
+        ),
+        "events": rows,
     }
 
 
