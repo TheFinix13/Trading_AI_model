@@ -1,4 +1,19 @@
-# AI Context — brain dump (updated 2026-07-24, v0.48)
+# AI Context — brain dump (updated 2026-07-24, v0.49)
+
+> v0.49 — **Reconciliation merge** 2026-07-24 (D110, merge commit
+> `c97e8f7`): `next-gen` merged into `product`; **`product` is the
+> single serving branch** (A001/A002 P0 drift closed). Brings in the
+> warm-up seeding fix (200-bar gate now seeds from history + 2-bar
+> burn-in), Sae hydration (gated behind `--enable-sae`, default OFF
+> pending Phase AE pre-reg), calendar cache repo-root anchor (A003)
+> + fetch-failure visibility, and the I002 /v2 legibility fixes
+> (quiet_reason, warm-up progress, upcoming-USD-events panel,
+> Sae/Karasu on the pitch). Conflicts: `serve_platform.py` (product
+> handler wins, `upcoming_events` endpoint ported inside token gate),
+> RUNBOOK (union; redeploy = sec 7b.8, retargeted at `product`).
+> Suite **1784 pass + 1 env-skip**; P0 23/23; claim audit green.
+> D109 = secret-hygiene sweep (no secret-shaped literals in tests,
+> `tests/CONVENTIONS.md`). VM cutover pending (runbook 7b.8).
 
 > v0.48 — **Product hardening night** 2026-07-24 (D105–D108 on
 > `product`). **Ops-Telegram split** (D105): `[alerts.telegram.ops]`
@@ -37,8 +52,9 @@
 
 Read this first in a fresh chat. Deeper history: `docs/00-journey.md`
 + `docs/CHECKPOINT.md`. **Branches:** `main` = live demo agent;
-`next-gen` = v2 platform + squad paper; **`product` = commercial
-lane** (Sprint 0–2 + charter elevation). Research on
+**`product` = the single serving branch** (v2 platform + squad paper
++ commercial lane, post-D110 merge); `next-gen` retired as a serving
+branch (feature branches → `product` from now on). Research on
 `finance-research-experiments::multi-agent-ensemble`. Demo only.
 
 ## 1) What is built and working
@@ -66,15 +82,17 @@ lane** (Sprint 0–2 + charter elevation). Research on
 - **Dogfood cast (F016):** 6 personas + `scripts/dogfood_personas.py`
   (in-process server, keychain-safe, no live mode by construction);
   first run 113/113 across onboarding/broker/kill/approvals/alerts.
-- **Live (`main`) + Squad (`next-gen`):** unchanged; zero diffs.
-- **Tests:** **1720 pass** (P0 invariant 23 cases; claim audit
-  green, 19 modules).
+- **Live (`main`):** unchanged. **Squad runtime:** now served from
+  `product` (post-merge); warm-up seeds from history, Sae hydrated
+  but OFF, calendar failures visible on /v2.
+- **Tests:** **1784 pass + 1 env-skip** (P0 invariant 23 cases;
+  claim audit green, 19 modules).
 
 ## 2) Key file paths
 
 | Area | Files |
 |---|---|
-| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I004},findings/2026-07-phase-ac-pitch-assignment.md,personas/,loop-validation.md}`, `company/strategy/sellability-gaps.md`, `company/ledger/{company_state.json (108 D### + 19 roles + intake×12 + experiments),decisions_log.md}` |
+| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I004},findings/2026-07-phase-ac-pitch-assignment.md,personas/,loop-validation.md}`, `company/strategy/sellability-gaps.md`, `company/ledger/{company_state.json (110 D### + 19 roles + intake×12 + experiments),decisions_log.md}` |
 | Sprint 2b live readiness | `agent/platform/{watchdog,live_executor}.py`, `scripts/run_watchdog.py`, `company/sprints/sprint-2b-live-readiness/{README,F017-ops-watchdog,F018-demo-order-executor,REPORT}.md`, `company/legal/{F017,F018}-review.md` + `executor-demo-warning.md`, `docs/RUNBOOK_demo_launch.md` sec 7c, tests `tests/platform/test_{watchdog_*,run_watchdog_script,live_executor_module,executor_api}.py` |
 | Sprint 2 real-trading | `agent/platform/{rate_limiter,kill_switches,kill_switch_admin,risk_budget,broker_health,approval_queue,alerts,alerts_sse,alerts_telegram,auth}.py`, `agent/platform/pages.py` (KILL_SWITCHES / RISK / APPROVALS / LIVE_MODE_TOGGLE / ALERTS + HQ R&D pulse), `scripts/{serve_platform,check_claim_register,install_git_hooks}.py`, `scripts/git-hooks/pre-commit`, `company/legal/{live-mode,approval-queue}-warning.md` + `claim_register.md` |
 | Sprint 0/1 backend | `agent/platform/{performance,players,research,hq (R&D pulse extension),credentials,broker_connection,onboarding}.py` |
@@ -85,15 +103,19 @@ lane** (Sprint 0–2 + charter elevation). Research on
 
 ## 3) Next immediate goal
 
-**Start the shadow clock (D095 step 2, now unblocked by D104):** the
-CEO runs runbook 7c on the VM — store V2 Platform creds via
+**VM cutover to `product` (runbook 7b.8), then start the shadow
+clock (D095 step 2):** the CEO redeploys the VM clones onto
+`product` (fetch + checkout + restart runtime and server; venv
+REBUILD for the pandas<3 pin), then runs runbook 7c on the VM — store
+V2 Platform creds via
 `/settings/broker`, enable `[live_executor]` + ceremony, execute a
 test order, run the kill-switch drill — then wire
 `scripts/run_watchdog.py --loop` into Task Scheduler so the 30–90 day
 shadow window is observable from day one. In parallel: charter the
 install-token → multi-user auth migration; Sprint 3 scoping picks up
-I002 (/v2 silence, next-gen lane) + I003 (broker dead-end copy);
-cycle-2 R&D drain (I002–I004 open).
+I003 (broker dead-end copy); I002 fix LANDED via the D110 merge
+(close after VM verification); A004 tz verification still open;
+cycle-2 R&D drain (I003–I012 open).
 
 **Parked (no start without discussion):** wiring four-gate composition
 to squad's real-order path; Sprint 4 `/feedback` route (D084 defers —

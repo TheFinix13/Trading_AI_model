@@ -2208,6 +2208,13 @@
       "role": "qa",
       "decision": "[PROCESS] Secret-scanner hygiene sweep: all secret-shaped literals removed from the test suite and dogfood script; convention adopted -- no secret-shaped literals in tests, generate at runtime.",
       "context": "GitGuardian monitors this public repo and opened incidents #35143401 (a006-tests fixture passphrases) and #35027049 (base64 blob in tests/security/test_auth.py) -- all false positives, but each new one emails the CEO. One-pass sweep across 33 test files + scripts/dogfood_personas.py: 29 fixture passphrases -> secrets.token_hex(16); fake broker passwords / sentinels / fallback tokens -> hoisted runtime-generated values (leak assertions use the same variable, assertion strength unchanged); base64 blob built with base64.b64encode(...) at runtime; remaining dummy passwords use scanner-quiet 'x' * 12 constructions. Test semantics preserved (length/charset/entropy preconditions verified per call-site, e.g. URL_SAFE_TOKEN_RE >= 24 url-safe chars); full suite 1721 passed before and after. Production code (agent/) verified clean. Convention recorded in tests/CONVENTIONS.md."
+    },
+    {
+      "id": "D110",
+      "date": "2026-07-24",
+      "role": "cto",
+      "decision": "[ARCHITECTURE] next-gen merged into product (merge commit c97e8f7); product is now the single serving branch -- the VM cuts over from next-gen and the A001/A002 P0 branch drift is closed.",
+      "context": "The 2026-07-24 full-system audit found the Sprint 0-2b safety layer (auth, onboarding gate, kill switches, risk budgets, approvals, executor) lived only on product while the VM served next-gen, which had the warm-up/Sae/calendar/legibility fixes instead. This merge unifies both lanes. Conflicts resolved as pre-scoped: scripts/serve_platform.py -- product's hardened handler wins, next-gen's /api/v2/live/upcoming_events endpoint ported inside the install-token gate; docs/RUNBOOK_demo_launch.md -- union, next-gen redeploy section renumbered to 7b.8 and retargeted at product. Verification on the merged tree: full suite 1784 passed + 1 env-skip, P0 live-mode-off invariant 23/23, claim audit green. next-gen is retired as a serving branch; future next-gen-lane work lands via feature branches into product."
     }
   ],
   "sprint_verdicts": [

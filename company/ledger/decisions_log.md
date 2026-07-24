@@ -2036,6 +2036,27 @@ Convention recorded in `tests/CONVENTIONS.md`: new tests must never
 embed password/token-shaped string literals; generate them at runtime
 or construct them (`"x" * 12` style).
 
+## D110 · 2026-07-24 · cto · [ARCHITECTURE]
+
+**next-gen merged into product (merge commit `c97e8f7`); `product` is
+now the single serving branch — the VM cuts over from `next-gen` and
+the A001/A002 P0 branch drift is closed.**
+
+Context: the 2026-07-24 full-system audit found the Sprint 0–2b safety
+layer (auth, onboarding gate, kill switches, risk budgets, approvals,
+executor) lived only on `product` while the VM served `next-gen`,
+which had the warm-up/Sae/calendar/legibility fixes instead. This
+merge unifies both lanes. Conflicts resolved as pre-scoped:
+`scripts/serve_platform.py` — product's hardened handler wins,
+next-gen's `/api/v2/live/upcoming_events` endpoint ported inside the
+install-token gate; `docs/RUNBOOK_demo_launch.md` — union, the
+next-gen redeploy section renumbered to 7b.8 and retargeted at
+`product`. Verification on the merged tree: full suite 1784 passed +
+1 env-skip (product's 1721 minus 1 moved-to-skip chromium case, plus
+next-gen's 64 new tests), P0 live-mode-off invariant 23/23, claim
+audit green. `next-gen` is retired as a serving branch; future
+next-gen-lane work lands via feature branches into `product`.
+
 ## Template for subsequent entries
 
 ```markdown
