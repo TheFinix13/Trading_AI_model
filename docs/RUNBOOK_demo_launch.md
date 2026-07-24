@@ -463,6 +463,46 @@ poll_seconds = 45
 symbols = ["EURUSD", "GBPUSD", "USDCAD"]
 ```
 
+### 7b.7 Ops Telegram bot (company/ops alerts on their own chat)
+
+Company/ops alerts (`watchdog_alert`) route to a **separate** bot +
+chat so ops noise never lands between trade fills. Safety events
+(`kill_switch_trip`, `platform_down`) go to **both** chats — a trip
+must reach you wherever you're looking. Everything else stays on the
+primary alerts destination. If you skip this section entirely, ops
+alerts simply fall back to the primary chat — nothing is dropped.
+
+Two-minute setup:
+
+1. In Telegram, message **@BotFather** → `/newbot`.
+2. Name it (e.g. `Blue Lock Ops`) with a username ending in `bot`
+   (e.g. `bluelock_ops_bot`). Copy the **token** BotFather replies
+   with (`123456:DEF-...`) — never commit it.
+3. Open a chat with the new bot and send it any message (bots can't
+   message you first). For a group: add the bot to the group and post
+   there.
+4. Get the chat id (replace `<TOKEN>`):
+
+```bash
+curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | python3 -m json.tool
+```
+
+   The `"chat":{"id":...}` field is the chat id (groups are negative).
+   Empty `result`? Send the bot another message and re-run.
+
+5. Add to `platform.toml` at the repo root:
+
+```toml
+[alerts.telegram.ops]
+enabled = true
+bot_token = "123456:DEF-..."
+chat_id = "-1009876543210"
+```
+
+6. Restart the platform server (and the watchdog loop if running).
+   Fail-closed: the ops destination only fires when `enabled`,
+   `bot_token`, AND `chat_id` are all set.
+
 ## 7c. Demo-order executor (F018) — wire the "V2 Platform" demo account
 
 > **What this is.** Sprint 2b's demo-order executor: approved entries

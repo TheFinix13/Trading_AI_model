@@ -950,6 +950,14 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                     chat_id=chat_id,
                     per_event=body.get("per_event") or {},
                     enabled=bool(body.get("enabled", False)))
+                # Ops destination is toml-managed ([alerts.telegram.ops]);
+                # tokens never travel through this API (Legal pin).
+                ops_cfg = (cfg_now.get("alerts", {}).get("telegram", {})
+                           .get("ops", {}) or {})
+                alerts_telegram.configure_ops(
+                    bot_token=str(ops_cfg.get("bot_token", "") or ""),
+                    chat_id=str(ops_cfg.get("chat_id", "") or ""),
+                    enabled=bool(ops_cfg.get("enabled", False)))
                 alerts_telegram.start()
                 self._json({"ok": True,
                             "config": alerts_telegram.load_config()})

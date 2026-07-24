@@ -1921,6 +1921,29 @@ phase on the V2 Platform demo account after the CEO completes the
 runbook-7c ceremony on the VM; squad → approval_queue submission
 wiring remains parked pending an explicit integration decision.
 
+## D105 · 2026-07-24 · cto · [FEATURE]
+
+**Ops-Telegram split shipped — company/ops alerts route to their own
+bot + chat via `[alerts.telegram.ops]` (CEO requirement 2026-07-24).**
+
+`alerts_telegram.py` gains a second destination with identical
+fail-closed semantics (enabled AND bot_token AND chat_id). Routing
+matrix as module constants: `OPS_EVENTS` (`watchdog_alert`) → ops
+destination with PRIMARY FALLBACK when the block is absent/disabled
+(mis-channeled beats dropped, pinned by test); `DUAL_ROUTE_EVENTS`
+(`kill_switch_trip`, `platform_down`) → BOTH destinations (safety
+redundancy); all trading events → primary only. `load_config()` still
+never echoes raw tokens — the Legal no-token-echo pin is extended to
+the ops block, and the ops token never travels through
+`POST /api/alerts/config` (toml-managed). Wired in `run_watchdog.py`
++ `serve_platform.py`; `watchdog_alert` chip added to `/alerts`;
+BotFather 2-minute setup at runbook section 7b.7; config example in
+`platform.toml.example`. Legal inline re-review updated the F014
+`alerts_telegram` register section (routing constraint on tape).
+Tests: `test_alerts_telegram_ops_routing.py` (13 — routing matrix,
+fallback, fail-closed, no-token-echo); platform suite 866 green;
+claim audit green.
+
 ## Template for subsequent entries
 
 ```markdown

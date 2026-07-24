@@ -31,6 +31,35 @@
 # chat_id = "-1001234567890"
 # summary_every = 10
 
+# F014 Telegram bridge for the alerts bus. The PRIMARY destination
+# reuses the [telegram] bot_token / chat_id above (no new secret) and
+# carries all TRADING events (trade_fill, stop_hit, risk_budget_breach,
+# approval_submitted). Default disabled.
+# [alerts.telegram]
+# enabled = true
+# [alerts.telegram.per_event]
+# trade_fill = true
+# approval_submitted = false
+
+# OPS destination (CEO ops-split, 2026-07-24): company/ops alerts go
+# to a DIFFERENT bot + chat so ops noise never mixes with trade pages.
+# Routing matrix:
+#   watchdog_alert                  -> ops destination (falls back to
+#                                      primary if this block is
+#                                      absent/disabled -- better a
+#                                      mis-channeled alert than a
+#                                      dropped one)
+#   kill_switch_trip, platform_down -> BOTH destinations (safety
+#                                      events deserve redundancy)
+#   all other trading events        -> primary only
+# Fail-closed: fires only when enabled AND bot_token AND chat_id are
+# all set. Create the second bot via @BotFather (see
+# docs/RUNBOOK_demo_launch.md section 7b.7).
+# [alerts.telegram.ops]
+# enabled = true
+# bot_token = "123456:DEF-..."
+# chat_id = "-1009876543210"
+
 # Paper loop replay-cache selection. Both are optional; CLI flags
 # (--cache / --aggregator) always win, and if this whole section is
 # absent the loop auto-picks the newest g7_replay_cache_g7retry1-*

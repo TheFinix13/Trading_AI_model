@@ -66,6 +66,13 @@ def _defaults(repo_root: Path) -> dict:
         # bot_token / chat_id from [telegram] above (no new secret).
         # Default disabled; enable in platform.toml to route bus
         # events to Telegram.
+        #
+        # [alerts.telegram.ops] (CEO ops-split, 2026-07-24): SEPARATE
+        # bot_token + chat_id for company/ops alerts (watchdog_alert).
+        # Safety events (kill_switch_trip, platform_down) go to BOTH
+        # destinations. Fail-closed: ops destination fires only when
+        # enabled AND both fields are set; when absent/disabled,
+        # ops events fall back to the primary destination.
         "alerts": {
             "telegram": {
                 "enabled": False,
@@ -77,6 +84,11 @@ def _defaults(repo_root: Path) -> dict:
                     "approval_submitted": False,
                     "platform_down": True,
                     "watchdog_alert": True,
+                },
+                "ops": {
+                    "enabled": False,
+                    "bot_token": "",
+                    "chat_id": "",
                 },
             },
         },
@@ -188,6 +200,14 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
                 for k, v in pe.items():
                     if k in cfg["alerts"]["telegram"]["per_event"]:
                         cfg["alerts"]["telegram"]["per_event"][k] = bool(v)
+            ops = tg.get("ops")
+            if isinstance(ops, dict):
+                if "enabled" in ops:
+                    cfg["alerts"]["telegram"]["ops"]["enabled"] = bool(
+                        ops["enabled"])
+                for key in ("bot_token", "chat_id"):
+                    if ops.get(key):
+                        cfg["alerts"]["telegram"]["ops"][key] = str(ops[key])
     le = raw.get("live_executor")
     if isinstance(le, dict):
         if "enabled" in le:

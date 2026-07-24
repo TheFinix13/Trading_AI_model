@@ -6140,7 +6140,7 @@ Sprint 2 does not publish events from any live pathway -- only the
 __WITH_STATES_JS__
 const EVENT_TYPES = [
   "trade_fill","stop_hit","kill_switch_trip","risk_budget_breach",
-  "approval_submitted","platform_down"
+  "approval_submitted","platform_down","watchdog_alert"
 ];
 const ACTIVE = new Set(EVENT_TYPES);
 

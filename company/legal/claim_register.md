@@ -489,38 +489,58 @@ change requires the client (`ALERTS_PAGE` EventSource wiring) to
 change with it and Legal to re-review the "browser-compatible live
 stream" claim.
 
-### F014 — `agent/platform/alerts_telegram.py` (Sprint 2)
+### F014 — `agent/platform/alerts_telegram.py` (Sprint 2; ops split 2026-07-24)
 
 Public accessors:
 `configure(bot_token, chat_id, per_event=None, enabled=True) -> None`,
+`configure_ops(bot_token, chat_id, enabled=True) -> None`,
 `load_config() -> dict`,
 `is_enabled() -> bool`,
+`ops_is_enabled() -> bool`,
 `send(event, client=None) -> bool`,
 `start(client=None) -> str | None`,
 `stop() -> None`.
 
-Public module constants: `TELEGRAM_API_BASE`. Test-only helpers
-marked `# claim-exempt`: `reset`, `snapshot`.
+Public module constants: `TELEGRAM_API_BASE`, `OPS_EVENTS`,
+`DUAL_ROUTE_EVENTS`. Test-only helpers marked `# claim-exempt`:
+`reset`, `snapshot`.
 
 | Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
 |---|---|---|---|---|
 | `configure` | None | Set the bridge config. Idempotent. Reuses the existing `[telegram]` bot_token / chat_id from `platform.toml` -- F014 does NOT add a new secret. | `alerts_telegram.configure`. | None. |
-| `load_config` | `dict` | Snapshot: `{enabled, bot_token_configured, chat_id_configured, per_event}`. NEVER echoes the raw bot_token or chat_id (only boolean flags). | `alerts_telegram.load_config`. | Bot-token-never-in-payload constraint. |
+| `configure_ops` | None | Set the SEPARATE ops destination (`[alerts.telegram.ops]` -- its own bot_token + chat_id; CEO ops-split requirement 2026-07-24). Idempotent. | `alerts_telegram.configure_ops`. | None. |
+| `load_config` | `dict` | Snapshot: `{enabled, bot_token_configured, chat_id_configured, per_event, ops}`. NEVER echoes the raw bot_token or chat_id (only boolean flags) -- for the ops block too. | `alerts_telegram.load_config`. | Bot-token-never-in-payload constraint. |
 | `is_enabled` | `bool` | True iff enabled AND bot_token AND chat_id are all populated (fail-closed). | Same. | None. |
-| `send` | `bool` | Post a single event via httpx (mocked in tests). Refuses when disabled, missing token, or the event's type is not in `per_event`. | `alerts_telegram.send`. | None -- transport. |
-| `start` / `stop` | `str \| None` / None | Attach / detach the bus subscription. Idempotent. | Same. | None. |
+| `ops_is_enabled` | `bool` | Same fail-closed test for the ops destination (enabled AND ops bot_token AND ops chat_id). | Same. | None. |
+| `send` | `bool` | Post a single event via httpx (mocked in tests), routed per the module matrix. Refuses when no destination is enabled, or the event's type is not in `per_event`. True when >= 1 destination accepted. | `alerts_telegram.send`. | None -- transport. |
+| `start` / `stop` | `str \| None` / None | Attach / detach the bus subscription (attaches when EITHER destination is enabled). Idempotent. | Same. | None. |
 | `TELEGRAM_API_BASE` | `str` | `https://api.telegram.org/bot` -- concatenated with the bot_token to form the sendMessage URL. | Same. | None -- meta. |
+| `OPS_EVENTS` | `frozenset[str]` | Ops-class events (`watchdog_alert`) routed to the ops destination; FALLS BACK to primary when the ops block is absent/disabled (mis-channeled beats dropped). | Same. | None -- meta. |
+| `DUAL_ROUTE_EVENTS` | `frozenset[str]` | Safety events (`kill_switch_trip`, `platform_down`) routed to BOTH destinations -- redundancy over deduplication. | Same. | None -- meta. |
 
 Rolling constraint (Legal): `load_config()` returns
 `bot_token_configured: bool` and `chat_id_configured: bool` -- NEVER
-the raw string values. If a future change echoes the token itself,
-that's a P0 secrets-in-transit regression and must strike the
-"Telegram routing config" claim.
+the raw string values. This pin EXTENDS to the `ops` sub-dict
+(2026-07-24 ops split): `ops.bot_token_configured` /
+`ops.chat_id_configured` are boolean flags only, and the ops token
+never travels through `POST /api/alerts/config` (toml-managed). If a
+future change echoes either token itself, that's a P0
+secrets-in-transit regression and must strike the "Telegram routing
+config" claim.
 
 Fail-closed constraint: `is_enabled()` requires ALL of (enabled=True,
-non-empty bot_token, non-empty chat_id). Any leakage that would
-allow a partially-configured bridge to fire would violate the
+non-empty bot_token, non-empty chat_id); `ops_is_enabled()` applies
+the identical rule to the ops block. Any leakage that would allow a
+partially-configured bridge to fire would violate the
 "user-controlled routing" claim.
+
+Routing constraint (Legal, 2026-07-24 inline re-review): the routing
+matrix is `OPS_EVENTS` -> ops (primary fallback), `DUAL_ROUTE_EVENTS`
+-> both, everything else -> primary. The fallback direction is pinned
+by test (`test_ops_event_falls_back_to_primary_when_ops_disabled`):
+a disabled ops block must NEVER silently drop watchdog_alert. Any
+change that lets an ops event drop when the ops block is
+misconfigured is a safety regression and requires Legal re-review.
 
 ### F015 — `agent/platform/hq.py` (Org & Flow + HQ dashboard state)
 

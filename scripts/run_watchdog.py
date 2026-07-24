@@ -41,15 +41,24 @@ _EXIT_BY_STATUS = {"ok": 0, "na": 0, "warn": 1, "alarm": 2}
 def _configure_telegram(cfg: dict) -> None:
     """Attach the F014 Telegram bridge when platform.toml enables it,
     so watchdog_alert transitions page the operator. No-ops (fails
-    closed) when the bridge is disabled or unconfigured."""
+    closed) when the bridge is disabled or unconfigured.
+
+    The [alerts.telegram.ops] block (CEO ops-split, 2026-07-24) wires
+    a SEPARATE destination for ops alerts; when it is absent/disabled
+    watchdog_alert falls back to the primary destination."""
     tg_cfg = cfg.get("alerts", {}).get("telegram", {})
-    if not tg_cfg.get("enabled"):
-        return
-    alerts_telegram.configure(
-        bot_token=str(cfg.get("telegram", {}).get("bot_token", "") or ""),
-        chat_id=str(cfg.get("telegram", {}).get("chat_id", "") or ""),
-        per_event=tg_cfg.get("per_event") or {},
-        enabled=True)
+    if tg_cfg.get("enabled"):
+        alerts_telegram.configure(
+            bot_token=str(cfg.get("telegram", {}).get("bot_token", "") or ""),
+            chat_id=str(cfg.get("telegram", {}).get("chat_id", "") or ""),
+            per_event=tg_cfg.get("per_event") or {},
+            enabled=True)
+    ops_cfg = tg_cfg.get("ops") or {}
+    if ops_cfg.get("enabled"):
+        alerts_telegram.configure_ops(
+            bot_token=str(ops_cfg.get("bot_token", "") or ""),
+            chat_id=str(ops_cfg.get("chat_id", "") or ""),
+            enabled=True)
     alerts_telegram.start()
 
 
