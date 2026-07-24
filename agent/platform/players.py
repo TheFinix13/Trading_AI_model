@@ -156,6 +156,11 @@ _ROSTER: tuple[dict, ...] = (
         "weapon": "event_release_impulse",
         "symbols": ("EURUSD", "GBPUSD", "USDCAD"),
         "home_tf": "M5",
+        # F021: the published research finding that benches him. The
+        # gate_status() accessor resolves this against the publication
+        # manifest -- the FAIL copy comes from the manifest row, never
+        # hardcoded prose here.
+        "finding_campaign": "phase_ae_sae_event_specialist",
     },
     {
         "id": "kunigami",
@@ -417,7 +422,8 @@ def _recent_activity(agent_key: str, rows: list[dict], n: int = 5) -> list[dict]
     Rows are already appended in time order to events.jsonl by the
     paper loop, so we sort defensively by the ``t``/``timestamp``
     field and pick the tail. Each row is compressed to the fields
-    the bio card renders (t, type, symbol, dir, pnl_pips, conviction).
+    the bio card renders (t, type, symbol, dir, pnl_pips, conviction,
+    and -- F021, additive -- exit_reason on closes).
     """
     my_rows = _filter_rows_for(agent_key, rows)
     def _ts(r: dict) -> str:
@@ -437,6 +443,8 @@ def _recent_activity(agent_key: str, rows: list[dict], n: int = 5) -> list[dict]
             item["pnl_pips"] = round(float(r["pnl_pips"]), 1)
         if isinstance(r.get("conviction"), (int, float)):
             item["conviction"] = round(float(r["conviction"]), 3)
+        if r.get("type") == "close" and r.get("exit_reason"):
+            item["exit_reason"] = str(r["exit_reason"])
         out.append(item)
     return out
 
@@ -503,6 +511,11 @@ def get_player(
         "evolution": bio["evolution"],
         "stats": stats,
         "recent_activity": activity,
+        # F021: rolling form + gate state ride the same payload so the
+        # detail page needs no extra fetch.
+        "form_guide": form_guide(canonical, live_dir=live_dir),
+        "gate_status": gate_status(canonical),
+        "recent_decisions": recent_decisions(canonical, live_dir=live_dir),
         "source_hint": _source_hint(rows, my_row_count, row_meta["status"]),
         "generated_at": _now_iso(),
     }
@@ -528,6 +541,8 @@ def list_players(
     for entry in _ROSTER:
         bio = _load_bio(entry["id"], bio_dir=the_bio_dir)
         stats = _stats_for_agent(entry["agent_key"], rows)
+        guide = form_guide(entry["id"], live_dir=live_dir)
+        gate = gate_status(entry["id"])
         out.append({
             "id": entry["id"],
             "name": entry["name"],
@@ -539,6 +554,9 @@ def list_players(
             "proposals": stats["proposals"],
             "wins": stats["wins"],
             "net_pips": stats["net_pips"],
+            # F021: compact form strip + gate state for the index card.
+            "form": guide["form"] if guide else None,
+            "gate": gate["status"] if gate else entry["status"],
         })
     return out
 
@@ -555,3 +573,159 @@ def list_state(
         "players": list_players(live_dir=live_dir, bio_dir=bio_dir),
         "total": len(_ROSTER),
     }
+
+
+# --------------------------------------------------------------------
+# F021 -- form guide, gate status, recent decisions (read-only)
+# --------------------------------------------------------------------
+
+# Small-sample honesty rule (claim register F021): below this many
+# closed trades the rolling win-rate is NOT rendered as a percentage;
+# the payload carries win_rate_pct=None + an explicit
+# "insufficient sample (n=...)" note instead.
+MIN_FORM_SAMPLE = 5
+
+# Default rolling window for the form guide ("last 20 closed
+# shadow-paper trades").
+FORM_WINDOW_DEFAULT = 20
+
+
+def _closes_for(agent_key: str, rows: list[dict]) -> list[dict]:
+    """Time-ordered close rows with a numeric pnl_pips for one agent
+    -- exactly the rows ``_stats_for_agent`` counts as trades."""
+    closes = [
+        r for r in _filter_rows_for(agent_key, rows)
+        if r.get("type") == "close"
+        and isinstance(r.get("pnl_pips"), (int, float))
+    ]
+    closes.sort(key=lambda r: str(r.get("t") or r.get("timestamp") or ""))
+    return closes
+
+
+def form_guide(
+    id_: str | None,
+    *,
+    live_dir: Path | str | None = None,
+    n: int = FORM_WINDOW_DEFAULT,
+) -> dict | None:
+    """Rolling form over the last ``n`` closed shadow-paper trades.
+
+    Returns ``None`` for an unknown striker. The payload always names
+    its window (``window_label``) and its ``sample_size``; below
+    :data:`MIN_FORM_SAMPLE` closes the win-rate is withheld
+    (``win_rate_pct=None``, ``insufficient_sample=True``, explicit
+    note) -- a percentage over 2 trades is a lie with a unit.
+    """
+    canonical = normalize_id(id_)
+    if canonical is None:
+        return None
+    row_meta = next(r for r in _ROSTER if r["id"] == canonical)
+    n = max(1, min(int(n), 200))
+    live = Path(live_dir) if live_dir is not None else None
+    window = _closes_for(row_meta["agent_key"], _read_events(live))[-n:]
+    sample = len(window)
+    wins = sum(1 for r in window if float(r["pnl_pips"]) > 0)
+    results = ["W" if float(r["pnl_pips"]) > 0 else "L" for r in window]
+    tqs_series = [
+        {"t": str(r.get("t") or r.get("timestamp") or ""),
+         "tqs": round(float(r["tqs"]), 3)}
+        for r in window if isinstance(r.get("tqs"), (int, float))
+    ]
+    insufficient = sample < MIN_FORM_SAMPLE
+    return {
+        "id": canonical,
+        "window": n,
+        "sample_size": sample,
+        "window_label": f"last {sample} closed shadow-paper trades",
+        "min_sample": MIN_FORM_SAMPLE,
+        "insufficient_sample": insufficient,
+        "win_rate_pct": (None if insufficient
+                         else round(100.0 * wins / sample, 1)),
+        "note": (f"insufficient sample (n={sample})"
+                 if insufficient else None),
+        "results": results,
+        "form": "-".join(results[-5:]) if results else None,
+        "tqs_series": tqs_series,
+        "net_pips_window": round(
+            sum(float(r["pnl_pips"]) for r in window), 1),
+        "generated_at": _now_iso(),
+    }
+
+
+def gate_status(
+    id_: str | None,
+    *,
+    manifest_path: Path | str | None = None,
+) -> dict | None:
+    """Current roster/gate state for one striker -- display only.
+
+    Sourced from roster metadata plus the CPO publication manifest:
+    a standby striker whose ``finding_campaign`` resolves to a
+    PUBLISHED fail/dead verdict renders as ``benched`` with the
+    manifest's own verdict label as the reason (never hardcoded
+    prose) and a link to the published finding. Manifest missing or
+    the finding unpublished -> honest ``standby`` fallback.
+    """
+    canonical = normalize_id(id_)
+    if canonical is None:
+        return None
+    row_meta = next(r for r in _ROSTER if r["id"] == canonical)
+    status = str(row_meta["status"])
+    out = {
+        "id": canonical,
+        "status": status,
+        "reason": None,
+        "finding_url": None,
+        "finding_campaign": row_meta.get("finding_campaign"),
+        "headline_stat": None,
+    }
+    if status == "retired":
+        out["reason"] = row_meta["playstyle_tag"]
+        return out
+    if status != "standby":
+        return out
+    out["reason"] = row_meta["playstyle_tag"]
+    campaign = row_meta.get("finding_campaign")
+    if not campaign:
+        return out
+    # Local import: research.py never imports players, so no cycle;
+    # kept out of module import time to match the read-on-demand
+    # posture of the manifest.
+    from agent.platform import research
+    manifest = research.load_manifest(manifest_path)
+    row = manifest["entries"].get(campaign)
+    if not row or not row.get("publish", False):
+        return out
+    kind = str(row.get("verdict_kind") or "")
+    if kind not in ("fail", "dead"):
+        return out
+    out["status"] = "benched"
+    out["reason"] = str(row.get("verdict_label") or kind)
+    out["finding_url"] = f"/research#{campaign}"
+    out["headline_stat"] = row.get("headline_stat")
+    return out
+
+
+def recent_decisions(
+    id_: str | None,
+    *,
+    live_dir: Path | str | None = None,
+    n: int = 5,
+) -> list[dict] | None:
+    """Last ``n`` recorded rows for one striker with outcome fields.
+
+    Extends the F002 recent-activity rows: close rows additionally
+    carry ``outcome`` (``"win"``/``"loss"``) and, when recorded,
+    ``exit_reason``. Returns ``None`` for an unknown striker.
+    """
+    canonical = normalize_id(id_)
+    if canonical is None:
+        return None
+    row_meta = next(r for r in _ROSTER if r["id"] == canonical)
+    live = Path(live_dir) if live_dir is not None else None
+    items = _recent_activity(
+        row_meta["agent_key"], _read_events(live), n=max(1, int(n)))
+    for item in items:
+        if item["type"] == "close" and "pnl_pips" in item:
+            item["outcome"] = "win" if item["pnl_pips"] > 0 else "loss"
+    return items

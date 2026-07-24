@@ -189,3 +189,44 @@ def test_not_found_page_carries_nav_and_players_active():
     page = pages.players_not_found_page(list(players.valid_ids()))
     assert '<div class="nav">' in page
     assert 'href="/players" class="here"' in page
+
+
+# --------------------------------------------------------------------
+# F021 -- form guide + gate status surfaces
+# --------------------------------------------------------------------
+
+def test_f021_detail_page_has_sparkline_helper():
+    page = pages.player_detail_page("isagi", "Isagi")
+    assert "function sparklineSvg(" in page
+    assert "polyline" in page
+    # No chart dependency: the page stays self-contained.
+    assert "cdn" not in page.lower()
+
+
+def test_f021_detail_page_renders_benched_gate_note():
+    page = pages.player_detail_page("sae", "Sae")
+    assert "gate-note" in page
+    assert "Benched" in page
+    assert "Read the finding" in page
+
+
+def test_f021_detail_page_form_guide_honesty_copy():
+    page = pages.player_detail_page("isagi", "Isagi")
+    assert "Form guide" in page
+    # The insufficient-sample rule renders the note, never a percentage.
+    assert "insufficient sample" in page
+    assert "win-rate withheld below" in page
+    # Every stat names its window.
+    assert "window_label" in page
+
+
+def test_f021_detail_page_zero_history_empty_state():
+    page = pages.player_detail_page("isagi", "Isagi")
+    assert "No closed shadow-paper trades on tape" in page
+
+
+def test_f021_index_page_form_strip_and_benched_pill():
+    p = pages.PLAYERS_INDEX_PAGE
+    assert "form-strip" in p
+    assert 'title="last 5 closed shadow-paper trades"' in p
+    assert ".status-pill.benched" in p

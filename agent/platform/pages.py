@@ -3910,6 +3910,26 @@ _PLAYERS_CSS = r"""
 .status-pill.active{border-color:rgba(63,185,80,.55);color:#7ee787}
 .status-pill.standby{border-color:rgba(88,166,255,.55);color:#79c0ff}
 .status-pill.retired{border-color:rgba(139,148,158,.55);color:#8b949e}
+/* F021: benched gate badge + form guide. Page-local CSS additions --
+ * no _BASE_CSS_VERSION bump. */
+.status-pill.benched{border-color:rgba(248,81,73,.55);color:#ff9992}
+.form-strip{display:inline-flex;gap:3px;font-size:10.5px;font-weight:700;
+  font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.form-strip .w{color:var(--green)} .form-strip .l{color:var(--red)}
+.gate-note{background:rgba(248,81,73,.06);border:1px solid rgba(248,81,73,.35);
+  border-left:3px solid var(--red);border-radius:8px;padding:10px 14px;
+  margin:0 0 14px;font-size:13px;line-height:1.55}
+.gate-note b{color:#ff9992}
+.gate-note .stat{color:var(--dim);font-size:12px;margin-top:4px;
+  font-variant-numeric:tabular-nums}
+.sparkline-box{background:var(--bg);border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px}
+.sparkline-box svg{display:block;width:100%;height:48px}
+.sparkline-box .cap{font-size:11px;color:var(--dim);margin-top:6px}
+.form-meta{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;
+  color:var(--dim);margin:10px 0 0;font-variant-numeric:tabular-nums}
+.form-meta b{color:var(--fg)}
+.form-meta .insufficient{color:var(--amber);font-style:italic}
 .player-detail{max-width:960px;margin:0 auto}
 .player-header{background:var(--panel);border:1px solid var(--border);
   border-radius:10px;padding:18px 22px;margin-bottom:18px}
@@ -4023,7 +4043,17 @@ function renderPlayers(data){
     out += '<span>Props <b>'+(p.proposals|0)+'</b></span>';
     out += '<span>Wins <b>'+(p.wins|0)+'</b></span>';
     out += '<span>Net '+pipSpan(+p.net_pips || 0)+'</span>';
-    out += '<span class="status-pill '+p.status+'">'+p.status+'</span>';
+    // F021: gate pill (benched wins over the roster status) + form strip.
+    var gate = p.gate || p.status;
+    out += '<span class="status-pill '+gate+'">'+gate+'</span>';
+    if(p.form){
+      var letters = String(p.form).split("-");
+      var strip = '';
+      for(var k=0;k<letters.length;k++){
+        strip += '<span class="'+letters[k].toLowerCase()+'">'+letters[k]+'</span>';
+      }
+      out += '<span class="form-strip" title="last 5 closed shadow-paper trades">'+strip+'</span>';
+    }
     out += '</div>';
     out += '<div class="tag" style="margin-top:8px;font-size:11px">'+sym+'</div>';
     out += '</a>';
@@ -4112,15 +4142,36 @@ function proseHtml(text){
   }
   return out;
 }
+// F021: inline SVG sparkline -- no chart dependency. `series` is
+// [{t, tqs}]; renders a polyline normalised to the value range.
+function sparklineSvg(series, label){
+  if(!series || series.length < 2) return "";
+  var vals = series.map(function(p){ return +p.tqs; });
+  var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
+  var span = (mx - mn) || 1;
+  var W = 260, H = 48, pad = 4;
+  var pts = [];
+  for(var i=0;i<vals.length;i++){
+    var x = pad + (W - 2*pad) * (i / (vals.length - 1));
+    var y = H - pad - (H - 2*pad) * ((vals[i] - mn) / span);
+    pts.push(x.toFixed(1) + "," + y.toFixed(1));
+  }
+  return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" '+
+    'role="img" aria-label="'+esc(label)+'">'+
+    '<polyline fill="none" stroke="#58a6ff" stroke-width="1.6" points="'+
+    pts.join(" ")+'"/></svg>';
+}
 function renderPlayer(data){
   var s = data.stats || {};
+  var gate = data.gate_status || {};
+  var gateState = gate.status || data.status;
   var html = '';
   html += '<div class="player-header">';
   html += '<div class="name-row"><h1>'+esc(data.name)+'</h1>'+
     '<span class="num">'+esc(data.canon_player)+'</span></div>';
   html += '<div class="tag">'+esc(data.playstyle_tag)+'</div>';
   html += '<div class="meta">'+
-    '<span class="status-pill '+esc(data.status)+'">'+esc(data.status)+'</span>'+
+    '<span class="status-pill '+esc(gateState)+'">'+esc(gateState)+'</span>'+
     '<span>Tier <b>'+esc(data.tier)+'</b></span>'+
     '<span>Home TF <b>'+esc(data.home_tf)+'</b></span>'+
     '<span>Symbols <b>'+esc((data.symbols || []).join(", "))+'</b></span>'+
@@ -4133,6 +4184,22 @@ function renderPlayer(data){
 
   html += '<div class="source-hint"><span class="k">SOURCE</span>'+
           esc(data.source_hint || "")+'</div>';
+
+  // F021: benched gate note -- the honest negative IS the story arc.
+  // Reason + headline come from the publication manifest via the API;
+  // nothing here is hardcoded prose.
+  if(gateState === "benched"){
+    html += '<div class="gate-note" role="note"><b>Benched</b> &mdash; '+
+            esc(gate.reason || "pre-registered gate FAIL")+'.';
+    if(gate.headline_stat){
+      html += '<div class="stat">'+esc(gate.headline_stat)+'</div>';
+    }
+    if(gate.finding_url){
+      html += ' <a href="'+esc(gate.finding_url)+
+              '">Read the finding &rarr;</a>';
+    }
+    html += '</div>';
+  }
 
   var netCls = (+s.net_pips > 0) ? "ok" : ((+s.net_pips < 0) ? "bad" : "");
   var netSign = (+s.net_pips > 0) ? "+" : "";
@@ -4160,6 +4227,42 @@ function renderPlayer(data){
   html += '<div class="stat-tile"><div class="k">Days active</div>'+
           '<div class="v">'+(s.days_active|0)+'</div></div>';
   html += '</div></div>';
+
+  // F021: form guide -- rolling TQS sparkline + windowed win-rate.
+  // Small-sample honesty: below fg.min_sample closed trades the
+  // win-rate is withheld and the explicit note renders instead.
+  var fg = data.form_guide;
+  if(fg){
+    html += '<div class="section"><h2>Form guide</h2>';
+    if(fg.sample_size === 0){
+      html += '<p class="dim">No closed shadow-paper trades on tape '+
+              'yet. The form guide starts with the first close.</p>';
+    } else {
+      if(fg.tqs_series && fg.tqs_series.length >= 2){
+        html += '<div class="sparkline-box">'+
+          sparklineSvg(fg.tqs_series, "TQS sparkline, "+fg.window_label)+
+          '<div class="cap">TQS per closed trade &middot; '+
+          esc(fg.window_label)+'</div></div>';
+      }
+      html += '<div class="form-meta">';
+      if(fg.win_rate_pct == null){
+        html += '<span class="insufficient">'+esc(fg.note ||
+          "insufficient sample (n="+fg.sample_size+")")+
+          ' &mdash; win-rate withheld below '+fg.min_sample+' closes</span>';
+      } else {
+        html += '<span>Win rate <b>'+fg.win_rate_pct.toFixed(1)+
+                '%</b> ('+esc(fg.window_label)+')</span>';
+      }
+      if(fg.form){
+        html += '<span>Form <b>'+esc(fg.form)+'</b></span>';
+      }
+      html += '<span>Net (window) <b>'+
+              (+fg.net_pips_window).toFixed(1)+'p</b></span>';
+      html += '<span>Sample <b>n='+fg.sample_size+'</b></span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
 
   html += '<div class="section"><h2>Playstyle</h2>'+
           '<div class="prose">'+proseHtml(data.playstyle_prose)+'</div></div>';

@@ -684,6 +684,36 @@ execution) is consumed and can never fire a second order. Removing
 the consumption marking would allow replay of a single human approval
 into multiple orders — P0 regression.
 
+### F021 — `agent/platform/players.py` additions (Sprint 3)
+
+Public accessors added to the F002 module:
+`players.form_guide(id, live_dir=None, n=20) -> dict | None`,
+`players.gate_status(id, manifest_path=None) -> dict | None`,
+`players.recent_decisions(id, live_dir=None, n=5) -> list | None`.
+
+Public module constants: `MIN_FORM_SAMPLE` (= 5),
+`FORM_WINDOW_DEFAULT` (= 20).
+
+Provenance disclaimer (applies to every field below): shadow-paper
+activity/quality metrics from the v2 squad's demo feed — NOT profit
+performance. Every stat names its window explicitly
+(`window_label`, e.g. "last 20 closed shadow-paper trades") and its
+`sample_size`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `form_guide` | `tqs_series` | Rolling TQS values over the last-n closed shadow-paper trades (same rows `_stats_for_agent` counts), rendered as the sparkline. Quality metric, not profit. | `players.form_guide`. | Window label + sample_size in payload; page caption names the window. |
+| `form_guide` | `win_rate_pct` | Rolling win-rate over the window. **Insufficient-sample rule (shared with F022): below `MIN_FORM_SAMPLE` (5) closed trades the value is `None` and the payload carries the literal note `insufficient sample (n=…)` — no percentage is ever rendered from a sub-5 sample.** | `players.form_guide`. | Same + the withheld-below-5 rule. |
+| `form_guide` | `results` / `form` | W/L letters per close; `form` is the last-5 strip for the index cards. | `players.form_guide`. | Same. |
+| `form_guide` | `net_pips_window`, `sample_size`, `window_label`, `insufficient_sample`, `min_sample`, `note` | Window bookkeeping — the honesty rails for everything above. | `players.form_guide`. | Same. |
+| `gate_status` | `{status, reason, finding_url, finding_campaign, headline_stat}` | Current roster/gate state, display only. `benched` fires ONLY when the roster row's `finding_campaign` resolves to a PUBLISHED fail/dead verdict in the CPO manifest; `reason` and `headline_stat` are the manifest's own strings (never hardcoded prose), `finding_url` deep-links the published finding. Manifest missing/unpublished → honest `standby` fallback. | `players.gate_status`. | The negative is published copy already Legal-approved via the F003 manifest gate. |
+| `recent_decisions` | `[{t, type, symbol, dir?, pnl_pips?, conviction?, exit_reason?, outcome?}]` | Last-n recorded rows with outcome fields (`win`/`loss` on closes). Extends the registered F002 `recent_activity` rows additively. | `players.recent_decisions`. | Same provenance as F002. |
+
+Rolling constraint (Legal, shared F021/F022): the insufficient-sample
+rule is a truthfulness claim — rendering any percentage from fewer
+than `MIN_FORM_SAMPLE` closed trades, or lowering the constant,
+requires a fresh Legal review.
+
 ### F020 — `agent/platform/highlights.py` (Sprint 3)
 
 Public accessors: `highlights.match_report(day, live_dir=None) -> dict`,

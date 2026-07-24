@@ -2241,6 +2241,35 @@ stays deterministic (no LLM) and no engagement numbers publish before
 the declared hypothesis's pre-registered experiment reports. +49
 tests vs ≥25 target; platform dir 973 passed; claim audit green.
 
+## D119 · 2026-07-24 · cto · [SHIP]
+
+**F021 player career depth SHIPPED: form guide (rolling TQS sparkline
++ windowed win-rate) and manifest-derived gate status on
+`/players/:id` + index cards. The Phase AE honest negative is now
+product surface: Sae renders "Benched — Fails pre-registered AE2
+quality criterion" with the headline stat and a link to the published
+finding.**
+
+`agent/platform/players.py` additions (read-only): `form_guide`
+(window-labelled rolling stats; insufficient-sample rule — win-rate
+withheld below `MIN_FORM_SAMPLE=5` closes, literal "insufficient
+sample (n=…)" note instead), `gate_status` (benched ONLY from a
+PUBLISHED fail/dead manifest entry via the roster's
+`finding_campaign`; reason/headline are the manifest's own D112-gated
+strings, never hardcoded prose; missing/unpublished manifest →
+standby fallback), `recent_decisions` (outcome + exit_reason on
+closes). UI: inline-SVG sparkline (no chart dependency), form strip
+on index cards, benched gate note; page-local CSS, no base-CSS bump.
+All claims registered in the same commit (§F021, shared F021/F022
+insufficient-sample rolling constraint); Legal approved
+(`company/legal/F021-review.md`). +27 tests vs ≥20 target
+(22 module + 5 page); players suite 97 passed; claim audit green.
+Build note on tape: the executor session lost its API budget
+mid-F021 after drafting the implementation; the parent session
+reviewed the draft (manifest seam verified against
+`research.load_manifest`), wrote the tests/legal/ledger artifacts,
+and shipped it — same review chain, different hands.
+
 ## Template for subsequent entries
 
 ```markdown
