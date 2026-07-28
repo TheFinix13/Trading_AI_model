@@ -7,7 +7,9 @@ zones agent's daily logs). Run ON THE VM once a week:
 
 It reads ``<live_dir>/events.jsonl`` (the same tape every dashboard
 surface derives from) and writes ``weekly_squad_report_<start>_to_
-<end>.zip`` containing:
+<end>.zip`` into ``<live_dir>/reviews/`` -- the v2 twin of the v1
+agent's ``<log_root>/reviews`` convention (override with ``--out``).
+The zip contains:
 
 * ``REPORT.md`` — executive summary (shots / tackles / goals / net
   pips / net R / mean TQS / bars evaluated), day-by-day match table,
@@ -276,7 +278,9 @@ def main() -> None:
     ap.add_argument("--end", help="YYYY-MM-DD (with --start)")
     ap.add_argument("--live-dir", type=Path, default=Path(cfg["live_dir"]))
     ap.add_argument("--out", type=Path, default=None,
-                    help="zip path (default weekly_squad_report_<w>.zip)")
+                    help="zip path (default: <live_dir>/reviews/"
+                         "weekly_squad_report_<start>_to_<end>.zip -- the "
+                         "v2 twin of v1's <log_root>/reviews convention)")
     ap.add_argument("--no-zip", action="store_true",
                     help="print REPORT.md to stdout only")
     args = ap.parse_args()
@@ -290,7 +294,16 @@ def main() -> None:
     if args.no_zip:
         print(report)
         return
-    out = args.out or Path(f"weekly_squad_report_{days[0]}_to_{days[-1]}.zip")
+    out = args.out
+    if out is None:
+        # Default next to the tape it summarizes: <live_dir>/reviews/,
+        # the v2 twin of the v1 agent's <log_root>/reviews convention.
+        reviews = args.live_dir / "reviews"
+        try:
+            reviews.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            reviews = Path(".")  # fall back to CWD rather than crash
+        out = reviews / f"weekly_squad_report_{days[0]}_to_{days[-1]}.zip"
     write_bundle(out, report, rows, days, args.live_dir)
     print(f"Wrote {out}  ({out.stat().st_size} bytes)")
     print("Sections: summary, day-by-day, players, trades, Sentinel "
