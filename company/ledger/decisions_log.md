@@ -2421,6 +2421,24 @@ pinned in `tests/test_news_calendar_tz_anchors.py`; verification note
 risk (non-UTC-server broker) documented, no live trigger. Intake
 queue: I007 + I014 resolved.
 
+## D126 · 2026-07-28 · engineering · [TOOLING]
+
+**`scripts/weekly_squad_report.py`: one-command weekly v2 review
+bundle — the shadow-squad counterpart of the v1 `weekly_report.py`.**
+
+CEO asked for a weekly "everything v2 did" artifact to analyze results
+and spot issues, matching the v1 weekly ritual. The script reads the
+same `events.jsonl` tape every dashboard surface derives from (reuses
+`highlights.match_report`) and zips REPORT.md (executive summary,
+day-by-day match table, per-player week table, every resolved shadow
+trade, Sentinel block breakdown, system-health rows, auto-flagged
+review checklist incl. silent-weekday and zero-opens flags) plus the
+raw window tape slice, `state.json`, and `poll_heartbeat.txt`.
+Observation-only; missing tape degrades to notes, never a crash;
+provenance disclaimer (shadow paper, not investment performance) baked
+into the report header. 8 tests in
+`tests/platform/test_weekly_squad_report.py`; CLI smoke-tested.
+
 ## Template for subsequent entries
 
 ```markdown

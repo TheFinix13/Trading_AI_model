@@ -3032,6 +3032,13 @@
       "role": "engineering",
       "decision": "[FIX-SESSION] I014 first-run auth redirect fixed (302 preserves ?token= + flushes Set-Cookie); A004/I007 calendar-vs-broker timezone VERIFIED CLEAN via feed anchors + VM server-clock evidence -- no fix needed. Both P1s resolved same day.",
       "context": "I014 root cause: the F008 first-visit 302 dropped the query string and bypassed _send, so the session cookie planted by _authorized was never emitted; fix in scripts/serve_platform.py, contract pinned in tests/security/test_i014_first_run_auth.py (5 cases). A004/I007: Unemployment Claims (08:30 ET = 12:30 UTC -> feed row 12:30pm) and Flash PMI (09:45 ET = 13:45 UTC -> 1:45pm) prove FF publishes GMT/UTC; Exness Trial server clock at UTC+0 + H4 closes on the UTC grid validate the broker layer's epoch-as-UTC conversion. Anchors pinned in tests/test_news_calendar_tz_anchors.py; note at reviews/audits/2026-07-24-a004-calendar-tz-verification.md. Residual non-UTC-broker risk documented only."
+    },
+    {
+      "id": "D126",
+      "date": "2026-07-28",
+      "role": "engineering",
+      "decision": "[TOOLING] scripts/weekly_squad_report.py -- one-command weekly v2 review bundle (shadow-squad counterpart of v1 weekly_report.py): REPORT.md with executive summary / day-by-day / players / trades / Sentinel blocks / system health / auto-flag checklist, plus raw tape slice + state.json in one zip.",
+      "context": "CEO request 2026-07-28: weekly summary of everything the v2 agent did, like v1's ritual. Derives everything from events.jsonl via highlights.match_report (single source of truth with the dashboards). Observation-only, degrades gracefully, provenance disclaimer in the header. Auto-flags: silent weekdays (runtime down?), non-ok system_status rows, negative week small-n caution, proposals-but-zero-opens Sentinel review. 8 tests + CLI smoke."
     }
   ],
   "sprint_verdicts": [
