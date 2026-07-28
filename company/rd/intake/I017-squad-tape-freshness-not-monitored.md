@@ -5,13 +5,13 @@ submitter: "self-observation"
 submitted_at: 2026-07-28T15:20:00Z
 classification: FEATURE-REQUEST
 priority: P1
-status: in_progress
+status: shipped
 route: feature
 linked_features: [F017]
-linked_decisions: [D127]
+linked_decisions: [D127, D133]
 linked_experiments: []
 contact: null
-resolved_at: null
+resolved_at: 2026-07-28T19:20:00Z
 history:
   - stage: filed
     at: 2026-07-28T15:20:00Z
@@ -22,6 +22,13 @@ history:
     by: engineering
     note: "Routed to F017 registry extension; check implemented same
       day (D127). Closure waits on VM wiring + first ok reading."
+  - stage: shipped
+    at: 2026-07-28T19:20:00Z
+    by: engineering
+    note: "VM wired per runbook 7b.9 (SquadLiveRuntime + OpsWatchdog
+      + PlatformServer tasks); first live ok reading landed same
+      evening ('newest bars 7.4h old (worst: EURUSD)', overall ok)
+      after the D133 threshold recalibration."
 ---
 
 # I017 — Squad tape freshness is not monitored (8 silent weekdays went unflagged)
@@ -83,6 +90,13 @@ measured against the open labels.
 
 ## Closure notes
 
-<pending: flip to shipped after the VM runs runbook 7b.9 and
-`squad_tape_freshness` reports `ok` on a live pass; measurement =
-next weekly bundle shows 0 silent weekdays.>
+Shipped 2026-07-28 evening. The VM completed runbook 7b.9 (three
+scheduled tasks: SquadLiveRuntime restart-loop, OpsWatchdog
+`--loop 300`, PlatformServer), the squad runtime reconnected to live
+MT5 (I019 fix) and ingested the 12:00 UTC bar, and the first live
+watchdog pass after the D133 threshold recalibration read
+`[ok] squad_tape_freshness — newest bars 7.4h old (worst: EURUSD)`
+with `overall: ok`. Note the check's first-ever live reading was a
+false warn (7.1 h) that exposed the D133 calibration bug — see the
+amendment above. Residual measurement: the next weekly bundle
+(w/c 2026-08-04) should show 0 silent weekdays and ~90 bars.

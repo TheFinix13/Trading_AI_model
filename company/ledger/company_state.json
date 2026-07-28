@@ -3514,18 +3514,19 @@
       "submitted_at": "2026-07-28T15:20:00Z",
       "classification": "FEATURE-REQUEST",
       "priority": "P1",
-      "status": "in_progress",
+      "status": "shipped",
       "route": "feature",
       "linked_features": [
         "F017"
       ],
       "linked_decisions": [
-        "D127"
+        "D127",
+        "D133"
       ],
       "linked_experiments": [],
       "contact": null,
-      "resolved_at": null,
-      "summary": "Squad tape freshness unmonitored: 8 of 10 weekdays with no tape went unflagged in the 2026-07-15..28 window. squad_tape_freshness check shipped same day (D127); closes on VM Task Scheduler wiring (runbook 7b.9) + first ok reading.",
+      "resolved_at": "2026-07-28T19:20:00Z",
+      "summary": "Squad tape freshness unmonitored: 8 of 10 weekdays with no tape went unflagged in the 2026-07-15..28 window. Check shipped same day (D127), thresholds recalibrated after a false first-pass warn (D133); closed same evening on VM Task Scheduler wiring (runbook 7b.9) + first live ok reading (newest bars 7.4h old, overall ok).",
       "file": "company/rd/intake/I017-squad-tape-freshness-not-monitored.md"
     },
     {
