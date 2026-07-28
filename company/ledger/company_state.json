@@ -3088,6 +3088,13 @@
       "role": "engineering",
       "decision": "[BUG] squad_tape_freshness thresholds recalibrated 5h/9h -> 9h/13h: last_bar_times stores bar OPEN labels whose healthy age oscillates 4-8h between closes, so the original 5h warn sat inside the healthy band and fired on a one-hour-fresh tape (first live pass, VM 2026-07-28: 'warn -- 7.1h' minutes after the 12:00 bar was ingested).",
       "context": "Steady state would have warned ~3 of every 4 hours and spammed ok->warn->ok transition alerts -- alert-fatigue class. New thresholds sit above the band (warn = one missed close, alarm = two); market-seconds weekend exclusion unchanged; the original I017 incident (55h stale) still alarms. Detail strings derive from the constants. Healthy-band regression test added (7.9h => ok); claim register F017 row + I017 amendment updated."
+    },
+    {
+      "id": "D134",
+      "date": "2026-07-28",
+      "role": "engineering",
+      "decision": "[BUG] I023 shipped: /v2 defaults to LIVE instead of the first replay cache, and LIVE is the first option in the mode picker. The 'disappearing match ticker' the CEO reported was init() silently reloading into the ~70k-event historical replay (ticker empty until playback) on every page load / tab return.",
+      "context": "First evening of live /v2 use post-I019. LIVE's load path catches the ticker up to the recent tail, so reload/return now keeps the tape visible; replay caches remain in the dropdown as the fallback when the squad never ran here. 3 regression pins in tests/platform/test_v2_page.py::TestV2LiveIsDefaultMode."
     }
   ],
   "sprint_verdicts": [
@@ -3596,15 +3603,36 @@
       "submitted_at": "2026-07-28T17:40:00Z",
       "classification": "BUG",
       "priority": "P2",
-      "status": "new",
+      "status": "shipped",
       "route": "bug",
       "linked_features": [],
-      "linked_decisions": [],
+      "linked_decisions": [
+        "D132"
+      ],
       "linked_experiments": [],
       "contact": null,
-      "resolved_at": null,
-      "summary": "Squad Telegram copy lies about live mode: Ctrl+C pages 'step budget reached' (interrupted deliberately funnelled into max_steps), an unhandled crash pages 'replay exhausted -- every row emitted' (outcome initialized to done), and KICKOFF uses replay vocabulary ('replaying', hardcoded '0 rows queued', 'stream:' = output dir). GOAL/MISS/HALT/SYSTEM/league-table copy accurate. Fix half-touches off-limits run_squad_live.py -- needs CEO go-ahead.",
+      "resolved_at": "2026-07-28T18:10:00Z",
+      "summary": "Squad Telegram copy lied about live mode: Ctrl+C paged 'step budget reached', an unhandled crash paged 'replay exhausted -- every row emitted', and KICKOFF used replay vocabulary at live boots. Shipped same day (D132, CEO-approved off-limits call-site half): live kickoff wording, honest interrupted/crashed outcomes, outcome defaults to crashed.",
       "file": "company/rd/intake/I022-squad-telegram-copy-lies-about-live-mode.md"
+    },
+    {
+      "id": "I023",
+      "source": "ceo-report",
+      "submitter": "user_advocate",
+      "submitted_at": "2026-07-28T19:40:00Z",
+      "classification": "BUG",
+      "priority": "P3",
+      "status": "shipped",
+      "route": "bug",
+      "linked_features": [],
+      "linked_decisions": [
+        "D134"
+      ],
+      "linked_experiments": [],
+      "contact": null,
+      "resolved_at": "2026-07-28T19:55:00Z",
+      "summary": "/v2 defaulted to the first ~70k-event historical replay on every load (LIVE option appended last), so reload / tab-return wiped the match ticker until playback -- read as 'the ticker disappeared'. Shipped same day (D134): LIVE is the first mode-picker option and the default view whenever the live dir exists.",
+      "file": "company/rd/intake/I023-v2-defaults-to-replay-ticker-vanishes.md"
     }
   ],
   "experiments": [

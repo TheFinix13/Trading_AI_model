@@ -119,6 +119,31 @@ class TestV2ModePickerCopy:
             f"{speed_block!r}")
 
 
+class TestV2LiveIsDefaultMode:
+    """I023: reloading /v2 must land on LIVE, not the first replay
+    cache. The old init loaded ``data.matches[0]`` whenever any replay
+    cache existed, so every reload / tab-return silently dropped into a
+    70k-event historical replay whose ticker starts empty until
+    playback — read by the operator as "the match ticker disappeared".
+    LIVE is also listed first in the mode picker."""
+
+    def test_live_option_appended_before_replay_options(self):
+        live_opt = V2_PAGE.index('o.value="__live__";')
+        replay_loop = V2_PAGE.index("for(const m of data.matches){")
+        assert live_opt < replay_loop, (
+            "LIVE must be the FIRST option in the mode picker")
+
+    def test_init_defaults_to_live_when_available(self):
+        assert 'if(liveAvailable){ sel.value="__live__"; await loadLive(); }' \
+            in V2_PAGE
+        assert "else if(data.matches.length) await loadMatch(data.matches[0].id);" \
+            in V2_PAGE
+
+    def test_old_replay_first_default_is_gone(self):
+        assert "if(data.matches.length) await loadMatch(data.matches[0].id);\n  else await loadLive();" \
+            not in V2_PAGE
+
+
 class TestV2NewSurfaces:
     """The UX pass adds five new UI surfaces; each must be in the DOM
     or the JS wire-up will silently no-op."""

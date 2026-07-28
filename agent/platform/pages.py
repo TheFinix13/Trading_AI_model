@@ -2604,18 +2604,22 @@ async function init(){
     document.getElementById("clock").innerText="no replay caches found";
     drawPitch(); return;
   }
-  for(const m of data.matches){
-    const o=document.createElement("option");
-    o.value=m.id;
-    o.textContent=modeInfo(m.label).display;
-    o.title=modeInfo(m.label).subtitle;
-    sel.appendChild(o);
-  }
+  // LIVE is listed FIRST and is the default view (I023): reloading or
+  // navigating back to /v2 used to silently drop into the first replay
+  // cache, whose ticker starts empty until playback -- reading as "the
+  // match ticker disappeared". Replays are the fallback, not the door.
   if(liveAvailable){
     const o=document.createElement("option");
     o.value="__live__";
     o.textContent=MODE_LABELS["__live__"].display;
     o.title=MODE_LABELS["__live__"].subtitle;
+    sel.appendChild(o);
+  }
+  for(const m of data.matches){
+    const o=document.createElement("option");
+    o.value=m.id;
+    o.textContent=modeInfo(m.label).display;
+    o.title=modeInfo(m.label).subtitle;
     sel.appendChild(o);
   }
   sel.onchange=()=>loadMatch(sel.value);
@@ -2708,8 +2712,8 @@ async function init(){
     if(pop && pop.classList.contains("open")) closeInfoPopover();
   });
 
-  if(data.matches.length) await loadMatch(data.matches[0].id);
-  else await loadLive();
+  if(liveAvailable){ sel.value="__live__"; await loadLive(); }
+  else if(data.matches.length) await loadMatch(data.matches[0].id);
 }
 init();
 // F020: fill the highlights teaser with the newest report headline.

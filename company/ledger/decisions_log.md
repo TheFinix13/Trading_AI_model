@@ -2592,6 +2592,23 @@ constants. Tests: healthy-band regression added (7.9 h ⇒ ok), warn
 fixture moved to 10.5 h; claim register F017 row + I017 amendment
 updated.
 
+## D134 · 2026-07-28 · engineering · [BUG]
+
+**I023 shipped: /v2 defaults to LIVE, not the first replay cache —
+the "disappearing match ticker" was the page silently reloading into
+a 70k-event historical replay whose ticker starts empty until
+playback.**
+
+CEO report on the first evening of live use (post-I019): reload or
+tab-return wiped the ticker and showed `loaded 40000/70150 events…`.
+`init()` loaded `data.matches[0]` whenever any replay cache existed
+and appended the LIVE option last. Now LIVE is the first option in
+the mode picker and the default view whenever the live dir exists;
+replays stay in the dropdown as the fallback. LIVE's load path
+already catches the ticker up to the recent tail, so reload/return
+keeps the tape visible. 3 regression pins in
+`tests/platform/test_v2_page.py::TestV2LiveIsDefaultMode`.
+
 ## Template for subsequent entries
 
 ```markdown
