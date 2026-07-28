@@ -641,6 +641,7 @@ drops a stage, `_REVIEW_CHAIN_STAGES` changes in the same commit.
 ### F017 — `agent/platform/watchdog.py` (Sprint 2b)
 
 Public accessors: `watchdog.check_runtime_heartbeat(live_dir, now) -> dict`,
+`watchdog.check_squad_tape_freshness(live_dir, now) -> dict`,
 `watchdog.check_calendar_feed(cache_path, now) -> dict`,
 `watchdog.check_broker_health(now) -> dict`,
 `watchdog.check_risk_state(state_path, now) -> dict`,
@@ -655,6 +656,7 @@ Public accessors: `watchdog.check_runtime_heartbeat(live_dir, now) -> dict`,
 
 Public module constants: `CHECK_IDS`, `STATUSES`, `ALERT_EVENT_TYPE`,
 `RUNTIME_WARN_SECONDS`, `RUNTIME_ALARM_SECONDS`,
+`TAPE_WARN_MARKET_SECONDS`, `TAPE_ALARM_MARKET_SECONDS`,
 `CALENDAR_WARN_SECONDS`, `CALENDAR_ALARM_SECONDS`,
 `INTAKE_P0_ALARM_SECONDS`, `INTAKE_P1_WARN_SECONDS`,
 `INTAKE_OPEN_WARN_SECONDS`, `SPRINT_QUIET_WARN_SECONDS`,
@@ -664,8 +666,9 @@ Public module constants: `CHECK_IDS`, `STATUSES`, `ALERT_EVENT_TYPE`,
 
 | Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
 |---|---|---|---|---|
-| `run_checks` / `run_check` | `list[dict]` / `dict` | The 7-check ops registry (`runtime_heartbeat`, `calendar_feed`, `broker_health`, `risk_state`, `intake_sla`, `sprint_pulse`, `ledger_drift`); each result is `{id, status: ok\|warn\|alarm\|na, detail, checked_at}`. Checks observe, never mutate; none may raise. | `watchdog.run_checks`. | None — ops state, not a performance claim. |
+| `run_checks` / `run_check` | `list[dict]` / `dict` | The 8-check ops registry (`runtime_heartbeat`, `squad_tape_freshness`, `calendar_feed`, `broker_health`, `risk_state`, `intake_sla`, `sprint_pulse`, `ledger_drift`); each result is `{id, status: ok\|warn\|alarm\|na, detail, checked_at}`. Checks observe, never mutate; none may raise. | `watchdog.run_checks`. | None — ops state, not a performance claim. |
 | `check_runtime_heartbeat` | `dict` | squad_live artefact freshness via `paper_loop.live_status`; warn > 5 min, alarm > 30 min, na when not configured. | `watchdog.check_runtime_heartbeat`. | None. |
+| `check_squad_tape_freshness` | `dict` | Bar-ingestion freshness (I017): oldest `last_bar_times` symbol in `state.json`, aged in MARKET seconds (Sat/Sun excluded); warn > 5 h, alarm > 9 h; na when the squad never ran; corrupt state alarms. Catches a live-but-starved runtime that `runtime_heartbeat` calls healthy. | `watchdog.check_squad_tape_freshness`. | None. |
 | `check_calendar_feed` | `dict` | News cache `fetched_at` age; na absent, warn > 12 h, alarm > 48 h; corrupt cache alarms. | `watchdog.check_calendar_feed`. | None. |
 | `check_broker_health` | `dict` | Reuses `broker_health.list_health_states()`; na when no aliases; warn when a probed alias is down. Never triggers a fresh probe. | `watchdog.check_broker_health`. | None. |
 | `check_risk_state` | `dict` | `risk_state.jsonl` integrity (parseable, not future-dated); corruption alarms because it silently disables the F012 caps. | `watchdog.check_risk_state`. | None. |

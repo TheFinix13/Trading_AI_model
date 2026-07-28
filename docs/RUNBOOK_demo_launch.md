@@ -570,6 +570,65 @@ git fetch && git checkout product && git reset --hard origin/product
   default; the Phase AE gate). Karasu sits in the back line as the
   news-window defender.
 
+### 7b.9 Keep the squad runtime + ops watchdog alive 24/5 (Task Scheduler)
+
+> **Why (2026-07-28 weekly review).** The first v2 weekly window
+> (Jul 15–28) had tape on only 2 of 10 weekdays — the runtime only ran
+> when a human started it and died with the session. This section is
+> the "start the shadow clock" step: after it, the squad runtime and
+> the F017 ops watchdog survive reboots and logouts, and the new
+> `squad_tape_freshness` check (I017) pages ops when bars stop flowing
+> even while the process looks alive.
+
+Same architecture as the v1 agents (section 2): **`AtLogOn`
+interactive-user tasks + Autologon**, never a Windows Service — the
+squad's `--feed mt5` reads bars over MT5's desktop-session IPC.
+Register once, from the platform clone:
+
+```powershell
+cd C:\TradingAgent-platform
+
+# 1) Squad runtime, restart-forever wrapper (kill.txt still stops it):
+$action = New-ScheduledTaskAction -Execute "powershell.exe" `
+  -Argument "-ExecutionPolicy Bypass -File scripts\watchdog_squad.ps1" `
+  -WorkingDirectory "C:\TradingAgent-platform"
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+Register-ScheduledTask -TaskName "SquadLiveRuntime" -Action $action -Trigger $trigger `
+  -RunLevel Limited -Description "v2 squad shadow-paper runtime (restart loop; MT5 read-only)"
+Start-ScheduledTask -TaskName "SquadLiveRuntime"
+
+# 2) Ops watchdog loop (5-min cadence; pages transitions via ops Telegram):
+$action = New-ScheduledTaskAction -Execute "C:\TradingAgent-platform\.venv\Scripts\python.exe" `
+  -Argument "scripts\run_watchdog.py --loop 300" `
+  -WorkingDirectory "C:\TradingAgent-platform"
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+Register-ScheduledTask -TaskName "OpsWatchdog" -Action $action -Trigger $trigger `
+  -RunLevel Limited -Description "F017 ops watchdog loop (observe-only, 8-check registry)"
+Start-ScheduledTask -TaskName "OpsWatchdog"
+```
+
+**Verify (do all four before walking away):**
+
+1. `Get-ScheduledTask SquadLiveRuntime, OpsWatchdog` — both `Running`.
+2. `type "$HOME\Documents\TradingAgentLogs\squad_live\poll_heartbeat.txt"`
+   — timestamp refreshes every ≤ 60 s.
+3. Within one poll of the next H4 close (03/07/11/15/19/23 UTC on the
+   current feed — see the tape, not the /v2 countdown, which as of
+   2026-07-28 assumes the 00/04/…/20 grid; intake I018):
+   `state.json` → `last_bar_times` advances to today. If it stays
+   pinned days old while the heartbeat is fresh, the feed is starved —
+   check the MT5 terminal A login (squad reads bars there, read-only).
+4. `.venv\Scripts\python scripts\run_watchdog.py` (one-shot) —
+   `squad_tape_freshness` reports `ok` once bars flow (it will read
+   `warn`/`alarm` until the first post-restart bar lands; burn-in is
+   noted in the detail string).
+
+**Stop ceremony (unchanged):** `echo pause >
+"$HOME\Documents\TradingAgentLogs\squad_live\kill.txt"` — the runtime
+exits at the next poll and the wrapper HOLDS (no restart) until the
+file is deleted. `Stop-ScheduledTask -TaskName SquadLiveRuntime` kills
+the wrapper itself.
+
 ## 7c. Demo-order executor (F018) — wire the "V2 Platform" demo account
 
 > **What this is.** Sprint 2b's demo-order executor: approved entries

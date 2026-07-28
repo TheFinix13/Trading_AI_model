@@ -47,25 +47,25 @@ def pin_checks(monkeypatch: pytest.MonkeyPatch):
 
 class TestExitCodes:
     def test_all_ok_exits_zero(self, pin_checks) -> None:
-        pin_checks("ok", "ok", "na", "ok", "ok", "na", "ok")
+        pin_checks("ok", "ok", "ok", "na", "ok", "ok", "na", "ok")
         assert run_watchdog.run_once(None, log=lambda *_: None) == 0
 
     def test_warn_exits_one(self, pin_checks) -> None:
-        pin_checks("ok", "warn", "na", "ok", "ok", "na", "ok")
+        pin_checks("ok", "ok", "warn", "na", "ok", "ok", "na", "ok")
         assert run_watchdog.run_once(None, log=lambda *_: None) == 1
 
     def test_alarm_exits_two(self, pin_checks) -> None:
-        pin_checks("ok", "warn", "na", "alarm", "ok", "na", "ok")
+        pin_checks("ok", "ok", "warn", "na", "alarm", "ok", "na", "ok")
         assert run_watchdog.run_once(None, log=lambda *_: None) == 2
 
     def test_all_na_exits_zero(self, pin_checks) -> None:
-        pin_checks("na", "na", "na", "na", "na", "na", "na")
+        pin_checks("na", "na", "na", "na", "na", "na", "na", "na")
         assert run_watchdog.run_once(None, log=lambda *_: None) == 0
 
 
 class TestOutput:
     def test_plain_output_one_line_per_check(self, pin_checks) -> None:
-        pin_checks("ok", "ok", "na", "ok", "ok", "na", "ok")
+        pin_checks("ok", "ok", "ok", "na", "ok", "ok", "na", "ok")
         lines: list[str] = []
         run_watchdog.run_once(None, log=lines.append)
         check_lines = [ln for ln in lines if ln.startswith("[")]
@@ -73,7 +73,7 @@ class TestOutput:
         assert any(ln.startswith("overall:") for ln in lines)
 
     def test_json_output_parses(self, pin_checks) -> None:
-        pin_checks("ok", "warn", "na", "ok", "ok", "na", "ok")
+        pin_checks("ok", "ok", "warn", "na", "ok", "ok", "na", "ok")
         lines: list[str] = []
         run_watchdog.run_once(None, as_json=True, log=lines.append)
         payload = json.loads("\n".join(lines))
@@ -82,7 +82,7 @@ class TestOutput:
         assert "published_transitions" in payload
 
     def test_transitions_published_to_bus(self, pin_checks) -> None:
-        pin_checks("ok", "ok", "na", "alarm", "ok", "na", "ok")
+        pin_checks("ok", "ok", "ok", "na", "alarm", "ok", "na", "ok")
         run_watchdog.run_once(None, log=lambda *_: None)
         events = alerts.recent(5)
         assert len(events) == 1
@@ -90,7 +90,7 @@ class TestOutput:
         assert events[0]["payload"]["check"] == "risk_state"
 
     def test_repeat_run_publishes_nothing_new(self, pin_checks) -> None:
-        pin_checks("ok", "ok", "na", "alarm", "ok", "na", "ok")
+        pin_checks("ok", "ok", "ok", "na", "alarm", "ok", "na", "ok")
         run_watchdog.run_once(None, log=lambda *_: None)
         run_watchdog.run_once(None, log=lambda *_: None)
         assert len(alerts.recent(5)) == 1
@@ -108,14 +108,14 @@ class TestMain:
 
     def test_one_shot_returns_worst_code(
             self, pin_checks, capsys: pytest.CaptureFixture) -> None:
-        pin_checks("ok", "ok", "na", "ok", "ok", "na", "ok")
+        pin_checks("ok", "ok", "ok", "na", "ok", "ok", "na", "ok")
         assert run_watchdog.main([]) == 0
         assert "overall: ok" in capsys.readouterr().out
 
     def test_loop_bounded_by_max_iterations(
             self, pin_checks, monkeypatch: pytest.MonkeyPatch,
             capsys: pytest.CaptureFixture) -> None:
-        pin_checks("ok", "ok", "na", "ok", "ok", "na", "ok")
+        pin_checks("ok", "ok", "ok", "na", "ok", "ok", "na", "ok")
         sleeps: list[float] = []
         monkeypatch.setattr(run_watchdog.time, "sleep", sleeps.append)
         assert run_watchdog.main(
@@ -127,7 +127,7 @@ class TestMain:
     def test_loop_writes_heartbeat_file(
             self, pin_checks, monkeypatch: pytest.MonkeyPatch,
             capsys: pytest.CaptureFixture) -> None:
-        pin_checks("ok", "ok", "na", "ok", "ok", "na", "ok")
+        pin_checks("ok", "ok", "ok", "na", "ok", "ok", "na", "ok")
         monkeypatch.setattr(run_watchdog.time, "sleep", lambda s: None)
         run_watchdog.main(["--loop", "1", "--max-iterations", "1"])
         hb = credentials._config_dir() / run_watchdog.HEARTBEAT_FILENAME
@@ -139,8 +139,8 @@ class TestMain:
             capsys: pytest.CaptureFixture) -> None:
         # First pass alarms, second recovers -- exit reflects the worst.
         passes = [
-            _fake_results("ok", "ok", "na", "alarm", "ok", "na", "ok"),
-            _fake_results("ok", "ok", "na", "ok", "ok", "na", "ok"),
+            _fake_results("ok", "ok", "ok", "na", "alarm", "ok", "na", "ok"),
+            _fake_results("ok", "ok", "ok", "na", "ok", "ok", "na", "ok"),
         ]
         monkeypatch.setattr(watchdog, "run_checks",
                             lambda **kwargs: passes.pop(0))

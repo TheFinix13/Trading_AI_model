@@ -1,6 +1,6 @@
 """F017 -- Ops Watchdog: the no-black-boxes check registry.
 
-Seven named health checks, each returning a small dict::
+Eight named health checks, each returning a small dict::
 
     {"id": <check id>, "status": "ok" | "warn" | "alarm" | "na",
      "detail": <human string>, "checked_at": <iso8601>}
@@ -46,6 +46,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 CHECK_IDS: tuple[str, ...] = (
     "runtime_heartbeat",
+    "squad_tape_freshness",
     "calendar_feed",
     "broker_health",
     "risk_state",
@@ -59,6 +60,13 @@ STATUSES: tuple[str, ...] = ("ok", "warn", "alarm", "na")
 # Freshness thresholds (seconds).
 RUNTIME_WARN_SECONDS: float = 5 * 60.0
 RUNTIME_ALARM_SECONDS: float = 30 * 60.0
+# Squad tape freshness is measured in MARKET seconds (Sat/Sun
+# excluded) so weekends never false-alarm: one missed H4 close plus
+# slack -> warn; two missed closes -> alarm. Motivated by the
+# 2026-07-15..28 weekly review, where the runtime was silent on 8 of
+# 10 weekdays and nothing flagged it (I017).
+TAPE_WARN_MARKET_SECONDS: float = 5 * 3600.0
+TAPE_ALARM_MARKET_SECONDS: float = 9 * 3600.0
 CALENDAR_WARN_SECONDS: float = 12 * 3600.0
 CALENDAR_ALARM_SECONDS: float = 48 * 3600.0
 INTAKE_P0_ALARM_SECONDS: float = 4 * 3600.0
@@ -184,6 +192,97 @@ def check_runtime_heartbeat(live_dir: Path | str | None = None,
         return _result(cid, "warn",
                        f"runtime quiet for {label} (> 5m)", now)
     return _result(cid, "ok", f"heartbeat {label} old", now)
+
+
+def _market_seconds_between(t0: float, t1: float) -> float:
+    """Seconds between two UTC epochs with Saturdays and Sundays
+    excluded. Approximates forex market hours (the real weekend gap is
+    Fri ~22:00 UTC to Sun ~22:00 UTC); the couple-of-hours error at the
+    edges is absorbed by the warn/alarm thresholds."""
+    if t1 <= t0:
+        return 0.0
+    total = 0.0
+    cur = t0
+    while cur < t1:
+        dt = datetime.fromtimestamp(cur, tz=timezone.utc)
+        day_start = datetime(dt.year, dt.month, dt.day,
+                             tzinfo=timezone.utc).timestamp()
+        chunk_end = min(day_start + 86400.0, t1)
+        if dt.weekday() < 5:
+            total += chunk_end - cur
+        cur = chunk_end
+    return total
+
+
+def check_squad_tape_freshness(live_dir: Path | str | None = None,
+                               now: float | None = None) -> dict:
+    """Is the squad runtime actually INGESTING BARS -- not merely
+    alive? ``runtime_heartbeat`` catches a dead process; this catches a
+    live process starved of market data (stale MT5 feed, terminal
+    logged out) and a runtime nobody restarted after a reboot.
+
+    Reads ``last_bar_times`` from ``<live_dir>/state.json`` and takes
+    the OLDEST symbol (a single stalled pair is a real failure -- that
+    player is blind). Age is measured in market seconds (Sat/Sun
+    excluded): warn past :data:`TAPE_WARN_MARKET_SECONDS` (one missed
+    H4 close + slack), alarm past :data:`TAPE_ALARM_MARKET_SECONDS`
+    (two missed closes). ``na`` when the squad was never run here;
+    corrupt state is an alarm.
+    """
+    cid = "squad_tape_freshness"
+    if live_dir is None:
+        return _result(cid, "na", "no live dir configured", now)
+    live_dir = Path(live_dir)
+    state_path = live_dir / "state.json"
+    if not state_path.is_file():
+        return _result(cid, "na",
+                       "no state.json yet (squad never ran here)", now)
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return _result(cid, "alarm",
+                       f"state.json unreadable: {exc!s:.120}", now)
+    if not isinstance(state, dict):
+        return _result(cid, "alarm", "state.json is not an object", now)
+    bar_times = state.get("last_bar_times")
+    if not isinstance(bar_times, dict) or not bar_times:
+        return _result(cid, "na",
+                       "state.json has no last_bar_times "
+                       "(no bar ingested yet -- warm-up?)", now)
+    now_e = _now_epoch(now)
+    oldest_sym: str | None = None
+    oldest_age: float | None = None
+    for sym, raw in sorted(bar_times.items()):
+        epoch = _parse_iso_epoch(raw)
+        if epoch is None:
+            return _result(cid, "alarm",
+                           f"unparseable last_bar_times[{sym}]: "
+                           f"{raw!r:.60}", now)
+        age = _market_seconds_between(epoch, now_e)
+        if oldest_age is None or age > oldest_age:
+            oldest_age = age
+            oldest_sym = sym
+    if oldest_age is None or oldest_sym is None:  # pragma: no cover
+        return _result(cid, "na", "no parseable bar times", now)
+    burn_in = [
+        s for s, w in (state.get("warmup") or {}).items()
+        if isinstance(w, dict) and int(w.get("burn_in_remaining") or 0) > 0
+    ]
+    burn_note = (f"; burn-in pending on {len(burn_in)} symbol(s)"
+                 if burn_in else "")
+    label = _age_label(oldest_age)
+    if oldest_age > TAPE_ALARM_MARKET_SECONDS:
+        return _result(cid, "alarm",
+                       f"no bar ingested for {label} of market time "
+                       f"(worst: {oldest_sym}; > 9h -- feed stale or "
+                       f"runtime down?){burn_note}", now)
+    if oldest_age > TAPE_WARN_MARKET_SECONDS:
+        return _result(cid, "warn",
+                       f"no bar ingested for {label} of market time "
+                       f"(worst: {oldest_sym}; > 5h){burn_note}", now)
+    return _result(cid, "ok",
+                   f"newest bars {label} old (worst: {oldest_sym})"
+                   f"{burn_note}", now)
 
 
 def check_calendar_feed(cache_path: Path | str | None = None,
@@ -454,6 +553,8 @@ def run_check(check_id: str, *,
     deliberate raise in the module -- caller bug, not system state)."""
     if check_id == "runtime_heartbeat":
         return check_runtime_heartbeat(live_dir, now)
+    if check_id == "squad_tape_freshness":
+        return check_squad_tape_freshness(live_dir, now)
     if check_id == "calendar_feed":
         return check_calendar_feed(calendar_cache_path, now)
     if check_id == "broker_health":
@@ -617,6 +718,8 @@ __all__ = [
     "ALERT_EVENT_TYPE",
     "RUNTIME_WARN_SECONDS",
     "RUNTIME_ALARM_SECONDS",
+    "TAPE_WARN_MARKET_SECONDS",
+    "TAPE_ALARM_MARKET_SECONDS",
     "CALENDAR_WARN_SECONDS",
     "CALENDAR_ALARM_SECONDS",
     "INTAKE_P0_ALARM_SECONDS",
@@ -626,6 +729,7 @@ __all__ = [
     "SNAPSHOT_CACHE_SECONDS",
     "STATE_FILENAME",
     "check_runtime_heartbeat",
+    "check_squad_tape_freshness",
     "check_calendar_feed",
     "check_broker_health",
     "check_risk_state",
