@@ -2439,6 +2439,89 @@ provenance disclaimer (shadow paper, not investment performance) baked
 into the report header. 8 tests in
 `tests/platform/test_weekly_squad_report.py`; CLI smoke-tested.
 
+## D127 · 2026-07-28 · engineering · [TOOLING]
+
+**Start the shadow clock for real: `squad_tape_freshness` watchdog
+check (F017 registry 7 → 8) + runbook 7b.9 Task Scheduler wiring
+(SquadLiveRuntime restart loop + OpsWatchdog `--loop 300`).**
+
+The first weekly v2 bundle (D126 tool, window 2026-07-15..28) showed
+6 symbol-bars ingested of ~180 expected — 8 of 10 weekdays silent,
+unflagged. Two-part fix from the weekly review: (1) new watchdog
+check ages the oldest `last_bar_times` symbol in `state.json` in
+MARKET seconds (Sat/Sun excluded; warn > 5 h, alarm > 9 h) so a
+live-but-starved runtime pages ops — `runtime_heartbeat` alone calls
+it healthy; (2) `scripts/watchdog_squad.ps1` (kill.txt-aware restart
+loop, v1's `watchdog_agent.ps1` pattern) + runbook 7b.9 register both
+the runtime and the watchdog as `AtLogOn` interactive tasks. Intake:
+I017 (in_progress — closes on VM wiring + first ok pass); I018 filed
+(the /v2 next-close countdown assumes the 00/04/…/20 UTC grid; tape
+closes on 03/07/…/23 — display-only, poll cap keeps evaluation
+timely). Claim register F017 section updated; 14 new tests in
+`tests/platform/test_watchdog_tape_freshness.py`; existing watchdog
+suites adjusted for the 8-slot registry.
+
+## D128 · 2026-07-28 · engineering · [BUG]
+
+**I018 shipped: /v2 "Next bar close" countdown now anchors the H4
+grid to the tape instead of assuming UTC midnight.**
+
+`nextH4CloseMs()` scans the newest `tick_summary` on the page (its
+timestamp is a real close moment) and projects forward in whole 4 h
+steps; the midnight 00/04/…/20 grid survives only as the no-tape
+fallback (`midnightGridNextCloseMs`). Fixes the 1 h-late countdown
+the CEO screenshotted at 14:59 UTC ("16:00" shown, real close 15:00
+— verified: the fix yields 15:00 on that exact input). Display-only
+either way — the runtime's ≤ 60 s poll cap always picked bars up on
+time. The `agent/live/signal_loop.next_h4_close_utc` twin is NOT
+touched (off-limits outside an integration sprint; the same poll cap
+makes it harmless for v1). The tape's actual grid (03/07/…/23 UTC)
+is flagged for the A004 FOMC capture to name explicitly. Pinned by
+`test_next_close_countdown_anchors_to_tape` in
+`tests/platform/test_v2_page.py`.
+
+## D129 · 2026-07-28 · engineering · [BUG]
+
+**I019 shipped (P0): `run_squad_live --feed mt5` now attaches a real
+MT5 broker; frozen-PaperBroker fallback is dead.**
+
+`_connect_mt5` built a bare `LiveConfig()` → `broker_type="paper"` →
+`PaperBroker` memoizes the parquet cache once at boot and never sees
+another bar. The "live" squad tape froze at the newest cached bar —
+the true root cause of the 8 silent weekdays in the 2026-07-28 weekly
+bundle (process downtime was real but secondary; a 24/5 scheduled
+task would have starved identically). Fix mirrors v1 `run_live.py`:
+`LiveConfig(broker_type="mt5", ...)` hydrated from `.env` MT5
+credentials, with loud `RuntimeError`s for missing creds, explicit
+paper configs, or failed connects — never a silent degrade. CEO gave
+explicit same-day go-ahead to touch the off-limits
+`scripts/run_squad_live.py`; change is confined to broker
+construction (zero engine/roster drift, parity preserved). 4
+regression tests in `tests/test_squad_live_feed_broker.py`. VM
+follow-up: pull, restart, confirm boot log
+`squad feed broker: mt5 login=… (read-only)`, watch `last_bar_times`
+advance at the next H4 close.
+
+## D130 · 2026-07-28 · research_lead · [RESEARCH]
+
+**I020 routed: "which moment should Karasu's news window protect?"
+opened as M001 Phase AD.2 pre-registration DRAFT in the research
+repo.**
+
+Engine passes `as_of = bar.time` (the H4 OPEN label) to
+`warning_active_at`, so the ±15-min blackout is anchored ~4 h before
+the actual entry moment (semantics A). Candidate B anchors at bar
+close / entry; C adds a holding-window look-ahead. The Jul 24 "French
+Flash PMI in +15 min" advisory is the concrete instance (imminent vs
+the open label, ~3 h 45 m stale vs the real decision). Not a bug fix:
+Phase AD's AD1–AD3 verdict was earned under A, so changing the anchor
+in the live path would be post-freeze retuning. DRAFT protocol at
+`finance-research-experiments/programs/M001_multi_agent_ensemble/experiments/phase_ad2_karasu_window_semantics/PROTOCOL.md`
+(Stage 1 disagreement audit gates Stage 2 counterfactual re-scoring;
+live path stays on A until RECOMMEND-B is ratified + Phase AD.3 OOS
+confirms). Draft left uncommitted in the research repo pending that
+session's declared branch.
+
 ## Template for subsequent entries
 
 ```markdown

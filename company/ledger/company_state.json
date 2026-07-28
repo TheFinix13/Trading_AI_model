@@ -3039,6 +3039,34 @@
       "role": "engineering",
       "decision": "[TOOLING] scripts/weekly_squad_report.py -- one-command weekly v2 review bundle (shadow-squad counterpart of v1 weekly_report.py): REPORT.md with executive summary / day-by-day / players / trades / Sentinel blocks / system health / auto-flag checklist, plus raw tape slice + state.json in one zip.",
       "context": "CEO request 2026-07-28: weekly summary of everything the v2 agent did, like v1's ritual. Derives everything from events.jsonl via highlights.match_report (single source of truth with the dashboards). Observation-only, degrades gracefully, provenance disclaimer in the header. Auto-flags: silent weekdays (runtime down?), non-ok system_status rows, negative week small-n caution, proposals-but-zero-opens Sentinel review. 8 tests + CLI smoke."
+    },
+    {
+      "id": "D127",
+      "date": "2026-07-28",
+      "role": "engineering",
+      "decision": "[TOOLING] Start the shadow clock for real: squad_tape_freshness watchdog check (F017 registry 7 -> 8, market-hours-aware staleness on state.json last_bar_times) + scripts/watchdog_squad.ps1 restart loop + runbook 7b.9 Task Scheduler wiring (SquadLiveRuntime + OpsWatchdog --loop 300).",
+      "context": "First weekly v2 bundle (D126, window 2026-07-15..28) showed 6 symbol-bars ingested of ~180 expected -- 8 of 10 weekdays silent, unflagged: runtime only ran when a human started it, and runtime_heartbeat cannot see a live-but-starved feed. New check: oldest last_bar_times symbol aged in market seconds (Sat/Sun excluded), warn > 5h, alarm > 9h, corrupt state alarms. Intake I017 in_progress (closes on VM wiring + first ok pass); I018 filed (/v2 next-close countdown assumes 00/04/../20 UTC grid, tape closes on 03/07/../23; display-only). Claim register updated; 14 new tests; watchdog suites adjusted to the 8-slot registry."
+    },
+    {
+      "id": "D128",
+      "date": "2026-07-28",
+      "role": "engineering",
+      "decision": "[BUG] I018 shipped: /v2 'Next bar close' countdown anchors the H4 grid to the tape's tick_summary timestamps (whole 4h steps from the newest real close); midnight 00/04/../20 grid kept only as the no-tape fallback.",
+      "context": "CEO screenshot 2026-07-28 14:59 UTC showed '16:00' while the real close was 15:00 (tape grid 03/07/../23 UTC). Display-only: the runtime's <=60s poll cap always picked bars up on time. agent/live/signal_loop.next_h4_close_utc twin untouched (off-limits outside an integration sprint). Pinned by test_next_close_countdown_anchors_to_tape."
+    },
+    {
+      "id": "D129",
+      "date": "2026-07-28",
+      "role": "engineering",
+      "decision": "[BUG] I019 shipped (P0): run_squad_live --feed mt5 attaches a real MT5 broker (LiveConfig broker_type='mt5' hydrated from .env, mirroring run_live.py); missing creds / explicit paper config / failed connect now raise loudly instead of silently degrading to the frozen PaperBroker snapshot.",
+      "context": "Bare LiveConfig() defaulted to broker_type='paper'; PaperBroker memoizes the parquet cache once at boot, so the 'live' tape froze at the newest cached bar -- the true root cause of the 8 silent weekdays in the 2026-07-15..28 bundle (downtime was secondary; a 24/5 scheduled task would have starved identically). CEO gave explicit same-day go-ahead to touch the off-limits scripts/run_squad_live.py; change confined to broker construction, zero engine/roster drift. 4 regression tests in tests/test_squad_live_feed_broker.py. VM: pull, restart, confirm 'squad feed broker: mt5' boot line, watch last_bar_times advance."
+    },
+    {
+      "id": "D130",
+      "date": "2026-07-28",
+      "role": "research_lead",
+      "decision": "[RESEARCH] I020 routed: 'which moment should Karasu's news window protect?' opened as M001 Phase AD.2 pre-registration DRAFT in finance-research-experiments (semantics A = bar-open label / current, B = entry-anchored close, C = forward holding window).",
+      "context": "Engine passes as_of=bar.time (H4 OPEN label) to warning_active_at, anchoring the +/-15-min blackout ~4h before the real entry moment. Jul 24 'French Flash PMI in +15 min' advisory is the concrete instance. Not a bug fix: Phase AD's verdict was earned under A, so a live-path anchor change would be post-freeze retuning. Stage 1 disagreement audit gates Stage 2 counterfactual re-scoring; live path stays on A until RECOMMEND-B is ratified + Phase AD.3 OOS confirms. Draft uncommitted in the research repo pending that session's declared branch."
     }
   ],
   "sprint_verdicts": [
@@ -3457,6 +3485,86 @@
       "resolved_at": "2026-07-24T15:30:00Z",
       "summary": "Single MT5 terminal shared by two accounts: the V2 broker probe switched v1's account, v1 tripped its kill switch on a phantom drawdown. Resolved same day by D124 dual-terminal pin + runbook.",
       "file": "company/rd/intake/I015-mt5-account-contention-v1-killed.md"
+    },
+    {
+      "id": "I017",
+      "source": "post-mortem",
+      "submitter": "user_advocate",
+      "submitted_at": "2026-07-28T15:20:00Z",
+      "classification": "FEATURE-REQUEST",
+      "priority": "P1",
+      "status": "in_progress",
+      "route": "feature",
+      "linked_features": [
+        "F017"
+      ],
+      "linked_decisions": [
+        "D127"
+      ],
+      "linked_experiments": [],
+      "contact": null,
+      "resolved_at": null,
+      "summary": "Squad tape freshness unmonitored: 8 of 10 weekdays with no tape went unflagged in the 2026-07-15..28 window. squad_tape_freshness check shipped same day (D127); closes on VM Task Scheduler wiring (runbook 7b.9) + first ok reading.",
+      "file": "company/rd/intake/I017-squad-tape-freshness-not-monitored.md"
+    },
+    {
+      "id": "I018",
+      "source": "post-mortem",
+      "submitter": "user_advocate",
+      "submitted_at": "2026-07-28T15:25:00Z",
+      "classification": "BUG",
+      "priority": "P2",
+      "status": "shipped",
+      "route": "bug",
+      "linked_features": [],
+      "linked_decisions": [
+        "D128"
+      ],
+      "linked_experiments": [],
+      "contact": null,
+      "resolved_at": "2026-07-28T16:40:00Z",
+      "summary": "/v2 'Next bar close' countdown assumed the 00/04/../20 UTC grid; tape closes on 03/07/../23. Shipped same day (D128): countdown now anchors to the tape's tick_summary timestamps.",
+      "file": "company/rd/intake/I018-v2-next-close-countdown-wrong-grid.md"
+    },
+    {
+      "id": "I019",
+      "source": "post-mortem",
+      "submitter": "user_advocate",
+      "submitted_at": "2026-07-28T16:55:00Z",
+      "classification": "BUG",
+      "priority": "P0",
+      "status": "shipped",
+      "route": "bug",
+      "linked_features": [],
+      "linked_decisions": [
+        "D129"
+      ],
+      "linked_experiments": [],
+      "contact": null,
+      "resolved_at": "2026-07-28T17:10:00Z",
+      "summary": "run_squad_live --feed mt5 silently ran on a frozen PaperBroker parquet snapshot (bare LiveConfig() defaults to paper) -- the true root cause of the 8 silent weekdays. Shipped same day (D129): real MT5 broker from .env creds, loud failures, 4 regression tests. Blocks-shadow-clock P0.",
+      "file": "company/rd/intake/I019-squad-live-feed-frozen-paper-broker.md"
+    },
+    {
+      "id": "I020",
+      "source": "post-mortem",
+      "submitter": "user_advocate",
+      "submitted_at": "2026-07-28T17:20:00Z",
+      "classification": "RESEARCH-QUESTION",
+      "priority": "P2",
+      "status": "routed",
+      "route": "research",
+      "linked_features": [],
+      "linked_decisions": [
+        "D130"
+      ],
+      "linked_experiments": [
+        "M001-PhaseAD.2"
+      ],
+      "contact": null,
+      "resolved_at": null,
+      "summary": "Karasu's +/-15-min news window is anchored at the H4 bar-OPEN label (as_of=bar.time), ~4h before the real entry moment. Routed to research as M001 Phase AD.2 pre-reg DRAFT (semantics A/B/C, Stage 1 disagreement audit gates Stage 2 counterfactual re-scoring). Live path unchanged until ratified.",
+      "file": "company/rd/intake/I020-karasu-window-anchor-semantics.md"
     }
   ],
   "experiments": [
