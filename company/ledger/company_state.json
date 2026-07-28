@@ -3573,6 +3573,23 @@
       "resolved_at": "2026-07-28T17:30:00Z",
       "summary": "Karasu window anchor semantics: Phase AD.2 Stage 1 NULL verdict (D131) -- the +/-15-min window fired zero times under both anchors across the panel (S1=0, S2=0/5,236); question moot, live path keeps semantics A. Structural inertness of the point window on the H4 grid banked; C-lever prior AGAINST recorded.",
       "file": "company/rd/intake/I020-karasu-window-anchor-semantics.md"
+    },
+    {
+      "id": "I022",
+      "source": "user-report",
+      "submitter": "user_advocate",
+      "submitted_at": "2026-07-28T17:40:00Z",
+      "classification": "BUG",
+      "priority": "P2",
+      "status": "new",
+      "route": "bug",
+      "linked_features": [],
+      "linked_decisions": [],
+      "linked_experiments": [],
+      "contact": null,
+      "resolved_at": null,
+      "summary": "Squad Telegram copy lies about live mode: Ctrl+C pages 'step budget reached' (interrupted deliberately funnelled into max_steps), an unhandled crash pages 'replay exhausted -- every row emitted' (outcome initialized to done), and KICKOFF uses replay vocabulary ('replaying', hardcoded '0 rows queued', 'stream:' = output dir). GOAL/MISS/HALT/SYSTEM/league-table copy accurate. Fix half-touches off-limits run_squad_live.py -- needs CEO go-ahead.",
+      "file": "company/rd/intake/I022-squad-telegram-copy-lies-about-live-mode.md"
     }
   ],
   "experiments": [
