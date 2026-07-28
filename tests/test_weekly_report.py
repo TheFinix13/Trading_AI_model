@@ -129,6 +129,40 @@ def test_trade_table_joins_open_and_close(tmp_path: Path) -> None:
     assert t.opened_ts is not None and t.closed_ts is not None
 
 
+def test_reopened_line_reverts_phantom_close(tmp_path: Path) -> None:
+    """I016: a [REOPENED] line means the preceding close for that ticket was
+    phantom (account blip) — the trade must read as still open, and a later
+    GENUINE close must still register normally."""
+    log = f"""\
+{DAY} 04:00:31 INFO     agent.live.signal_loop: [TRADE OPENED] GBPUSDm H4 zone_h4_all LONG ticket=555 entry=1.33365 lots=0.01 soft_sl=1.32987 (38p) catastrophe_sl=1.32440 (93p) tp_mech=1.33899 (1.4R, +53p) risk=0.50%
+{DAY} 10:36:00 INFO     agent.live.monitor: [CLOSED (cause unconfirmed)] GBPUSDm ticket=555 zone_h4_all LONG exit=1.33176 pnl=-1.89 (-19p, -0.50R) cause=manual
+{DAY} 11:55:00 WARNING  agent.live.monitor: [REOPENED] GBPUSDm ticket=555 LONG — position reappeared at the broker after being recorded closed (manual, pnl=-1.89). The close was phantom (account blip); original context restored, soft stop 1.32987 re-armed, close side-effects reverted.
+"""
+    root = tmp_path / "TradingAgentLogs"
+    gbp = root / "GBPUSDm"
+    gbp.mkdir(parents=True)
+    (gbp / f"GBPUSDm_{DAY}.log").write_text(log, encoding="utf-8")
+
+    weeks, _ = _weeks(root, symbols=("GBPUSD",))
+    wk = weeks["GBPUSD"]
+    t = wk.trades["555"]
+    assert t.pnl is None and t.exit is None and t.closed_ts is None
+    assert wk.closed_rows == []
+    assert wk.reopened_count == 1
+
+    # A genuine close after the reopen must count normally.
+    log2 = (
+        f"{DAY2} 09:00:00 INFO     agent.live.monitor: [SOFT SL] GBPUSDm "
+        f"ticket=555 zone_h4_all LONG exit=1.32980 pnl=-3.85 (-39p, -1.01R) "
+        f"cause=soft_sl\n"
+    )
+    (gbp / f"GBPUSDm_{DAY2}.log").write_text(log2, encoding="utf-8")
+    weeks, _ = _weeks(root, symbols=("GBPUSD",))
+    t = weeks["GBPUSD"].trades["555"]
+    assert t.pnl == pytest.approx(-3.85)
+    assert t.exit_tag == "SOFT SL"
+
+
 def test_rejection_breakdown_splits_max_positions(tmp_path: Path) -> None:
     root = _write_root(tmp_path)
     weeks, _ = _weeks(root)

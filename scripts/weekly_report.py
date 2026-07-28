@@ -83,6 +83,13 @@ RE_TRADE_CLOSED_FULL = re.compile(
     r"\((?P<pips>[+-]?\d+)p, (?P<r>[+-]?[\d.]+)R\) cause=(?P<cause>\S+)"
 )
 
+# Phantom-close reversal (I016): the monitor logs [REOPENED] when a
+# recorded-closed ticket reappears at the broker (account blip). The
+# earlier close line for that ticket must NOT count as a realized trade —
+# the 2026-07-15..28 report showed two phantom "manual" losses that
+# distorted P&L, win rate and the external-move reconciliation.
+RE_REOPENED = re.compile(r"\[REOPENED\] (?P<sym>\S+) ticket=(?P<ticket>\d+)")
+
 
 # ---------------------------------------------------------------------------
 # Per-symbol structured week
@@ -123,6 +130,8 @@ class SymbolWeek:
     kill_txt: str | None = None
     vault_dir: Path | None = None
     vault_near_misses: list[dict] = field(default_factory=list)  # jsonl records
+    # Phantom closes reverted by a later [REOPENED] line (I016).
+    reopened_count: int = 0
 
     @property
     def closed_rows(self) -> list[TradeRow]:
@@ -216,6 +225,24 @@ def _parse_log(path: Path, wk: SymbolWeek) -> None:
             row.exit_tag = m.group("tag")
             row.cause = m.group("cause")
             row.closed_ts = ts
+            continue
+
+        m = RE_REOPENED.search(raw)
+        if m:
+            row = wk.trades.get(m.group("ticket"))
+            if (row is not None and row.closed_ts is not None
+                    and (ts is None or row.closed_ts <= ts)):
+                # The close preceding this REOPENED line was phantom: wipe
+                # its exit fields so the trade reads as still open. A later
+                # GENUINE close line repopulates them.
+                row.exit = None
+                row.pnl = None
+                row.pips = None
+                row.r = None
+                row.exit_tag = None
+                row.cause = None
+                row.closed_ts = None
+                wk.reopened_count += 1
             continue
 
         m = RE_SIGNAL.search(raw)
@@ -584,6 +611,10 @@ def render_symbol_section(wk: SymbolWeek, days: list[date]) -> list[str]:
         if still_open:
             out.append(f"Still open / close not seen in window: "
                        f"{', '.join(t.ticket for t in still_open)}.")
+        if wk.reopened_count:
+            out.append(f"Phantom closes reverted ([REOPENED] lines): "
+                       f"{wk.reopened_count} — excluded from the trade "
+                       f"table and P&L above.")
     else:
         out.append("No trades opened or closed in this window.")
     out.append("")

@@ -169,6 +169,16 @@ class BrokerConnection(ABC):
         """Clean up connection resources."""
         ...
 
+    async def reconnect(self) -> bool:
+        """Tear down and re-establish the broker link after a dead channel.
+
+        Called by the position monitor when account reads keep failing
+        (e.g. the MT5 terminal was replaced by an auto-update and the old
+        IPC pipe is permanently dead — observed live 2026-07-28). Default
+        implementation simply calls ``connect()`` again, which is enough
+        for brokers without persistent transport state."""
+        return await self.connect()
+
     @abstractmethod
     async def get_latest_bars(
         self, symbol: str, timeframe: str, count: int
@@ -304,6 +314,27 @@ class MT5Broker(BrokerConnection):
             await asyncio.to_thread(self._mt5.shutdown)
             self._connected = False
             log.info("MT5 disconnected")
+
+    async def reconnect(self) -> bool:
+        """Re-initialize the MT5 IPC channel after the terminal restarted.
+
+        The MetaTrader5 package binds to ONE terminal process at
+        ``initialize()`` time. When that process exits (auto-update,
+        crash, manual restart) every subsequent call fails with
+        ``(-10001, 'IPC send failed')`` forever — the package does not
+        re-attach to the new terminal by itself (observed live
+        2026-07-28 during an MT5 auto-update: 10 minutes of failed reads
+        until the operator restarted the agent). Shut the dead channel
+        down best-effort, clear cached symbol resolution, and run the
+        full initialize+login again."""
+        if self._mt5 is not None:
+            try:
+                await asyncio.to_thread(self._mt5.shutdown)
+            except Exception as exc:
+                log.debug("mt5.shutdown before reconnect failed (ignored): %s", exc)
+        self._connected = False
+        self._resolved_symbols.clear()
+        return await self.connect()
 
     def _resolve_symbol_sync(self, base_symbol: str) -> str:
         """Find the actual symbol name on this broker (synchronous, call from thread)."""

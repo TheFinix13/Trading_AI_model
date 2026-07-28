@@ -174,6 +174,65 @@ class PostLossGuard:
             self.size_multiplier = 1.0
         # pnl == 0 (scratch / breakeven): neutral, leave state unchanged.
 
+    def revert_close(
+        self,
+        *,
+        pnl: float,
+        direction: str | None = None,
+        now: datetime | None = None,
+    ) -> None:
+        """Undo the state effect of a close that turned out to be phantom.
+
+        The 2026-07-24 account-contention incident (I015/I016) made the
+        monitor journal closes for positions that were still open — the
+        terminal had been switched to another account and the tickets
+        merely "vanished" for a few minutes. Each phantom loss armed the
+        cooldown, halved the next trade's risk and counted toward the
+        circuit breaker, penalising trades that never actually closed.
+
+        Reverts only what a single loss armed: one step off the streak,
+        full size back when the streak is clear, the cooldown, and the
+        remembered loss direction (when it matches). The consecutive-loss
+        circuit breaker is lifted if the reverted loss drops the streak
+        back under the threshold. A catastrophic/stop-out halt is NOT
+        auto-reverted — a phantom close big enough to look like a
+        stop-out warrants a human look, not silent resumption. A phantom
+        WIN is also left alone: it reset the streak and we cannot
+        reconstruct what the streak was, so we stay on the permissive
+        state we're already in (logged for the record).
+        """
+        if not self.cfg.enabled:
+            return
+        self._maybe_roll_day(now)
+        if pnl >= 0:
+            log.info(
+                "Post-loss guard: phantom WIN close (%+.2f) reverted in the "
+                "journal only — guard state left as-is (streak cannot be "
+                "reconstructed)", pnl,
+            )
+            return
+        if self.consecutive_losses > 0:
+            self.consecutive_losses -= 1
+        if self.consecutive_losses == 0:
+            self.size_multiplier = 1.0
+        self.cooldown_until = None
+        self.cooldown_until_bar = None
+        if direction and self.last_loss_direction == direction.lower():
+            self.last_loss_direction = None
+        if (self.session_halted
+                and "consecutive losses" in self.halt_reason
+                and self.consecutive_losses < self.cfg.max_consecutive_losses):
+            self.session_halted = False
+            self.halt_reason = ""
+            log.warning(
+                "Post-loss guard: circuit breaker LIFTED — the halting loss "
+                "was a phantom close (position still open at the broker)")
+        log.warning(
+            "Post-loss guard: phantom loss reverted (%+.2f) — streak now %d, "
+            "next risk x%.2f, cooldown cleared",
+            pnl, self.consecutive_losses, self.size_multiplier,
+        )
+
     # ------------------------------------------------------------------
     # Pre-trade check
     # ------------------------------------------------------------------

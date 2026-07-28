@@ -171,6 +171,7 @@ class SignalLoop:
             healthcheck=self.healthcheck,
             soft_stop_cfg=self.soft_stop_cfg,
             trade_closed_cb=self._on_trade_closed,
+            trade_reopened_cb=self._on_trade_reopened,
             on_state_change=(
                 self._persist_state if self._state_store is not None else None
             ),
@@ -959,6 +960,42 @@ class SignalLoop:
             held_seconds=held_seconds,
             balance_after=info.get("balance_after"),
         ))
+
+    def _on_trade_reopened(self, ticket: int, info: dict) -> None:
+        """Monitor callback: a recorded close turned out to be phantom (the
+        ticket reappeared at the broker, I015/I016). Unwind the close's
+        side effects: the post-loss guard's cooldown/size penalty/circuit
+        breaker step, and — for a same-day phantom LOSS — the risk
+        manager's daily P&L (adding a phantom loss back cannot trip the
+        daily-DD halt; reverting a phantom win could, so wins are left)."""
+        pnl = float(info.get("pnl", 0.0))
+        direction = str(info.get("direction", "")) or None
+        try:
+            self.post_loss_guard.revert_close(
+                pnl=pnl, direction=direction,
+                now=datetime.now(tz=timezone.utc),
+            )
+        except Exception as e:
+            log.warning("post-loss guard revert_close failed for %s: %s",
+                        ticket, e)
+        if pnl < 0:
+            same_day = False
+            closed_ts = info.get("closed_ts")
+            if closed_ts:
+                try:
+                    closed_dt = datetime.fromisoformat(str(closed_ts))
+                    if closed_dt.tzinfo is None:
+                        closed_dt = closed_dt.replace(tzinfo=timezone.utc)
+                    same_day = (closed_dt.date()
+                                == datetime.now(tz=timezone.utc).date())
+                except (ValueError, TypeError):
+                    pass
+            if same_day:
+                try:
+                    self.risk_manager.record_trade_pnl(-pnl)
+                except Exception:
+                    pass
+        self._persist_state()
 
     # ------------------------------------------------------------------
     # Misc

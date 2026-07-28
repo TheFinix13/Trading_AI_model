@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from agent.config import load_config
-from agent.live.broker import ClosedTrade, OrderResult, Position
+from agent.live.broker import BrokerReadError, ClosedTrade, OrderResult, Position
 from agent.live.config import LiveConfig
 from agent.live.monitor import PositionMonitor
 from agent.live.soft_stop import SoftStopConfig
@@ -337,3 +337,222 @@ def test_close_r_unchanged_when_no_be_move():
     info = closes[0]
     assert info["r_multiple"] == pytest.approx(-1.0, abs=0.01)
     assert info["be_moved"] is False
+
+
+# ---------------------------------------------------------------------------
+# I016: 2026-07-24 account-contention reproduction. The V2 broker probe
+# switched the terminal to another account; v1's tickets "vanished" (phantom
+# manual closes journaled), then reappeared 1.3h later — and were never
+# re-adopted, so the soft-stop layer stayed dead (GBPUSD's soft 1.32987 was
+# crossed on Jul 27 with no exit; only the catastrophe SL protected it).
+# ---------------------------------------------------------------------------
+
+
+def _gbpusd_position(profit: float = -1.89,
+                     current_price: float = 1.33176) -> Position:
+    return Position(
+        ticket=3000652586, symbol="GBPUSD", direction=Direction.LONG,
+        volume=0.01, open_price=1.33365, open_time=_utc(),
+        stop_loss=1.32440, take_profit=1.33899,
+        profit=profit, current_price=current_price,
+    )
+
+
+_GBPUSD_CTX = {
+    "alpha": "zone_h4_all", "direction": "long",
+    "entry": 1.33365, "soft_stop": 1.32987,
+    "stop": 1.32440, "take_profit": 1.33899,
+    "conviction": 0.65, "entry_time": "2026-07-24T08:00:30+00:00",
+}
+
+
+def _healthy_account(mon: PositionMonitor) -> None:
+    mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+        balance=1000.0, equity=998.0,
+    ))
+    mon.broker.get_latest_bars = AsyncMock(return_value=[])
+
+
+def test_phantom_close_reopen_restores_original_context(caplog):
+    mon = _make_monitor("GBPUSD")
+    _healthy_account(mon)
+    pos = _gbpusd_position()
+    mon.register_entry(pos.ticket, dict(_GBPUSD_CTX))
+
+    # Cycle 1: normal — ticket tracked, initial scan done.
+    mon.broker.get_open_positions = AsyncMock(return_value=[pos])
+    asyncio.run(mon._check_positions())
+    assert pos.ticket in mon._entry_ctx
+
+    # Cycle 2: account blip — the ticket vanishes, a phantom "manual" close
+    # is journaled and the entry ctx is evicted.
+    mon.broker.get_open_positions = AsyncMock(return_value=[])
+    mon.broker.get_closed_trade = AsyncMock(return_value=None)
+    closes: list[tuple[int, dict]] = []
+    mon.trade_closed_cb = lambda t, i: closes.append((t, i))
+    asyncio.run(mon._check_positions())
+    assert closes and closes[0][0] == pos.ticket
+    assert pos.ticket not in mon._entry_ctx
+
+    # Cycle 3: account restored — the ticket REAPPEARS. Pre-fix behaviour
+    # left it untracked forever (soft stop dead); now the ORIGINAL context
+    # must come back and the reopen callback must fire.
+    reopens: list[tuple[int, dict]] = []
+    mon.trade_reopened_cb = lambda t, i: reopens.append((t, i))
+    mon.broker.get_open_positions = AsyncMock(return_value=[pos])
+    with caplog.at_level(logging.WARNING, logger="agent.live.monitor"):
+        asyncio.run(mon._check_positions())
+
+    assert mon._entry_ctx[pos.ticket]["soft_stop"] == pytest.approx(1.32987)
+    assert "inferred" not in mon._entry_ctx[pos.ticket]
+    assert reopens and reopens[0][0] == pos.ticket
+    assert reopens[0][1]["pnl"] < 0
+    assert "[REOPENED]" in caplog.text
+    assert any("REOPENED" in str(c.args[0])
+               for c in mon.notifier.notify_text.call_args_list)
+    # And the phantom record is consumed — a later genuine close is normal.
+    assert pos.ticket not in mon._recent_closes
+
+
+def test_untracked_ticket_adopted_after_one_cycle_grace():
+    """A ticket with no entry ctx and no recent-close record (e.g. opened
+    outside this process mid-run) must be adopted on its SECOND sighting —
+    one cycle of grace so our own just-filled orders can register first."""
+    mon = _make_monitor("GBPUSD")
+    _healthy_account(mon)
+    mon.broker.get_open_positions = AsyncMock(return_value=[])
+    asyncio.run(mon._check_positions())  # initial scan, empty book
+
+    pos = _gbpusd_position()
+    mon.broker.get_open_positions = AsyncMock(return_value=[pos])
+    asyncio.run(mon._check_positions())  # first sighting: grace, no adoption
+    assert pos.ticket not in mon._entry_ctx
+    assert pos.ticket in mon._ctxless_pending
+
+    asyncio.run(mon._check_positions())  # second sighting: adopt
+    ctx = mon._entry_ctx[pos.ticket]
+    assert ctx.get("inferred") is True
+    assert ctx.get("soft_stop") is not None
+
+
+def test_own_entry_registration_wins_the_grace_race():
+    """The signal loop registers ctx right after the fill; the sweep must
+    NOT clobber it with an inferred adoption."""
+    mon = _make_monitor("GBPUSD")
+    _healthy_account(mon)
+    mon.broker.get_open_positions = AsyncMock(return_value=[])
+    asyncio.run(mon._check_positions())
+
+    pos = _gbpusd_position()
+    mon.broker.get_open_positions = AsyncMock(return_value=[pos])
+    asyncio.run(mon._check_positions())  # sighting 1: pending
+    mon.register_entry(pos.ticket, dict(_GBPUSD_CTX))  # loop catches up
+    asyncio.run(mon._check_positions())  # sighting 2: must NOT adopt
+
+    ctx = mon._entry_ctx[pos.ticket]
+    assert "inferred" not in ctx
+    assert ctx["soft_stop"] == pytest.approx(1.32987)
+    assert pos.ticket not in mon._ctxless_pending
+
+
+def test_phantom_close_survives_restart_via_persisted_recent_closes():
+    """The exact 2026-07-24+28 sequence: phantom close, then the process is
+    restarted. The persisted recent-close record must let the initial scan
+    restore the ORIGINAL context instead of adopting with an inferred one."""
+    mon1 = _make_monitor("GBPUSD")
+    mon1.register_entry(3000652586, dict(_GBPUSD_CTX))
+    mon1._excursion[3000652586].update(last_price=1.33176, last_profit=-1.89)
+    mon1.broker.get_closed_trade = AsyncMock(return_value=None)
+    mon1.trade_closed_cb = lambda t, i: None
+    asyncio.run(mon1._handle_close(3000652586))  # the phantom close
+    state = mon1.get_persist_state()
+    assert "3000652586" in state["recent_closes"]
+
+    mon2 = _make_monitor("GBPUSD")
+    mon2.restore_from_persist_state(state)
+    _healthy_account(mon2)
+    reopens: list[int] = []
+    mon2.trade_reopened_cb = lambda t, i: reopens.append(t)
+    mon2.broker.get_open_positions = AsyncMock(
+        return_value=[_gbpusd_position()])
+    asyncio.run(mon2._check_positions())  # initial scan
+
+    ctx = mon2._entry_ctx[3000652586]
+    assert ctx["soft_stop"] == pytest.approx(1.32987)
+    assert "inferred" not in ctx
+    assert reopens == [3000652586]
+
+
+def test_stale_recent_close_is_pruned_not_reopened():
+    mon = _make_monitor("GBPUSD")
+    _healthy_account(mon)
+    mon.broker.get_open_positions = AsyncMock(return_value=[])
+    asyncio.run(mon._check_positions())  # initial scan
+
+    stale_ts = (datetime.now(tz=timezone.utc)
+                - timedelta(seconds=mon._PHANTOM_REOPEN_WINDOW_S + 60))
+    mon._recent_closes[3000652586] = {
+        "ts": stale_ts.isoformat(), "ctx": dict(_GBPUSD_CTX),
+        "excursion": {}, "pnl": -1.89, "exit_reason": "manual",
+    }
+    pos = _gbpusd_position()
+    mon.broker.get_open_positions = AsyncMock(return_value=[pos])
+    asyncio.run(mon._check_positions())  # pruned -> grace cycle
+    assert 3000652586 not in mon._recent_closes
+    assert 3000652586 not in mon._entry_ctx
+    asyncio.run(mon._check_positions())  # adopted (inferred), not reopened
+    assert mon._entry_ctx[3000652586].get("inferred") is True
+
+
+# ---------------------------------------------------------------------------
+# Broker-outage self-healing: the MetaTrader5 package binds to ONE terminal
+# process; after an MT5 auto-update replaces it, every call fails with
+# (-10001, 'IPC send failed') forever unless initialize() is re-run
+# (observed live 2026-07-28: 10 minutes of dead reads until a manual
+# restart).
+# ---------------------------------------------------------------------------
+
+
+def test_persistent_read_failures_trigger_broker_reconnect():
+    mon = _make_monitor("EURUSD")
+    mon.broker.get_open_positions = AsyncMock(return_value=[])
+    mon.broker.get_account_info = AsyncMock(
+        side_effect=BrokerReadError("mt5.account_info() returned None "
+                                    "(last_error=(-10001, 'IPC send failed'))"))
+    mon.broker.reconnect = AsyncMock(return_value=True)
+
+    for _ in range(mon._RECONNECT_AFTER_READ_FAILURES - 1):
+        asyncio.run(mon._check_positions())
+    mon.broker.reconnect.assert_not_awaited()
+
+    asyncio.run(mon._check_positions())  # failure #12 -> reconnect
+    mon.broker.reconnect.assert_awaited_once()
+    # Success resets the streak (the next failure starts a fresh count).
+    assert mon._account_read_failures == 0
+
+
+def test_failed_reconnect_retries_on_the_next_streak():
+    mon = _make_monitor("EURUSD")
+    mon.broker.get_open_positions = AsyncMock(return_value=[])
+    mon.broker.get_account_info = AsyncMock(
+        side_effect=BrokerReadError("IPC send failed"))
+    mon.broker.reconnect = AsyncMock(return_value=False)
+
+    for _ in range(mon._RECONNECT_AFTER_READ_FAILURES * 2):
+        asyncio.run(mon._check_positions())
+    assert mon.broker.reconnect.await_count == 2
+
+
+def test_successful_read_resets_failure_streak():
+    mon = _make_monitor("EURUSD")
+    mon.broker.get_open_positions = AsyncMock(return_value=[])
+    mon.broker.reconnect = AsyncMock(return_value=True)
+    mon.broker.get_account_info = AsyncMock(
+        side_effect=BrokerReadError("IPC send failed"))
+    for _ in range(mon._RECONNECT_AFTER_READ_FAILURES - 1):
+        asyncio.run(mon._check_positions())
+
+    _healthy_account(mon)  # terminal came back on its own
+    asyncio.run(mon._check_positions())
+    assert mon._account_read_failures == 0
+    mon.broker.reconnect.assert_not_awaited()

@@ -159,3 +159,70 @@ def test_cooldown_override_cannot_bypass_circuit_breaker():
     d = g.pre_trade_check(t, reaction_conviction=0.99, direction="short")
     assert not d.allowed
     assert d.code == "circuit_breaker"
+
+
+# ---------------------------------------------------------------------------
+# Phantom-close reversal (I016): the 2026-07-24 account blip journaled
+# closes for positions that were still open; each phantom loss armed the
+# cooldown, halved size and counted toward the circuit breaker.
+# ---------------------------------------------------------------------------
+
+
+def test_phantom_loss_revert_restores_size_cooldown_and_streak():
+    g = PostLossGuard(GuardConfig(cooldown_minutes=60.0, loss_risk_multiplier=0.5))
+    t = _now()
+    g.register_close(pnl=-0.77, now=t, direction="long")
+    assert g.risk_multiplier() == 0.5
+    assert not g.pre_trade_check(t + timedelta(minutes=10)).allowed
+
+    g.revert_close(pnl=-0.77, direction="long", now=t + timedelta(minutes=20))
+    assert g.risk_multiplier() == 1.0
+    assert g.consecutive_losses == 0
+    assert g.last_loss_direction is None
+    assert g.pre_trade_check(t + timedelta(minutes=21)).allowed
+
+
+def test_phantom_loss_revert_lifts_circuit_breaker():
+    g = PostLossGuard(GuardConfig(max_consecutive_losses=2, cooldown_minutes=0.0))
+    t = _now()
+    g.register_close(pnl=-1.0, now=t, direction="long")
+    g.register_close(pnl=-1.0, now=t, direction="long")  # halted (phantom)
+    assert not g.pre_trade_check(t).allowed
+
+    g.revert_close(pnl=-1.0, direction="long", now=t)
+    assert not g.session_halted
+    assert g.pre_trade_check(t).allowed
+    assert g.consecutive_losses == 1
+    # One genuine loss remains on the streak — size stays reduced.
+    assert g.risk_multiplier() == 0.5
+
+
+def test_phantom_revert_does_not_lift_stop_out_halt():
+    # A phantom close big enough to look like a stop-out warrants a human
+    # look, not silent resumption.
+    g = PostLossGuard(GuardConfig(catastrophic_loss_frac=0.10))
+    t = _now()
+    g.register_close(pnl=-124.0, now=t, account_balance=130.0, direction="long")
+    assert g.session_halted
+
+    g.revert_close(pnl=-124.0, direction="long", now=t)
+    assert g.session_halted
+    assert not g.pre_trade_check(t).allowed
+
+
+def test_phantom_win_revert_is_a_noop():
+    g = PostLossGuard(GuardConfig(cooldown_minutes=60.0))
+    t = _now()
+    g.register_close(pnl=-5.0, now=t, direction="long")
+    g.register_close(pnl=+8.0, now=t)  # phantom win reset the streak
+    g.revert_close(pnl=+8.0, now=t)    # cannot reconstruct — leave as-is
+    assert g.consecutive_losses == 0
+    assert g.risk_multiplier() == 1.0
+
+
+def test_revert_on_clean_slate_is_safe():
+    g = PostLossGuard(GuardConfig())
+    g.revert_close(pnl=-3.0, direction="short", now=_now())
+    assert g.consecutive_losses == 0
+    assert g.risk_multiplier() == 1.0
+    assert not g.session_halted

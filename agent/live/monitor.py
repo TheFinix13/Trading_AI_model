@@ -72,6 +72,7 @@ class PositionMonitor:
         soft_stop_cfg: SoftStopConfig | None = None,
         on_state_change: Callable[[], None] | None = None,
         dd_halt_recovery_cb: Callable[[date, date], object] | None = None,
+        trade_reopened_cb: Callable[[int, dict], None] | None = None,
     ):
         self.broker = broker
         self.config = config
@@ -82,6 +83,11 @@ class PositionMonitor:
         # Optional callback invoked when an open position closes, with
         # (ticket, exit_info dict). Used to journal exits + feed learning.
         self.trade_closed_cb = trade_closed_cb
+        # Optional callback invoked when a recorded-closed ticket REAPPEARS
+        # at the broker (phantom close, I015/I016), with (ticket, info about
+        # the reverted close). Lets the signal loop unwind the post-loss
+        # guard / risk-manager effects of a close that never really happened.
+        self.trade_reopened_cb = trade_reopened_cb
         # Synthetic ("soft") stop layer — agent-managed wick-proof exits.
         self.soft_stop_cfg = soft_stop_cfg or SoftStopConfig(enabled=False)
         # Optional callback invoked whenever monitor state changes (BE move,
@@ -134,6 +140,22 @@ class PositionMonitor:
         # Tickets restored from the state sidecar (not yet broker-verified).
         # Cleared after the first _check_positions cycle confirms them.
         self._restored_ctx_tickets: set[int] = set()
+        # ---- I016: mid-run untracked-ticket safety net -------------------
+        # Recently closed tickets, kept for _PHANTOM_REOPEN_WINDOW_S so a
+        # ticket that "closed" during an account blip (terminal switched to
+        # another account, I015) can reclaim its ORIGINAL entry context when
+        # it reappears, instead of losing its soft stop forever.
+        self._recent_closes: dict[int, dict] = {}
+        # Tickets seen at the broker with no entry ctx for exactly one
+        # cycle. Grace period: our own entry path registers ctx right after
+        # the fill, so adoption waits one cycle to avoid racing it.
+        self._ctxless_pending: set[int] = set()
+        # ---- Broker-outage self-healing ----------------------------------
+        # Consecutive failed account reads; a persistent streak means the
+        # terminal process is gone (e.g. MT5 auto-update) and the IPC pipe
+        # will NEVER come back without re-initializing — see
+        # _maybe_reconnect_broker.
+        self._account_read_failures: int = 0
         # Last account/position snapshot from the 5s monitor cycle, exposed so
         # the signal loop's heartbeat can log balance/equity/open-position
         # count without an extra broker round-trip.
@@ -325,6 +347,163 @@ class PositionMonitor:
             except Exception as exc:
                 log.debug("on_state_change failed after adoption: %s", exc)
 
+    # ------------------------------------------------------------------
+    # I016: mid-run untracked-ticket sweep (reopen / late adoption)
+    # ------------------------------------------------------------------
+
+    # How long a closed ticket's context is kept so a phantom close can be
+    # reverted when the position reappears. The 2026-07-24 contention blip
+    # lasted 1.3h; 6h gives generous margin without keeping stale context
+    # around for days.
+    _PHANTOM_REOPEN_WINDOW_S: float = 6 * 3600.0
+
+    def _prune_recent_closes(self, now: datetime) -> None:
+        expired = []
+        for ticket, rec in self._recent_closes.items():
+            try:
+                ts = datetime.fromisoformat(str(rec.get("ts")))
+            except (ValueError, TypeError):
+                expired.append(ticket)
+                continue
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if (now - ts).total_seconds() > self._PHANTOM_REOPEN_WINDOW_S:
+                expired.append(ticket)
+        for ticket in expired:
+            self._recent_closes.pop(ticket, None)
+
+    def _sweep_untracked(self, positions: list[Position]) -> None:
+        """Re-attach context to broker tickets the monitor is not tracking.
+
+        Three cases for an open ticket with no entry ctx after the initial
+        scan:
+        1. It closed recently and REAPPEARED (account-contention blip,
+           I015): restore the ORIGINAL context and revert the phantom
+           close's side effects via ``trade_reopened_cb``.
+        2. It has been ctx-less for a full cycle already: not our own
+           just-opened trade racing ``register_entry`` — adopt it so the
+           soft-stop layer comes back online (inferred soft level).
+        3. First ctx-less sighting: grace period, wait one cycle.
+        """
+        if not self._initial_scan_done:
+            return
+        now = datetime.now(tz=timezone.utc)
+        self._prune_recent_closes(now)
+        current = {p.ticket for p in positions}
+        # Tickets that vanished again while pending lose their grace slot.
+        self._ctxless_pending &= current
+        for pos in positions:
+            if pos.ticket in self._entry_ctx:
+                self._ctxless_pending.discard(pos.ticket)
+                continue
+            rec = self._recent_closes.pop(pos.ticket, None)
+            if rec is not None:
+                self._reopen_position(pos, rec)
+                self._ctxless_pending.discard(pos.ticket)
+                continue
+            if pos.ticket in self._ctxless_pending:
+                self._ctxless_pending.discard(pos.ticket)
+                self._adopt_position(pos)
+            else:
+                self._ctxless_pending.add(pos.ticket)
+
+    def _reopen_position(self, pos: Position, rec: dict) -> None:
+        """A recorded-closed ticket is back at the broker: the close was
+        phantom. Restore the original entry context (real soft stop, ladder,
+        conviction — not an inferred approximation) and tell the signal loop
+        to unwind the close's side effects (post-loss guard, daily P&L)."""
+        ctx = dict(rec.get("ctx") or {})
+        pnl = float(rec.get("pnl", 0.0) or 0.0)
+        self.register_entry(pos.ticket, ctx)
+        exc = rec.get("excursion") or {}
+        if exc:
+            # Keep the pre-close MAE/MFE history instead of restarting at 0.
+            self._excursion[pos.ticket] = dict(exc)
+        self._track_excursion(pos)
+        log.warning(
+            "[REOPENED] %s ticket=%d %s — position reappeared at the broker "
+            "after being recorded closed (%s, pnl=%+.2f). The close was "
+            "phantom (account blip); original context restored, soft stop "
+            "%s re-armed, close side-effects reverted.",
+            pos.symbol, pos.ticket,
+            str(ctx.get("direction", "?")).upper(),
+            rec.get("exit_reason", "?"), pnl,
+            (f"{ctx['soft_stop']:.5f}"
+             if ctx.get("soft_stop") is not None else "(unknown)"),
+        )
+        self.notifier.notify_text(
+            f"REOPENED {pos.symbol} ticket={pos.ticket}: the earlier "
+            f"'{rec.get('exit_reason', '?')}' close ({pnl:+.2f}) was phantom — "
+            f"the position is still open at the broker. Original stops "
+            f"restored; guard state reverted."
+        )
+        if self.trade_reopened_cb is not None:
+            try:
+                self.trade_reopened_cb(pos.ticket, {
+                    "pnl": pnl,
+                    "direction": ctx.get("direction"),
+                    "exit_reason": rec.get("exit_reason"),
+                    "closed_ts": rec.get("ts"),
+                })
+            except Exception as e:
+                log.warning("trade_reopened_cb failed for ticket %d: %s",
+                            pos.ticket, e)
+        if self._on_state_change is not None:
+            try:
+                self._on_state_change()
+            except Exception as exc_:
+                log.debug("on_state_change failed after reopen: %s", exc_)
+
+    # ------------------------------------------------------------------
+    # Broker-outage self-healing (MT5 terminal replaced mid-run)
+    # ------------------------------------------------------------------
+
+    # One reconnect attempt per this many consecutive failed account reads
+    # (~60s at the default 5s cadence). Repeats every further streak of the
+    # same length until the terminal is back, so a slow MT5 update is
+    # re-attached automatically a minute after it finishes.
+    _RECONNECT_AFTER_READ_FAILURES: int = 12
+
+    async def _maybe_reconnect_broker(self) -> None:
+        self._account_read_failures += 1
+        n = self._account_read_failures
+        if n % self._RECONNECT_AFTER_READ_FAILURES != 0:
+            return
+        attempt = n // self._RECONNECT_AFTER_READ_FAILURES
+        log.warning(
+            "Broker unreadable for %d consecutive polls (~%.0fs) — the "
+            "terminal process was likely replaced (MT5 auto-update/crash); "
+            "attempting re-initialize #%d",
+            n, n * self.check_interval, attempt,
+        )
+        if attempt == 1:
+            self.notifier.notify_text(
+                f"{self.live_config.symbol}: broker unreadable for "
+                f"~{int(n * self.check_interval)}s (IPC dead — MT5 restart?). "
+                f"Attempting automatic reconnect; positions remain protected "
+                f"by broker-side stops."
+            )
+        try:
+            ok = await self.broker.reconnect()
+        except Exception as exc:
+            ok = False
+            log.error("Broker reconnect attempt #%d raised: %s", attempt, exc)
+        if ok:
+            log.warning("Broker reconnect #%d SUCCEEDED — resuming normal "
+                        "polling", attempt)
+            self.notifier.notify_text(
+                f"{self.live_config.symbol}: broker reconnect succeeded "
+                f"after ~{int(n * self.check_interval)}s outage — monitoring "
+                f"resumed."
+            )
+            self._account_read_failures = 0
+        else:
+            log.error(
+                "Broker reconnect attempt #%d FAILED — retrying after %d "
+                "more failed polls",
+                attempt, self._RECONNECT_AFTER_READ_FAILURES,
+            )
+
     async def run(self) -> None:
         """Background monitoring loop. Call as asyncio.create_task(monitor.run())."""
         log.info("Position monitor started (check every %.1fs)", self.check_interval)
@@ -378,7 +557,12 @@ class PositionMonitor:
                 # is actually visible instead of silent for days.
                 log.warning("Account read failed this cycle, skipping (will "
                             "retry next poll): %s", e)
+                # A PERSISTENT streak of failures means the terminal process
+                # itself was replaced (MT5 auto-update / crash) and this IPC
+                # channel is dead forever — re-initialize instead of waiting.
+                await self._maybe_reconnect_broker()
                 return
+            self._account_read_failures = 0
             self.last_account = account
             self.last_open_position_count = len(positions)
 
@@ -424,9 +608,27 @@ class PositionMonitor:
                             entry=entry_price,
                         )
                     elif pos.ticket not in self._entry_ctx:
-                        self._adopt_position(pos)
+                        rec = self._recent_closes.pop(pos.ticket, None)
+                        if rec is not None:
+                            # Phantom close followed by a process restart
+                            # (the exact 2026-07-24 sequence): the persisted
+                            # recent-close record still holds the ORIGINAL
+                            # context — restore it instead of adopting with
+                            # an inferred approximation.
+                            self._reopen_position(pos, rec)
+                        else:
+                            self._adopt_position(pos)
                 self._restored_ctx_tickets.clear()
                 self._initial_scan_done = True
+
+            # Mid-run safety net (I016): a ticket present at the broker but
+            # absent from entry ctx is either a position we recorded as
+            # closed that has REAPPEARED (account-contention blip, I015) or
+            # a position opened outside this process. The initial scan only
+            # runs once, so without this sweep such a ticket would trade
+            # with the soft-stop layer silently dead — exactly what happened
+            # to GBPUSD 3000652586 / USDCAD 2987854368 on 2026-07-24.
+            self._sweep_untracked(positions)
 
             # Detect closed positions (were open, now gone)
             current_tickets = {p.ticket for p in positions}
@@ -594,11 +796,25 @@ class PositionMonitor:
         ctx = self._entry_ctx.pop(ticket, None)
         forced_reason = self._forced_exit_reason.pop(ticket, None)
         close_result = self._close_results.pop(ticket, None)
-        if self.trade_closed_cb is None:
-            return
         exc = exc or {}
         ctx = ctx or {}
         close_result = close_result or {}
+        # Keep the closed ticket's context around for a few hours: if the
+        # ticket reappears at the broker the close was PHANTOM (account
+        # blip, I015) and _sweep_untracked restores this context instead of
+        # letting the position run with the soft-stop layer dead (I016).
+        # pnl / exit_reason are refined below once reconstructed (the dict
+        # is stored by reference); the ctx snapshot is what matters.
+        recent_rec: dict = {
+            "ts": datetime.now(tz=timezone.utc).isoformat(),
+            "ctx": ctx,
+            "excursion": exc,
+            "pnl": float(exc.get("last_profit", 0.0) or 0.0),
+            "exit_reason": "unknown",
+        }
+        self._recent_closes[ticket] = recent_rec
+        if self.trade_closed_cb is None:
+            return
 
         # If WE didn't close this ticket ourselves (no close_result), the
         # broker closed it on its own — a TP/SL order filling, a margin
@@ -652,6 +868,9 @@ class PositionMonitor:
                          or exc.get("broker_tp"))
             if broker_tp:
                 ctx["take_profit"] = broker_tp
+            # The synthesized ctx (broker stop doubling as soft stop) is
+            # strictly better than the empty one for a potential reopen.
+            recent_rec["ctx"] = ctx
 
         entry_price = ctx.get("entry", exc.get("open_price", 0.0))
         direction = ctx.get("direction", exc.get("direction", "long"))
@@ -761,6 +980,10 @@ class PositionMonitor:
             "balance_after": (float(self.last_account.balance)
                               if self.last_account is not None else None),
         }
+        # Refine the phantom-reopen record with the reconstructed numbers.
+        recent_rec["pnl"] = pnl
+        recent_rec["exit_reason"] = reason
+
         try:
             self.trade_closed_cb(ticket, info)
         except Exception as e:  # never let journaling crash the monitor
@@ -990,6 +1213,10 @@ class PositionMonitor:
                 str(ticket): exc
                 for ticket, exc in self._excursion.items()
             },
+            "recent_closes": {
+                str(ticket): rec
+                for ticket, rec in self._recent_closes.items()
+            },
         }
 
     def restore_from_persist_state(self, data: dict) -> None:
@@ -1023,6 +1250,17 @@ class PositionMonitor:
             except (ValueError, TypeError):
                 continue
             self._excursion[ticket] = exc
+        # Recent closes survive a restart so a phantom close followed by a
+        # process bounce (the exact 2026-07-24 sequence) still restores the
+        # ORIGINAL context when the ticket is found open at the broker.
+        # Stale entries are pruned by age on the first sweep.
+        for ticket_str, rec in data.get("recent_closes", {}).items():
+            try:
+                ticket = int(ticket_str)
+            except (ValueError, TypeError):
+                continue
+            if isinstance(rec, dict):
+                self._recent_closes[ticket] = rec
         log.info(
             "[STATE LOADED] position_monitor restored: %d ticket(s) — %s",
             len(self._restored_ctx_tickets),
