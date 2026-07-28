@@ -3074,6 +3074,13 @@
       "role": "research_lead",
       "decision": "[RESEARCH] Phase AD.2 Stage 1 verdict consumed: NULL -- across 51,042 panel evaluation points x 349 frozen USD events the +/-15-min window fired ZERO times under both the bar-open (A) and entry-moment (B) anchors (S1=0.0000%, S2=0/5,236 admitted trades). Gate closed, no Stage 2; I020 resolved; live path keeps semantics A.",
       "context": "Stronger finding than the question: the point-anchored window is structurally inert on the H4 grid for NFP/CPI/FOMC (13:30/18:00/19:00 UTC never within 15 min of a 00/04/../20 anchor). Audit color: C-style holding-window semantics is the only variant that engages (166 trades) but gated trades were net winners (sampled mean +3.18 pips) -- banked as the prior AGAINST a future C lever (own pre-reg required). Scope: USD NFP/CPI/FOMC fixture + midnight grid; live full-calendar operation not claimed inert. Research artifacts in phase_ad2_karasu_window_semantics/ (untracked; concurrent session switched the research repo to main mid-study, files survived)."
+    },
+    {
+      "id": "D132",
+      "date": "2026-07-28",
+      "role": "engineering",
+      "decision": "[BUG] I022 shipped: squad Telegram copy now tells the truth about the live runtime -- live-mode kickoff wording (n_rows=None => 'Live shadow loop started', no replay vocabulary), honest 'interrupted' and 'crashed' full-time outcomes (Ctrl+C no longer relabelled 'step budget reached'), and run_loop's outcome defaults to 'crashed' so an unhandled exception can no longer page as 'replay exhausted -- every row emitted'.",
+      "context": "CEO Telegram screenshot showed every manual stop paging 'step budget reached' and boots paging 'replaying / 0 rows queued'. Root cause: squad_notify.py was written for the file-replay loop and reused verbatim by the live runtime. CEO approved the off-limits run_squad_live.py call-site half same day. Replay copy unchanged (accurate there); GOAL/MISS/HALT/SYSTEM/league-table audited accurate. 6 new formatter tests + 3 wiring pins."
     }
   ],
   "sprint_verdicts": [

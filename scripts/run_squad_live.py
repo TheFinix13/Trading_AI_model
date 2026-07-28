@@ -357,12 +357,16 @@ def run_loop(args, cfg: dict) -> str:
     if notifier is not None:
         notifier.notify_kickoff(
             source_label=source_label,
-            n_rows=0,
+            n_rows=None,  # live feed: no row queue exists (I022)
             out_dir=str(out_dir),
         )
 
     steps = 0
-    outcome = "done"
+    # I022: default to "crashed" so an unhandled exception escaping the
+    # loop pages honestly instead of masquerading as a clean completion
+    # ("done" used to be the default). Every deliberate exit path below
+    # overwrites this.
+    outcome = "crashed"
     try:
         while True:
             # Proof-of-life for the /v2 dashboard between H4 bar closes:
@@ -454,7 +458,10 @@ def run_loop(args, cfg: dict) -> str:
         if news_refresher is not None:
             news_refresher.stop()
         if notifier is not None and outcome not in ("killed",):
-            notifier.notify_stop(outcome if outcome != "interrupted" else "max_steps")
+            # I022: report the true outcome — the formatter knows
+            # "interrupted" and "crashed" now; no more disguising a
+            # Ctrl+C as "step budget reached".
+            notifier.notify_stop(outcome)
         if broker is not None:
             try:
                 asyncio.run(broker.disconnect())

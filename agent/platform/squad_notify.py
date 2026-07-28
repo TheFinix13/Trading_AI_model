@@ -76,12 +76,27 @@ def _fmt_pips(pips: float) -> str:
     return f"{sign}{pips:.1f}p"
 
 
-def build_squad_kickoff(*, source_label: str, n_rows: int,
+def build_squad_kickoff(*, source_label: str, n_rows: int | None,
                         out_dir: str) -> str:
+    """Kickoff copy in two modes (I022).
+
+    ``n_rows=None`` means a LIVE feed: there is no row queue to count
+    and nothing is being replayed — saying "replaying / 0 rows queued"
+    at a healthy live boot reads like "no data loaded". An integer
+    ``n_rows`` is the file-replay paper loop, where the old wording is
+    accurate.
+    """
+    if n_rows is None:
+        return (
+            f"*SQUAD | KICKOFF*\n"
+            f"Live shadow loop started — feed `{source_label}`\n"
+            f"Reacting to H4 bar closes as they happen | out: `{out_dir}`\n"
+            f"Shadow-only: no broker orders, ever."
+        )
     return (
         f"*SQUAD | KICKOFF*\n"
-        f"Paper loop started — replaying `{source_label}`\n"
-        f"{n_rows} rows queued | stream: `{out_dir}`\n"
+        f"Replay paper loop started — replaying `{source_label}`\n"
+        f"{n_rows} rows queued | out: `{out_dir}`\n"
         f"Shadow-only: no broker orders, ever."
     )
 
@@ -124,9 +139,24 @@ def build_squad_halt(*, reason: str) -> str:
 
 
 def build_squad_full_time(*, outcome: str) -> str:
+    """Full-time copy per stop reason (I022).
+
+    Every outcome the runtimes can produce has its own honest phrase:
+    ``done``/``max_steps`` come from the file-replay loop (and the
+    --max-steps test harness), ``interrupted`` is a manual Ctrl+C /
+    task stop, ``crashed`` is an unhandled exception escaping the
+    live loop. Unknown outcomes pass through verbatim rather than
+    being disguised as something else.
+    """
     words = {
         "done": "replay exhausted — every row emitted",
-        "max_steps": "step budget reached — restart resumes from state.json",
+        "max_steps": "step budget reached (--max-steps tick cap) — "
+                     "restart resumes from state.json",
+        "interrupted": "stopped from the terminal (Ctrl+C / task stop) — "
+                       "state saved; restart resumes from state.json",
+        "crashed": "runtime CRASHED on an unhandled error — check the "
+                   "console traceback / watchdog_squad.log. State was "
+                   "saved; a restart resumes from state.json.",
     }
     return (
         f"*SQUAD | FULL TIME*\n"

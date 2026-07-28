@@ -5,13 +5,13 @@ submitter: "CEO (Telegram screenshot, 2026-07-28 18:02)"
 submitted_at: 2026-07-28T17:40:00Z
 classification: BUG
 priority: P2
-status: new
+status: shipped
 route: bug
 linked_features: []
-linked_decisions: []
+linked_decisions: [D132]
 linked_experiments: []
 contact: null
-resolved_at: null
+resolved_at: 2026-07-28T18:30:00Z
 history:
   - stage: filed
     at: 2026-07-28T17:40:00Z
@@ -19,6 +19,13 @@ history:
     note: "CEO asked why stopping the v2 runtime pages 'step budget
       reached' and which other messages are inaccurate. Full audit of
       squad_notify.py + run_squad_live.py call sites below."
+  - stage: shipped
+    at: 2026-07-28T18:30:00Z
+    by: engineering
+    note: "CEO approved same day incl. the off-limits run_squad_live.py
+      call-site half ('make all the messages reliable and make sense').
+      D132: live kickoff copy, interrupted/crashed outcomes, crash-safe
+      outcome default. 6 new tests + 3 wiring pins."
 ---
 
 # I022 — Squad Telegram copy describes the live runtime in replay vocabulary (and mislabels stops)

@@ -127,6 +127,19 @@ class TestFormatters:
         assert "1234 rows queued" in msg
         assert "no broker orders" in msg
 
+    def test_kickoff_live_mode_has_no_replay_vocabulary(self):
+        """I022: n_rows=None = live feed. 'replaying' / 'rows queued'
+        described a healthy live boot as an empty replay."""
+        msg = build_squad_kickoff(
+            source_label="live_market:mt5", n_rows=None,
+            out_dir="C:\\logs\\squad_live")
+        assert msg.splitlines()[0] == "*SQUAD | KICKOFF*"
+        assert "live_market:mt5" in msg
+        assert "Live shadow loop" in msg
+        assert "replay" not in msg.lower()
+        assert "rows queued" not in msg
+        assert "no broker orders" in msg
+
     def test_goal_is_symbol_first_and_dense(self):
         msg = build_squad_goal(agent_id="isagi_yoichi", symbol="EURUSD",
                                pips=42.5, tqs=0.61, r_multiple=1.5,
@@ -163,6 +176,59 @@ class TestFormatters:
         ft = build_squad_full_time(outcome="done")
         assert ft.splitlines()[0] == "*SQUAD | FULL TIME*"
         assert "replay exhausted" in ft
+
+    def test_full_time_interrupted_is_not_disguised(self):
+        """I022: Ctrl+C used to page 'step budget reached'."""
+        ft = build_squad_full_time(outcome="interrupted")
+        assert "Ctrl+C" in ft
+        assert "state.json" in ft
+        assert "step budget" not in ft
+
+    def test_full_time_crashed_reads_like_a_crash(self):
+        """I022: an unhandled exception used to page 'replay
+        exhausted — every row emitted' (outcome defaulted to done)."""
+        ft = build_squad_full_time(outcome="crashed")
+        assert "CRASHED" in ft
+        assert "state.json" in ft
+        assert "replay exhausted" not in ft
+
+    def test_full_time_unknown_outcome_passes_through_verbatim(self):
+        ft = build_squad_full_time(outcome="some_new_reason")
+        assert "some_new_reason" in ft
+
+
+class TestLiveRuntimeWiring:
+    """I022 call-site pins on scripts/run_squad_live.py.
+
+    Source-level contracts (run_loop needs a feed+engine to execute, so
+    these pin the three honesty-critical lines instead): the live
+    kickoff must not fake a row count, an escaping exception must not
+    default to a clean 'done', and a Ctrl+C must not be relabelled as
+    a step-budget stop.
+    """
+
+    @staticmethod
+    def _source():
+        import inspect
+        import sys
+        from pathlib import Path
+        repo = Path(__file__).resolve().parents[1]
+        if str(repo / "scripts") not in sys.path:
+            sys.path.insert(0, str(repo / "scripts"))
+        import run_squad_live
+        return inspect.getsource(run_squad_live.run_loop)
+
+    def test_live_kickoff_sends_no_fake_row_count(self):
+        assert "n_rows=None" in self._source()
+
+    def test_outcome_defaults_to_crashed_not_done(self):
+        src = self._source()
+        assert 'outcome = "crashed"' in src
+
+    def test_interrupted_is_reported_not_relabelled(self):
+        src = self._source()
+        assert 'else "max_steps"' not in src
+        assert 'outcome = "interrupted"' in src
 
     def test_league_table_sorted_by_pips_with_team_total(self):
         msg = build_league_table({

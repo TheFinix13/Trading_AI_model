@@ -2548,6 +2548,29 @@ declaration — a concurrent session switched the working tree to
 `main` mid-study; this session's files survived untracked and nothing
 was re-run).
 
+## D132 · 2026-07-28 · engineering · [BUG]
+
+**I022 shipped: squad Telegram copy now tells the truth about the
+live runtime — live-mode kickoff wording, honest interrupted/crashed
+full-time outcomes, and a crash can no longer page as a clean
+completion.**
+
+Three fixes (CEO-approved same day, incl. the off-limits
+`run_squad_live.py` call-site half): (1) `build_squad_kickoff` gets a
+live mode (`n_rows=None`) — "Live shadow loop started — feed `mt5`,
+reacting to H4 bar closes" replaces "Paper loop started — replaying /
+0 rows queued" at live boots; replay keeps its accurate copy. (2)
+`build_squad_full_time` learns `interrupted` ("stopped from the
+terminal — state saved") and `crashed` ("runtime CRASHED — check the
+traceback"); the call site stops relabelling Ctrl+C as `max_steps`
+("step budget reached"). (3) `run_loop` initializes `outcome =
+"crashed"` instead of `"done"`, so an unhandled exception escaping
+the live loop pages as a crash rather than "replay exhausted — every
+row emitted" (silent-failure class, same family as I019). GOAL /
+MISS / HALT / SYSTEM / league-table copy audited accurate, untouched.
+6 new formatter tests + 3 call-site wiring pins in
+`tests/test_squad_notify.py`.
+
 ## Template for subsequent entries
 
 ```markdown
