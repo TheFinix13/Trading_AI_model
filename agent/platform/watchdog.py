@@ -61,12 +61,19 @@ STATUSES: tuple[str, ...] = ("ok", "warn", "alarm", "na")
 RUNTIME_WARN_SECONDS: float = 5 * 60.0
 RUNTIME_ALARM_SECONDS: float = 30 * 60.0
 # Squad tape freshness is measured in MARKET seconds (Sat/Sun
-# excluded) so weekends never false-alarm: one missed H4 close plus
-# slack -> warn; two missed closes -> alarm. Motivated by the
+# excluded) so weekends never false-alarm. IMPORTANT calibration
+# detail (D133): last_bar_times stores bar OPEN labels, so in healthy
+# operation the newest label's age oscillates between 4 h (a close was
+# just ingested; its open label is already 4 h old) and 8 h (the next
+# close is due any moment). Thresholds must sit ABOVE that band:
+# > 9 h = one close missed by an hour -> warn; > 13 h = two closes
+# missed -> alarm. The original 5 h/9 h sat inside the healthy band
+# and warned for ~3 of every 4 hours (first live reading, 2026-07-28:
+# warn at 7.1 h with a 1-hour-fresh tape). Motivated by the
 # 2026-07-15..28 weekly review, where the runtime was silent on 8 of
 # 10 weekdays and nothing flagged it (I017).
-TAPE_WARN_MARKET_SECONDS: float = 5 * 3600.0
-TAPE_ALARM_MARKET_SECONDS: float = 9 * 3600.0
+TAPE_WARN_MARKET_SECONDS: float = 9 * 3600.0
+TAPE_ALARM_MARKET_SECONDS: float = 13 * 3600.0
 CALENDAR_WARN_SECONDS: float = 12 * 3600.0
 CALENDAR_ALARM_SECONDS: float = 48 * 3600.0
 INTAKE_P0_ALARM_SECONDS: float = 4 * 3600.0
@@ -224,10 +231,12 @@ def check_squad_tape_freshness(live_dir: Path | str | None = None,
     Reads ``last_bar_times`` from ``<live_dir>/state.json`` and takes
     the OLDEST symbol (a single stalled pair is a real failure -- that
     player is blind). Age is measured in market seconds (Sat/Sun
-    excluded): warn past :data:`TAPE_WARN_MARKET_SECONDS` (one missed
-    H4 close + slack), alarm past :data:`TAPE_ALARM_MARKET_SECONDS`
-    (two missed closes). ``na`` when the squad was never run here;
-    corrupt state is an alarm.
+    excluded) against the bar OPEN labels the runtime stores, whose
+    healthy age band is 4-8 h (see the threshold comment block, D133):
+    warn past :data:`TAPE_WARN_MARKET_SECONDS` (one missed H4 close),
+    alarm past :data:`TAPE_ALARM_MARKET_SECONDS` (two missed closes).
+    ``na`` when the squad was never run here; corrupt state is an
+    alarm.
     """
     cid = "squad_tape_freshness"
     if live_dir is None:
@@ -272,14 +281,17 @@ def check_squad_tape_freshness(live_dir: Path | str | None = None,
                  if burn_in else "")
     label = _age_label(oldest_age)
     if oldest_age > TAPE_ALARM_MARKET_SECONDS:
+        alarm_h = TAPE_ALARM_MARKET_SECONDS / 3600.0
         return _result(cid, "alarm",
                        f"no bar ingested for {label} of market time "
-                       f"(worst: {oldest_sym}; > 9h -- feed stale or "
-                       f"runtime down?){burn_note}", now)
+                       f"(worst: {oldest_sym}; > {alarm_h:g}h -- feed "
+                       f"stale or runtime down?){burn_note}", now)
     if oldest_age > TAPE_WARN_MARKET_SECONDS:
+        warn_h = TAPE_WARN_MARKET_SECONDS / 3600.0
         return _result(cid, "warn",
                        f"no bar ingested for {label} of market time "
-                       f"(worst: {oldest_sym}; > 5h){burn_note}", now)
+                       f"(worst: {oldest_sym}; > {warn_h:g}h)"
+                       f"{burn_note}", now)
     return _result(cid, "ok",
                    f"newest bars {label} old (worst: {oldest_sym})"
                    f"{burn_note}", now)

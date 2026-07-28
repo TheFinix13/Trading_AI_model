@@ -2571,6 +2571,27 @@ MISS / HALT / SYSTEM / league-table copy audited accurate, untouched.
 6 new formatter tests + 3 call-site wiring pins in
 `tests/test_squad_notify.py`.
 
+## D133 · 2026-07-28 · engineering · [BUG]
+
+**`squad_tape_freshness` thresholds recalibrated 5 h/9 h → 9 h/13 h:
+the originals sat inside the healthy age band of the bar-OPEN labels
+the check ages, and warned on a one-hour-fresh tape.**
+
+Caught on the check's very first live pass (VM, 2026-07-28 ~19:00
+UTC): `warn — no bar ingested for 7.1h` minutes after the runtime
+ingested the 12:00 bar. Root cause: `last_bar_times` stores bar OPEN
+labels, so in healthy operation the newest label's age oscillates
+between 4 h (close just ingested) and 8 h (next close imminent); a
+5 h warn fires for ~3 of every 4 hours and spams ok→warn→ok
+transition alerts several times a day — alert fatigue, the failure
+mode I022 was about. New thresholds sit above the band: warn > 9 h
+(one missed close), alarm > 13 h (two); still market-seconds, so
+weekends stay excluded and the original I017 incident (55 h stale)
+still alarms on day one. Detail strings now derive from the
+constants. Tests: healthy-band regression added (7.9 h ⇒ ok), warn
+fixture moved to 10.5 h; claim register F017 row + I017 amendment
+updated.
+
 ## Template for subsequent entries
 
 ```markdown

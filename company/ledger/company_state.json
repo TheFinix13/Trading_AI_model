@@ -3081,6 +3081,13 @@
       "role": "engineering",
       "decision": "[BUG] I022 shipped: squad Telegram copy now tells the truth about the live runtime -- live-mode kickoff wording (n_rows=None => 'Live shadow loop started', no replay vocabulary), honest 'interrupted' and 'crashed' full-time outcomes (Ctrl+C no longer relabelled 'step budget reached'), and run_loop's outcome defaults to 'crashed' so an unhandled exception can no longer page as 'replay exhausted -- every row emitted'.",
       "context": "CEO Telegram screenshot showed every manual stop paging 'step budget reached' and boots paging 'replaying / 0 rows queued'. Root cause: squad_notify.py was written for the file-replay loop and reused verbatim by the live runtime. CEO approved the off-limits run_squad_live.py call-site half same day. Replay copy unchanged (accurate there); GOAL/MISS/HALT/SYSTEM/league-table audited accurate. 6 new formatter tests + 3 wiring pins."
+    },
+    {
+      "id": "D133",
+      "date": "2026-07-28",
+      "role": "engineering",
+      "decision": "[BUG] squad_tape_freshness thresholds recalibrated 5h/9h -> 9h/13h: last_bar_times stores bar OPEN labels whose healthy age oscillates 4-8h between closes, so the original 5h warn sat inside the healthy band and fired on a one-hour-fresh tape (first live pass, VM 2026-07-28: 'warn -- 7.1h' minutes after the 12:00 bar was ingested).",
+      "context": "Steady state would have warned ~3 of every 4 hours and spammed ok->warn->ok transition alerts -- alert-fatigue class. New thresholds sit above the band (warn = one missed close, alarm = two); market-seconds weekend exclusion unchanged; the original I017 incident (55h stale) still alarms. Detail strings derive from the constants. Healthy-band regression test added (7.9h => ok); claim register F017 row + I017 amendment updated."
     }
   ],
   "sprint_verdicts": [

@@ -71,6 +71,16 @@ survive reboots.
 - **Owner from here:** engineering
 - **Linked feature spec (if any):** F017 (registry extension, D127)
 
+## Amendment (2026-07-28, D133)
+
+The proposed 5 h/9 h thresholds were miscalibrated: `last_bar_times`
+stores bar OPEN labels, so a healthy tape's newest label ages 4–8 h
+between closes, and 5 h sits inside that band — the very first live
+pass warned at 7.1 h on a tape ingested an hour earlier, and steady
+state would have warned ~3 of every 4 hours (transition-alert spam).
+Recalibrated to warn > 9 h (one missed close) / alarm > 13 h (two),
+measured against the open labels.
+
 ## Closure notes
 
 <pending: flip to shipped after the VM runs runbook 7b.9 and

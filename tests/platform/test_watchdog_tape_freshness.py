@@ -56,7 +56,7 @@ class TestMarketSecondsBetween(unittest.TestCase):
 
     def test_friday_close_to_monday_open_under_warn(self):
         # Fri 23:00 last close -> Mon 03:05: 1 h Friday + 3 h 5 m Monday
-        # = 4 h 5 m market time, under the 5 h warn threshold.
+        # = 4 h 5 m market time, comfortably under the warn threshold.
         t0 = _epoch(2026, 7, 24, 23)
         t1 = _epoch(2026, 7, 27, 3, 5)
         got = watchdog._market_seconds_between(t0, t1)
@@ -101,11 +101,24 @@ class TestSquadTapeFreshness(unittest.TestCase):
             res = watchdog.check_squad_tape_freshness(td, now=self.NOW)
         self.assertEqual(res["status"], "ok")
 
-    def test_warn_after_one_missed_close(self):
-        # 6 h stale on a weekday: past warn (5 h), under alarm (9 h).
+    def test_ok_at_top_of_healthy_open_label_band(self):
+        # D133 regression: last_bar_times stores bar OPEN labels, so a
+        # perfectly healthy tape reads 4-8 h old right before the next
+        # close. First live reading (2026-07-28) warned at 7.1 h on a
+        # tape ingested an hour earlier. 7.9 h must be ok.
         with TemporaryDirectory() as td:
             _write_state(Path(td), {
-                "EURUSD": "2026-07-28T08:30:00+00:00",
+                "EURUSD": "2026-07-28T06:36:00+00:00",  # 7 h 54 m old
+            })
+            res = watchdog.check_squad_tape_freshness(td, now=self.NOW)
+        self.assertEqual(res["status"], "ok")
+
+    def test_warn_after_one_missed_close(self):
+        # 10.5 h stale on a weekday: the 8 h healthy ceiling plus one
+        # missed close. Past warn (9 h), under alarm (13 h).
+        with TemporaryDirectory() as td:
+            _write_state(Path(td), {
+                "EURUSD": "2026-07-28T04:00:00+00:00",
             })
             res = watchdog.check_squad_tape_freshness(td, now=self.NOW)
         self.assertEqual(res["status"], "warn")
