@@ -135,13 +135,42 @@ def _build_notifier(cfg: dict, *, no_telegram: bool):
 
 
 async def _connect_mt5(cfg_live=None):
-    """Connect the existing MT5 broker read-only. Never places orders."""
+    """Connect the existing MT5 broker read-only. Never places orders.
+
+    I019: a bare ``LiveConfig()`` defaults to ``broker_type="paper"``,
+    whose PaperBroker memoizes the parquet cache once at boot — the
+    "live" feed then silently freezes at the newest cached bar. When
+    the caller asked for ``--feed mt5`` we must attach to a real MT5
+    terminal (credentials from .env, same as run_live.py) and fail
+    loudly if that isn't possible, never degrade to a frozen snapshot.
+    """
     from agent.live.broker import create_broker
     from agent.live.config import LiveConfig
     from agent.config import load_config as load_agent_config
 
-    live = cfg_live or LiveConfig()
     agent_cfg = load_agent_config()
+    live = cfg_live or LiveConfig(
+        broker_type="mt5",
+        mt5_login=int(agent_cfg.mt5_login) if agent_cfg.mt5_login else 0,
+        mt5_password=agent_cfg.mt5_password,
+        mt5_server=agent_cfg.mt5_server,
+        mt5_path=agent_cfg.mt5_path,
+    )
+    if live.broker_type == "paper":
+        raise RuntimeError(
+            "--feed mt5 cannot run on the paper broker: PaperBroker "
+            "serves a frozen parquet snapshot, not a live tape (I019)."
+        )
+    if not live.mt5_login or not live.mt5_password:
+        raise RuntimeError(
+            "--feed mt5 needs MT5 credentials (MT5_LOGIN / MT5_PASSWORD "
+            "/ MT5_SERVER in .env). Refusing to fall back to the frozen "
+            "paper snapshot (I019)."
+        )
+    log.info(
+        "squad feed broker: %s login=%s server=%s (read-only)",
+        live.broker_type, live.mt5_login, live.mt5_server,
+    )
     broker = create_broker(
         broker_type=live.broker_type,
         login=live.mt5_login,
