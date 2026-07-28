@@ -137,6 +137,26 @@ class TestV2NewSurfaces:
                        "On standby"):
             assert marker in V2_PAGE, f"missing waiting-panel label: {marker!r}"
 
+    def test_next_close_countdown_anchors_to_tape(self):
+        # I018: the countdown must derive the H4 grid from the tape's
+        # tick_summary timestamps (real close moments), NOT assume the
+        # 00/04/../20 UTC midnight grid -- the live feed's closes are
+        # offset (03/07/../23 UTC on the 2026-07-28 tape), which made
+        # the panel point up to an hour late. Midnight grid survives
+        # only as the no-tape fallback.
+        assert "I018 fix" in V2_PAGE
+        assert "midnightGridNextCloseMs" in V2_PAGE
+        # Anchor scan: newest tick_summary wins, both time field
+        # spellings accepted.
+        assert 'ev.type === "tick_summary" && (ev.t || ev.timestamp)' \
+            in V2_PAGE
+        # Whole-number-of-4h-steps arithmetic from the anchor.
+        assert "FOUR_H_MS" in V2_PAGE
+        assert "anchorMs + Math.max(1, steps) * FOUR_H_MS" in V2_PAGE
+        # The fallback is only reached when no anchor was found.
+        assert "if(anchorMs === null) return midnightGridNextCloseMs();" \
+            in V2_PAGE
+
     def test_player_tooltip_present(self):
         assert 'id="player-tooltip"' in V2_PAGE
         # Playstyle map — hover tooltips key off these agent ids.

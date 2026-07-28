@@ -1985,13 +1985,34 @@ function updateLiveEventCount(){
 // <10 events). Countdown updates every 30 s; pill list refreshes when
 // new events land via pollLive.
 // ---------------------------------------------------------------------
-function nextH4CloseMs(){
+const FOUR_H_MS = 4 * 3600 * 1000;
+function midnightGridNextCloseMs(){
+  // Legacy assumption: H4 closes on the 00/04/08/12/16/20 UTC grid.
+  // Only used when there is no tape to anchor to (fresh install).
   const now = new Date();
   const hUtc = now.getUTCHours();
   const nextH = (Math.floor(hUtc/4) + 1) * 4;
   const y = now.getUTCFullYear(), m = now.getUTCMonth(), d = now.getUTCDate();
   if(nextH >= 24) return Date.UTC(y, m, d + 1, 0, 0, 0);
   return Date.UTC(y, m, d, nextH, 0, 0);
+}
+function nextH4CloseMs(){
+  // I018 fix: anchor the H4 grid to the TAPE, not UTC midnight. The
+  // live feed's closes are offset from midnight (2026-07-28 tape:
+  // 03/07/11/15/19/23 UTC), so the midnight grid pointed up to an
+  // hour late. tick_summary timestamps are real close moments; the
+  // next close is that anchor plus a whole number of 4 h steps.
+  let anchorMs = null;
+  for(let i = events.length - 1; i >= 0; i--){
+    const ev = events[i];
+    if(ev && ev.type === "tick_summary" && (ev.t || ev.timestamp)){
+      const parsed = Date.parse(ev.t || ev.timestamp);
+      if(!isNaN(parsed)){ anchorMs = parsed; break; }
+    }
+  }
+  if(anchorMs === null) return midnightGridNextCloseMs();
+  const steps = Math.floor((Date.now() - anchorMs) / FOUR_H_MS) + 1;
+  return anchorMs + Math.max(1, steps) * FOUR_H_MS;
 }
 function fmtCountdown(ms){
   if(ms <= 0) return "any moment";
