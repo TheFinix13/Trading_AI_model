@@ -3067,6 +3067,13 @@
       "role": "research_lead",
       "decision": "[RESEARCH] I020 routed: 'which moment should Karasu's news window protect?' opened as M001 Phase AD.2 pre-registration DRAFT in finance-research-experiments (semantics A = bar-open label / current, B = entry-anchored close, C = forward holding window).",
       "context": "Engine passes as_of=bar.time (H4 OPEN label) to warning_active_at, anchoring the +/-15-min blackout ~4h before the real entry moment. Jul 24 'French Flash PMI in +15 min' advisory is the concrete instance. Not a bug fix: Phase AD's verdict was earned under A, so a live-path anchor change would be post-freeze retuning. Stage 1 disagreement audit gates Stage 2 counterfactual re-scoring; live path stays on A until RECOMMEND-B is ratified + Phase AD.3 OOS confirms. Draft uncommitted in the research repo pending that session's declared branch."
+    },
+    {
+      "id": "D131",
+      "date": "2026-07-28",
+      "role": "research_lead",
+      "decision": "[RESEARCH] Phase AD.2 Stage 1 verdict consumed: NULL -- across 51,042 panel evaluation points x 349 frozen USD events the +/-15-min window fired ZERO times under both the bar-open (A) and entry-moment (B) anchors (S1=0.0000%, S2=0/5,236 admitted trades). Gate closed, no Stage 2; I020 resolved; live path keeps semantics A.",
+      "context": "Stronger finding than the question: the point-anchored window is structurally inert on the H4 grid for NFP/CPI/FOMC (13:30/18:00/19:00 UTC never within 15 min of a 00/04/../20 anchor). Audit color: C-style holding-window semantics is the only variant that engages (166 trades) but gated trades were net winners (sampled mean +3.18 pips) -- banked as the prior AGAINST a future C lever (own pre-reg required). Scope: USD NFP/CPI/FOMC fixture + midnight grid; live full-calendar operation not claimed inert. Research artifacts in phase_ad2_karasu_window_semantics/ (untracked; concurrent session switched the research repo to main mid-study, files survived)."
     }
   ],
   "sprint_verdicts": [
@@ -3552,22 +3559,35 @@
       "submitted_at": "2026-07-28T17:20:00Z",
       "classification": "RESEARCH-QUESTION",
       "priority": "P2",
-      "status": "routed",
+      "status": "resolved",
       "route": "research",
       "linked_features": [],
       "linked_decisions": [
-        "D130"
+        "D130",
+        "D131"
       ],
       "linked_experiments": [
         "M001-PhaseAD.2"
       ],
       "contact": null,
-      "resolved_at": null,
-      "summary": "Karasu's +/-15-min news window is anchored at the H4 bar-OPEN label (as_of=bar.time), ~4h before the real entry moment. Routed to research as M001 Phase AD.2 pre-reg DRAFT (semantics A/B/C, Stage 1 disagreement audit gates Stage 2 counterfactual re-scoring). Live path unchanged until ratified.",
+      "resolved_at": "2026-07-28T17:30:00Z",
+      "summary": "Karasu window anchor semantics: Phase AD.2 Stage 1 NULL verdict (D131) -- the +/-15-min window fired zero times under both anchors across the panel (S1=0, S2=0/5,236); question moot, live path keeps semantics A. Structural inertness of the point window on the H4 grid banked; C-lever prior AGAINST recorded.",
       "file": "company/rd/intake/I020-karasu-window-anchor-semantics.md"
     }
   ],
   "experiments": [
+    {
+      "id": "M001-PhaseAD.2",
+      "repo": "finance-research-experiments",
+      "branch": "multi-agent-ensemble (artifacts untracked pending branch declaration)",
+      "path": "programs/M001_multi_agent_ensemble/experiments/phase_ad2_karasu_window_semantics/",
+      "status": "closed-null",
+      "verdict": "Stage 1 NULL: +/-15-min window fired 0 times under both anchors (S1=0, S2=0/5,236); gate closed, live path keeps semantics A",
+      "protocol_commit": null,
+      "report_commit": null,
+      "condensed_finding_path": null,
+      "condensed_finding_status": "not-planned (null result; banked in D131 + VERDICT.md)"
+    },
     {
       "id": "M001-PhaseAC",
       "repo": "finance-research-experiments",

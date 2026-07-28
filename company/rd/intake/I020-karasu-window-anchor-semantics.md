@@ -5,13 +5,13 @@ submitter: "self-observation"
 submitted_at: 2026-07-28T17:20:00Z
 classification: RESEARCH-QUESTION
 priority: P2
-status: routed
+status: resolved
 route: research
 linked_features: []
-linked_decisions: [D130]
-linked_experiments: ["M001 Phase AD.2 (pre-reg DRAFT, research repo)"]
+linked_decisions: [D130, D131]
+linked_experiments: ["M001 Phase AD.2 (research repo)"]
 contact: null
-resolved_at: null
+resolved_at: 2026-07-28T17:30:00Z
 history:
   - stage: filed
     at: 2026-07-28T17:20:00Z
@@ -26,6 +26,15 @@ history:
       DRAFT opened in finance-research-experiments as M001 Phase AD.2
       (karasu window anchor semantics). No trading-agent code change
       until that study reports."
+  - stage: resolved
+    at: 2026-07-28T17:30:00Z
+    by: research_lead
+    note: "Phase AD.2 Stage 1 NULL verdict (D131): across 51,042 panel
+      evaluation points x 349 events the +/-15-min window fired ZERO
+      times under both anchors (S1=0, S2=0/5,236 admitted trades) --
+      the anchor question is moot; the window is structurally inert on
+      the H4 grid for NFP/CPI/FOMC. Live path keeps semantics A.
+      VERDICT.md in the research experiment folder."
 ---
 
 # I020 — Which moment should Karasu's news window protect?

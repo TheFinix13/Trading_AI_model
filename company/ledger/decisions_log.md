@@ -2522,6 +2522,32 @@ live path stays on A until RECOMMEND-B is ratified + Phase AD.3 OOS
 confirms). Draft left uncommitted in the research repo pending that
 session's declared branch.
 
+## D131 · 2026-07-28 · research_lead · [RESEARCH]
+
+**Phase AD.2 Stage 1 verdict consumed: NULL — Karasu's window anchor
+question is moot on the panel evidence; I020 resolved; live path
+keeps semantics A unchanged.**
+
+Executed once per the locked gate: across 51,042 H4 evaluation points
+(phi41 physical panel, 2015-02..2025-12, 3 symbols) × 349 frozen
+high-impact USD events, the ±15-min window fired **zero** times under
+BOTH the bar-open anchor (A, current) and the entry-moment anchor (B)
+— S1 = 0.0000 %, S2 = 0 of 5,236 admitted trades flipped. Stage 2
+gate CLOSED. The stronger finding: the point-anchored window is
+structurally inert on the H4 grid for NFP/CPI/FOMC (13:30 / 18:00 /
+19:00 UTC never fall within 15 min of a 00/04/…/20 anchor). Audit
+color: a C-style holding-window semantics is the only variant that
+engages (166/5,236 trades) but the gated trades were net WINNERS
+(sampled mean +3.18 pips) — banked as the prior AGAINST any future C
+lever, which would need its own pre-reg. Scope: USD NFP/CPI/FOMC
+fixture + midnight grid; live full-calendar operation (where A does
+fire, e.g. the Jul 24 PMI advisory) is NOT claimed inert. Artifacts:
+`phase_ad2_karasu_window_semantics/{PROTOCOL,VERDICT}.md` +
+`results_stage1.json` (research repo, untracked pending branch
+declaration — a concurrent session switched the working tree to
+`main` mid-study; this session's files survived untracked and nothing
+was re-run).
+
 ## Template for subsequent entries
 
 ```markdown
