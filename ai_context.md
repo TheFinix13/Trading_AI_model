@@ -1,4 +1,41 @@
-# AI Context — brain dump (updated 2026-07-24, v0.54)
+# AI Context — brain dump (updated 2026-07-28, v0.55)
+
+> v0.55 — **Squad-goes-live day** 2026-07-28 (weekly v2 review +
+> D127–D133, VM fully wired, shadow clock actually running):
+> - **Weekly v2 review (Jul 15–28 bundle):** 8 of 10 weekdays silent
+>   (6 symbol-bars vs ~180 expected) —
+>   `docs/reviews/2026-07-28_v2_squad_week_review.md`.
+> - **D129/D130 · I019 (P0, the real root cause):**
+>   `run_squad_live.py --feed mt5` silently ran a frozen PaperBroker
+>   snapshot (memoized at boot). Now builds `Mt5Broker` from `.env`
+>   creds (v1's read-only login, Terminal A) and refuses paper
+>   fallback loudly. CEO-approved off-limits edit;
+>   `tests/test_squad_live_feed_broker.py`.
+> - **D127 · I017 SHIPPED:** F017 `squad_tape_freshness` check +
+>   runbook 7b.9 Task Scheduler wiring. **D133:** thresholds
+>   recalibrated 5h/9h → 9h/13h (`last_bar_times` stores bar OPEN
+>   labels; healthy age band is 4–8h — the first live pass
+>   false-warned at 7.1h on a fresh tape). Closed same evening on the
+>   first live `ok` (newest bars 7.4h, overall ok).
+> - **D128 · I018:** /v2 next-close countdown re-anchored to the
+>   tape's own `tick_summary` timestamps (was hardcoded to the wrong
+>   H4 grid, off by 1h).
+> - **D132 · I022:** squad Telegram copy tells the truth — live-mode
+>   kickoff wording, Ctrl+C pages "interrupted" not "step budget
+>   reached", unhandled exceptions page as crash not clean replay.
+> - **D131 · I020 resolved (research lane):** Phase AD.2 NULL —
+>   Karasu's ±15-min window is structurally inert on the H4 grid for
+>   NFP/CPI/FOMC under both bar-open and entry anchors (0 fires /
+>   51,042 points × 349 events); live semantics unchanged;
+>   holding-window (C) prior banked AGAINST.
+> - **VM state:** three scheduled tasks live (SquadLiveRuntime,
+>   OpsWatchdog `--loop 300`, PlatformServer); squad connected
+>   read-only (`login=436080896`, Exness-MT5Trial9), ingested the
+>   12:00 UTC bar (19 thoughts incl. Bachira 0.75-conv EURUSD fade;
+>   proposals correctly burn-in-gated); watchdog `overall: ok`.
+> - Mac-local note: 3 research-registry pin tests fail while the
+>   research repo checkout sits on `main` (concurrent session);
+>   self-heals on `multi-agent-ensemble`.
 
 > v0.54 — **Fix session D125** 2026-07-24: I014 first-run auth FIXED
 > (the F008 first-visit 302 now preserves `?token=` and flushes the
@@ -156,7 +193,7 @@ branch (feature branches → `product` from now on). Research on
 
 | Area | Files |
 |---|---|
-| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I013,2026-W30-cycle2-triage.md},findings/,personas/,loop-validation.md}`, `company/strategy/{sellability-gaps,auth-migration-charter}.md`, `company/ledger/{company_state.json (123 D### + 19 roles + intake×13 + experiments),decisions_log.md}` |
+| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I013,2026-W30-cycle2-triage.md},findings/,personas/,loop-validation.md}`, `company/strategy/{sellability-gaps,auth-migration-charter}.md`, `company/ledger/{company_state.json (133 D### + 19 roles + intake×22 + experiments),decisions_log.md}` |
 | Sprint 3 stickiness (COMPLETE) | `agent/platform/{highlights,leaderboard}.py` + players.py F021 additions + alerts.py sink + alerts_sse.py cap + watchdog.py YAML parser, `company/sprints/sprint-3-stickiness/{README,F019…F024,REPORT}.md`, `company/legal/{F020,F021,F022,F023}-review.md`, tests `tests/platform/test_{highlights_*,leaderboard_*,players_form_guide,alerts_jsonl_sink,experiments_kpi_semantics}.py` |
 | Sprint 2b live readiness | `agent/platform/{watchdog,live_executor}.py`, `scripts/run_watchdog.py`, `company/sprints/sprint-2b-live-readiness/{README,F017-ops-watchdog,F018-demo-order-executor,REPORT}.md`, `company/legal/{F017,F018}-review.md` + `executor-demo-warning.md`, `docs/RUNBOOK_demo_launch.md` sec 7c, tests `tests/platform/test_{watchdog_*,run_watchdog_script,live_executor_module,executor_api}.py` |
 | Sprint 2 real-trading | `agent/platform/{rate_limiter,kill_switches,kill_switch_admin,risk_budget,broker_health,approval_queue,alerts,alerts_sse,alerts_telegram,auth}.py`, `agent/platform/pages.py` (KILL_SWITCHES / RISK / APPROVALS / LIVE_MODE_TOGGLE / ALERTS + HQ R&D pulse), `scripts/{serve_platform,check_claim_register,install_git_hooks}.py`, `scripts/git-hooks/pre-commit`, `company/legal/{live-mode,approval-queue}-warning.md` + `claim_register.md` |
@@ -168,17 +205,20 @@ branch (feature branches → `product` from now on). Research on
 
 ## 3) Next immediate goal
 
-**1) VM cutover to `product` (runbook 7b.8), then start the shadow
-clock (D095 step 2):** redeploy VM clones onto `product` (venv
-REBUILD for the pandas<3 pin — closes I009), verify /v2 legibility
-(closes I002), run runbook 7c ceremony + kill drill, wire
-`run_watchdog.py --loop` into Task Scheduler. One ops session
-advances I002/I007/I009. A004 tz verify-then-fix waits on a live
-event (FOMC Jul 28–29). **2) Auth migration sprint** (D115 charter)
-is the next chartered build lane — cross-user leaderboard ranking and
-any multi-user copy stay blocked on it. Post-Sprint-3 queue: 6 open
-(I002, I007–I009, I012–I013; I012 only awaits the D108 audit-cadence
-CEO ratification — the pinned test shipped).
+**VM cutover DONE 2026-07-28** (runbook 7b.8/7b.9: `product` clone,
+three scheduled tasks, `.env` with v1 read-only creds, watchdog
+`overall: ok`) — the shadow clock (D095 step 2) is finally running on
+a live feed. **1) A004 FOMC live capture, Jul 29 18:00 UTC** (Funds
+Rate + Statement, presser 18:30; GDP + Core PCE Jul 30) — first real
+high-impact event on a healthy feed; verify Karasu advisories and the
+calendar tz anchors live, leave everything running. **2) Auth
+migration sprint** (D115 charter) is the next chartered build lane —
+cross-user leaderboard ranking and any multi-user copy stay blocked
+on it; needs a scope-lock chartering session. **3) Next weekly bundle
+(w/c 2026-08-04)** should show 0 silent weekdays / ~90 bars — the
+I017 residual measurement. Open intake queue: I002
+(awaiting-verification), I007–I009, I012–I013 (I012 only awaits the
+D108 audit-cadence CEO ratification — the pinned test shipped).
 
 **Parked (no start without discussion):** wiring four-gate composition
 to squad's real-order path; Sprint 4 `/feedback` route (D084 defers —
