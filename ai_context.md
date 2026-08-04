@@ -1,4 +1,42 @@
-# AI Context — brain dump (updated 2026-07-28, v0.55)
+# AI Context — brain dump (updated 2026-08-04, v0.56)
+
+> v0.56 — **The silent-week post-mortem: squad was BLIND, not quiet**
+> 2026-08-04 (D135–D137, I024–I026 all shipped; user-approved
+> off-limits edits to `agent/squad/{engine,feed}.py` +
+> `run_squad_live.py`, same class as the I019 precedent):
+> - **I024 (P0, the headline):** Jul 28–Aug 3 weekly zip shows 0
+>   proposals — the roster's `_PreparedSeries` was frozen at startup
+>   `prepare()`; every bar closing after launch missed `index_by_ts`
+>   and ALL bar-based agents abstained `timestamp_miss` at conf 0.00
+>   (160 abstains, 69/74 tick summaries). The only 2 sighted bars
+>   (Jul 28 11:00/12:00 catch-up; Bachira 0.75-conv EURUSD fade) were
+>   eaten by the 2-bar burn-in ⇒ `intend()` never ran on valid data
+>   all week. Fix: `SquadEngine._maybe_reprepare_roster` re-prepares
+>   per symbol when a bar extends past `_roster_prepared_through`;
+>   batch/replay parity byte-identical (never fires there — full
+>   series prepared up front, which is also why research replays
+>   could never catch this).
+> - **I025:** `run_loop` mixed the mt5 feed's SLIDING-window bar
+>   indices into the engine's append-only history (overwrote
+>   historical bars, wrong fill bars from the first live bar).
+>   Live path now `bar_index=None` + fill from next-in-batch else
+>   forming bar. Masked last week only because I024 blinded agents.
+> - **I026:** `Mt5Feed.poll_new_closed` only emitted the newest close
+>   ⇒ H4 closes missed in a gap (Aug 3 DNS outage 10:26 UTC starved
+>   the 08:00 close) were skipped forever; restarts dropped the gap.
+>   Now emits every close past the cursor (oldest first) +
+>   `mark_seen` seeded from `state.json` `last_bar_times`.
+> - **Sae took no trades because Phase AE FAILED (v0.50/D111)** —
+>   `sae_enabled=False` is the verdict holding, not a bug; FOMC week
+>   proves the calendar plumbing (Karasu advisories fired on tape).
+> - Aug 3 runtime death 14:07 UTC = host-level VM death (v1 review
+>   confirmed DNS at 10:26, hard off 14:07), agent code blameless.
+> - Tests: **11 new** (`tests/squad/test_live_reprepare.py`,
+>   `tests/squad/test_feed_catchup.py`,
+>   `tests/test_squad_live_mt5_loop.py` end-to-end through real
+>   `run_loop`+`Mt5Feed`; 7/11 fail on pre-fix code). Suite 2050:
+>   2039+1 pass, 1 env-skip, 3 pre-existing research-registry
+>   fails (research repo on `main`, self-heals — v0.55 note).
 
 > v0.55 — **Squad-goes-live day** 2026-07-28 (weekly v2 review +
 > D127–D133, VM fully wired, shadow clock actually running):
@@ -214,9 +252,13 @@ high-impact event on a healthy feed; verify Karasu advisories and the
 calendar tz anchors live, leave everything running. **2) Auth
 migration sprint** (D115 charter) is the next chartered build lane —
 cross-user leaderboard ranking and any multi-user copy stay blocked
-on it; needs a scope-lock chartering session. **3) Next weekly bundle
-(w/c 2026-08-04)** should show 0 silent weekdays / ~90 bars — the
-I017 residual measurement. Open intake queue: I002
+on it; needs a scope-lock chartering session. **3) RELAUNCH the squad runtime
+on the VM** — pull `product` (D135–D137 fixes), restart the three
+scheduled tasks, and verify within one H4 close that tick summaries
+show real per-agent reads (zone-touch / no-breakout narratives), NOT
+`timestamp_miss`. The w/c 2026-08-04 bundle is the first honest
+measurement week: expect 0 silent weekdays / ~90 bars AND nonzero
+proposal counts when setups occur. Open intake queue: I002
 (awaiting-verification), I007–I009, I012–I013 (I012 only awaits the
 D108 audit-cadence CEO ratification — the pinned test shipped).
 

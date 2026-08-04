@@ -2609,6 +2609,55 @@ already catches the ticker up to the recent tail, so reload/return
 keeps the tape visible. 3 regression pins in
 `tests/platform/test_v2_page.py::TestV2LiveIsDefaultMode`.
 
+## D135 · 2026-08-04 · engineering · [BUG]
+
+**I024 shipped (P0): the squad's silent Jul 28 - Aug 3 week was the
+roster frozen at the startup `prepare()` — every bar closing after
+launch missed the agents' timestamp index and all bar-based agents
+abstained `timestamp_miss` at conf 0.00 forever.**
+
+Weekly zip post-mortem: 160 `timestamp_miss` abstains in 69/74 tick
+summaries; the only two sighted bars (Jul 28 11:00/12:00 catch-up,
+incl. Bachira's 0.75-conv EURUSD fade) were consumed by the 2-bar
+burn-in, so `intend()` never once ran on valid data. Fix:
+`SquadEngine._maybe_reprepare_roster` re-prepares the roster per
+symbol whenever a bar extends history past `_roster_prepared_through`
+(set by `prepare()`); batch/replay/parity paths prepare on the full
+series up front so the horizon is never exceeded there — parity stays
+byte-identical (pinned). The research replay could never catch this:
+batch mode prepares on the full series including every "future" bar.
+Tests: `tests/squad/test_live_reprepare.py` +
+`tests/test_squad_live_mt5_loop.py` (end-to-end through the real
+`run_loop`/`Mt5Feed`); both fail on the pre-fix code.
+
+## D136 · 2026-08-04 · engineering · [BUG]
+
+**I025 shipped: `run_loop` stops passing the mt5 feed's
+sliding-window bar indices into the engine's append-only history —
+they diverge from the first live bar, overwriting historical bars
+and picking wrong fill bars.**
+
+Found while fixing I024, masked by it (blind agents never consumed
+the corrupted history). Live path now passes `bar_index=None` (engine
+assigns its own index); the fill bar is the next newer closed bar for
+the symbol in the same poll batch, else the forming bar's open.
+cache/fake feeds keep the original engine-aligned path.
+
+## D137 · 2026-08-04 · engineering · [BUG]
+
+**I026 shipped: `Mt5Feed.poll_new_closed` emits every cached close
+newer than the per-symbol cursor (oldest first) instead of only the
+newest, and `run_loop` seeds the cursor from `state.json`
+`last_bar_times` — poll gaps and restarts become bounded catch-ups
+instead of silent holes in the tape.**
+
+Trigger: the Aug 3 tape ends at the 04:00 bar although the loop
+polled healthily until the 14:07 UTC VM death — the 08:00 close was
+starved by the 10:26 DNS outage and would have been skipped forever
+on restart. Fresh boots without a cursor still emit only the newest
+bar (older history is `prepare()` hydration, not live tape). Tests:
+`tests/squad/test_feed_catchup.py`.
+
 ## Template for subsequent entries
 
 ```markdown

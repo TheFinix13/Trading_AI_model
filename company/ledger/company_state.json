@@ -3095,6 +3095,27 @@
       "role": "engineering",
       "decision": "[BUG] I023 shipped: /v2 defaults to LIVE instead of the first replay cache, and LIVE is the first option in the mode picker. The 'disappearing match ticker' the CEO reported was init() silently reloading into the ~70k-event historical replay (ticker empty until playback) on every page load / tab return.",
       "context": "First evening of live /v2 use post-I019. LIVE's load path catches the ticker up to the recent tail, so reload/return now keeps the tape visible; replay caches remain in the dropdown as the fallback when the squad never ran here. 3 regression pins in tests/platform/test_v2_page.py::TestV2LiveIsDefaultMode."
+    },
+    {
+      "id": "D135",
+      "date": "2026-08-04",
+      "role": "engineering",
+      "decision": "[BUG] I024 shipped (P0): the squad's silent Jul 28 - Aug 3 week was the roster frozen at the startup prepare() -- every bar closing after launch missed the agents' index_by_ts and all bar-based agents abstained timestamp_miss at conf 0.00 forever (160 abstains, 69/74 tick summaries on the weekly tape). SquadEngine._maybe_reprepare_roster now re-prepares per symbol when a bar extends history past _roster_prepared_through.",
+      "context": "Sim-to-live port artifact: research replays prepare on the FULL series (including future bars) so batch/parity could never hit it -- and stays byte-identical now (never re-fires there; pinned). The only two sighted bars (Jul 28 11:00/12:00 catch-up, incl. Bachira's 0.75-conv EURUSD fade) were consumed by the 2-bar burn-in, so intend() never ran on valid data all week. User-approved off-limits edit (I019 precedent). Tests: tests/squad/test_live_reprepare.py + tests/test_squad_live_mt5_loop.py (end-to-end through real run_loop+Mt5Feed); both fail on pre-fix code."
+    },
+    {
+      "id": "D136",
+      "date": "2026-08-04",
+      "role": "engineering",
+      "decision": "[BUG] I025 shipped: run_loop no longer passes the mt5 feed's sliding-window bar indices into the engine's append-only history -- the spaces diverge from the first live bar, overwriting historical bars and picking wrong fill bars. Live path now bar_index=None (engine assigns its own index); fill = next newer closed bar in the same poll batch, else the forming bar's open.",
+      "context": "Found while fixing I024 and masked by it (blind agents never consumed the corrupted history). cache/fake feeds keep the original path -- their indices ARE engine-aligned. Pinned by test_live_bars_append_never_overwrite_history."
+    },
+    {
+      "id": "D137",
+      "date": "2026-08-04",
+      "role": "engineering",
+      "decision": "[BUG] I026 shipped: Mt5Feed.poll_new_closed emits every cached close newer than the per-symbol cursor (oldest first) instead of only the newest, and run_loop seeds the cursor from state.json last_bar_times via mark_seen -- poll gaps and restarts become bounded catch-ups instead of silent tape holes.",
+      "context": "Trigger: Aug 3 tape ends at the 04:00 bar although the loop polled healthily until the 14:07 UTC VM death; the 08:00 close was starved by the 10:26 DNS outage and would have been skipped forever on restart. Fresh boots without a cursor still emit only the newest bar (older history is prepare() hydration, not live tape). Tests: tests/squad/test_feed_catchup.py."
     }
   ],
   "sprint_verdicts": [
@@ -3633,6 +3654,63 @@
       "resolved_at": "2026-07-28T19:55:00Z",
       "summary": "/v2 defaulted to the first ~70k-event historical replay on every load (LIVE option appended last), so reload / tab-return wiped the match ticker until playback -- read as 'the ticker disappeared'. Shipped same day (D134): LIVE is the first mode-picker option and the default view whenever the live dir exists.",
       "file": "company/rd/intake/I023-v2-defaults-to-replay-ticker-vanishes.md"
+    },
+    {
+      "id": "I024",
+      "source": "post-mortem",
+      "submitter": "user_advocate",
+      "submitted_at": "2026-08-04T03:00:00Z",
+      "classification": "BUG",
+      "priority": "P0",
+      "status": "shipped",
+      "route": "bug",
+      "linked_features": [],
+      "linked_decisions": [
+        "D135"
+      ],
+      "linked_experiments": [],
+      "contact": null,
+      "resolved_at": "2026-08-04T04:30:00Z",
+      "summary": "Jul 28 - Aug 3 weekly zip: 0 proposals because the roster's _PreparedSeries was frozen at startup prepare() -- every post-launch bar missed index_by_ts and all bar-based agents abstained timestamp_miss at conf 0.00 (160 abstains). Shipped same day (D135): per-symbol roster re-prepare when a bar extends the prepared horizon; parity byte-identical.",
+      "file": "company/rd/intake/I024-squad-agents-frozen-prepare-timestamp-miss.md"
+    },
+    {
+      "id": "I025",
+      "source": "post-mortem",
+      "submitter": "engineering",
+      "submitted_at": "2026-08-04T03:30:00Z",
+      "classification": "BUG",
+      "priority": "P1",
+      "status": "shipped",
+      "route": "bug",
+      "linked_features": [],
+      "linked_decisions": [
+        "D136"
+      ],
+      "linked_experiments": [],
+      "contact": null,
+      "resolved_at": "2026-08-04T04:30:00Z",
+      "summary": "run_loop passed the mt5 feed's sliding-window bar indices into the engine's append-only history: historical bars overwritten, wrong fill bars, from the first live bar onward (masked by I024). Shipped same day (D136): live path uses bar_index=None + next-in-batch/forming-bar fills.",
+      "file": "company/rd/intake/I025-runner-mixes-feed-window-indices-into-engine-history.md"
+    },
+    {
+      "id": "I026",
+      "source": "post-mortem",
+      "submitter": "engineering",
+      "submitted_at": "2026-08-04T03:30:00Z",
+      "classification": "BUG",
+      "priority": "P1",
+      "status": "shipped",
+      "route": "bug",
+      "linked_features": [],
+      "linked_decisions": [
+        "D137"
+      ],
+      "linked_experiments": [],
+      "contact": null,
+      "resolved_at": "2026-08-04T04:30:00Z",
+      "summary": "Mt5Feed.poll_new_closed only emitted the newest close per symbol, silently skipping any H4 close missed during a feed outage, VM pause or restart (Aug 3: the 08:00 close was lost to the DNS outage). Shipped same day (D137): emit every close past the cursor oldest-first + mark_seen resume from state.json.",
+      "file": "company/rd/intake/I026-mt5-feed-silently-skips-missed-h4-closes.md"
     }
   ],
   "experiments": [
