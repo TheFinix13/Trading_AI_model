@@ -54,13 +54,19 @@ function Write-Watchdog([string]$Message) {
     Add-Content -Path $watchdogLog -Value $line
 }
 
-Write-Watchdog "Watchdog started (repo=$RepoDir, broker=$Broker)"
+# Task Scheduler sessions have no activated venv on PATH, so plain
+# `python` there can resolve to the Store alias or a system install
+# without MetaTrader5. Prefer the repo venv explicitly.
+$venvPython = Join-Path $RepoDir ".venv\Scripts\python.exe"
+$python = if (Test-Path $venvPython) { $venvPython } else { "python" }
+
+Write-Watchdog "Watchdog started (repo=$RepoDir, broker=$Broker, python=$python)"
 
 $restartDelaySeconds = 15
 
 while ($true) {
-    Write-Watchdog "Launching: python scripts\run_live.py --broker $Broker --symbol $Symbol --verbose"
-    python scripts\run_live.py --broker $Broker --symbol $Symbol --verbose
+    Write-Watchdog "Launching: $python scripts\run_live.py --broker $Broker --symbol $Symbol --verbose"
+    & $python scripts\run_live.py --broker $Broker --symbol $Symbol --verbose
     $code = $LASTEXITCODE
     Write-Watchdog "Agent process exited (code=$code). Restarting in ${restartDelaySeconds}s..."
     Start-Sleep -Seconds $restartDelaySeconds
