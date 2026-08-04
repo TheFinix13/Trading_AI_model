@@ -2791,6 +2791,34 @@ dismissed) in the next human session. Division of labour: OpsWatchdog
 no-mutation invariant. Tiers 2–3 (weekly agent triage, research batch
 lane) remain proposals.
 
+## D145 · 2026-08-04 · strategy · [CHARTER]
+
+**Neo Egoist League chartered
+(`company/strategy/neo-egoist-league-charter.md`): every player
+carries a public HP score computed from the tape — start 100, ΔHP =
+10×realized R per closed trade, −3 extra for overtime (>30 H4 bars),
+−1 per 250 observed bars for proposers with ZERO trades (cap −25, the
+Reo rule; advisors exempt), HP ≤ 0 ⇒ RELEGATION REVIEW flag for the
+user at the weekly review. Scoreboard shipped observe-only
+(`scripts/league_table.py`, 7 pinned tests incl. pure-read
+invariant).**
+
+This SUPERSEDES ad-hoc benching with due process: relegation only
+after honest causal parameterisation + pitch time on weapon-suited
+fields + sustained public HP exhaustion. The user's trade time-limit
+("90-minute match") lives at the SCORING layer only — hard time-stop
+exits have a graveyard (E020/E024 DEAD, E026 parked_low_yield 0/45)
+and any squad-specific exit change needs fresh pre-registration.
+Multi-field expansion ladder: (1) cross-symbol re-runs of existing
+weapons (Rin is EURUSD-only, Barou USDCAD-only, Chigiri EUR/GBP by
+design), (2) XAUUSD/XAGUSD/USOIL/USTEC on the same MT5 demo feed —
+each gated on banked H4 history + pip/session semantics audit +
+pre-registered causal replay per agent, (3) futures/stocks out of
+scope until (2) validates a cell. First real table (causal validation
+tape 2024-01→2026-07, val_cell_30): Nagi 170.0 (n=7 — thin), Chigiri
+130.0, Rin 123.8 (n=72, the anchor), Bachira 109.6, Reo 75.0
+(zero-conversion), Isagi 70.0, Barou 53.3.
+
 ## Template for subsequent entries
 
 ```markdown

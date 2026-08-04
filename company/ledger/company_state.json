@@ -3165,6 +3165,13 @@
       "role": "ceo",
       "decision": "[ORG] Off-hours shifts Tier 1 approved and built: Night Auditor role created (company/roles/night_auditor.md, persona Ego Jinpachi). scripts/night_audit.py audits one UTC day of tape daily at 06:30 via Task Scheduler (runbook 7b.10): per-symbol coverage vs weekday H4 grid, timestamp_miss regressions, feed stale/refresh streaks, activity, state cursor. Observe-and-draft only: digest + intake stubs under <live_dir>/audits/, one Telegram line/day via the existing watchdog_alert ops route.",
       "context": "No new F014 event types (no Legal re-review). Stubs triaged into real I### intakes in the next human session. OpsWatchdog (5-min) = 'is it alive?'; Night Auditor (daily) = 'did yesterday make sense?'. 7 pinned tests in tests/test_night_audit.py including the no-mutation invariant. Tiers 2-3 remain proposals."
+    },
+    {
+      "id": "D145",
+      "date": "2026-08-04",
+      "role": "strategy",
+      "decision": "[CHARTER] Neo Egoist League: public per-agent HP score from the tape (start 100; 10 HP per realized R; -3 per overtime trade >30 H4 bars; zero-conversion drain -1/250 bars cap -25 for proposers, advisors exempt; HP<=0 = RELEGATION REVIEW flag for the user). Scoreboard shipped observe-only (scripts/league_table.py). Supersedes ad-hoc benching with due process; trade time-limit lives at the scoring layer only (E020/E024/E026 graveyard binds exit changes to fresh pre-registration).",
+      "context": "Multi-field ladder: (1) cross-symbol re-runs of existing weapons (Rin EURUSD-only, Barou USDCAD-only, Chigiri EUR/GBP by design), (2) XAUUSD/XAGUSD/USOIL/USTEC on the same MT5 demo feed gated on banked history + semantics audit + pre-registered causal replay per agent, (3) futures/stocks after (2) validates a cell. First causal table (2024-01..2026-07): Nagi 170.0 (n=7), Chigiri 130.0, Rin 123.8 (n=72 anchor), Bachira 109.6, Reo 75.0 zero-conversion, Isagi 70.0, Barou 53.3."
     }
   ],
   "sprint_verdicts": [

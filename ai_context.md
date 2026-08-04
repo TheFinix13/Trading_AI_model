@@ -1,4 +1,21 @@
-# AI Context — brain dump (updated 2026-08-04, v0.60)
+# AI Context — brain dump (updated 2026-08-04, v0.61)
+
+> v0.61 — **Neo Egoist League chartered + scoreboard shipped (D145)**
+> 2026-08-04, same session: per-agent HP score from the tape
+> (`scripts/league_table.py`, observe-only; charter in
+> `company/strategy/neo-egoist-league-charter.md`). Rules v1: start
+> 100 HP; 10 HP × realized R; −3 per overtime trade (>30 H4 bars);
+> zero-conversion drain −1/250 bars (cap −25; advisors exempt);
+> HP ≤ 0 ⇒ RELEGATION REVIEW flag (user decides — supersedes ad-hoc
+> benching with due process). Trade time-limit = SCORING layer only
+> (E020/E024/E026 exit-change graveyard binds). First causal table
+> (val_cell_30, 2024-01→2026-07): Nagi 170.0 (n=7 thin), Chigiri
+> 130.0, Rin 123.8 (n=72 anchor, EURUSD-only BY DESIGN — Barou is
+> USDCAD-only, Chigiri EUR+GBP), Bachira 109.6, Reo 75.0
+> (zero-conversion), Isagi 70.0, Barou 53.3. Multi-field ladder:
+> cross-symbol re-runs first, then XAUUSD/XAGUSD/USOIL/USTEC (each
+> gated on history + semantics audit + pre-registered causal replay),
+> futures/stocks later. 7 tests (`tests/test_league_table.py`).
 
 > v0.60 — **Night Auditor shipped (D144) + research artifacts committed**
 > 2026-08-04, same session:
