@@ -264,12 +264,31 @@ class Mt5Feed(MarketFeed):
             series = self._cache.get(sym) or []
             if len(series) < 2:
                 continue
-            last = series[-1]
             prev = self._last_closed.get(sym)
-            if prev is not None and last.time <= prev:
+            if prev is None:
+                # First poll with no resume cursor (fresh boot): emit
+                # only the newest closed bar. Everything older is
+                # startup history already hydrated into prepare();
+                # replaying it live would double-process the past.
+                last = series[-1]
+                self._last_closed[sym] = last.time
+                out.append(
+                    FeedBar(symbol=sym, bar=last, bar_index=len(series) - 1)
+                )
                 continue
-            self._last_closed[sym] = last.time
-            out.append(FeedBar(symbol=sym, bar=last, bar_index=len(series) - 1))
+            # Emit EVERY cached bar newer than the cursor, oldest first.
+            # Emitting only the newest (the old behavior) silently
+            # dropped any H4 close missed during a poll gap -- feed
+            # outage, VM pause, or a runtime restart (with mark_seen) --
+            # and those bars were never evaluated at all.
+            fresh = [
+                FeedBar(symbol=sym, bar=b, bar_index=i)
+                for i, b in enumerate(series)
+                if b.time > prev
+            ]
+            if fresh:
+                self._last_closed[sym] = fresh[-1].bar.time
+                out.extend(fresh)
         out.sort(key=lambda fb: (fb.bar.time, fb.symbol))
         return out
 

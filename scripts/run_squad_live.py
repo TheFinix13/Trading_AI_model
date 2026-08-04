@@ -288,6 +288,17 @@ def run_loop(args, cfg: dict) -> str:
 
     engine.prepare(warmup)
 
+    # Resume the mt5 feed cursor from persisted state so the first
+    # poll emits every closed bar SINCE the last processed one (bounded
+    # by the feed's cache window) instead of only the newest -- H4
+    # closes missed across a restart used to be silently skipped.
+    if feed_name == "mt5":
+        for sym, iso in engine.last_bar_times.items():
+            try:
+                feed.mark_seen(sym, datetime.fromisoformat(iso))
+            except ValueError:
+                log.warning("unparseable last_bar_time %s=%r", sym, iso)
+
     # F4 fix: on the live-market path, credit the feed's historical
     # closed bars toward the warm-up gate so a fresh runtime doesn't
     # sit silent for 200 live H4 bars (~33 days). A small live burn-in
@@ -402,7 +413,7 @@ def run_loop(args, cfg: dict) -> str:
                 time.sleep(sleep_s)
                 continue
 
-            for fb in new_bars:
+            for pos, fb in enumerate(new_bars):
                 # Skip bars already processed (resume).
                 last = engine.last_bar_times.get(fb.symbol)
                 if last is not None:
@@ -412,23 +423,42 @@ def run_loop(args, cfg: dict) -> str:
                             continue
                     except ValueError:
                         pass
-                # Need a next bar for fills — for cache/mt5 history look ahead.
-                series = engine.bars_by_symbol.get(fb.symbol) or []
-                next_bar = None
-                # Extend history with this closed bar first.
-                engine._extend_history(fb.symbol, fb.bar)
-                series = engine.bars_by_symbol[fb.symbol]
-                if fb.bar_index + 1 < len(series):
-                    next_bar = series[fb.bar_index + 1]
-                elif feed_name == "mt5" and hasattr(feed, "forming_bar"):
-                    # Live: fill at the newly-opening (forming) bar's open.
-                    next_bar = feed.forming_bar(fb.symbol)
-
-                tr = engine.on_bar(
-                    fb.symbol, fb.bar,
-                    bar_index=fb.bar_index if fb.bar_index < len(series) else None,
-                    next_bar=next_bar,
-                )
+                if feed_name == "mt5":
+                    # Index-space fix (2026-08-04): fb.bar_index lives
+                    # in the mt5 feed's SLIDING lookback window; the
+                    # engine's history is append-only. Passing the feed
+                    # index into on_bar overwrote historical bars and
+                    # picked wrong fill bars once the two spaces
+                    # diverged (i.e. from the first live bar onward).
+                    # Live path: let the engine assign its own index.
+                    # Fill bar: the next newer closed bar for this
+                    # symbol in the same poll batch (catch-up case),
+                    # else the currently-forming bar's open.
+                    next_bar = next(
+                        (
+                            nb.bar for nb in new_bars[pos + 1:]
+                            if nb.symbol == fb.symbol
+                        ),
+                        None,
+                    )
+                    if next_bar is None and hasattr(feed, "forming_bar"):
+                        next_bar = feed.forming_bar(fb.symbol)
+                    tr = engine.on_bar(fb.symbol, fb.bar, next_bar=next_bar)
+                else:
+                    # cache/fake feeds: indices ARE engine-aligned (the
+                    # engine was prepared on the feed's full series).
+                    next_bar = None
+                    engine._extend_history(fb.symbol, fb.bar)
+                    series = engine.bars_by_symbol[fb.symbol]
+                    if fb.bar_index + 1 < len(series):
+                        next_bar = series[fb.bar_index + 1]
+                    tr = engine.on_bar(
+                        fb.symbol, fb.bar,
+                        bar_index=(
+                            fb.bar_index if fb.bar_index < len(series) else None
+                        ),
+                        next_bar=next_bar,
+                    )
                 steps += 1
                 log.info(
                     "tick symbol=%s time=%s proposals=%d closed=%d rejected=%d",

@@ -178,6 +178,13 @@ class SquadEngine:
         self.tick_id = 0
         self.bars_seen: dict[str, int] = {}
         self.bars_by_symbol: dict[str, list[Bar]] = {}
+        # Last bar time the ROSTER was prepared through, per symbol.
+        # Batch/replay paths prepare() on the full series up front so
+        # on_bar never sees a newer bar and this never re-fires --
+        # byte-identical parity. On the live path every genuinely new
+        # bar exceeds it, triggering a per-symbol roster re-prepare
+        # (the frozen-prepare fix, 2026-08-04).
+        self._roster_prepared_through: dict[str, datetime] = {}
         # Live-path warm-up seeding state (see seed_warmup). Both dicts
         # stay EMPTY on cache/replay/parity paths, which keeps those
         # paths byte-identical: nothing in on_bar consults them unless
@@ -210,7 +217,36 @@ class SquadEngine:
         for s in self.bars_by_symbol:
             self.bars_seen.setdefault(s, 0)
         prepare_roster(self.roster, self.bars_by_symbol)
+        for s, b in self.bars_by_symbol.items():
+            if b:
+                self._roster_prepared_through[s] = b[-1].time
         self.load_state()
+
+    def _maybe_reprepare_roster(self, symbol: str, bar: Bar) -> None:
+        """Re-prepare the roster for ``symbol`` when a bar extends history.
+
+        Frozen-prepare fix (2026-08-04): agents' ``_PreparedSeries``
+        (zones, swings, ``index_by_ts``) were built once at the startup
+        ``prepare()`` and never refreshed, so every bar that closed
+        AFTER startup missed the timestamp index and all bar-based
+        agents abstained with ``timestamp_miss`` forever (the entire
+        Jul 28 - Aug 3 live week produced 0 proposals this way). The
+        research replay never hit this because batch mode prepares on
+        the full series -- including every "future" bar -- up front.
+
+        Re-preparing per symbol on each newly-extending bar keeps the
+        agents' zone context fresh too (a timestamp-only fix would have
+        let zones go silently stale). Cost: one ``precompute`` over the
+        symbol's history per H4 close -- negligible at live cadence.
+        """
+        prepared_through = self._roster_prepared_through.get(symbol)
+        if prepared_through is not None and bar.time <= prepared_through:
+            return
+        series = self.bars_by_symbol.get(symbol)
+        if not series:
+            return
+        prepare_roster(self.roster, {symbol: series})
+        self._roster_prepared_through[symbol] = series[-1].time
 
     def seed_warmup(
         self,
@@ -565,6 +601,10 @@ class SquadEngine:
         tick_id = self.tick_id
         self.bars_seen[symbol] = self.bars_seen.get(symbol, 0) + 1
         self.last_bar_times[symbol] = bar.time.isoformat()
+
+        # Must run BEFORE observe: agents need this bar in their
+        # prepared index. No-op on batch/replay paths (see docstring).
+        self._maybe_reprepare_roster(symbol, bar)
 
         market = self._to_market(bar, tick_id=tick_id, symbol=symbol)
 
