@@ -2819,6 +2819,31 @@ tape 2024-01→2026-07, val_cell_30): Nagi 170.0 (n=7 — thin), Chigiri
 130.0, Rin 123.8 (n=72, the anchor), Bachira 109.6, Reo 75.0
 (zero-conversion), Isagi 70.0, Barou 53.3.
 
+## D146 · 2026-08-04 · research_lead · [STRATEGY-EVIDENCE]
+
+**Phase AJ + AJ-2 (cross-symbol weapon transfer, research repo,
+both pre-registered before execution): NO cross-symbol promotion —
+0 of 8 judged cells. Rin's EURUSD-only restriction is LOAD-BEARING
+(GBPUSD flat PF 1.037/n=224, USDCAD negative 0.778). Barou:EURUSD's
+spectacular near-miss (PF 2.03/n=25) failed the AJ-2 subset guard
+(unseen 2015–2018 years negative); Barou:GBPUSD passed extended IS
+(PF 1.441/n=51, unseen years +10.9R standalone) but FAILED the sealed
+2024–2026 validation (PF 0.962, mean R +0.017). Home cells stable
+(all interaction shifts < 0.15 PF) — the study was clean, the edges
+just didn't travel.**
+
+Registered structural discovery: thin-n agents' per-cell replay KPIs
+are severely window-start path-dependent (Barou's same 2019–2023
+EURUSD years: n=25/PF 2.03 from a 2019 start vs n=10 from a 2015
+start — squad state changes which rare signals convert). Phase AF's
+"Barou positive in all 8 cells" prior must be read with this
+fragility; any AJ-3 must judge low-fire agents in single-agent
+isolation replays as well as in-squad. Roster consequences: Rin stays
+EURUSD, Barou stays USDCAD, Chigiri needs weapon redesign not field
+changes. Nearest candidates for a NEW validated edge: S1 surprise
+panel (blocked on one VM calendar export), AG-2, Isagi AF-2 regime
+hypothesis, I029 Reo fix.
+
 ## Template for subsequent entries
 
 ```markdown

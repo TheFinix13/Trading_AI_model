@@ -3172,6 +3172,13 @@
       "role": "strategy",
       "decision": "[CHARTER] Neo Egoist League: public per-agent HP score from the tape (start 100; 10 HP per realized R; -3 per overtime trade >30 H4 bars; zero-conversion drain -1/250 bars cap -25 for proposers, advisors exempt; HP<=0 = RELEGATION REVIEW flag for the user). Scoreboard shipped observe-only (scripts/league_table.py). Supersedes ad-hoc benching with due process; trade time-limit lives at the scoring layer only (E020/E024/E026 graveyard binds exit changes to fresh pre-registration).",
       "context": "Multi-field ladder: (1) cross-symbol re-runs of existing weapons (Rin EURUSD-only, Barou USDCAD-only, Chigiri EUR/GBP by design), (2) XAUUSD/XAGUSD/USOIL/USTEC on the same MT5 demo feed gated on banked history + semantics audit + pre-registered causal replay per agent, (3) futures/stocks after (2) validates a cell. First causal table (2024-01..2026-07): Nagi 170.0 (n=7), Chigiri 130.0, Rin 123.8 (n=72 anchor), Bachira 109.6, Reo 75.0 zero-conversion, Isagi 70.0, Barou 53.3."
+    },
+    {
+      "id": "D146",
+      "date": "2026-08-04",
+      "role": "research_lead",
+      "decision": "[STRATEGY-EVIDENCE] Phase AJ + AJ-2 (cross-symbol weapon transfer, pre-registered): NO promotion, 0/8 cells. Rin's EURUSD-only restriction is load-bearing (GBPUSD PF 1.037 flat, USDCAD 0.778). Barou:EURUSD near-miss (PF 2.03 n=25) failed the subset guard (unseen 2015-2018 negative); Barou:GBPUSD passed extended IS (PF 1.441 n=51) but FAILED sealed validation (PF 0.962). Home cells stable (<0.15 PF shift) -- clean study, edges don't travel.",
+      "context": "Registered discovery: thin-n per-cell replay KPIs are window-start path-dependent (Barou same-years n=25 vs 10 depending on replay start; squad state alters which rare signals convert). AJ-3 (if any) must add single-agent isolation replays. Roster: Rin stays EURUSD, Barou stays USDCAD, Chigiri needs weapon redesign. Nearest new-edge candidates: S1 surprise panel (blocked on one VM calendar export), AG-2, Isagi AF-2, I029 Reo fix."
     }
   ],
   "sprint_verdicts": [

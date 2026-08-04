@@ -1,4 +1,22 @@
-# AI Context — brain dump (updated 2026-08-04, v0.61)
+# AI Context — brain dump (updated 2026-08-04, v0.62)
+
+> v0.62 — **Phase AJ/AJ-2 cross-symbol transfer: 0/8, no promotion
+> (D146)** 2026-08-04, same session. Both pre-registered before
+> execution; sealed 2024–2026 window opened ONCE (for Barou:GBPUSD)
+> and consumed. Verdicts: Rin does NOT travel (GBPUSD PF 1.037 flat
+> n=224, USDCAD 0.778 — EURUSD-only restriction is load-bearing);
+> Barou:EURUSD near-miss (PF 2.03 n=25) failed the subset guard
+> (unseen 2015–2018 negative on its own); Barou:GBPUSD passed
+> extended IS (PF 1.441 n=51, unseen years +10.9R) but FAILED sealed
+> validation (PF 0.962, meanR +0.017). Home cells stable — clean
+> study. **Registered discovery: thin-n agents' per-cell replay KPIs
+> are window-start path-dependent** (Barou same calendar years n=25
+> vs n=10 depending on 2019 vs 2015 replay start); AF's "Barou
+> positive in all 8 cells" prior downgraded accordingly; AJ-3 must
+> use single-agent isolation replays. Artifacts:
+> `phase_aj_cross_symbol_transfer/` on `multi-agent-ensemble`
+> (`bbb3f01`→`68471cd`). Next new-edge candidates: S1 panel (ONE VM
+> calendar export blocks it), AG-2, Isagi AF-2, I029 Reo fix.
 
 > v0.61 — **Neo Egoist League chartered + scoreboard shipped (D145)**
 > 2026-08-04, same session: per-agent HP score from the tape
