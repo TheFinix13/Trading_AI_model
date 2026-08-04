@@ -62,9 +62,17 @@ def _has_touched_before(
 
 def _structural_tp(
     bars: list[Bar], swings, at_index: int, direction: Direction,
-    *, lookahead: int = 200,
+    *, lookahead: int = 200, confirm_bars: int = 0,
 ) -> Optional[float]:
-    """Most recent opposite-side swing within the past ``lookahead`` bars."""
+    """Most recent opposite-side swing within the past ``lookahead`` bars.
+
+    ``confirm_bars`` (2026-08-04 causality fix): a fractal swing at bar j
+    needs ``lookback`` bars on BOTH sides, so it is only knowable at
+    decision bar i when ``j + lookback <= i``. Pass the detector's
+    ``swing_lookback`` here; the default 0 preserves legacy call sites.
+    Without it, a full-series prepare could pick a take-profit off a swing
+    that a live (prefix-prepared) agent cannot see yet.
+    """
     if not swings:
         return None
     price = bars[at_index].close
@@ -72,6 +80,8 @@ def _structural_tp(
     candidates = []
     for s in swings:
         if s.bar_index >= at_index or s.bar_index < earliest:
+            continue
+        if s.bar_index + confirm_bars > at_index:
             continue
         if direction == Direction.LONG and s.is_high and s.price > price:
             candidates.append(s)
@@ -217,6 +227,7 @@ class SupplyDemandAlpha(Alpha):
                 structural = _structural_tp(
                     bars, actx.ctx.swings, i, Direction.LONG,
                     lookahead=self.structural_lookback,
+                    confirm_bars=actx.cfg.detectors.swing_lookback,
                 )
                 if structural is not None and (structural - entry) >= self.min_structural_rr * risk:
                     tp = structural
@@ -240,6 +251,7 @@ class SupplyDemandAlpha(Alpha):
                 structural = _structural_tp(
                     bars, actx.ctx.swings, i, Direction.SHORT,
                     lookahead=self.structural_lookback,
+                    confirm_bars=actx.cfg.detectors.swing_lookback,
                 )
                 if structural is not None and (entry - structural) >= self.min_structural_rr * risk:
                     tp = structural

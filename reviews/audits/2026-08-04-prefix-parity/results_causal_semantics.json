@@ -1,0 +1,154 @@
+{
+  "config": {
+    "history_bars": 2500,
+    "decision_bars": 600,
+    "symbols": [
+      "EURUSD",
+      "GBPUSD",
+      "USDCAD"
+    ]
+  },
+  "per_symbol": {
+    "EURUSD": {
+      "n_decisions": 600,
+      "precompute_full_seconds": 0.046,
+      "audit_seconds": 25.5,
+      "agents": {
+        "isagi": {
+          "full_fired": 36,
+          "prefix_fired": 36,
+          "match": 36,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "bachira": {
+          "full_fired": 126,
+          "prefix_fired": 126,
+          "match": 126,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "rin": {
+          "full_fired": 36,
+          "prefix_fired": 36,
+          "match": 36,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "barou_v1": {
+          "full_fired": 126,
+          "prefix_fired": 126,
+          "match": 126,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "barou_v13": {
+          "full_fired": 29,
+          "prefix_fired": 29,
+          "match": 29,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        }
+      }
+    },
+    "GBPUSD": {
+      "n_decisions": 600,
+      "precompute_full_seconds": 0.048,
+      "audit_seconds": 26.9,
+      "agents": {
+        "isagi": {
+          "full_fired": 37,
+          "prefix_fired": 37,
+          "match": 37,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "bachira": {
+          "full_fired": 85,
+          "prefix_fired": 85,
+          "match": 85,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "rin": {
+          "full_fired": 37,
+          "prefix_fired": 37,
+          "match": 37,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "barou_v1": {
+          "full_fired": 85,
+          "prefix_fired": 85,
+          "match": 85,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "barou_v13": {
+          "full_fired": 31,
+          "prefix_fired": 31,
+          "match": 31,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        }
+      }
+    },
+    "USDCAD": {
+      "n_decisions": 600,
+      "precompute_full_seconds": 0.042,
+      "audit_seconds": 22.7,
+      "agents": {
+        "isagi": {
+          "full_fired": 44,
+          "prefix_fired": 44,
+          "match": 44,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "bachira": {
+          "full_fired": 90,
+          "prefix_fired": 90,
+          "match": 90,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "rin": {
+          "full_fired": 44,
+          "prefix_fired": 44,
+          "match": 44,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "barou_v1": {
+          "full_fired": 90,
+          "prefix_fired": 90,
+          "match": 90,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        },
+        "barou_v13": {
+          "full_fired": 37,
+          "prefix_fired": 37,
+          "match": 37,
+          "only_full": [],
+          "only_prefix": [],
+          "field_diff": []
+        }
+      }
+    }
+  }
+}

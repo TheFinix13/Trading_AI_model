@@ -123,6 +123,48 @@ def make_calendar_status_sink(out_dir: Path, notifier=None):
     return sink
 
 
+def _emit_system_status(
+    out_dir: Path, row: dict, notifier=None, notify_text: str | None = None,
+) -> None:
+    """Append a ``system_status`` row to events.jsonl (+ optional page).
+
+    Same schema family as the news-calendar sink so the /v2 page, the
+    weekly report's "system health" section and grep all see one shape.
+    Failures here must never take down the trading loop.
+    """
+    row.setdefault("type", "system_status")
+    row.setdefault(
+        "timestamp", datetime.now(tz=timezone.utc).isoformat(),
+    )
+    try:
+        with (Path(out_dir) / "events.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, default=str) + "\n")
+    except OSError as exc:
+        log.warning("system status event write failed: %s", exc)
+    if notifier is not None and notify_text:
+        try:
+            notifier.notify_system(notify_text)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("system status notify failed: %s", exc)
+
+
+def _in_weekend_gap(now: datetime) -> bool:
+    """True inside the FX weekend close (no H4 closes are expected).
+
+    Friday 20:00 UTC through Sunday 22:00 UTC, generous on both edges so
+    DST shifts don't cause false staleness pages. Outside this window a
+    silent feed is a real problem.
+    """
+    wd = now.weekday()  # Mon=0 .. Sun=6
+    if wd == 5:  # Saturday
+        return True
+    if wd == 4 and now.hour >= 20:  # late Friday
+        return True
+    if wd == 6 and now.hour < 22:  # Sunday before the open
+        return True
+    return False
+
+
 def _build_notifier(cfg: dict, *, no_telegram: bool):
     if no_telegram:
         return None
@@ -378,6 +420,30 @@ def run_loop(args, cfg: dict) -> str:
     # ("done" used to be the default). Every deliberate exit path below
     # overwrites this.
     outcome = "crashed"
+
+    # Feed-outage resilience (I027-era hardening, 2026-08-04): a
+    # transient MT5 read error used to escape run_loop and kill the
+    # process (the ops watchdog then restart-churned it). Now: bounded
+    # exponential backoff, a system_status row on the tape, one page per
+    # failure STREAK, and a recovery row when the feed comes back.
+    feed_error_streak = 0
+    # Staleness latch: if the feed "succeeds" but no closed bar has been
+    # seen for > --feed-stale-hours outside the weekend gap (the Aug 3
+    # shape: terminal disconnected, cache frozen, loop idling happily),
+    # put it on the tape and page once per episode.
+    newest_bar_seen: datetime | None = max(
+        (b[-1].time for b in warmup.values() if b), default=None,
+    )
+    for iso in engine.last_bar_times.values():
+        try:
+            t = datetime.fromisoformat(iso)
+            if newest_bar_seen is None or t > newest_bar_seen:
+                newest_bar_seen = t
+        except ValueError:
+            pass
+    stale_after_s = float(args.feed_stale_hours) * 3600.0
+    feed_stale_alerted = False
+
     try:
         while True:
             # Proof-of-life for the /v2 dashboard between H4 bar closes:
@@ -395,11 +461,90 @@ def run_loop(args, cfg: dict) -> str:
                 break
 
             if feed_name == "mt5":
-                asyncio.run(feed.refresh())
+                try:
+                    asyncio.run(feed.refresh())
+                except Exception as exc:  # noqa: BLE001 — transient I/O
+                    feed_error_streak += 1
+                    backoff = min(60.0 * (2 ** min(feed_error_streak - 1, 4)), 900.0)
+                    log.warning(
+                        "mt5 feed refresh failed (streak=%d, retry in %.0fs): %s",
+                        feed_error_streak, backoff, exc,
+                    )
+                    _emit_system_status(
+                        out_dir,
+                        {
+                            "component": "market_feed",
+                            "status": "refresh_error",
+                            "failure_streak": feed_error_streak,
+                            "retry_in_seconds": backoff,
+                            "message": f"mt5 refresh failed: {exc}",
+                        },
+                        notifier=notifier if feed_error_streak == 1 else None,
+                        notify_text=(
+                            f"market feed refresh failed ({exc}) — "
+                            "retrying with backoff; squad is NOT reading "
+                            "new bars until this recovers."
+                        ),
+                    )
+                    engine.write_heartbeat(
+                        f"feed_error streak={feed_error_streak}"
+                    )
+                    time.sleep(backoff)
+                    continue
+                if feed_error_streak:
+                    _emit_system_status(
+                        out_dir,
+                        {
+                            "component": "market_feed",
+                            "status": "recovered",
+                            "failure_streak": feed_error_streak,
+                            "message": "mt5 refresh recovered",
+                        },
+                        notifier=notifier,
+                        notify_text=(
+                            f"market feed recovered after "
+                            f"{feed_error_streak} failed refresh(es); any "
+                            "missed H4 closes will be caught up this poll."
+                        ),
+                    )
+                    feed_error_streak = 0
 
             new_bars = feed.poll_new_closed()
             if not new_bars:
                 engine.write_heartbeat("idle")
+                now = datetime.now(tz=timezone.utc)
+                if (
+                    feed_name == "mt5"
+                    and not feed_stale_alerted
+                    and newest_bar_seen is not None
+                    and stale_after_s > 0
+                    and (now - newest_bar_seen).total_seconds() > stale_after_s
+                    and not _in_weekend_gap(now)
+                ):
+                    feed_stale_alerted = True
+                    age_h = (now - newest_bar_seen).total_seconds() / 3600.0
+                    _emit_system_status(
+                        out_dir,
+                        {
+                            "component": "market_feed",
+                            "status": "stale",
+                            "newest_bar_time": newest_bar_seen.isoformat(),
+                            "age_hours": round(age_h, 2),
+                            "threshold_hours": float(args.feed_stale_hours),
+                            "message": (
+                                f"no closed bar for {age_h:.1f}h outside "
+                                "the weekend gap — feed is starving"
+                            ),
+                        },
+                        notifier=notifier,
+                        notify_text=(
+                            f"squad feed STALE: newest closed bar is "
+                            f"{age_h:.1f}h old (threshold "
+                            f"{args.feed_stale_hours:.0f}h) and it isn't "
+                            "the weekend. Check the MT5 terminal / VM "
+                            "network."
+                        ),
+                    )
                 if feed_name == "cache" and getattr(feed, "remaining", 1) == 0:
                     log.info("cache feed exhausted")
                     outcome = "done"
@@ -412,6 +557,26 @@ def run_loop(args, cfg: dict) -> str:
                 sleep_s = min(sleep_s, max(args.poll, 60.0))
                 time.sleep(sleep_s)
                 continue
+
+            batch_newest = max(fb.bar.time for fb in new_bars)
+            if newest_bar_seen is None or batch_newest > newest_bar_seen:
+                newest_bar_seen = batch_newest
+            if feed_stale_alerted:
+                feed_stale_alerted = False
+                _emit_system_status(
+                    out_dir,
+                    {
+                        "component": "market_feed",
+                        "status": "recovered",
+                        "newest_bar_time": batch_newest.isoformat(),
+                        "message": "closed bars flowing again after staleness",
+                    },
+                    notifier=notifier,
+                    notify_text=(
+                        "squad feed recovered — closed bars are flowing "
+                        "again (missed closes caught up this poll)."
+                    ),
+                )
 
             for pos, fb in enumerate(new_bars):
                 # Skip bars already processed (resume).
@@ -554,6 +719,16 @@ def build_arg_parser(sl: dict | None = None) -> argparse.ArgumentParser:
         help=(
             "live bars withheld from proposing after warm-up seeding "
             "(mt5 feed only; feed-sanity confirmation window; default 2)"
+        ),
+    )
+    ap.add_argument(
+        "--feed-stale-hours", type=float,
+        default=float(sl.get("feed_stale_hours") or 9.0),
+        help=(
+            "mt5 feed: page + tape a system_status row when no closed "
+            "bar has been seen for this many hours outside the weekend "
+            "gap (matches the external tape-freshness watchdog's warn "
+            "threshold; 0 disables). Default 9."
         ),
     )
     ap.add_argument(

@@ -85,6 +85,7 @@ def _args(tmp_path: Path) -> SimpleNamespace:
         cache_bars_per_poll=1,
         out_dir=tmp_path / "squad_live",
         max_steps=2,
+        feed_stale_hours=9.0,
         reset=False,
         no_telegram=True,
         parity_mode=False,
@@ -129,3 +130,141 @@ def test_run_loop_mt5_sees_post_startup_bars(tmp_path, monkeypatch):
     assert state["last_bar_times"]["EURUSD"] == (
         broker._new_closed.time.isoformat()
     )
+
+
+# ---------------------------------------------------------------------------
+# Feed-outage resilience (2026-08-04 hardening)
+# ---------------------------------------------------------------------------
+
+
+class _FlakyMt5Broker(_ScriptedMt5Broker):
+    """Scripted broker whose H4 reads raise on selected refresh attempts.
+
+    The Aug 3 DNS outage shape: reads start failing mid-session, then the
+    network comes back. Before the hardening, the first raise escaped
+    ``run_loop`` and killed the process.
+    """
+
+    def __init__(self, hist: list[Bar], fail_on: set[int], grow_after: int = 2):
+        super().__init__(hist, grow_after=grow_after)
+        self._fail_on = set(fail_on)
+
+    async def get_latest_bars(self, symbol: str, timeframe: str, count: int = 0):
+        if timeframe == "H4" and (self._h4_calls + 1) in self._fail_on:
+            self._h4_calls += 1
+            raise ConnectionError("simulated MT5 IPC read failure")
+        return await super().get_latest_bars(symbol, timeframe, count)
+
+
+def _patch_sleep(monkeypatch, hook=None) -> list[float]:
+    """No-op ``time.sleep`` inside run_squad_live (records durations)."""
+    slept: list[float] = []
+
+    def _sleep(seconds: float) -> None:
+        slept.append(float(seconds))
+        if hook is not None:
+            hook()
+
+    monkeypatch.setattr(
+        run_squad_live, "time", SimpleNamespace(sleep=_sleep),
+    )
+    return slept
+
+
+def test_run_loop_survives_transient_refresh_errors(tmp_path, monkeypatch):
+    hist = _series(210)
+    # H4 read #1 = startup, #2 = first loop poll (emits the catch-up
+    # bar), #3 and #4 raise mid-session, #5 recovers with a new close.
+    broker = _FlakyMt5Broker(hist, fail_on={3, 4}, grow_after=4)
+
+    async def _fake_connect(cfg_live=None):  # noqa: ARG001
+        return broker
+
+    monkeypatch.setattr(run_squad_live, "_connect_mt5", _fake_connect)
+    slept = _patch_sleep(monkeypatch)
+
+    outcome = run_squad_live.run_loop(_args(tmp_path), cfg={})
+    assert outcome == "max_steps", (
+        "a transient feed read error must not kill the loop"
+    )
+
+    tape = (tmp_path / "squad_live" / "events.jsonl").read_text(encoding="utf-8")
+    rows = [json.loads(x) for x in tape.splitlines() if x]
+    feed_rows = [
+        r for r in rows
+        if r.get("type") == "system_status"
+        and r.get("component") == "market_feed"
+    ]
+    statuses = [r["status"] for r in feed_rows]
+    assert statuses.count("refresh_error") == 2, statuses
+    assert "recovered" in statuses, (
+        "recovery must be visible on the tape, not just in the log"
+    )
+    streaks = [r["failure_streak"] for r in feed_rows
+               if r["status"] == "refresh_error"]
+    assert streaks == [1, 2]
+    # Bounded exponential backoff was applied (60s then 120s).
+    assert 60.0 in slept and 120.0 in slept
+
+    # The post-outage closed bar was still processed (catch-up worked).
+    assert broker._new_closed.time.isoformat() in tape
+
+
+def test_run_loop_tapes_feed_staleness(tmp_path, monkeypatch):
+    hist = _series(210)
+    broker = _ScriptedMt5Broker(hist, grow_after=10_000)  # feed starves
+
+    async def _fake_connect(cfg_live=None):  # noqa: ARG001
+        return broker
+
+    monkeypatch.setattr(run_squad_live, "_connect_mt5", _fake_connect)
+
+    class _FixedNow(datetime):
+        """Pin 'now' to a Tuesday so the weekend gap can't suppress."""
+
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 8, 4, 12, 0, tzinfo=tz)
+
+    monkeypatch.setattr(run_squad_live, "datetime", _FixedNow)
+
+    out_dir = tmp_path / "squad_live"
+    kill = out_dir / "kill.txt"
+
+    def _stop_once_stale() -> None:
+        events = out_dir / "events.jsonl"
+        if events.exists() and '"stale"' in events.read_text(encoding="utf-8"):
+            kill.write_text("test-stop", encoding="utf-8")
+
+    _patch_sleep(monkeypatch, hook=_stop_once_stale)
+
+    args = _args(tmp_path)
+    args.max_steps = None  # let the loop idle so staleness can trigger
+    outcome = run_squad_live.run_loop(args, cfg={})
+    assert outcome == "killed"
+
+    rows = [
+        json.loads(x)
+        for x in (out_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+        if x
+    ]
+    stale = [
+        r for r in rows
+        if r.get("type") == "system_status"
+        and r.get("component") == "market_feed"
+        and r.get("status") == "stale"
+    ]
+    assert len(stale) == 1, "staleness must be taped exactly once per episode"
+    assert stale[0]["threshold_hours"] == 9.0
+    assert stale[0]["age_hours"] > 9.0
+
+
+def test_weekend_gap_window():
+    gap = run_squad_live._in_weekend_gap
+    UTC_ = timezone.utc
+    assert gap(datetime(2026, 8, 1, 12, 0, tzinfo=UTC_))       # Saturday
+    assert gap(datetime(2026, 7, 31, 20, 30, tzinfo=UTC_))     # late Friday
+    assert gap(datetime(2026, 8, 2, 21, 0, tzinfo=UTC_))       # Sunday pre-open
+    assert not gap(datetime(2026, 8, 2, 22, 30, tzinfo=UTC_))  # Sunday open
+    assert not gap(datetime(2026, 7, 31, 12, 0, tzinfo=UTC_))  # Friday midday
+    assert not gap(datetime(2026, 8, 4, 12, 0, tzinfo=UTC_))   # Tuesday

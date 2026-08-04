@@ -282,22 +282,36 @@ def detect_zones(
         relative to the requested ``at_index``, not at detection time. The
         prune is therefore removed; callers apply it in
         ``fresh_zones(zones, at_index, max_age_bars=...)``.
+
+    Causality fix (2026-08-04):
+      * The rolling median used to be CENTERED on the impulse bar
+        (``bars[i-100 .. i+100]``), so impulse validity depended on candle
+        bodies up to 100 bars in the FUTURE. A live agent re-preparing on
+        history-so-far can never reproduce that: a prefix-vs-full parity
+        audit on real H4 data (reviews/audits/2026-08-04-prefix-parity/)
+        showed live fired only ~70-75% of the signals the full-series
+        replay fired. The median is now TRAILING (``bars[i-200 .. i-1]``,
+        strictly past), which is prefix-stable: detection over
+        ``bars[:i+1]`` and over the full series agree exactly.
+      * Each zone is stamped with ``impulse_bar_index`` so ``fresh_zones``
+        can refuse zones whose defining displacement hasn't closed yet —
+        ``created_bar_index`` marks the base candle, up to
+        ``base_lookback`` bars BEFORE the impulse, so filtering on it
+        alone let replays touch-trade a zone 1-3 bars before the move
+        that creates it existed.
     """
     zones: list[Zone] = []
     if len(bars) < base_lookback + 1:
         return zones
 
     body_series = [b.body for b in bars]
-    half = median_window // 2
 
     for i in range(base_lookback, len(bars)):
         impulse = bars[i]
         impulse_body_pips = to_pips(impulse.body)
         if impulse_body_pips < min_impulse_pips:
             continue
-        lo = max(0, i - half)
-        hi = min(len(body_series), i + half + 1)
-        local = body_series[lo:hi]
+        local = body_series[max(0, i - median_window):i]
         median_body = statistics.median(local) if local else 0.0
         if impulse.body < 2 * median_body:
             continue
@@ -305,24 +319,15 @@ def detect_zones(
         base_window = bars[i - base_lookback : i]
         base = min(base_window, key=lambda b: b.body)
 
-        if impulse.is_bullish:
-            zone = Zone(
-                direction=Direction.LONG,
-                top=max(base.high, base.open, base.close),
-                bottom=min(base.low, base.open, base.close),
-                created_at=base.time,
-                created_bar_index=i - base_lookback + base_window.index(base),
-                impulse_pips=impulse_body_pips,
-            )
-        else:
-            zone = Zone(
-                direction=Direction.SHORT,
-                top=max(base.high, base.open, base.close),
-                bottom=min(base.low, base.open, base.close),
-                created_at=base.time,
-                created_bar_index=i - base_lookback + base_window.index(base),
-                impulse_pips=impulse_body_pips,
-            )
+        zone = Zone(
+            direction=Direction.LONG if impulse.is_bullish else Direction.SHORT,
+            top=max(base.high, base.open, base.close),
+            bottom=min(base.low, base.open, base.close),
+            created_at=base.time,
+            created_bar_index=i - base_lookback + base_window.index(base),
+            impulse_pips=impulse_body_pips,
+            impulse_bar_index=i,
+        )
         zones.append(zone)
 
     _mark_mitigated(zones, bars)
@@ -350,7 +355,6 @@ def detect_qualified_zones(
         return qualified
 
     body_series = [b.body for b in bars]
-    half = median_window // 2
 
     for i in range(base_lookback, len(bars)):
         impulse = bars[i]
@@ -358,9 +362,9 @@ def detect_qualified_zones(
         if impulse_body_pips < min_impulse_pips:
             continue
 
-        lo_w = max(0, i - half)
-        hi_w = min(len(body_series), i + half + 1)
-        local = body_series[lo_w:hi_w]
+        # Trailing median (strictly past) — same causality fix as
+        # detect_zones (2026-08-04); see its docstring.
+        local = body_series[max(0, i - median_window):i]
         median_body = statistics.median(local) if local else 0.0
         if impulse.body < 2 * median_body:
             continue
@@ -387,6 +391,7 @@ def detect_qualified_zones(
             created_at=ob_bars[0].time,
             created_bar_index=ob_start_idx,
             impulse_pips=impulse_body_pips,
+            impulse_bar_index=i,
         )
 
         # Build quality assessment
@@ -524,6 +529,8 @@ def fresh_qualified_zones(
     for qz in zones:
         if qz.zone.created_bar_index >= at_index:
             continue
+        if qz.zone.impulse_bar_index is not None and qz.zone.impulse_bar_index > at_index:
+            continue
         if qz.zone.mitigated and qz.zone.mitigated_bar_index is not None and qz.zone.mitigated_bar_index < at_index:
             continue
         if max_age_bars is not None and (at_index - qz.zone.created_bar_index) > max_age_bars:
@@ -613,10 +620,17 @@ def fresh_zones(
     `max_age_bars` (optional): drop zones whose `created_bar_index` is more
     than that many bars in the past relative to `at_index`. This is the
     correct place for age filtering — see `detect_zones()` docstring for why
-    age MUST be applied at use time, not at detection time."""
+    age MUST be applied at use time, not at detection time.
+
+    Knowability (2026-08-04): a zone whose defining impulse bar closes AT
+    or AFTER `at_index` is invisible — `created_bar_index` marks the base
+    candle, which precedes the displacement, so without this check a
+    replay could trade a zone before the move that creates it happened."""
     out: list[Zone] = []
     for z in zones:
         if z.created_bar_index >= at_index:
+            continue
+        if z.impulse_bar_index is not None and z.impulse_bar_index > at_index:
             continue
         if z.mitigated and z.mitigated_bar_index is not None and z.mitigated_bar_index < at_index:
             continue

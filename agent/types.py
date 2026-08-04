@@ -77,6 +77,13 @@ class Zone:
     created_at: datetime
     created_bar_index: int
     impulse_pips: float
+    # Bar index of the DISPLACEMENT candle that defines the zone. The zone
+    # is only knowable once this bar has closed -- created_bar_index marks
+    # the base candle, which precedes the impulse by up to base_lookback
+    # bars, so filtering on created_bar_index alone lets a replay trade a
+    # zone before the move that creates it exists (2026-08-04 causality
+    # fix). None on legacy call sites; fresh_zones treats None as knowable.
+    impulse_bar_index: int | None = None
     mitigated: bool = False
     mitigated_at: datetime | None = None
     mitigated_bar_index: int | None = None
