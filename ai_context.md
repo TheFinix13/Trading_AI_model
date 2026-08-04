@@ -1,4 +1,33 @@
-# AI Context — brain dump (updated 2026-08-04, v0.58)
+# AI Context — brain dump (updated 2026-08-04, v0.59)
+
+> v0.59 — **D141 ladder executed + Phase AF causal re-tune verdicts**
+> 2026-08-04, same session (D142–D143, I029 filed):
+> - **Phase AF (research repo, pre-registered):** 8 IS cells (impulse
+>   20/30/40/50 × rr_delta 0/+0.5, 2019–2023) + 3 sealed validation
+>   replays (2024-01→2026-07), causal semantics. **Rin's DEPLOYED
+>   config VALIDATED out-of-sample: PF 1.136, mean R +0.033, n=72** —
+>   the anchor holds, nothing changes. Nagi imp50 (IS PF 2.65) failed
+>   validation n-floor (n=10). Barou positive in ALL 8 IS cells
+>   (1.14–1.39) but n<40 — near-miss, NOT benched. Bachira/Isagi/
+>   Chigiri: no_causal_edge_in_grid (all cells PF<1.0); redesign
+>   directions in REPORT (user directive: no benching). Isagi imp50
+>   = PF 1.33/n=210 in VALIDATION ONLY (worst IS cell) — quarantined
+>   as AF-2 regime hypothesis. **Reo: ZERO trades in all 11 cells →
+>   I029 (P2).**
+> - **Sae v2 ladder (D141→D143):** S0 shipped (`66c3bb7`, calendar
+>   forecast/previous/actual fields + parse_numeric/surprise). S2/AG:
+>   no arm promoted; registered near-miss — ≥8×ATR event continuation
+>   +14–19 pips/trade, both IS halves positive, n=25–28 vs floor 30
+>   (GBPUSD confirms shape). S3/AH: DEAD (dictionary ΔTone 38% sign
+>   agreement, wrong-sign ρ) ⇒ **S4 presser listening stays gated,
+>   unbuilt**. S1/AI: MT5 `CalendarValueHistory` export script +
+>   normalizer ready; panel needs ONE VM run (see runbook note in
+>   `phase_ai_surprise_panel/DATA_PLAN.md`). Headline/Trump lane:
+>   defense-only design note; off-hours company shifts proposal
+>   awaiting go/no-go (both in `company/strategy/`).
+> - Research artifacts live UNCOMMITTED in `finance-research-experiments`
+>   (M001 lane = `multi-agent-ensemble` branch; commit pending the
+>   user's branch declaration).
 
 > v0.58 — **Sae v2 chartered (D141)** 2026-08-04, same session: Phase
 > AE's FAIL is binding for UNCONDITIONAL event plays only; the
@@ -316,14 +345,17 @@ the causal re-validation study** in `finance-research-experiments`
 parameterisation as anchor; Bachira/Isagi need re-tuning or benching
 verdicts). Open intake queue: I002 (awaiting-verification),
 I007–I009, I012–I013 (I012 only awaits the D108 audit-cadence CEO
-ratification — the pinned test shipped). **5) Sae v2 ladder (D141,
-`company/strategy/sae-v2-event-content-charter.md`)** — event CONTENT
-not timing: S0 stop dropping FF `forecast`/`previous` + capture
-`actual` (engineering, can start anytime) → S1 surprise-conditioned
-reaction → S2 follow-the-first-move to structure targets (price-only)
-→ S3 FOMC statement hawk/dove text scoring → S4 live presser
-listening spike (gated on S3). S1–S3 queue behind the D139
-re-validation; Trump/headline shocks are advisory-lane only.
+ratification — the pinned test shipped). **5) Sae v2 ladder + Phase
+AF follow-ups (D141–D143):** (a) run `ExportCalendarHistory.mq5` on
+the VM's MT5 terminal + pull the CSV back (unblocks S1/Phase AI —
+the surprise panel); (b) triage I029 (Reo zero trades in replay);
+(c) charter AF-2 (Bachira re-gating, Isagi regime/ATR-conditioned
+impulse, AG-2 expanded event panel) with fresh pre-regs; (d) decide
+the off-hours shifts proposal (nightly tape auditor). S4 presser
+listening is GATED SHUT (S3 dead); Trump/headline shocks are
+advisory-lane only (design note on file). Research artifacts await a
+branch declaration to commit (`multi-agent-ensemble` is the
+documented M001 lane).
 
 **Parked (no start without discussion):** wiring four-gate composition
 to squad's real-order path; Sprint 4 `/feedback` route (D084 defers —

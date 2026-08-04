@@ -3144,6 +3144,20 @@
       "role": "strategy",
       "decision": "[CHARTER] Sae v2 chartered as an event-CONTENT specialist study ladder (company/strategy/sae-v2-event-content-charter.md): S0 surprise-data foundation (FF forecast/previous currently DROPPED by the parser; actual never captured) -> S1 surprise-conditioned reaction -> S2 follow-the-first-move to structure targets (price-only, no NLP) -> S3 FOMC statement hawk/dove scoring (offline text) -> S4 live press-conference listening spike (gated on S3). Trump/headline shocks scoped as a Karasu-style risk ADVISORY lane only, never a proposer.",
       "context": "Trigger: user directive that Sae must work as the high-impact-window striker. Phase AE's FAIL (D111) is binding for UNCONDITIONAL mechanical event plays but never tested the content-conditional hypothesis (most events are duds; the edge lives in the surprised minority). sae_enabled stays False until a ladder study passes pre-registered floors in finance-research-experiments; S1-S3 queue behind the D139 causal roster re-validation."
+    },
+    {
+      "id": "D142",
+      "date": "2026-08-04",
+      "role": "research_lead",
+      "decision": "[STRATEGY-EVIDENCE] Phase AF causal re-tune verdicts: Rin's DEPLOYED config causally VALIDATED out-of-sample (2024-01..2026-07 PF 1.136, mean R +0.033, n=72; imp20 variant passed floors but did not beat the anchor). Nagi's imp50 promotion failed the validation n-floor (n=10). Barou positive in all 8 IS cells but under n>=40 (registered near-miss). Bachira/Isagi/Chigiri: no_causal_edge_in_grid (all cells PF<1.0 IS). Nobody benched per user directive; redesign directions in the REPORT.",
+      "context": "8 IS cells (impulse 20/30/40/50 x rr_delta 0/+0.5, 2019-2023) + 3 sealed validation replays, causal D138 semantics, live roster shape. Isagi imp50 shows PF 1.331/n=210 in VALIDATION ONLY (worst cell IS) -- quarantined as AF-2 regime hypothesis, not promoted. Reo produced ZERO trades in all 11 cells -> intake I029 (P2). Artifacts: finance-research-experiments programs/M001_multi_agent_ensemble/experiments/phase_af_causal_retune/."
+    },
+    {
+      "id": "D143",
+      "date": "2026-08-04",
+      "role": "strategy",
+      "decision": "[CHARTER] D141 ladder executed same-day: S0 shipped (calendar content fields, 66c3bb7); S2/Phase AG no arm promoted but registered near-miss (>=8xATR event continuation +14-19 pips/trade, both IS halves positive, n=25-28 vs floor 30; GBPUSD confirms); S3/Phase AH DEAD (dictionary tone-shift: 38% sign agreement, wrong-sign rho) so S4 presser listening stays gated and unbuilt; S1/Phase AI tooling ready (MT5 CalendarValueHistory export + normalizer), panel needs one VM run.",
+      "context": "Sae v2 critical path is now S1 + AG-2 (market-reaction reading, not Fed prose). Headline/political shocks: defense-only design note (headline-shock-advisory-design.md), observe-first, never a proposer. Company off-hours shifts proposed (nightly deterministic tape auditor + weekly agent triage; company-offhours-shifts-proposal.md) -- awaiting user go/no-go."
     }
   ],
   "sprint_verdicts": [
@@ -3778,6 +3792,27 @@
       "resolved_at": "2026-08-04T05:45:00Z",
       "summary": "run_loop died on any transient MT5 refresh exception and idled silently when the feed starved without erroring. Shipped same day (D140): bounded-backoff retry + system_status rows + one page per streak; feed-staleness latch with weekend suppression.",
       "file": "company/rd/intake/I028-run-loop-dies-on-transient-feed-errors.md"
+    },
+    {
+      "id": "I029",
+      "source": "research",
+      "submitter": "research_lead",
+      "submitted_at": "2026-08-04T12:10:00Z",
+      "classification": "BUG",
+      "priority": "P2",
+      "status": "filed",
+      "route": "bug",
+      "linked_features": [],
+      "linked_decisions": [
+        "D142"
+      ],
+      "linked_experiments": [
+        "phase_af_causal_retune"
+      ],
+      "contact": null,
+      "resolved_at": null,
+      "summary": "Reo produced ZERO trades in all 11 Phase AF replay cells (2019-2026, three symbols, every impulse threshold) while publishing ~24k thoughts per cell. Either an I024-class replay prepare bug, an unreachable fire condition, or 100% upstream rejection -- each needs a different fix.",
+      "file": "company/rd/intake/I029-reo-proposes-zero-trades-in-batch-replay.md"
     }
   ],
   "experiments": [

@@ -1,6 +1,37 @@
 # Sae v2 charter — event CONTENT, not event timing (D141)
 
-Date: 2026-08-04 · Status: CHARTERED (studies not yet pre-registered)
+Date: 2026-08-04 · Status: IN EXECUTION (same-day ladder progress below)
+
+## Ladder status (updated 2026-08-04, same session as chartering)
+
+- **S0 — DONE** (`product` commit `66c3bb7`): `NewsEvent` carries
+  `forecast`/`previous` (verbatim) + `actual` (schema-ready);
+  `parse_numeric` + `surprise` helpers; pinned tests. The weekly FF
+  feed has no `<actual>` and no historical archive (probed live).
+- **S2 — RAN (Phase AG, research repo): no arm promoted; registered
+  NEAR-MISS.** All 12 pre-registered arms direction-positive on
+  EURUSD IS 2015–2021; the ≥8×ATR arms earn +14–19 pips/trade with
+  both sub-halves positive but n=25–28 misses the n≥30 floor;
+  smaller-impulse arms flip sign 2018–2021. GBPUSD robustness
+  confirms the shape. Verdict: n-starved, not random — the edge
+  lives in the ~4 events/year that move violently. Hand-off: S1's
+  surprise gate is exactly the instrument to identify those AT t0.
+- **S1 — TOOLING READY, DATA PENDING (Phase AI):** free feeds have
+  no consensus/actual history; chosen source is the MT5 terminal's
+  MetaQuotes calendar on the VM (`ExportCalendarHistory.mq5` +
+  `normalize_panel.py` written). One VM run + pull-back produces the
+  surprise panel; protocol registers after coverage audit.
+- **S3 — RAN (Phase AH, research repo): DEAD.** Dictionary hawk/dove
+  ΔTone on all 87 statements: sign agreement 38%, Spearman ρ +0.14
+  (wrong sign, n.s.) at 1h. Statement prose tone (dictionary-read)
+  does not predict drift. Revival path: AH-2 with a frozen LLM
+  rubric instead of dictionaries — needs fresh pre-registration.
+- **S4 — GATED SHUT (as designed).** The presser-listening spike is
+  not built: its premise (text tone carries direction) failed in S3.
+  No audio engineering until an AH-2-class study passes.
+- **Headline/political lane:** design note at
+  `company/strategy/headline-shock-advisory-design.md` — defense-only
+  architecture, observe-first arming plan, parked behind S1/AG-2.
 Owner lane: research_lead → `finance-research-experiments` (fresh
 pre-registrations; none of this repo's sealed data may be reused).
 

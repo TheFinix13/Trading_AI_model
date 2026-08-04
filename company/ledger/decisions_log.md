@@ -2731,6 +2731,44 @@ in the surprised minority). `sae_enabled` stays False until a ladder
 study passes its pre-registered floors; S1–S3 queue behind the D139
 causal roster re-validation in `finance-research-experiments`.
 
+## D142 · 2026-08-04 · research_lead · [STRATEGY-EVIDENCE]
+
+**Phase AF (causal re-tune, research repo) verdicts: Rin's DEPLOYED
+config is causally VALIDATED out-of-sample (2024-01→2026-07: PF
+1.136, mean R +0.033, n=72; the imp20 variant passed floors but did
+not beat the anchor, so nothing changes). Nagi's promoted cell
+(imp50: IS PF 2.65) failed the validation n-floor (n=10). Barou is
+positive in ALL 8 IS cells (PF 1.14–1.39) but never reaches n≥40 —
+registered near-miss, not benched. Bachira, Isagi, Chigiri:
+`no_causal_edge_in_grid` (every cell PF < 1.0 in-sample).**
+
+Per the user's directive, no player is benched: the REPORT
+(`phase_af_causal_retune/REPORT.md`) specifies redesign directions —
+Bachira re-gating, Isagi regime/ATR-conditioned impulse floors (an
+imp50 validation observation is quarantined as AF-2 hypothesis, NOT
+promoted), Chigiri weapon rethink, Barou/Nagi sample-size plays. Reo
+produced ZERO trades in all 11 replay cells → intake I029 (P2).
+
+## D143 · 2026-08-04 · strategy · [CHARTER]
+
+**D141 ladder executed same-day: S0 SHIPPED (calendar content fields,
+`66c3bb7`); S2/Phase AG ran — no arm promoted but a registered
+near-miss (≥8×ATR continuation +14–19 pips/trade, both halves
+positive, n=25–28 vs floor 30; GBPUSD confirms shape); S3/Phase AH
+DEAD (dictionary ΔTone: 38% sign agreement, wrong-sign ρ) — therefore
+S4 (presser listening) stays gated and unbuilt; S1/Phase AI tooling
+ready (MT5 `CalendarValueHistory` export script + normalizer), data
+needs one VM run.**
+
+Sae v2's critical path is now S1 (surprise panel) + AG-2 (expanded
+event panel), both reading the MARKET's reaction rather than Fed
+prose. Headline/political shocks: defense-only design at
+`company/strategy/headline-shock-advisory-design.md` (observe-first,
+never a proposer). Company off-hours shifts proposed (nightly
+deterministic tape auditor + weekly agent triage) at
+`company/strategy/company-offhours-shifts-proposal.md` — awaiting
+user go/no-go.
+
 ## Template for subsequent entries
 
 ```markdown
