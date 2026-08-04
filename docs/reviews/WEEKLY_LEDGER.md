@@ -17,7 +17,7 @@ zip never re-analyzes bars we've already reviewed.
 4. Positions still open at a window end are carried in the "Open at
    end" column — next week's review must reconcile them first.
 
-**Covered-through: 2026-07-28 15:25 UTC** (agent shutdown for MT5 update).
+**Covered-through: 2026-08-03 14:07 UTC** (hard VM death, all three agents; book flat).
 
 ## Ledger
 
@@ -26,9 +26,16 @@ zip never re-analyzes bars we've already reviewed.
 | ~Jun 16 – Jun 30 (pre-ledger, approximate) | charts + VM logs, no zip | chat only (Jun 30 session) | — | — | First market-replay ritual; led to E011–E016 pipeline sweep + PostLossGuard discussion. |
 | Jul 11 – Jul 20 | `weekly_report_2026-07-11_to_2026-07-20.zip` | chat only (Jul 20 session) | +5.74 (GBPUSD 2966547972 +8.88 TP, USDCAD 2963842103 −3.14 soft-SL) | GBPUSD 2969136564 short (Jul 16), USDCAD 2981476697 long (Jul 20) | "Winners exit too early / losers linger" pain → E020–E025 exit-stack pre-registrations; GBPUSD Telegram open-line gap fixed. |
 | Jul 20 – Jul 28 | `weekly_report_2026-07-15_to_2026-07-28.zip` (14d zip; Jul 15–19 overlap used as cross-check only) | `docs/reviews/2026-07-28_week_review.md` | +14.83 (GBPUSD 2969136564 +7.96 TP Jul 20 after the prior session, USDCAD 2981476697 +6.87 TP Jul 21) | GBPUSD 3000652586 long (Jul 24, ~−31p), USDCAD 2987854368 long (Jul 21, ~−6p) | Jul 24 I015 phantom closes distorted the bundle report; NEW I016 orphaned-position/soft-stop gap (fix in progress); near-miss resolver: htf_gate blocks net protective; Jul 28 MT5-update outage handled clean. |
+| Jul 28 – Aug 3 | `weekly_report_2026-07-26_to_2026-08-04.zip` (10d zip; Jul 26–28 overlap used as cross-check only) | `docs/reviews/2026-08-04_week_review.md` | +34.34 — 3/3 new entries TP'd (GBPUSD +1.50R/+1.49R incl. +122p, EURUSD **first live trade** +1.73R); both carried longs soft-SL'd as predicted (−1.34R/−1.17R); balance 969.54→1003.88 | **None — flat book** | Aug 3 VM outage: DNS dead 10:26 UTC → hard VM death 14:07 UTC (host-level, agent blameless, healthcheck dead-man's-switch fired correctly); watchdog/autologon setup STILL pending = top ops priority; resolver: htf_gate protective again, max_positions blocks now 6/6 winners → pre-reg candidate; logs are UK-local (+1h) not UTC. |
 
 ## Cross-check log
 
+- **2026-08-04 zip vs Jul 20–28 row**: overlap (Jul 26–28) matches —
+  balance start 969.54, same two carried tickets (GBPUSD 3000652586,
+  USDCAD 2987854368) open at the boundary and closed this window at
+  the inferred soft stops the prior review predicted (1.32995 /
+  1.40450). Jul 28 MT5-update outage + 17:59 restart present in both.
+  No divergence.
 - **2026-07-28 zip vs Jul 11–20 row**: overlap (Jul 15–20) matches —
   same two GBPUSD TPs, same USDCAD soft-SL loss, same balance path
   948.97→954.71→962.67. One caveat surfaced: the trade tickets the
