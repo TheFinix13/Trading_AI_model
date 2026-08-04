@@ -1,4 +1,22 @@
-# AI Context — brain dump (updated 2026-08-04, v0.64)
+# AI Context — brain dump (updated 2026-08-04, v0.65)
+
+> v0.65 — **D149: three lanes executed + the Chigiri convergence.**
+> AK-2 Reo striker mode: `passthrough` (PF 0.94 ≈ leaders' base) —
+> Reo stays filter-only; but his CHIGIRI mirrors are positive
+> (n=307, PF 1.26) while Chigiri is net-negative. Phase AL Tier-1
+> survey (4 pairs, design region 2015–2022): chartered follow-ups =
+> **chigiri:AUDUSD (n=183, PF 1.376)** + **bachira:NZDUSD (n=332,
+> PF 1.269)**; nagi:USDCHF + barou:AUDUSD qualifying-but-capped.
+> Two independent lenses now say Chigiri's high-conviction core is
+> sound, junk tail is the problem (v1.1 autopsy in flight).
+> **I030 (P1): USDJPY = ZERO trades** — hardcoded `PIP_SIZE=0.0001`
+> makes sentinel R1 block every JPY/metals/indices proposal; per-
+> symbol instrument spec needed before any Tier-2 replay. **Tier-2
+> banking COMPLETE:** 22 instruments H4+D1 2015→present in research
+> repo `data/parquet_tier2/` (local; manifest committed); 2023+
+> pre-sealed. Branch note: research `main` is 1 commit ahead
+> locally (7e1473c, duplicate of ensemble f524abc) — drop or keep
+> per user.
 
 > v0.64 — **D148: instrument universe + player-development doctrine.**
 > Tier 1 fields = AUDUSD/NZDUSD/USDJPY/USDCHF (banked; design

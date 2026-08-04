@@ -2893,6 +2893,34 @@ binding on all future thin-n protocols; AF/AJ/AJ-2 thin-n readouts
 retroactively flagged provisional. `ExportCalendarHistory.mq5` copied
 into `mt5/` so the VM gets it via normal pull.
 
+## D149 · 2026-08-04 · ceo · [STRATEGY-EVIDENCE]
+
+**Balance-patch roadmap v1 filed
+(`company/strategy/balance-patch-roadmap-v1.md`) and three D148
+lanes executed same-day.** (1) **Phase AK-2 (Reo striker mode):
+`passthrough`** — 13,187 mirrors, 3,258 executed counterfactually;
+overall PF 0.94 / mean R −0.039 ≈ leaders' pooled base. No striker
+charter. Subgroup gold: Reo's mirrors of CHIGIRI are positive
+(n=307, PF 1.26, mean R +0.098) while Chigiri is net-negative — his
+high-conviction core looks sound; Rin mirrors lose (lag kills
+zone-touch timing); 85% of mirror flow is Bachira junk. (2) **Phase
+AL (Tier-1 field survey, exploratory):** squad PF 0.985 wholesale;
+chartered follow-ups per declared criteria: chigiri:AUDUSD (n=183,
+PF 1.376, +0.175 mean R — CONVERGES with AK-2's independent
+conviction-subset signal) and bachira:NZDUSD (n=332, PF 1.269).
+Qualifying-but-capped: nagi:USDCHF, barou:AUDUSD. **USDJPY cell
+INVALID — I030 filed (P1):** `PIP_SIZE=0.0001` hardcoded; sentinel
+R1 blocked 100% of 14,621 USDJPY winners (0.50-yen stop reads as
+5,000 pips). Blocks all JPY pairs + gold/indices/oil until fixed.
+(3) **Tier-2 banking COMPLETE:** 22 instruments H4+D1 2015→present
+(10 crosses, XAU/XAG, USOIL/UKOIL/NATGAS, USTEC/US500/US30/DE40/
+UK100/JP225, BTC) in the research repo's own store; 2023+ pre-sealed
+per DATA_LEDGER rule 4; unusable for replay until I030. Chigiri
+v1.1 loss autopsy delegated (running). Branch note: one research
+commit briefly landed on `main` (7e1473c, unpushed), cherry-picked
+to `multi-agent-ensemble` (f524abc); local main left 1-ahead
+pending user direction.
+
 ## Template for subsequent entries
 
 ```markdown

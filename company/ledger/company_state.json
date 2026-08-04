@@ -3201,6 +3201,17 @@
         "company/strategy/instrument-universe-and-player-development.md",
         "mt5/ExportCalendarHistory.mq5"
       ]
+    },
+    {
+      "id": "D149",
+      "date": "2026-08-04",
+      "role": "ceo",
+      "decision": "[STRATEGY-EVIDENCE] Balance-patch roadmap v1 filed; three D148 lanes executed same-day. AK-2 (Reo striker mode): passthrough (PF 0.94 vs leaders' base) -- no striker charter; subgroup: Reo's Chigiri mirrors positive (n=307 PF 1.26 meanR +0.098). Phase AL Tier-1 survey: chartered follow-ups chigiri:AUDUSD (n=183 PF 1.376) + bachira:NZDUSD (n=332 PF 1.269); nagi:USDCHF and barou:AUDUSD qualifying-but-capped. USDJPY cell INVALID -> I030 (P1, hardcoded PIP_SIZE blocks JPY/metals/indices). Tier-2 banking COMPLETE: 22 instruments H4+D1 2015->present, 2023+ pre-sealed.",
+      "context": "Chigiri convergence: two independent lenses (AK-2 conviction subset, AL AUDUSD cell) say his core weapon is sound and his junk tail is the problem -- v1.1 rework autopsy in flight. Branch note: research commit 7e1473c briefly on main (unpushed), cherry-picked to ensemble as f524abc; local main 1-ahead pending user direction.",
+      "links": [
+        "company/strategy/balance-patch-roadmap-v1.md",
+        "company/rd/intake/I030-pip-semantics-hardcoded-blocks-jpy-and-tier2-fields.md"
+      ]
     }
   ],
   "sprint_verdicts": [
@@ -3858,6 +3869,28 @@
       "resolved_at": "2026-08-04T14:50:00Z",
       "summary": "RESOLVED works-as-designed: Reo v1's intend() returns None by design (chameleon mirror feeding Nagi's confluence predicate). Legibility fixes shipped (NEL exemption). Phase AK ablation then FALSIFIED the design premise: verdict reo_obstructive -- without Reo, Nagi fires 69 vs 27 trades; measured role is a quality throttle (Nagi meanR +0.222 with vs +0.094 without, equal totalR). Keep/cut/redesign decision with the user (D147).",
       "file": "company/rd/intake/I029-reo-proposes-zero-trades-in-batch-replay.md"
+    },
+    {
+      "id": "I030",
+      "source": "research",
+      "submitter": "research_lead",
+      "submitted_at": "2026-08-04T16:45:00Z",
+      "classification": "BUG",
+      "priority": "P1",
+      "status": "filed",
+      "route": "bug",
+      "linked_features": [],
+      "linked_decisions": [
+        "D148",
+        "D149"
+      ],
+      "linked_experiments": [
+        "phase_al_tier1_field_survey"
+      ],
+      "contact": null,
+      "resolved_at": null,
+      "summary": "PIP_SIZE=0.0001 hardcoded (agent/utils.py): USDJPY produced ZERO trades in Phase AL -- sentinel R1 blocked 100% of 14,621 winners because a 0.50-yen stop computes as 5,000 pips. Blocks all JPY pairs and every Tier-2 instrument (gold, silver, oil, indices, BTC) until a per-symbol instrument spec is threaded through stop_pips, R1/R6 risk math, KPIs, and the position sizer.",
+      "file": "company/rd/intake/I030-pip-semantics-hardcoded-blocks-jpy-and-tier2-fields.md"
     }
   ],
   "experiments": [
