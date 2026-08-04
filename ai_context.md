@@ -1,5 +1,42 @@
-# AI Context — brain dump (updated 2026-07-14, v0.27)
+# AI Context — brain dump (updated 2026-08-04, v0.29)
 
+> v0.29 — **E031/E032 research verdicts (lab-side only, zero agent
+> change).** Both weekly-review candidates were pre-registered, built
+> and run to verdict in `finance-research-experiments` (`main`,
+> commits `c838b28`→`7478f5e`) and both STOPPED-DEAD at Stage-1
+> go/no-go on 2015–2021 screens, zero OOS cost. **E031 slot-blocking:**
+> the live 6/6 blocked-winner pattern does NOT generalise — 741–1,212
+> slot conflicts/symbol over 7y, yet cap=2/cap=3/replace-losing arms
+> all land NEGATIVE ΔSharpe (−0.10…−0.33); replacement crystallizes
+> losses the fade recovers. `max_open_positions=1` stays; verdict:
+> protective, not a leak. **E032 with-trend breakout cell:** 0/12
+> cells (all means positive, monotone in impulse size, but best raw
+> p 0.034 vs BH 0.0042) — v1 stays fade-only; "missing the big moves"
+> closed with evidence. Weekly reviews keep tracking the blocked-
+> winner counterfactual line, but re-opening needs a different
+> mechanism.
+>
+> v0.28 — **Weekly review Jul 28 → Aug 3 (analysis only, no code change).**
+> `docs/reviews/2026-08-04_week_review.md` + ledger row. Realized
+> **+34.34** (balance 969.54 → **1003.88**, first close above $1,000):
+> 3/3 new entries TP'd — GBPUSD +1.50R and +1.49R (+122p, biggest pip
+> win of the run), EURUSD **first live trade ever** +1.73R — while both
+> carried pre-window longs soft-SL'd at the inferred stops the Jul 28
+> review predicted (−1.34R / −1.17R). Sum +2.21R; external/unexplained
+> $0 (I016 fix holding). Resolver pass (fresh Dukascopy through Aug 3):
+> htf_gate protective again in all three buckets; GBPUSD max_positions
+> blocks 4/4 winners → **6/6 cumulative, pre-reg research candidate**
+> (no config change from n=6). **Aug 3 incident:** VM lost DNS 10:26
+> UTC (healthchecks.io DOWN alerts fired correctly ~10:46), agents ran
+> healthy but signal-blind for 3.5h, then hard VM death 14:07 UTC (logs
+> end mid-poll, no shutdown) — host-level, agent code blameless, zero
+> exposure (book flat since Jul 31). Nothing self-restarted because the
+> autologon + Task Scheduler watchdog setup (docs/08) is STILL pending
+> since Jul 6 → now top ops priority. Also found: VM logs are UK local
+> (UTC+1) while weekly_report labels them UTC (+1h skew), and a
+> scheduled H4 close is skipped silently when the terminal has no fresh
+> bar — both intake candidates, observation-tooling only.
+>
 > v0.27 — **Trading-agent production fixes cherry-picked from next-gen
 > (2026-07-14). No strategy change — reliability + observability only.**
 > Three commits (c59a3b3, ca8b455, 4f12b94) selectively brought across
@@ -252,6 +289,30 @@ untouched.
 
 ## 3) Next immediate goal
 
+**Top ops priority (2026-08-04): execute the VM self-healing setup —
+now a one-script job.** `scripts/setup_self_healing.ps1` (new, with
+companion `verify_self_healing.ps1`) automates everything that's been
+pending since Jul 6: MT5-in-Startup shortcut, the 3 Task Scheduler
+`AtLogOn` watchdog tasks, and the Windows Update policy (weekend-only
+installs Sat 22:00 + NoAutoRebootWithLoggedOnUsers — likely root cause
+of the recurring VM deaths; Jul 28 and Aug 3 both needed manual
+recovery). VM procedure: turn it on → agents safe to restart (flat
+book, no kill files, PLG sidecars stale-day-discard on load) →
+`git pull` → run setup script ELEVATED → fix its autologon WARN by
+running Sysinternals Autologon once (interactive password entry; the
+script only detects) → run verify script → hands-off reboot; success =
+3 `Agent ONLINE` Telegram messages unattended. Scripts + docs/08 +
+VM_SCRIPTS.md edits are UNCOMMITTED on the Mac (no agent-repo branch
+declared 2026-08-04) — commit to `main` and pull on the VM first.
+
+Queued from the 2026-08-04 review: (a) ~~pre-registered research-lane
+study on relaxing `max_open_positions=1` / queue-replacement~~ —
+**DONE same day: E031 (and companion E032 with-trend cell) both
+STOPPED-DEAD at Stage 1 in the research repo; cap stays 1, book stays
+fade-only (see v0.29 note above)**; (b) intake items still open:
+WARNING on silently skipped H4 close, weekly_report timezone
+normalization (VM logs are UK local, report labels them UTC).
+
 **2026-07-06 live-agent reliability fixes — code shipped + verified live on
 VM.** All five code-fix items from the user's original list are live: VM
 pulled `main`, restarted all 3 symbol processes, logs confirm per-symbol
@@ -350,3 +411,10 @@ symbol §1.6 — added 2026-07-06, explicit user decision to hold until M001
 wraps or a dedicated branch**). Wave 3 production-repo cleanup still
 queued per `docs/audits/2026-06-24_production_repo_audit.md` §5; waits on
 M001.
+
+Liquidity-structure research verdicts (2026-07-28, research repo E027–E030):
+valid-liquidity striker DEAD, Po3 striker DEAD both directions; **E029
+pool-window timing primitive ALIVE at sealed** (equal-highs-pool windows as
+a when-filter, +0.10 ATR lift). Nothing lands here — a production timing
+gate on the deployed entry would need its own study + full agent
+validation chain first.

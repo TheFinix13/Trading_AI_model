@@ -124,6 +124,16 @@ cd "$HOME\Documents\GitHub\multi-pair-trading-agent"
 > loop (`scripts\watchdog_agent.ps1`) so a process crash — not just a
 > reboot — also self-heals.
 
+> **One-shot setup (2026-08-04):** all steps below (plus the Windows
+> Update reboot policy) are automated in
+> `scripts\setup_self_healing.ps1` — run it once from an elevated
+> PowerShell in the repo root, fix any WARN it prints (autologon needs
+> one interactive Sysinternals run because the password is stored as an
+> LSA secret, not by this script), then prove it with
+> `scripts\verify_self_healing.ps1` and a hands-off reboot (expect
+> three `Agent ONLINE` Telegram messages). The manual steps remain
+> below as reference.
+
 **1. Enable autologon** (Microsoft [Sysinternals Autologon](https://learn.microsoft.com/en-us/sysinternals/downloads/autologon)) for the
 Windows account MT5 runs under. Without this, a reboot leaves the machine
 sitting at the lock screen with no desktop session for MT5 or the agent to
