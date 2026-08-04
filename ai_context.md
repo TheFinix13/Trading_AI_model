@@ -309,13 +309,22 @@ untouched.
 (see v0.30 note). All three agents live again since 12:42 UK after the
 Aug 3 outage; flat book, watchdogs holding them up from here on.
 
-Next candidates (none blocking, pick with user): (a) intake items from
-the 2026-08-04 review — WARNING on silently skipped H4 close,
-weekly_report timezone normalization (VM logs are UK local, report
-labels them UTC); (b) Glide-ED2B home-WiFi diagnosis (parked by user
-until everything else is done — currently on phone hotspot); (c) next
-weekly review when the next report zip arrives (ledger covered-through
-2026-08-03 14:07 UTC).
+**Intake items from the 2026-08-04 review: BOTH DONE same day.**
+(a) `[H4 CLOSE OVERDUE]` WARNING — `SignalLoop._maybe_warn_close_overdue`
+fires when no fresh close appears for TF + 30min grace (wall-clock,
+FX-weekend-aware, re-warns once per TF period), surfacing the
+"running but signal-blind" state the Aug 3 DNS outage hid for 3.5h.
+(b) Timezone skew — `_parse_line_ts` (compile_review_bundle) now
+converts VM-local log timestamps to real UTC (`LOG_TZ` hook, default
+machine-local; weekly REPORT header carries a normalization note; all
+pre-2026-08-04 report zips have a +1h summer skew). 9 new tests, suite
+521 pass. NOTE: VM agents run pre-fix code until their next watchdog
+restart/reboot — no urgency, both changes are observation-only.
+
+Next candidates (none blocking, pick with user): (a) Glide-ED2B
+home-WiFi diagnosis (parked by user until everything else is done —
+currently on phone hotspot); (b) next weekly review when the next
+report zip arrives (ledger covered-through 2026-08-03 14:07 UTC).
 
 Queued from the 2026-08-04 review: (a) ~~pre-registered research-lane
 study on relaxing `max_open_positions=1` / queue-replacement~~ —

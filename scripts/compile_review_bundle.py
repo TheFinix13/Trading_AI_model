@@ -121,16 +121,37 @@ class SymbolEvents:
     last_seen: datetime | None = None
 
 
+# Timezone the log lines were WRITTEN in. None = this machine's local
+# timezone (correct when the report runs on the VM, or on the UK review
+# machine which shares the VM's timezone). Tests pin this for determinism.
+LOG_TZ: timezone | None = None
+
+
 def _parse_line_ts(line: str) -> datetime | None:
+    """Parse a log line's leading timestamp and return it as REAL UTC.
+
+    Log lines are written by Python logging's default formatter, which
+    uses the machine's LOCAL time — on the VM that is UK local (UTC+1 in
+    summer). Until 2026-08-04 this function stamped that local wall time
+    with tzinfo=UTC unconverted, so every report timestamp was skewed
+    +1h vs broker/MT5 time (found in the 2026-08-04 weekly review).
+
+    Now: interpret the naive timestamp in ``LOG_TZ`` (default: this
+    machine's local timezone, DST-aware per timestamp) and convert to
+    UTC. Assumes the report is generated in the same timezone the logs
+    were written in — true for the VM itself and for the UK review
+    machine.
+    """
     m = RE_TS.match(line)
     if not m:
         return None
     try:
-        return datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").replace(
-            tzinfo=timezone.utc
-        )
+        naive_local = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
     except ValueError:
         return None
+    if LOG_TZ is not None:
+        return naive_local.replace(tzinfo=LOG_TZ).astimezone(timezone.utc)
+    return naive_local.astimezone().astimezone(timezone.utc)
 
 
 def scan_downtime_and_incidents(log_paths: list[Path]) -> SymbolEvents:

@@ -856,6 +856,9 @@ def render_report(weeks: dict[str, SymbolWeek], view: AccountView,
         f"- Symbols: {', '.join(weeks)}",
         f"- Log root: {root}",
         f"- Generated: {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC",
+        "- Log timestamps are normalized from VM-local time to real UTC "
+        "(fix 2026-08-04; reports generated before that date carry a "
+        "+1h summer skew).",
         "",
         "This report is OBSERVATION-ONLY evidence. Parameter changes still go",
         "through the validation pipeline; nothing here moves a gate by itself.",

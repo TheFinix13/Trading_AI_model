@@ -196,6 +196,13 @@ class SignalLoop:
         # skipped iterations log at debug so a multi-day halt doesn't spam
         # the file with an identical WARNING every poll cycle.
         self._kill_switch_reason_logged: bool = False
+        # Overdue-close watchdog (intake 2026-08-04): during the Aug 3 DNS
+        # outage the agents ran healthy but signal-blind for 3.5h — a due
+        # H4 close simply never appeared in the broker data and the loop
+        # skipped it with no trace. Track (wall clock, not persisted) when
+        # we last saw a NEW close per TF and WARN when one is overdue.
+        self._close_seen_wallclock: dict[str, datetime] = {}
+        self._overdue_warned_at: dict[str, datetime] = {}
 
     # ------------------------------------------------------------------
     # Crash-resilient state persistence
@@ -467,8 +474,65 @@ class SignalLoop:
                 self.healthcheck.ping_fail(f"{self._max_consecutive_errors} consecutive errors: {e}")
                 self._running = False
 
+    # Grace beyond one full TF period before an overdue close is warned
+    # about (bar delivery jitter, broker maintenance minutes, etc.).
+    _OVERDUE_GRACE_MINUTES = 30
+
+    @staticmethod
+    def _fx_market_closed(now_utc: datetime) -> bool:
+        """FX weekend window (UTC), slightly generous on both edges so the
+        overdue-close warning never fires on a normally-closed market.
+        Exness closes ~Fri 21:00-22:00 UTC and reopens ~Sun 21:00-22:00."""
+        wd = now_utc.weekday()  # Mon=0 .. Sun=6
+        if wd == 5:
+            return True
+        if wd == 4 and now_utc.hour >= 21:
+            return True
+        if wd == 6 and now_utc.hour < 22:
+            return True
+        return False
+
+    def _maybe_warn_close_overdue(self, timeframe: str,
+                                  now: datetime | None = None) -> None:
+        """WARN when a scheduled bar close is overdue (intake 2026-08-04).
+
+        The loop detects closes purely from broker data, so a stale feed
+        (network/DNS outage, frozen terminal) silently produces no
+        evaluation. This surfaces 'agent is running but signal-blind' in
+        the daily log, re-warning at most once per TF period. Wall-clock
+        based and process-local: restarts reset the stall clock.
+        """
+        now = now or datetime.now(timezone.utc)
+        if self._fx_market_closed(now):
+            # Market closed: keep resetting the stall clock so the Sunday
+            # reopen doesn't instantly warn about the weekend gap.
+            self._close_seen_wallclock[timeframe] = now
+            return
+        seen = self._close_seen_wallclock.get(timeframe)
+        if seen is None:
+            self._close_seen_wallclock[timeframe] = now
+            return
+        tf_minutes = Timeframe(timeframe).minutes
+        stale_for = now - seen
+        if stale_for <= timedelta(minutes=tf_minutes + self._OVERDUE_GRACE_MINUTES):
+            return
+        last_warn = self._overdue_warned_at.get(timeframe)
+        if last_warn is not None and (now - last_warn) < timedelta(minutes=tf_minutes):
+            return
+        self._overdue_warned_at[timeframe] = now
+        log.warning(
+            "[%s CLOSE OVERDUE] no fresh %s close for %.1fh (expected every "
+            "%.0fh + %dmin grace) — terminal feed stale, network down, or "
+            "market halted; signal evaluations are being skipped",
+            timeframe, timeframe, stale_for.total_seconds() / 3600.0,
+            tf_minutes / 60.0, self._OVERDUE_GRACE_MINUTES,
+        )
+
     async def _check_for_signals(self, timeframe: str) -> None:
         """Single-TF tick: poll each alpha and route any returned signal."""
+        # Before anything that can early-return: surface a silent stall.
+        self._maybe_warn_close_overdue(timeframe)
+
         symbol = self.live_config.symbol
         bars = await self.broker.get_latest_bars(symbol, timeframe, count=300)
         if len(bars) < 100:
@@ -478,6 +542,7 @@ class SignalLoop:
         if self._last_bar_times.get(timeframe) == last_closed.time:
             return
         self._last_bar_times[timeframe] = last_closed.time
+        self._close_seen_wallclock[timeframe] = datetime.now(timezone.utc)
         self._persist_state()
 
         closed = bars[:-1]

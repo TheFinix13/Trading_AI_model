@@ -19,8 +19,24 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
+import compile_review_bundle as crb_flat  # noqa: E402  (instance wr uses)
+from scripts import compile_review_bundle as crb  # noqa: E402
 from scripts import weekly_report as wr  # noqa: E402
 from scripts.compile_review_bundle import DowntimeWindow  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _utc_log_tz():
+    """The synthetic log fixtures in this file are written in UTC, so pin
+    the log-timezone hook (2026-08-04 skew fix) to UTC for determinism —
+    otherwise parsed timestamps would depend on the test machine's tz.
+    Both module identities are pinned: `scripts.compile_review_bundle`
+    (imported here) and flat `compile_review_bundle` (what weekly_report
+    itself imports via its own sys.path insert)."""
+    olds = (crb.LOG_TZ, crb_flat.LOG_TZ)
+    crb.LOG_TZ = crb_flat.LOG_TZ = timezone.utc
+    yield
+    crb.LOG_TZ, crb_flat.LOG_TZ = olds
 
 DAY = "2026-07-06"
 DAY2 = "2026-07-07"
