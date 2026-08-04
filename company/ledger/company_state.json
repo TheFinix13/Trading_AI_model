@@ -3137,6 +3137,13 @@
       "role": "engineering",
       "decision": "[BUG] I028 shipped: run_loop survives feed outages -- bounded-backoff retry on MT5 refresh errors with system_status rows on the tape and one page per failure streak, plus a feed-staleness latch (no closed bar for --feed-stale-hours, default 9h, outside the FX weekend gap -> stale row + page; recovered row when bars flow again).",
       "context": "Completes the Aug 3 outage post-mortem: a raising read no longer kills the process, starvation lands on the squad's own tape, and paging is once per streak. Logic errors in engine.on_bar still crash loudly (I022). SquadLiveRuntime -> watchdog_squad.ps1 restart-forever wrapper verified as ops backstop (runbook 7b.9). Tests: tests/test_squad_live_mt5_loop.py."
+    },
+    {
+      "id": "D141",
+      "date": "2026-08-04",
+      "role": "strategy",
+      "decision": "[CHARTER] Sae v2 chartered as an event-CONTENT specialist study ladder (company/strategy/sae-v2-event-content-charter.md): S0 surprise-data foundation (FF forecast/previous currently DROPPED by the parser; actual never captured) -> S1 surprise-conditioned reaction -> S2 follow-the-first-move to structure targets (price-only, no NLP) -> S3 FOMC statement hawk/dove scoring (offline text) -> S4 live press-conference listening spike (gated on S3). Trump/headline shocks scoped as a Karasu-style risk ADVISORY lane only, never a proposer.",
+      "context": "Trigger: user directive that Sae must work as the high-impact-window striker. Phase AE's FAIL (D111) is binding for UNCONDITIONAL mechanical event plays but never tested the content-conditional hypothesis (most events are duds; the edge lives in the surprised minority). sae_enabled stays False until a ladder study passes pre-registered floors in finance-research-experiments; S1-S3 queue behind the D139 causal roster re-validation."
     }
   ],
   "sprint_verdicts": [

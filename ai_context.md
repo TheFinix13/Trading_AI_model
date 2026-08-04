@@ -1,4 +1,14 @@
-# AI Context — brain dump (updated 2026-08-04, v0.57)
+# AI Context — brain dump (updated 2026-08-04, v0.58)
+
+> v0.58 — **Sae v2 chartered (D141)** 2026-08-04, same session: Phase
+> AE's FAIL is binding for UNCONDITIONAL event plays only; the
+> content-conditional hypothesis (most events are duds, the edge lives
+> in the surprised minority) was never tested. Study ladder S0–S4 in
+> `company/strategy/sae-v2-event-content-charter.md`; key plumbing gap
+> found: `agent/news/calendar.py` DROPS the FF feed's
+> `forecast`/`previous` fields and never captures `actual` — the squad
+> knows WHEN news happens, not WHAT it said. `sae_enabled` stays False
+> until a ladder study passes pre-registered floors.
 
 > v0.57 — **The causality audit: the squad's replay edge was
 > substantially LOOKAHEAD** 2026-08-04, same session as v0.56
@@ -306,7 +316,14 @@ the causal re-validation study** in `finance-research-experiments`
 parameterisation as anchor; Bachira/Isagi need re-tuning or benching
 verdicts). Open intake queue: I002 (awaiting-verification),
 I007–I009, I012–I013 (I012 only awaits the D108 audit-cadence CEO
-ratification — the pinned test shipped).
+ratification — the pinned test shipped). **5) Sae v2 ladder (D141,
+`company/strategy/sae-v2-event-content-charter.md`)** — event CONTENT
+not timing: S0 stop dropping FF `forecast`/`previous` + capture
+`actual` (engineering, can start anytime) → S1 surprise-conditioned
+reaction → S2 follow-the-first-move to structure targets (price-only)
+→ S3 FOMC statement hawk/dove text scoring → S4 live presser
+listening spike (gated on S3). S1–S3 queue behind the D139
+re-validation; Trump/headline shocks are advisory-lane only.
 
 **Parked (no start without discussion):** wiring four-gate composition
 to squad's real-order path; Sprint 4 `/feedback` route (D084 defers —

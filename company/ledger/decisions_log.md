@@ -2711,6 +2711,26 @@ scheduled task → `watchdog_squad.ps1` restart-forever wrapper was
 verified as the ops backstop (runbook 7b.9). Tests:
 `tests/test_squad_live_mt5_loop.py`.
 
+## D141 · 2026-08-04 · strategy · [CHARTER]
+
+**Sae v2 chartered as an event-CONTENT specialist study ladder
+(`company/strategy/sae-v2-event-content-charter.md`): S0 data
+foundation (stop dropping FF `forecast`/`previous`, capture `actual`,
+build the historical surprise panel) → S1 surprise-conditioned
+reaction → S2 follow-the-first-move to structure targets (no NLP) →
+S3 FOMC statement hawk/dove scoring (offline text) → S4 live presser
+listening spike (gated on S3). Headline/political shocks (Trump
+tweets/remarks) scoped as a Karasu-style risk ADVISORY lane only —
+never a proposer.**
+
+Trigger: user directive that Sae must work "one way or the other" as
+the high-impact-window striker. Phase AE's FAIL (D111) is binding for
+UNCONDITIONAL mechanical event plays but never tested the
+content-conditional hypothesis (most events are duds; the edge lives
+in the surprised minority). `sae_enabled` stays False until a ladder
+study passes its pre-registered floors; S1–S3 queue behind the D139
+causal roster re-validation in `finance-research-experiments`.
+
 ## Template for subsequent entries
 
 ```markdown
