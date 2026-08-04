@@ -2769,6 +2769,28 @@ deterministic tape auditor + weekly agent triage) at
 `company/strategy/company-offhours-shifts-proposal.md` — awaiting
 user go/no-go.
 
+## D144 · 2026-08-04 · ceo · [ORG]
+
+**Off-hours shifts Tier 1 APPROVED by the user and BUILT same day: the
+Night Auditor role created (`company/roles/night_auditor.md`, persona
+Ego Jinpachi — the control-room analyst who reads every tape overnight
+and never steps on the pitch). `scripts/night_audit.py` (deterministic,
+no LLM) audits one UTC day of tape daily at 06:30 via Task Scheduler
+(runbook §7b.10): per-symbol coverage vs the weekday H4 grid (the
+silent-week catcher), timestamp_miss regressions, feed stale/refresh
+streaks, activity counts, state cursor.**
+
+Powers deliberately capped: observe-and-draft only — digest + intake
+STUBS under `<live_dir>/audits/`, one Telegram line/day through the
+existing `watchdog_alert` ops route (no new F014 event types, so no
+Legal re-review). Stubs are triaged into real I### intakes (or
+dismissed) in the next human session. Division of labour: OpsWatchdog
+(F017, 5-min) answers "is it alive?"; Night Auditor (daily) answers
+"did yesterday make sense?". 7 pinned tests
+(`tests/test_night_audit.py`), including the observe-and-draft
+no-mutation invariant. Tiers 2–3 (weekly agent triage, research batch
+lane) remain proposals.
+
 ## Template for subsequent entries
 
 ```markdown

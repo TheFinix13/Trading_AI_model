@@ -1,4 +1,24 @@
-# AI Context — brain dump (updated 2026-08-04, v0.59)
+# AI Context — brain dump (updated 2026-08-04, v0.60)
+
+> v0.60 — **Night Auditor shipped (D144) + research artifacts committed**
+> 2026-08-04, same session:
+> - **Off-hours shifts Tier 1 BUILT:** `scripts/night_audit.py`
+>   (deterministic, no LLM) audits one UTC day of tape daily at 06:30
+>   via Task Scheduler (runbook §7b.10, task `NightAuditor`). Checks:
+>   per-symbol coverage vs weekday H4 grid (silent-week catcher),
+>   timestamp_miss regression, feed stale/refresh streaks, activity,
+>   state cursor. Observe-and-draft ONLY: digest + intake stubs under
+>   `<live_dir>/audits/`, one ops-Telegram line/day via the existing
+>   `watchdog_alert` route. Role: `company/roles/night_auditor.md`
+>   (persona Ego Jinpachi). 7 tests in `tests/test_night_audit.py`.
+>   Tiers 2–3 (weekly agent triage, research batch lane) still proposals.
+> - **Phase AF/AG/AH/AI artifacts COMMITTED** to
+>   `finance-research-experiments` `multi-agent-ensemble` (`15cce83`,
+>   35 files; raw 456MB replay caches + 7MB statement HTML gitignored
+>   as reproducible). Repo restored to `main` afterwards for the v1
+>   lane. The 3 research-registry test failures are branch-dependent
+>   environmental (registry wants manifests from BOTH lanes) —
+>   pre-existing, unchanged: 3 failed / 2058 passed.
 
 > v0.59 — **D141 ladder executed + Phase AF causal re-tune verdicts**
 > 2026-08-04, same session (D142–D143, I029 filed):

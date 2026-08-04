@@ -629,6 +629,50 @@ exits at the next poll and the wrapper HOLDS (no restart) until the
 file is deleted. `Stop-ScheduledTask -TaskName SquadLiveRuntime` kills
 the wrapper itself.
 
+### 7b.10 Night Auditor — daily tape audit at 06:30 (Task Scheduler)
+
+> **Why (2026-08-04, D144).** The 5-min OpsWatchdog answers "is it
+> alive right now?"; nobody answered "did yesterday make sense?" until
+> a human read the weekly report — which is how the silent week ran
+> for days. The Night Auditor (`scripts/night_audit.py`, role doc at
+> `company/roles/night_auditor.md`, Ego Jinpachi persona) reads ONE
+> UTC day of tape every morning: per-symbol bar coverage vs the H4
+> grid, timestamp_miss regressions, feed stale/refresh-error streaks,
+> activity counts. Observe-and-draft only: it writes a digest + intake
+> stubs under `<live_dir>\audits\` and sends ONE ops-Telegram line
+> ("all nominal" or "N anomalies: …"). No LLM, no mutations, no git.
+
+Register once, from the platform clone:
+
+```powershell
+cd C:\TradingAgent-platform
+
+$action = New-ScheduledTaskAction -Execute "C:\TradingAgent-platform\.venv\Scripts\python.exe" `
+  -Argument "scripts\night_audit.py" `
+  -WorkingDirectory "C:\TradingAgent-platform"
+$trigger = New-ScheduledTaskTrigger -Daily -At 6:30am
+Register-ScheduledTask -TaskName "NightAuditor" -Action $action -Trigger $trigger `
+  -RunLevel Limited -Description "Daily squad tape audit (observe-and-draft; digest + ops Telegram line)"
+
+# Smoke it immediately (audits yesterday UTC, prints the digest):
+.venv\Scripts\python scripts\night_audit.py
+```
+
+**Verify:**
+
+1. The smoke run prints a digest and
+   `type "$HOME\Documents\TradingAgentLogs\squad_live\audits\night_audit_*.md"`
+   shows it on disk.
+2. If the ops Telegram block (§7b.7) is configured, one message lands
+   on the ops chat per run.
+3. Next morning after 06:30: a fresh digest file exists for yesterday.
+   Warn/alarm days also leave `audits\stubs\*.md` drafts — triage them
+   in the next Cursor session (promote to `company/rd/intake/I###` or
+   dismiss with a note in the stub).
+
+Weekend behaviour: Saturday/Sunday coverage floors are zero, so closed
+markets read "all nominal" rather than paging you.
+
 ## 7c. Demo-order executor (F018) — wire the "V2 Platform" demo account
 
 > **What this is.** Sprint 2b's demo-order executor: approved entries

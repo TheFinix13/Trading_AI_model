@@ -1,6 +1,9 @@
 # Proposal: give the company off-hours shifts (2026-08-04)
 
-Status: PROPOSAL — needs the user's go/no-go. Nothing here is built.
+Status: **Tier 1 BUILT** (user go 2026-08-04, D144) — the Night
+Auditor role (`company/roles/night_auditor.md`, Ego Jinpachi persona)
+executes `scripts/night_audit.py` daily via Task Scheduler (runbook
+§7b.10). Tiers 2–3 remain proposals.
 
 ## The honest premise
 

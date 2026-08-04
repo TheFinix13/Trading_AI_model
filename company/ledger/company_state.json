@@ -3158,6 +3158,13 @@
       "role": "strategy",
       "decision": "[CHARTER] D141 ladder executed same-day: S0 shipped (calendar content fields, 66c3bb7); S2/Phase AG no arm promoted but registered near-miss (>=8xATR event continuation +14-19 pips/trade, both IS halves positive, n=25-28 vs floor 30; GBPUSD confirms); S3/Phase AH DEAD (dictionary tone-shift: 38% sign agreement, wrong-sign rho) so S4 presser listening stays gated and unbuilt; S1/Phase AI tooling ready (MT5 CalendarValueHistory export + normalizer), panel needs one VM run.",
       "context": "Sae v2 critical path is now S1 + AG-2 (market-reaction reading, not Fed prose). Headline/political shocks: defense-only design note (headline-shock-advisory-design.md), observe-first, never a proposer. Company off-hours shifts proposed (nightly deterministic tape auditor + weekly agent triage; company-offhours-shifts-proposal.md) -- awaiting user go/no-go."
+    },
+    {
+      "id": "D144",
+      "date": "2026-08-04",
+      "role": "ceo",
+      "decision": "[ORG] Off-hours shifts Tier 1 approved and built: Night Auditor role created (company/roles/night_auditor.md, persona Ego Jinpachi). scripts/night_audit.py audits one UTC day of tape daily at 06:30 via Task Scheduler (runbook 7b.10): per-symbol coverage vs weekday H4 grid, timestamp_miss regressions, feed stale/refresh streaks, activity, state cursor. Observe-and-draft only: digest + intake stubs under <live_dir>/audits/, one Telegram line/day via the existing watchdog_alert ops route.",
+      "context": "No new F014 event types (no Legal re-review). Stubs triaged into real I### intakes in the next human session. OpsWatchdog (5-min) = 'is it alive?'; Night Auditor (daily) = 'did yesterday make sense?'. 7 pinned tests in tests/test_night_audit.py including the no-mutation invariant. Tiers 2-3 remain proposals."
     }
   ],
   "sprint_verdicts": [
