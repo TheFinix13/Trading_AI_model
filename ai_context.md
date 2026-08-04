@@ -1,4 +1,26 @@
-# AI Context — brain dump (updated 2026-08-04, v0.65)
+# AI Context — brain dump (updated 2026-08-04, v0.66)
+
+> v0.66 — **I030 FIXED + AL re-survey + Chigiri holdout kill.**
+> Pip semantics now symbol-aware across the squad path (product
+> commit `2650524`: tables in `provenance_pips.py`, threaded through
+> sentinel R1, arm4 R6, paper-broker KPIs, Rin/Barou stop-pips, all
+> proposers' stamps; 10 pinned tests; 948-test suite green). Parity
+> PROVEN: 2019 3-major full-roster replay byte-identical pre/post
+> fix (each call site keeps legacy mult-or-div float op — see
+> research `i030_pip_semantics/PARITY_NOTE.md`). **AL A1 re-survey
+> (fixed engine, same 4 pairs): USDJPY unblocked, 1,025 trades.
+> Headline: itoshi_rin:USDJPY n=336 PF 1.212 +1,875 pips — Rin's
+> best cell on any field. Chartered follow-ups now THREE:
+> Rin:USDJPY, Chigiri:AUDUSD (held, 183/1.376), Bachira:NZDUSD
+> (held, 332/1.269); Barou:USDJPY (78/1.364) noted, user call.**
+> Chigiri autopsy verdict: pure win-rate deficit (32.1% vs 40%
+> breakeven); loss cluster = US-afternoon/rollover fills. BUT the
+> 2015–2018 quasi-holdout KILLED both cheap rework levers (the
+> London-open niche is his WORST holdout segment, 26.1% wins;
+> conviction gate non-discriminating — all fills ≥0.75). Chigiri's
+> only evidence-backed path is the AUDUSD field-fit study. Lesson
+> banked in `chigiri_v11_autopsy/HOLDOUT_CHECK.md`: every
+> autopsy-derived candidate gets a holdout pass before a protocol.
 
 > v0.65 — **D149: three lanes executed + the Chigiri convergence.**
 > AK-2 Reo striker mode: `passthrough` (PF 0.94 ≈ leaders' base) —
@@ -459,17 +481,19 @@ the causal re-validation study** in `finance-research-experiments`
 parameterisation as anchor; Bachira/Isagi need re-tuning or benching
 verdicts). Open intake queue: I002 (awaiting-verification),
 I007–I009, I012–I013 (I012 only awaits the D108 audit-cadence CEO
-ratification — the pinned test shipped). **5) Sae v2 ladder + Phase
-AF follow-ups (D141–D143):** (a) run `ExportCalendarHistory.mq5` on
-the VM's MT5 terminal + pull the CSV back (unblocks S1/Phase AI —
-the surprise panel); (b) triage I029 (Reo zero trades in replay);
-(c) charter AF-2 (Bachira re-gating, Isagi regime/ATR-conditioned
-impulse, AG-2 expanded event panel) with fresh pre-regs; (d) decide
-the off-hours shifts proposal (nightly tape auditor). S4 presser
-listening is GATED SHUT (S3 dead); Trump/headline shocks are
-advisory-lane only (design note on file). Research artifacts await a
-branch declaration to commit (`multi-agent-ensemble` is the
-documented M001 lane).
+ratification — the pinned test shipped). **5) The three chartered
+field follow-ups (post-AL-A1):** Rin:USDJPY, Chigiri:AUDUSD,
+Bachira:NZDUSD — each needs its own pre-registration under the
+multi-start standard (K=5 staggered starts on 2015–2022 design
+region, median judged, then ONE sealed 2023+ open). **6) MT5
+calendar export still blocked on VM** — user must sync the Calendar
+tab in the terminal Toolbox, then re-run the diagnostic script
+(commit `f0a9062`) and report the Experts-tab lines (unblocks
+S1/Phase AI surprise panel). **7) I030 residue:** live path
+(position sizer) + zone-grammar pip thresholds remain
+major-calibrated — field cards per D148 before any new symbol goes
+live; USDJPY/Tier-2 replays are now VALID. S4 presser listening is
+GATED SHUT (S3 dead); Trump/headline shocks advisory-lane only.
 
 **Parked (no start without discussion):** wiring four-gate composition
 to squad's real-order path; Sprint 4 `/feedback` route (D084 defers —
