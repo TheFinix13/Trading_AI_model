@@ -39,8 +39,15 @@ param(
 
     [string]$Broker = "exness",
 
-    [string]$RepoDir = $(Split-Path -Parent $PSScriptRoot)
+    # NOTE: do not default this to $PSScriptRoot inside param() —
+    # Windows PowerShell 5.1 has not populated $PSScriptRoot at
+    # parameter-binding time, so the script dies before it can log.
+    [string]$RepoDir = ""
 )
+
+if (-not $RepoDir) {
+    $RepoDir = Split-Path -Parent $PSScriptRoot
+}
 
 Set-Location $RepoDir
 
