@@ -39,7 +39,12 @@ DRAIN_CAP = 25.0
 
 # Non-proposers (advisors / side channels) are exempt from the
 # zero-conversion drain: their job is not to shoot.
-NON_PROPOSERS = ("karasu_tabito", "kunigami_rensuke", "itoshi_sae")
+# reo_mikage: I029 resolution (2026-08-04) -- his intend() returns None
+# BY DESIGN (chameleon mirror feeding Nagi's confluence predicate); he
+# is an assist channel misfiled as a striker. Whether the assist earns
+# the roster slot is Phase AK's question, not the scoreboard's.
+NON_PROPOSERS = ("karasu_tabito", "kunigami_rensuke", "itoshi_sae",
+                 "reo_mikage")
 
 
 def _read_jsonl(path: Path) -> list[dict]:

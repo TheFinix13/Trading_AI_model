@@ -2844,6 +2844,33 @@ changes. Nearest candidates for a NEW validated edge: S1 surprise
 panel (blocked on one VM calendar export), AG-2, Isagi AF-2 regime
 hypothesis, I029 Reo fix.
 
+## D147 · 2026-08-04 · ceo · [ORG]
+
+**Week action plan filed
+(`company/strategy/action-plan-2026-08-04.md`) and two of its items
+executed same-hour. (1) I029 RESOLVED: Reo never trades BY DESIGN —
+`a05_reo.py` `intend()` hard-returns None (chameleon mirror for
+Nagi's confluence predicate); zero rows in proposals_all AND
+proposals_rejected rule out upstream rejection; fix was legibility
+(NEL scoreboard exemption shipped; /players bio is misleading). (2)
+Phase AK ablation (research repo, pre-registered): verdict
+`reo_obstructive` — WITHOUT Reo, Nagi fires 69 vs 27 trades (+156%);
+Reo's design premise is FALSIFIED. Measured role: a quality throttle
+(Nagi mean R +0.222 with vs +0.094 without; total R equal 6.0/6.5;
+squad KPIs unchanged). Recommendation on file: keep + reclassify
+honestly (Option A); cut (B) and v2 redesign (C) costed. User
+decides.**
+
+Also created: the DATA_LEDGER window-consumption registry (research
+repo, `programs/M001_multi_agent_ensemble/DATA_LEDGER.md`) answering
+the user's staleness/leakage question with an auditable table: the
+2024–2026 FX H4 validation window is EXHAUSTED (opened 4×, seen in
+full by the D139 audit); AUDUSD/NZDUSD/USDJPY/USDCHF are lightly
+fingerprinted (Phase AC, void lookahead semantics); XAUUSD/XAGUSD/
+USOIL/USTEC are the only virgin offline instruments; the live tape
+is the cleanest data source going forward. Standing rule: every new
+protocol cites the ledger and updates it when it opens a window.
+
 ## Template for subsequent entries
 
 ```markdown

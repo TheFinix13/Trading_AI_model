@@ -55,18 +55,21 @@ def test_overtime_trade_costs_extra(tmp_path):
 
 
 def test_zero_conversion_drain_and_cap(tmp_path):
-    # Reo evaluated on 10_000 bars, zero trades: drain hits the 25 cap.
-    _write(tmp_path, [], [_tick(["reo_mikage"])] * 10_000)
-    row = _row(lt.score_tape(tmp_path), "reo_mikage")
+    # A silent PROPOSER on 10_000 bars: drain hits the 25 cap.
+    _write(tmp_path, [], [_tick(["isagi_yoichi"])] * 10_000)
+    row = _row(lt.score_tape(tmp_path), "isagi_yoichi")
     assert row["zero_conversion_drain"] == 25.0
     assert row["hp"] == 75.0
 
 
 def test_advisors_exempt_from_drain(tmp_path):
-    _write(tmp_path, [], [_tick(["karasu_tabito"])] * 10_000)
-    row = _row(lt.score_tape(tmp_path), "karasu_tabito")
-    assert row["zero_conversion_drain"] == 0.0
-    assert row["hp"] == 100.0
+    # Karasu (advisor) and Reo (design-time non-scorer, I029) are
+    # exempt: their job is not to shoot.
+    _write(tmp_path, [], [_tick(["karasu_tabito", "reo_mikage"])] * 10_000)
+    for aid in ("karasu_tabito", "reo_mikage"):
+        row = _row(lt.score_tape(tmp_path), aid)
+        assert row["zero_conversion_drain"] == 0.0
+        assert row["hp"] == 100.0
 
 
 def test_relegation_review_flag_at_zero_hp(tmp_path):

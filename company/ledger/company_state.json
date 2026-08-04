@@ -3821,18 +3821,20 @@
       "submitted_at": "2026-08-04T12:10:00Z",
       "classification": "BUG",
       "priority": "P2",
-      "status": "filed",
+      "status": "resolved",
       "route": "bug",
       "linked_features": [],
       "linked_decisions": [
-        "D142"
+        "D142",
+        "D147"
       ],
       "linked_experiments": [
-        "phase_af_causal_retune"
+        "phase_af_causal_retune",
+        "phase_ak_reo_ablation"
       ],
       "contact": null,
-      "resolved_at": null,
-      "summary": "Reo produced ZERO trades in all 11 Phase AF replay cells (2019-2026, three symbols, every impulse threshold) while publishing ~24k thoughts per cell. Either an I024-class replay prepare bug, an unreachable fire condition, or 100% upstream rejection -- each needs a different fix.",
+      "resolved_at": "2026-08-04T14:50:00Z",
+      "summary": "RESOLVED works-as-designed: Reo v1's intend() returns None by design (chameleon mirror feeding Nagi's confluence predicate). Legibility fixes shipped (NEL exemption). Phase AK ablation then FALSIFIED the design premise: verdict reo_obstructive -- without Reo, Nagi fires 69 vs 27 trades; measured role is a quality throttle (Nagi meanR +0.222 with vs +0.094 without, equal totalR). Keep/cut/redesign decision with the user (D147).",
       "file": "company/rd/intake/I029-reo-proposes-zero-trades-in-batch-replay.md"
     }
   ],

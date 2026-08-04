@@ -1,4 +1,27 @@
-# AI Context — brain dump (updated 2026-08-04, v0.62)
+# AI Context — brain dump (updated 2026-08-04, v0.63)
+
+> v0.63 — **Action plan + I029 resolved + Phase AK + DATA_LEDGER
+> (D147)** 2026-08-04, same session:
+> - **I029 RESOLVED (works-as-designed):** Reo's `intend()` returns
+>   None BY DESIGN (chameleon mirror for Nagi's confluence). NEL
+>   scoreboard now exempts him from the zero-conversion drain.
+> - **Phase AK ablation (pre-reg): `reo_obstructive`** — without Reo,
+>   Nagi fires 69 vs 27 trades (+156%); design premise FALSIFIED.
+>   Measured role = quality throttle (Nagi meanR +0.222 with vs
+>   +0.094 without; total R equal; squad unchanged). Options A
+>   (keep + reclassify, recommended) / B (cut) / C (v2 redesign) on
+>   file — user decides.
+> - **DATA_LEDGER** (research repo, M001): window-consumption
+>   registry. Key rules: 2024–2026 FX H4 validation window EXHAUSTED
+>   (opened 4×, D139 saw all); AG's 2022–2025 event reservation still
+>   pristine; AUDUSD/NZDUSD/USDJPY/USDCHF lightly fingerprinted
+>   (Phase AC, void semantics); XAUUSD/XAGUSD/USOIL/USTEC virgin;
+>   live tape = cleanest evidence. Every new protocol must cite it.
+> - **Week plan** at `company/strategy/action-plan-2026-08-04.md`:
+>   Lane 1 S1 surprise panel (BLOCKED ON USER: one VM MQL5 export),
+>   Lane 2 new instruments, Lane 3 live measurement week (Night
+>   Auditor daily; league table Friday), Lane 4 mechanism fixes.
+>   Explicitly banned: re-sweeping the mined-out three pairs.
 
 > v0.62 — **Phase AJ/AJ-2 cross-symbol transfer: 0/8, no promotion
 > (D146)** 2026-08-04, same session. Both pre-registered before

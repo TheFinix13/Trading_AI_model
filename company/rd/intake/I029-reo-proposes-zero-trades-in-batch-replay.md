@@ -5,19 +5,33 @@ submitter: "research_lead (Phase AF causal re-tune sweep, finance-research-exper
 submitted_at: 2026-08-04T12:10:00Z
 classification: BUG
 priority: P2
-status: filed
+status: resolved
 route: bug
 linked_features: []
-linked_decisions: [D142]
-linked_experiments: ["phase_af_causal_retune"]
+linked_decisions: [D142, D147]
+linked_experiments: ["phase_af_causal_retune", "phase_ak_reo_ablation"]
 contact: null
-resolved_at: null
+resolved_at: 2026-08-04T14:50:00Z
 history:
   - stage: filed
     at: 2026-08-04T12:10:00Z
     by: research_lead
     note: "Reo produced ZERO trades in all 11 Phase AF replay cells (8 IS 2019-2023 + 3 validation 2024-2026, three symbols, causal semantics) while publishing ~24k workspace thoughts per cell."
+  - stage: resolved
+    at: 2026-08-04T14:50:00Z
+    by: research_lead
+    note: "WORKS-AS-DESIGNED, misfiled as striker. agent/squad/agents/a05_reo.py intend() hard-returns None by design: Reo v1 is a per-tick chameleon MIRROR whose only job is to lift a peer thought above Nagi's 0.7 confluence floor (the Phi4.1 predicate-starvation falsifier). Zero proposal rows in proposals_all/rejected confirm nothing is being eaten upstream. Real defects were legibility: (1) he renders as an active striker on /players, (2) the NEL scoreboard drained him for not shooting -- fixed same day (reo_mikage added to NON_PROPOSERS with I029 note). His roster defeat-trigger ('dInfo <= 0 -> Reo is cut') has NEVER been measured -> Phase AK ablation pre-registered to answer whether the assist earns the slot."
 ---
+
+> **RESOLVED 2026-08-04 — works-as-designed, misfiled as striker.**
+> Reo v1's `intend()` returns `None` by design (chameleon mirror
+> feeding Nagi's confluence predicate; docstring explicit: "Reo never
+> trades in v1"). Zero rows in `proposals_all.jsonl` AND
+> `proposals_rejected.jsonl` rules out upstream rejection. Fixes
+> shipped: NEL scoreboard exemption (`scripts/league_table.py`).
+> Open question moved to research: Phase AK ablation measures whether
+> Nagi's fires actually depend on Reo's mirror (roster defeat-trigger
+> "ΔInfo ≤ 0 → cut" has never been evaluated).
 
 # I029 — Reo proposes zero trades across 7.5 years of batch replay
 
