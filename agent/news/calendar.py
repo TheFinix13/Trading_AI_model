@@ -66,6 +66,17 @@ class NewsEvent:
         impact:     "High", "Medium", "Low", "Holiday", or "Non-Economic".
         title:      Human-readable event name (e.g. "FOMC Statement").
         all_day:    True for All-Day / Holiday entries with no time.
+        forecast:   Consensus estimate as published by the feed, verbatim
+                    (e.g. "185K", "0.2%"), or None when absent. Until the
+                    2026-08-04 Sae-v2 S0 fix (D141) the parser DROPPED
+                    this field, so the squad knew WHEN news happened but
+                    never what was expected.
+        previous:   Prior print, verbatim, or None.
+        actual:     Released value, verbatim, or None. The FF weekly feed
+                    (XML and JSON variants both checked 2026-08-04) never
+                    carries actuals, so this stays None on feed-parsed
+                    events; the release-time capture mechanism (Sae v2
+                    S1/S4) fills it from primary sources.
     """
 
     time_utc: datetime | None
@@ -73,6 +84,9 @@ class NewsEvent:
     impact: str
     title: str
     all_day: bool = False
+    forecast: str | None = None
+    previous: str | None = None
+    actual: str | None = None
 
     def to_dict(self) -> dict:
         d = asdict(self)
@@ -94,7 +108,57 @@ class NewsEvent:
             impact=d.get("impact", ""),
             title=d.get("title", ""),
             all_day=bool(d.get("all_day", False)),
+            forecast=d.get("forecast") or None,
+            previous=d.get("previous") or None,
+            actual=d.get("actual") or None,
         )
+
+    @property
+    def surprise(self) -> float | None:
+        """``actual - forecast`` in the print's native units, or None
+        when either side is missing/unparseable. Sign convention is
+        raw (positive = came in above consensus); whether that is
+        currency-positive depends on the event and is the CONSUMER's
+        job (Sae v2 S1)."""
+        a = parse_numeric(self.actual)
+        f = parse_numeric(self.forecast)
+        if a is None or f is None:
+            return None
+        return a - f
+
+
+def parse_numeric(value: str | None) -> float | None:
+    """Parse a ForexFactory-style value string into a float.
+
+    Handles the feed's conventions: "185K" / "2.1M" / "1.2B" magnitude
+    suffixes, "%" suffixes (returned as the bare number, e.g. "0.2%"
+    -> 0.2), thousands separators, "<0.1%" / ">2%" bound markers
+    (parsed to the bound), and leading currency junk. Returns None for
+    empty / non-numeric strings ("", "Tentative", ...). Percent and
+    K/M/B units are NOT normalised against each other -- surprises are
+    only ever computed between values of the SAME event, which share
+    units.
+    """
+    if not value:
+        return None
+    s = value.strip().replace(",", "").replace("<", "").replace(">", "")
+    if not s:
+        return None
+    mult = 1.0
+    if s[-1] in ("%",):
+        s = s[:-1]
+    elif s[-1] in ("K", "k"):
+        mult, s = 1e3, s[:-1]
+    elif s[-1] in ("M", "m"):
+        mult, s = 1e6, s[:-1]
+    elif s[-1] in ("B", "b"):
+        mult, s = 1e9, s[:-1]
+    elif s[-1] in ("T", "t"):
+        mult, s = 1e12, s[:-1]
+    try:
+        return float(s) * mult
+    except ValueError:
+        return None
 
 
 def _parse_event_time(date_str: str, time_str: str) -> tuple[datetime | None, bool]:
@@ -173,12 +237,21 @@ def parse_calendar_xml(xml_text: str) -> list[NewsEvent]:
             cap = impact.capitalize()
             impact = cap if cap in VALID_IMPACTS else impact
         dt, all_day = _parse_event_time(date_str, time_str)
+        forecast = (el.findtext("forecast") or "").strip() or None
+        previous = (el.findtext("previous") or "").strip() or None
+        # The weekly feed has no <actual> element (verified against both
+        # the XML and JSON variants, 2026-08-04); parse defensively so a
+        # feed upgrade starts flowing through without a code change.
+        actual = (el.findtext("actual") or "").strip() or None
         events.append(NewsEvent(
             time_utc=dt,
             currency=country,
             impact=impact,
             title=title,
             all_day=all_day,
+            forecast=forecast,
+            previous=previous,
+            actual=actual,
         ))
     events.sort(key=lambda e: (e.time_utc or datetime.max.replace(tzinfo=timezone.utc), e.currency))
     return events
