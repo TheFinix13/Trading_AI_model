@@ -642,17 +642,26 @@ the wrapper itself.
 > stubs under `<live_dir>\audits\` and sends ONE ops-Telegram line
 > ("all nominal" or "N anomalies: …"). No LLM, no mutations, no git.
 
-Register once, from the platform clone:
+Register once, from the platform clone. **Use YOUR clone's real path**
+— on the current VM that is `C:\Users\Fiyin\Documents\GitHub\TradingAgent2`,
+the same repo the SquadLiveRuntime watchdog logs as `repo=` (a task
+registered against a path that doesn't hold the pulled code fails
+silently every morning). `-Force` makes re-registration idempotent:
 
 ```powershell
-cd C:\TradingAgent-platform
+$repo = "C:\Users\Fiyin\Documents\GitHub\TradingAgent2"   # <- your clone
+cd $repo
 
-$action = New-ScheduledTaskAction -Execute "C:\TradingAgent-platform\.venv\Scripts\python.exe" `
+$action = New-ScheduledTaskAction -Execute "$repo\.venv\Scripts\python.exe" `
   -Argument "scripts\night_audit.py" `
-  -WorkingDirectory "C:\TradingAgent-platform"
+  -WorkingDirectory "$repo"
 $trigger = New-ScheduledTaskTrigger -Daily -At 6:30am
 Register-ScheduledTask -TaskName "NightAuditor" -Action $action -Trigger $trigger `
-  -RunLevel Limited -Description "Daily squad tape audit (observe-and-draft; digest + ops Telegram line)"
+  -RunLevel Limited -Force `
+  -Description "Daily squad tape audit (observe-and-draft; digest + ops Telegram line)"
+
+# Confirm the action points at the right clone:
+(Get-ScheduledTask NightAuditor).Actions | Format-List Execute, Arguments, WorkingDirectory
 
 # Smoke it immediately (audits yesterday UTC, prints the digest):
 .venv\Scripts\python scripts\night_audit.py
