@@ -5,11 +5,11 @@ submitter: "research_lead (Phase AL Tier-1 field survey)"
 submitted_at: 2026-08-04T16:45:00Z
 classification: BUG
 priority: P1
-status: filed
+status: fix_landed
 route: bug
 linked_features: []
 linked_decisions: [D148, D149]
-linked_experiments: ["phase_al_tier1_field_survey"]
+linked_experiments: ["phase_al_tier1_field_survey", "i030_pip_semantics"]
 contact: null
 resolved_at: null
 history:
@@ -17,6 +17,10 @@ history:
     at: 2026-08-04T16:45:00Z
     by: research_lead
     note: "USDJPY produced ZERO trades in the Phase AL survey (12,889 bars, 2015-2022): all 14,621 aggregator-winning proposals were blocked by sentinel_R1. Root cause: PIP_SIZE=0.0001 is hardcoded (agent/utils.py) so a 0.50-yen stop computes as 5,000 'pips' and R1's implied-risk check (sl_distance_pips x $0.10 vs 5% equity cap) rejects everything."
+  - stage: fix_landed
+    at: 2026-08-04T17:30:00Z
+    by: platform_engineer
+    note: "Squad-path fix shipped: per-symbol pip tables in provenance_pips.py (pip_size_for / pips_per_unit_for / pip_value_per_min_lot_for), threaded through sentinel R1, arm4 R6 risk dollars, paper-broker sl/mae/mfe/pnl/r_multiple, Rin+Barou stop-pips math, and all five proposers' provenance stamps. 10 pinned regression tests (tests/squad/test_instrument_pips.py). Parity PROVEN: 2019 full-roster replay on the 3 majors is byte-identical pre-fix vs post-fix across trades/proposals/rejections/events (each call site keeps its legacy mult-or-div op so majors' float bit patterns are unchanged). Remaining before close: USDJPY re-survey (AL amendment) must show JPY trades flow; v1-derived live path (position sizer) + zone-grammar pip thresholds stay major-calibrated -- FIELD_CARD scope per D148."
 ---
 
 # I030 — pip semantics hardcoded to 0.0001 blocks JPY pairs and every Tier-2 field

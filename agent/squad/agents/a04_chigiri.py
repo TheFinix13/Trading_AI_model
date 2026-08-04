@@ -71,6 +71,7 @@ from typing import Any, Optional
 
 from agent.squad.ledger import ThoughtLedger
 from agent.squad.provenance_pips import (
+    pip_size_for,
     regime_fit_from_atr,
     stamp_provenance_pips,
 )
@@ -280,7 +281,8 @@ class A4ChigiriV1(BaseStriker):
         )
         # Dispersion-r2 (2026-07-14): volatility provenance for
         # bar-less borrowers (Nagi) -- see doctrine §4.1a amendment.
-        stamp_provenance_pips(coord.rationale, bars=prep.bars, i=i)
+        stamp_provenance_pips(coord.rationale, bars=prep.bars, i=i,
+                              pip_size=pip_size_for(market.symbol))
         tags = [
             "canon:chigiri",
             "weapon:speed",
@@ -448,7 +450,8 @@ class A4ChigiriV1(BaseStriker):
         # Chigiri (~0.70--0.85) and Isagi (~0.85--1.00) exceeds the
         # TIER_BIAS penalty, so promoting the effective tier alone does
         # not tip the aggregator sort. Postmortem in PROTOCOL sec 11.9.
-        stamp_provenance_pips(proposal_rationale, bars=prep.bars, i=i)
+        stamp_provenance_pips(proposal_rationale, bars=prep.bars, i=i,
+                              pip_size=pip_size_for(market.symbol))
         return AgentProposal(
             agent_id=self.agent_id,
             tick_id=market.tick_id,
@@ -460,7 +463,8 @@ class A4ChigiriV1(BaseStriker):
             stop=float(stop),
             ladder=ladder,
             conviction=float(my_recent_thought.confidence_in_thought),
-            regime_fit=regime_fit_from_atr(prep.bars, i),
+            regime_fit=regime_fit_from_atr(prep.bars, i,
+                                            pip_size=pip_size_for(market.symbol)),
             valid_until=horizon,
             rationale=proposal_rationale,
             agent_tier=int(self.tier),

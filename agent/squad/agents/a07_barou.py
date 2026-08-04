@@ -61,6 +61,7 @@ from typing import Any, Optional
 from agent.squad.ledger import ThoughtLedger
 from agent.squad.provenance_pips import (
     expected_r_from_prices,
+    pip_size_for,
     regime_fit_from_atr,
     stamp_provenance_pips,
     stop_pips_from_prices,
@@ -175,6 +176,7 @@ def continuation_anchor_geometry(
     bachira_stop: float,
     direction: str,
     target_rr: float,
+    pip_size: float = _PIP,
 ) -> tuple[float, float, str, bool]:
     """Pure H2 geometry (PROTOCOL_v1.2.md sec 3).
 
@@ -191,7 +193,7 @@ def continuation_anchor_geometry(
     if candidate_dist <= 0.0:
         return own_stop, own_tp, "invalid_anchor", False
     new_dist = max(
-        BAROU_V1_2_CONTINUATION_MIN_STOP_PIPS * _PIP,
+        BAROU_V1_2_CONTINUATION_MIN_STOP_PIPS * pip_size,  # I030
         min(own_dist, candidate_dist),
     )
     if new_dist >= own_dist:
@@ -360,7 +362,8 @@ class A7BarouV1(BaseStriker):
         )
         # Dispersion-r2 (2026-07-14): volatility provenance for
         # bar-less borrowers (Nagi) -- see doctrine §4.1a amendment.
-        stamp_provenance_pips(coord.rationale, bars=prep.bars, i=i)
+        stamp_provenance_pips(coord.rationale, bars=prep.bars, i=i,
+                              pip_size=pip_size_for(market.symbol))
         tags = [
             "barou_usdcad_baseline_zone",
             "canon:barou",
@@ -534,6 +537,7 @@ class A7BarouV1(BaseStriker):
                             bachira_stop=float(_b_stop),
                             direction=direction,
                             target_rr=float(self._weapon_params["target_rr"]),
+                            pip_size=pip_size_for(market.symbol),  # I030
                         )
             if lone_conviction_active:
                 lone_conviction_lift_applied = BAROU_V1_1_LONE_CONVICTION_LIFT
@@ -588,9 +592,13 @@ class A7BarouV1(BaseStriker):
             "barou_continuation_entry": bool(continuation_entry),
             "barou_v1_2_enabled": bool(self._continuation_entry_enabled),
             "barou_v1_2_stop_source": v12_stop_source,
-            "barou_v1_2_stop_pips_own": float(own_stop_dist / _PIP),
+            "barou_v1_2_stop_pips_own": float(
+                # I030: division preserves legacy `/ _PIP` bit pattern.
+                own_stop_dist / pip_size_for(market.symbol)
+            ),
             "barou_v1_2_stop_pips_final": float(
-                abs(float(sig.entry) - final_stop) / _PIP
+                abs(float(sig.entry) - final_stop)
+                / pip_size_for(market.symbol)
             ),
             "_yield_reason": yield_reason,
             "doctrine_ref": (
@@ -600,7 +608,8 @@ class A7BarouV1(BaseStriker):
             ),
             "empirical_prior": "E005 USDCAD baseline-zone +4.63 pips/trade",
         }
-        stamp_provenance_pips(rationale, bars=prep.bars, i=i)
+        stamp_provenance_pips(rationale, bars=prep.bars, i=i,
+                              pip_size=pip_size_for(market.symbol))
         return AgentProposal(
             agent_id=self.agent_id,
             tick_id=market.tick_id,
@@ -612,7 +621,8 @@ class A7BarouV1(BaseStriker):
             stop=float(final_stop),
             ladder=ladder,
             conviction=float(conviction),
-            regime_fit=regime_fit_from_atr(prep.bars, i),
+            regime_fit=regime_fit_from_atr(prep.bars, i,
+                                            pip_size=pip_size_for(market.symbol)),
             valid_until=horizon,
             rationale=rationale,
             agent_tier=int(self.tier),

@@ -55,6 +55,7 @@ from typing import Any, Optional
 
 from agent.squad.ledger import ThoughtLedger
 from agent.squad.provenance_pips import (
+    pip_size_for,
     expected_r_from_prices,
     isagi_metavision_lift,
     regime_fit_from_atr,
@@ -281,7 +282,8 @@ class A1IsagiV1(BaseStriker):
         # Dispersion-r2 (2026-07-14, doctrine §4.1a amendment): stamp
         # volatility provenance into the workspace coordinate so
         # bar-less borrowers (Nagi) can feed real F20 inputs.
-        stamp_provenance_pips(coord.rationale, bars=prep.bars, i=i)
+        stamp_provenance_pips(coord.rationale, bars=prep.bars, i=i,
+                              pip_size=pip_size_for(market.symbol))
         direction = sig.direction.value  # "long" | "short"
         stop_pips = stop_pips_from_prices(market.symbol, sig.entry, sig.stop)
         r_expected = expected_r_from_prices(sig.entry, sig.stop, sig.take_profit)
@@ -390,7 +392,8 @@ class A1IsagiV1(BaseStriker):
         # constant 0.5 placeholder. Playstyle_lot_intent sees real
         # variance -> C5 dispersion emerges from real inputs, not
         # sub-tick noise.
-        regime_fit_dyn = regime_fit_from_atr(prep.bars, i)
+        regime_fit_dyn = regime_fit_from_atr(prep.bars, i,
+                                            pip_size=pip_size_for(market.symbol))
 
         meta = getattr(sig, "meta", {}) or {}
         rationale: dict[str, Any] = {
@@ -413,7 +416,8 @@ class A1IsagiV1(BaseStriker):
         }
         # F20 provenance: real per-bar ATR + swing range so G7 C6
         # dispersion is measured on live inputs, not fallback constants.
-        stamp_provenance_pips(rationale, bars=prep.bars, i=i)
+        stamp_provenance_pips(rationale, bars=prep.bars, i=i,
+                              pip_size=pip_size_for(market.symbol))
         return AgentProposal(
             agent_id=self.agent_id,
             tick_id=market.tick_id,

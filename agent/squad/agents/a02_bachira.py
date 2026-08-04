@@ -61,6 +61,7 @@ from typing import Any, Optional
 
 from agent.squad.ledger import ThoughtLedger
 from agent.squad.provenance_pips import (
+    pip_size_for,
     expected_r_from_prices,
     regime_fit_from_atr,
     stamp_provenance_pips,
@@ -248,7 +249,8 @@ class A2BachiraV1(BaseStriker):
         )
         # Dispersion-r2 (2026-07-14): volatility provenance for
         # bar-less borrowers (Nagi) -- see doctrine §4.1a amendment.
-        stamp_provenance_pips(coord.rationale, bars=prep.bars, i=i)
+        stamp_provenance_pips(coord.rationale, bars=prep.bars, i=i,
+                              pip_size=pip_size_for(market.symbol))
         tags = [
             "canon:bachira",
             "weapon:rebel_dribble",
@@ -360,7 +362,8 @@ class A2BachiraV1(BaseStriker):
                 "edge must come from pattern x HTF combination"
             ),
         }
-        stamp_provenance_pips(rationale, bars=prep.bars, i=i)
+        stamp_provenance_pips(rationale, bars=prep.bars, i=i,
+                              pip_size=pip_size_for(market.symbol))
         return AgentProposal(
             agent_id=self.agent_id,
             tick_id=market.tick_id,
@@ -372,7 +375,8 @@ class A2BachiraV1(BaseStriker):
             stop=float(sig.stop),
             ladder=ladder,
             conviction=float(conviction),
-            regime_fit=regime_fit_from_atr(prep.bars, i),
+            regime_fit=regime_fit_from_atr(prep.bars, i,
+                                            pip_size=pip_size_for(market.symbol)),
             valid_until=horizon,
             rationale=rationale,
             agent_tier=int(self.tier),

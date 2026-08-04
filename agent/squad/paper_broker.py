@@ -16,6 +16,7 @@ from agent.alphas.backtest import _check_exit as prod_exit
 from agent.alphas.backtest import _open as prod_open
 from agent.alphas.base import AlphaSignal
 from agent.config import Config, load_config
+from agent.squad.provenance_pips import pip_size_for, pips_per_unit_for
 from agent.squad.tqs import compute_tqs
 from agent.squad.types import AgentProposal
 from agent.types import Bar, Direction
@@ -111,7 +112,10 @@ class PaperBroker:
             symbol=proposal.symbol,
             source_conviction=float(proposal.conviction),
             source_regime_fit=float(proposal.regime_fit),
-            source_sl_pips=abs(proposal.entry - proposal.stop) * 10000.0,
+            source_sl_pips=(
+                abs(proposal.entry - proposal.stop)
+                * pips_per_unit_for(proposal.symbol)  # I030: symbol-aware
+            ),
             source_atr_pips=rat.get("atr_pips"),
             source_h1_swing_pips=rat.get("h1_swing_pips"),
             source_tick_id=int(proposal.tick_id),
@@ -128,8 +132,9 @@ class PaperBroker:
         else:
             excursion_against = bar.high - trade.entry_price
             excursion_for = trade.entry_price - bar.low
-        mae = max(0.0, excursion_against) * 10000.0
-        mfe = max(0.0, excursion_for) * 10000.0
+        ppu = pips_per_unit_for(ot.symbol)  # I030
+        mae = max(0.0, excursion_against) * ppu
+        mfe = max(0.0, excursion_for) * ppu
         if mae > trade.mae_pips:
             trade.mae_pips = mae
         if mfe > trade.mfe_pips:
@@ -145,10 +150,24 @@ class PaperBroker:
         actual_hold_hours = max(
             0.0, (exit_t - entry_t).total_seconds() / 3600.0,
         )
+        ppu = pips_per_unit_for(ot.symbol)  # I030
         stop_distance_price = abs(trade.entry_price - trade.stop_price)
-        stop_distance_pips = stop_distance_price * 10000.0
+        stop_distance_pips = stop_distance_price * ppu
+        # Recompute pnl_pips symbol-aware: the shared alpha exit helper
+        # (`_check_exit`) still converts with the major pip size, which
+        # is 100x off on JPY quotes. Division mirrors the legacy
+        # `to_pips` bit pattern exactly on majors.
+        if trade.exit_price:
+            signed = (
+                trade.exit_price - trade.entry_price
+                if trade.direction.value == "long"
+                else trade.entry_price - trade.exit_price
+            )
+            pnl_pips = signed / pip_size_for(ot.symbol)
+        else:
+            pnl_pips = float(trade.pnl_pips)
         r_multiple = (
-            float(trade.pnl_pips) / stop_distance_pips
+            pnl_pips / stop_distance_pips
             if stop_distance_pips > 0 else 0.0
         )
         components = compute_tqs(
@@ -173,7 +192,7 @@ class PaperBroker:
             take_profit=float(trade.tp_price),
             exit_price=float(trade.exit_price) if trade.exit_price else 0.0,
             exit_reason=trade.exit_reason or "open",
-            pnl_pips=float(trade.pnl_pips),
+            pnl_pips=float(pnl_pips),
             mae_pips=float(trade.mae_pips),
             mfe_pips=float(trade.mfe_pips),
             bars_held=int(trade.bars_held or 0),
@@ -193,10 +212,11 @@ class PaperBroker:
             trade.exit_time = bar.time
             trade.exit_price = bar.close
             trade.exit_reason = reason
+            ppu = pips_per_unit_for(ot.symbol)  # I030
             if trade.direction.value == "long":
-                pip = (bar.close - trade.entry_price) * 10000.0
+                pip = (bar.close - trade.entry_price) * ppu
             else:
-                pip = (trade.entry_price - bar.close) * 10000.0
+                pip = (trade.entry_price - bar.close) * ppu
             trade.pnl_pips = pip
             trade.pnl = (
                 pip * trade.lot_size * self.cfg.backtest.pip_value_per_lot

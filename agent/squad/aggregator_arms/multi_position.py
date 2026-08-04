@@ -192,12 +192,15 @@ def _proposal_risk_dollars(
     50-pip stop at $0.10 pip-value-per-min-lot, this yields $50 -- well
     above the 1 % ($1 for $100 equity) per-symbol R6 cap.
     """
+    from agent.squad.provenance_pips import pips_per_unit_for
+
     entry = float(prop.entry)
     stop = float(prop.stop)
     # Round to 1 decimal (pipettes) -- avoids `1.1000 - 1.09995` producing
     # 5.000000000002e-05 which would leak $O(1e-13) noise into the R6
     # cap comparison and spuriously block valid multi-position stacks.
-    stop_pips = round(abs(entry - stop) * 10000.0, 1)
+    # I030: symbol-aware pip multiplier (was hardcoded *1e4).
+    stop_pips = round(abs(entry - stop) * pips_per_unit_for(prop.symbol), 1)
     return stop_pips * pip_value_per_min_lot * SANDBOX_FIXED_LOT_MIN_LOT_UNITS
 
 

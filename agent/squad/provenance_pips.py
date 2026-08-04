@@ -33,15 +33,104 @@ from typing import Any
 DEFAULT_PIP_SIZE_MAJOR: float = 1e-4
 DEFAULT_PIP_SIZE_JPY: float = 1e-2
 
+# I030 (2026-08-04): per-symbol pip-size table for non-FX fields. The
+# hardcoded 1e-4 assumption made sentinel R1 block 100% of USDJPY
+# proposals (a 0.50-yen stop read as 5,000 pips). Sizes below follow
+# the D148 FIELD_CARD conventions; refine there before any study
+# relies on a new instrument.
+PIP_SIZE_OVERRIDES: dict[str, float] = {
+    "XAUUSD": 0.1,     # gold: 1 pip = $0.10
+    "XAGUSD": 0.01,    # silver
+    "USOIL": 0.01,     # WTI: 1 pip = 1 cent
+    "UKOIL": 0.01,     # Brent
+    "NATGAS": 0.001,
+    "USTEC": 1.0,      # index CFDs: 1 pip = 1 point
+    "US500": 1.0,
+    "US30": 1.0,
+    "DE40": 1.0,
+    "UK100": 1.0,
+    "JP225": 1.0,
+    "BTCUSD": 1.0,
+}
+
+# Sandbox pip VALUE per broker-minimum lot (0.01), used only by the
+# Sentinel R1 implied-risk check. FX majors: 0.01 lot = 1,000 base
+# units -> $0.10/pip. JPY quote pairs: 1,000 units x 0.01 JPY = 10 JPY
+# ~= $0.07. Non-FX values are honest approximations pending field
+# cards -- they set R1's risk scale, not the KPI math.
+PIP_VALUE_PER_MIN_LOT_DEFAULT: float = 0.10
+PIP_VALUE_PER_MIN_LOT_OVERRIDES: dict[str, float] = {
+    "XAUUSD": 0.10,    # 0.01 lot = 1 oz x $0.10 pip
+    "XAGUSD": 0.50,    # 0.01 lot = 50 oz x $0.01 pip
+    "USOIL": 0.10,
+    "UKOIL": 0.10,
+    "NATGAS": 0.10,
+    "USTEC": 0.10,
+    "US500": 0.10,
+    "US30": 0.10,
+    "DE40": 0.10,
+    "UK100": 0.10,
+    "JP225": 0.10,
+    "BTCUSD": 0.10,
+}
+
 
 def pip_size_for(symbol: str) -> float:
     """Pip size for a symbol.
 
     Majors (EURUSD, GBPUSD, USDCAD, ...) use 1e-4. JPY quote pairs use
-    1e-2. New exotics that don't fit these two rules should route
-    through a per-symbol table amendment.
+    1e-2. Non-FX fields route through ``PIP_SIZE_OVERRIDES`` (I030).
     """
-    return DEFAULT_PIP_SIZE_JPY if symbol.upper().endswith("JPY") else DEFAULT_PIP_SIZE_MAJOR
+    sym = symbol.upper()
+    if sym in PIP_SIZE_OVERRIDES:
+        return PIP_SIZE_OVERRIDES[sym]
+    return DEFAULT_PIP_SIZE_JPY if sym.endswith("JPY") else DEFAULT_PIP_SIZE_MAJOR
+
+
+def pips_per_unit_for(symbol: str) -> float:
+    """Exact price-to-pips multiplier (the reciprocal of pip size).
+
+    Price->pips conversions MUST multiply by this instead of dividing
+    by ``pip_size_for``: the legacy code multiplied by 1e4, and float
+    division by 1e-4 differs in the last ulp for ~30% of inputs, which
+    would break byte-identity of major-pair replays against the sealed
+    caches and could flip exact-threshold comparisons (e.g. Rin's
+    20.0-pip structural floor).
+    """
+    sym = symbol.upper()
+    if sym in PIP_SIZE_OVERRIDES:
+        return _PIPS_PER_UNIT_OVERRIDES[sym]
+    return 1e2 if sym.endswith("JPY") else 1e4
+
+
+_PIPS_PER_UNIT_OVERRIDES: dict[str, float] = {
+    "XAUUSD": 10.0,
+    "XAGUSD": 100.0,
+    "USOIL": 100.0,
+    "UKOIL": 100.0,
+    "NATGAS": 1000.0,
+    "USTEC": 1.0,
+    "US500": 1.0,
+    "US30": 1.0,
+    "DE40": 1.0,
+    "UK100": 1.0,
+    "JP225": 1.0,
+    "BTCUSD": 1.0,
+}
+
+
+def pip_value_per_min_lot_for(symbol: str) -> float:
+    """Sandbox pip value (USD per pip at broker-minimum lot) for R1.
+
+    JPY quote pairs ~= $0.07 (1,000 units x 0.01 JPY at ~145 USDJPY);
+    non-FX fields use the overrides table; everything else $0.10.
+    """
+    sym = symbol.upper()
+    if sym in PIP_VALUE_PER_MIN_LOT_OVERRIDES:
+        return PIP_VALUE_PER_MIN_LOT_OVERRIDES[sym]
+    if sym.endswith("JPY"):
+        return 0.07
+    return PIP_VALUE_PER_MIN_LOT_DEFAULT
 
 
 def stop_pips_from_prices(symbol: str, entry: float, stop: float) -> float | None:

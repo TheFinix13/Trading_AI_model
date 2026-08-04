@@ -64,6 +64,7 @@ from typing import Any, Optional
 from agent.squad.ledger import ThoughtLedger
 from agent.squad.provenance_pips import (
     expected_r_from_prices,
+    pip_size_for,
     regime_fit_from_atr,
     stamp_provenance_pips,
     stop_pips_from_prices,
@@ -273,7 +274,10 @@ class A3RinV1(BaseStriker):
         direction = sig.direction.value
         base_conv = float(sig.conviction)
         stop_pips = (
-            abs(float(sig.entry) - float(sig.stop)) / RIN_V1_PIP_SIZE
+            # I030: symbol-aware; division (not mult) preserves the
+            # legacy `/ RIN_V1_PIP_SIZE` bit pattern on majors.
+            abs(float(sig.entry) - float(sig.stop))
+            / pip_size_for(market.symbol)
         )
         precision_passed = stop_pips >= RIN_V1_MIN_STOP_PIPS
 
@@ -306,7 +310,8 @@ class A3RinV1(BaseStriker):
         )
         # Dispersion-r2 (2026-07-14): volatility provenance for
         # bar-less borrowers (Nagi) -- see doctrine §4.1a amendment.
-        stamp_provenance_pips(coord.rationale, bars=prep.bars, i=i)
+        stamp_provenance_pips(coord.rationale, bars=prep.bars, i=i,
+                              pip_size=pip_size_for(market.symbol))
         tags = [
             "canon:rin",
             "weapon:precision_geometry",
@@ -394,7 +399,10 @@ class A3RinV1(BaseStriker):
         )
         meta = getattr(sig, "meta", {}) or {}
         stop_pips = (
-            abs(float(sig.entry) - float(sig.stop)) / RIN_V1_PIP_SIZE
+            # I030: symbol-aware; division (not mult) preserves the
+            # legacy `/ RIN_V1_PIP_SIZE` bit pattern on majors.
+            abs(float(sig.entry) - float(sig.stop))
+            / pip_size_for(market.symbol)
         )
 
         # F21 workspace read -- alignment with the tier-1 anchor plus
@@ -513,7 +521,8 @@ class A3RinV1(BaseStriker):
                 "Rin v1 stays on zone primitive with precision filter"
             ),
         }
-        stamp_provenance_pips(rationale, bars=prep.bars, i=i)
+        stamp_provenance_pips(rationale, bars=prep.bars, i=i,
+                              pip_size=pip_size_for(market.symbol))
         return AgentProposal(
             agent_id=self.agent_id,
             tick_id=market.tick_id,
@@ -525,7 +534,8 @@ class A3RinV1(BaseStriker):
             stop=float(sig.stop),
             ladder=ladder,
             conviction=float(final_conviction),
-            regime_fit=regime_fit_from_atr(prep.bars, i),
+            regime_fit=regime_fit_from_atr(prep.bars, i,
+                                            pip_size=pip_size_for(market.symbol)),
             valid_until=horizon,
             rationale=rationale,
             agent_tier=int(self.tier),

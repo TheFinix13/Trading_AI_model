@@ -509,7 +509,15 @@ def evaluate(
     EXT). R2 is an in-line size adjustment applied separately by the caller
     when Sentinel is in physical-enforcement mode.
     """
-    sl_distance_pips = abs(intent.entry - intent.stop) * 1e4
+    # I030: symbol-aware pip conversion. The former hardcoded *1e4 made
+    # a 0.50-yen USDJPY stop read as 5,000 pips and R1 blocked every
+    # JPY/metals/indices proposal. Multiplication (not division by pip
+    # size) preserves bit-exact major-pair behaviour vs sealed caches.
+    from agent.squad.provenance_pips import pips_per_unit_for
+
+    sl_distance_pips = abs(intent.entry - intent.stop) * pips_per_unit_for(
+        proposal.symbol,
+    )
 
     r1 = check_r1_min_lot_risk_floor(
         sl_distance_pips=sl_distance_pips,

@@ -33,6 +33,7 @@ from agent.squad.aggregator_arms.multi_position import (
 )
 from agent.squad.ledger import FullLedger
 from agent.squad.paper_broker import OpenPaperTrade, PaperBroker, TradeRecord
+from agent.squad.provenance_pips import pip_value_per_min_lot_for
 from agent.squad.roster import SquadRoster, prepare_roster
 from agent.squad.sentinel import (
     MIN_LOT,
@@ -831,7 +832,9 @@ class SquadEngine:
                 karasu_mte = kw.minutes_to_event
             sentinel_ctx = SentinelContext(
                 equity=self.equity,
-                pip_value_per_min_lot=SANDBOX_PIP_VALUE_PER_MIN_LOT,
+                # I030: per-symbol pip value (identical to the old 0.10
+                # constant on the three deployed majors).
+                pip_value_per_min_lot=pip_value_per_min_lot_for(symbol),
                 consecutive_losses=self.per_agent_consecutive_losses.get(
                     proposal.agent_id, 0,
                 ),
@@ -947,7 +950,7 @@ class SquadEngine:
                 if self.multi_position:
                     risk_dollars = arm4_proposal_risk_dollars(
                         proposal,
-                        pip_value_per_min_lot=SANDBOX_PIP_VALUE_PER_MIN_LOT,
+                        pip_value_per_min_lot=pip_value_per_min_lot_for(symbol),
                     )
                 ot = self.broker.open_from_proposal(
                     proposal, next_bar,
@@ -983,7 +986,7 @@ class SquadEngine:
             return "arm4_same_agent_already_on_symbol"
         combined = sum(float(t.source_risk_dollars) for t in current)
         additional = arm4_proposal_risk_dollars(
-            proposal, pip_value_per_min_lot=SANDBOX_PIP_VALUE_PER_MIN_LOT,
+            proposal, pip_value_per_min_lot=pip_value_per_min_lot_for(symbol),
         )
         r6 = check_r6_per_symbol_risk_cap(
             symbol=symbol,
