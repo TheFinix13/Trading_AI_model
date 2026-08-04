@@ -1,4 +1,20 @@
-# AI Context — brain dump (updated 2026-08-04, v0.29)
+# AI Context — brain dump (updated 2026-08-04, v0.30)
+
+> v0.30 — **VM self-healing DONE and verified by unattended reboot**
+> (2026-08-04 12:42 UK). New `scripts/setup_self_healing.ps1` +
+> `verify_self_healing.ps1` (one-shot idempotent: autologon check, MT5
+> Startup shortcut, 3 `TradingAgent-{SYM}` AtLogOn watchdog tasks,
+> WU policy = install Sat 22:00 only + NoAutoRebootWithLoggedOnUsers).
+> First reboot test exposed TWO stacked watchdog bugs, both fixed on
+> `main`: (1) `$PSScriptRoot` is empty in `param()` defaults under
+> Windows PowerShell 5.1 → instant crash before first log line
+> (`8276b15`) — the watchdog had never actually been runnable via
+> `-File`; (2) plain `python` doesn't resolve to the venv in a
+> scheduled-task session → now launches `.venv\Scripts\python.exe`
+> explicitly (`3f46569`). Verified end-to-end: `Restart-Computer`
+> hands-off → autologon → MT5 → v2 squad shadow loop (own startup
+> entry, no conflict) → 3× `Agent ONLINE` at 12:42 unattended. The
+> Jul 28 / Aug 3 "VM dies and stays dead" failure mode is closed.
 
 > v0.29 — **E031/E032 research verdicts (lab-side only, zero agent
 > change).** Both weekly-review candidates were pre-registered, built
@@ -289,21 +305,17 @@ untouched.
 
 ## 3) Next immediate goal
 
-**Top ops priority (2026-08-04): execute the VM self-healing setup —
-now a one-script job.** `scripts/setup_self_healing.ps1` (new, with
-companion `verify_self_healing.ps1`) automates everything that's been
-pending since Jul 6: MT5-in-Startup shortcut, the 3 Task Scheduler
-`AtLogOn` watchdog tasks, and the Windows Update policy (weekend-only
-installs Sat 22:00 + NoAutoRebootWithLoggedOnUsers — likely root cause
-of the recurring VM deaths; Jul 28 and Aug 3 both needed manual
-recovery). VM procedure: turn it on → agents safe to restart (flat
-book, no kill files, PLG sidecars stale-day-discard on load) →
-`git pull` → run setup script ELEVATED → fix its autologon WARN by
-running Sysinternals Autologon once (interactive password entry; the
-script only detects) → run verify script → hands-off reboot; success =
-3 `Agent ONLINE` Telegram messages unattended. Scripts + docs/08 +
-VM_SCRIPTS.md edits are UNCOMMITTED on the Mac (no agent-repo branch
-declared 2026-08-04) — commit to `main` and pull on the VM first.
+**VM self-healing: DONE 2026-08-04, verified by unattended reboot**
+(see v0.30 note). All three agents live again since 12:42 UK after the
+Aug 3 outage; flat book, watchdogs holding them up from here on.
+
+Next candidates (none blocking, pick with user): (a) intake items from
+the 2026-08-04 review — WARNING on silently skipped H4 close,
+weekly_report timezone normalization (VM logs are UK local, report
+labels them UTC); (b) Glide-ED2B home-WiFi diagnosis (parked by user
+until everything else is done — currently on phone hotspot); (c) next
+weekly review when the next report zip arrives (ledger covered-through
+2026-08-03 14:07 UTC).
 
 Queued from the 2026-08-04 review: (a) ~~pre-registered research-lane
 study on relaxing `max_open_positions=1` / queue-replacement~~ —
