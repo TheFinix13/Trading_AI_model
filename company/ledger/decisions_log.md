@@ -2871,6 +2871,28 @@ USOIL/USTEC are the only virgin offline instruments; the live tape
 is the cleanest data source going forward. Standing rule: every new
 protocol cites the ledger and updates it when it opens a window.
 
+## D148 · 2026-08-04 · ceo · [STRAT]
+
+**Instrument-universe + player-development doctrine adopted
+(`company/strategy/instrument-universe-and-player-development.md`).**
+Tiered universe: Tier 1 = AUDUSD/NZDUSD/USDJPY/USDCHF (banked,
+design on pre-2023, 2023→present SEALED per field per DATA_LEDGER
+rule 4); Tier 2 = FX crosses + metals + energy + index CFDs + crypto
+CFDs (Dukascopy symbol-map extension needed); Tier 3 = real futures
+(new infra) and single-name stocks (OUT — separation rule, lives in
+global-portfolio-assistant). Rework doctrine: change the PLAYER,
+never the TEST — autopsy on existing tape → literature-grounded
+redesign → design fields ≠ validation fields → one mechanism per
+versioned patch, reverts legitimate. First charters: Chigiri v1.1
+autopsy, Reo AK-2 striker-mode counterfactual (user: NEL Reo played
+without Nagi — two-mode allowed if provable), Barou n-growth under
+the new multi-start standard. Research repo companion:
+`METHODOLOGY_thin_sample_replays.md` (K=5 staggered starts, 3-month
+burn-in, judge the median, 4/5 sign stability, report ranges) —
+binding on all future thin-n protocols; AF/AJ/AJ-2 thin-n readouts
+retroactively flagged provisional. `ExportCalendarHistory.mq5` copied
+into `mt5/` so the VM gets it via normal pull.
+
 ## Template for subsequent entries
 
 ```markdown

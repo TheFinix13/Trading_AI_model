@@ -1,4 +1,22 @@
-# AI Context — brain dump (updated 2026-08-04, v0.63)
+# AI Context — brain dump (updated 2026-08-04, v0.64)
+
+> v0.64 — **D148: instrument universe + player-development doctrine.**
+> Tier 1 fields = AUDUSD/NZDUSD/USDJPY/USDCHF (banked; design
+> pre-2023 only; 2023→present SEALED per field, DATA_LEDGER rule 4).
+> Tier 2 = crosses/metals/energy/index CFDs (needs Dukascopy
+> symbol-map extension). Tier 3 = futures later; single-name stocks
+> OUT (separation rule). Rework doctrine: change the PLAYER, never
+> the TEST (autopsy → literature-grounded redesign → sealed
+> validation; one mechanism per versioned patch). First charters:
+> Chigiri v1.1 autopsy, Reo AK-2 striker-mode counterfactual, Barou
+> multi-start n-growth. New research standard
+> `METHODOLOGY_thin_sample_replays.md`: thin-n (<100 trades) cells
+> need K=5 staggered-start replays, 3-month burn-in, median judged,
+> 4/5 sign stability — AF/AJ/AJ-2 thin-n readouts now flagged
+> provisional. `mt5/ExportCalendarHistory.mq5` now in product repo
+> (VM: pull → MetaEditor → compile → run on any chart → CSV in
+> MQL5\Files). Fixed ledger drift: D147/D148 now in
+> company_state.json.
 
 > v0.63 — **Action plan + I029 resolved + Phase AK + DATA_LEDGER
 > (D147)** 2026-08-04, same session:

@@ -3179,6 +3179,28 @@
       "role": "research_lead",
       "decision": "[STRATEGY-EVIDENCE] Phase AJ + AJ-2 (cross-symbol weapon transfer, pre-registered): NO promotion, 0/8 cells. Rin's EURUSD-only restriction is load-bearing (GBPUSD PF 1.037 flat, USDCAD 0.778). Barou:EURUSD near-miss (PF 2.03 n=25) failed the subset guard (unseen 2015-2018 negative); Barou:GBPUSD passed extended IS (PF 1.441 n=51) but FAILED sealed validation (PF 0.962). Home cells stable (<0.15 PF shift) -- clean study, edges don't travel.",
       "context": "Registered discovery: thin-n per-cell replay KPIs are window-start path-dependent (Barou same-years n=25 vs 10 depending on replay start; squad state alters which rare signals convert). AJ-3 (if any) must add single-agent isolation replays. Roster: Rin stays EURUSD, Barou stays USDCAD, Chigiri needs weapon redesign. Nearest new-edge candidates: S1 surprise panel (blocked on one VM calendar export), AG-2, Isagi AF-2, I029 Reo fix."
+    },
+    {
+      "id": "D147",
+      "date": "2026-08-04",
+      "role": "ceo",
+      "decision": "[ORG] Week action plan filed (company/strategy/action-plan-2026-08-04.md); two items executed same-hour: I029 RESOLVED works-as-designed (Reo's intend() returns None by design -- chameleon mirror for Nagi's confluence; NEL scoreboard exemption shipped) and Phase AK ablation verdict reo_obstructive (without Reo, Nagi fires 69 vs 27 trades; measured role = quality throttle, Nagi meanR +0.222 with vs +0.094 without, total R equal; keep/cut/redesign options with the user).",
+      "context": "Also created the DATA_LEDGER window-consumption registry (research repo) answering the user's staleness/leakage question: 2024-2026 FX H4 validation window EXHAUSTED (opened 4x, D139 saw all); AG 2022-2025 event reservation pristine; AUDUSD/NZDUSD/USDJPY/USDCHF lightly fingerprinted (Phase AC, void semantics); XAUUSD/XAGUSD/USOIL/USTEC virgin; live tape = cleanest evidence. Standing rule: every new protocol cites and updates the ledger.",
+      "links": [
+        "company/strategy/action-plan-2026-08-04.md",
+        "company/rd/intake/I029-reo-proposes-zero-trades-in-batch-replay.md"
+      ]
+    },
+    {
+      "id": "D148",
+      "date": "2026-08-04",
+      "role": "ceo",
+      "decision": "[STRAT] Instrument-universe + player-development doctrine adopted (company/strategy/instrument-universe-and-player-development.md). Tier 1: AUDUSD/NZDUSD/USDJPY/USDCHF (banked; design pre-2023 only; 2023->present SEALED per field). Tier 2: FX crosses, metals, energy, index CFDs, crypto CFDs (Dukascopy symbol-map extension needed). Tier 3: real futures later; single-name stocks OUT (separation rule). Rework doctrine: change the PLAYER never the TEST -- autopsy -> literature-grounded redesign -> design fields != validation fields -> one mechanism per versioned patch, reverts legitimate.",
+      "context": "First charters: Chigiri v1.1 autopsy; Reo AK-2 striker-mode counterfactual (user: NEL Reo played without Nagi -- two-mode allowed if provable); Barou n-growth under the new multi-start standard. Research companion METHODOLOGY_thin_sample_replays.md (K=5 staggered starts, 3-month burn-in, judge median, 4/5 sign stability) binding on thin-n protocols; AF/AJ/AJ-2 thin-n readouts flagged provisional. ExportCalendarHistory.mq5 copied to mt5/ for VM pull.",
+      "links": [
+        "company/strategy/instrument-universe-and-player-development.md",
+        "mt5/ExportCalendarHistory.mq5"
+      ]
     }
   ],
   "sprint_verdicts": [
