@@ -3116,6 +3116,27 @@
       "role": "engineering",
       "decision": "[BUG] I026 shipped: Mt5Feed.poll_new_closed emits every cached close newer than the per-symbol cursor (oldest first) instead of only the newest, and run_loop seeds the cursor from state.json last_bar_times via mark_seen -- poll gaps and restarts become bounded catch-ups instead of silent tape holes.",
       "context": "Trigger: Aug 3 tape ends at the 04:00 bar although the loop polled healthily until the 14:07 UTC VM death; the 08:00 close was starved by the 10:26 DNS outage and would have been skipped forever on restart. Fresh boots without a cursor still emit only the newest bar (older history is prepare() hydration, not live tape). Tests: tests/squad/test_feed_catchup.py."
+    },
+    {
+      "id": "D138",
+      "date": "2026-08-04",
+      "role": "engineering",
+      "decision": "[BUG] I027 shipped (P0): zone perception layer made causal -- trailing strictly-past median replaces the future-centered one, Zone.impulse_bar_index gates knowability in fresh_zones, structural TPs only use confirmed swings. Prefix-vs-full parity now ZERO divergence across 15 agent x symbol cells: live == replay byte-for-byte.",
+      "context": "Found auditing whether the I024 live re-prepare (history-so-far) matches the validated full-series replays. It did not: live fired only ~70-75% of the replay's signals because up to 100 FUTURE bars voted on impulse validity, and a zone was tradable up to 3 bars before its defining displacement existed. Audit + harnesses: reviews/audits/2026-08-04-prefix-parity/. Regression pins: tests/test_causal_zones.py."
+    },
+    {
+      "id": "D139",
+      "date": "2026-08-04",
+      "role": "engineering",
+      "decision": "[STRATEGY-EVIDENCE] The squad's replay edge was substantially a lookahead artifact: 2019-2026 replay A/B (identical data/roster, only the D138 semantics change) goes +29207 pips / PF 1.52 -> -2324 pips / PF 0.95. G7/E004-lineage evidence invalidated as a live forecast. Rin is the causal survivor (PF 1.20, +1014 pips, 218 trades); Bachira/Isagi collapse; Chigiri (already causal) unchanged.",
+      "context": "Consequences: honest expectation for the current parameterisation is ~breakeven (shadow weeks are measurement, not harvest); roster re-validation/re-tuning under causal semantics chartered to finance-research-experiments behind its pre-registration discipline (Rin's surviving parameterisation is the anchor); v1 LIVE record stands (live is naturally causal) but v1 backtest evidence with the old detector carries the same contamination -- logged to brain-box shared-findings."
+    },
+    {
+      "id": "D140",
+      "date": "2026-08-04",
+      "role": "engineering",
+      "decision": "[BUG] I028 shipped: run_loop survives feed outages -- bounded-backoff retry on MT5 refresh errors with system_status rows on the tape and one page per failure streak, plus a feed-staleness latch (no closed bar for --feed-stale-hours, default 9h, outside the FX weekend gap -> stale row + page; recovered row when bars flow again).",
+      "context": "Completes the Aug 3 outage post-mortem: a raising read no longer kills the process, starvation lands on the squad's own tape, and paging is once per streak. Logic errors in engine.on_bar still crash loudly (I022). SquadLiveRuntime -> watchdog_squad.ps1 restart-forever wrapper verified as ops backstop (runbook 7b.9). Tests: tests/test_squad_live_mt5_loop.py."
     }
   ],
   "sprint_verdicts": [
@@ -3711,6 +3732,45 @@
       "resolved_at": "2026-08-04T04:30:00Z",
       "summary": "Mt5Feed.poll_new_closed only emitted the newest close per symbol, silently skipping any H4 close missed during a feed outage, VM pause or restart (Aug 3: the 08:00 close was lost to the DNS outage). Shipped same day (D137): emit every close past the cursor oldest-first + mark_seen resume from state.json.",
       "file": "company/rd/intake/I026-mt5-feed-silently-skips-missed-h4-closes.md"
+    },
+    {
+      "id": "I027",
+      "source": "research-audit",
+      "submitter": "engineering",
+      "submitted_at": "2026-08-04T04:45:00Z",
+      "classification": "BUG",
+      "priority": "P0",
+      "status": "shipped",
+      "route": "bug",
+      "linked_features": [],
+      "linked_decisions": [
+        "D138",
+        "D139"
+      ],
+      "linked_experiments": [],
+      "contact": null,
+      "resolved_at": "2026-08-04T05:30:00Z",
+      "summary": "Zone detector lookahead: impulse validity used a future-centered median and zones were tradable before their defining displacement existed. Live-causal semantics fired only ~70-75% of the replay's signals; 2019-2026 replay A/B collapses from +29207 pips / PF 1.52 to -2324 pips / PF 0.95 -- the replay edge was substantially a lookahead artifact. Shipped same day (D138): causal detector, ZERO prefix-vs-full divergence. Re-validation chartered to the research repo (D139).",
+      "file": "company/rd/intake/I027-zone-detector-lookahead-invalidated-replay-evidence.md"
+    },
+    {
+      "id": "I028",
+      "source": "post-mortem",
+      "submitter": "engineering",
+      "submitted_at": "2026-08-04T05:00:00Z",
+      "classification": "BUG",
+      "priority": "P1",
+      "status": "shipped",
+      "route": "bug",
+      "linked_features": [],
+      "linked_decisions": [
+        "D140"
+      ],
+      "linked_experiments": [],
+      "contact": null,
+      "resolved_at": "2026-08-04T05:45:00Z",
+      "summary": "run_loop died on any transient MT5 refresh exception and idled silently when the feed starved without erroring. Shipped same day (D140): bounded-backoff retry + system_status rows + one page per streak; feed-staleness latch with weekend suppression.",
+      "file": "company/rd/intake/I028-run-loop-dies-on-transient-feed-errors.md"
     }
   ],
   "experiments": [

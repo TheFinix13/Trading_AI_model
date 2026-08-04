@@ -2658,6 +2658,59 @@ on restart. Fresh boots without a cursor still emit only the newest
 bar (older history is `prepare()` hydration, not live tape). Tests:
 `tests/squad/test_feed_catchup.py`.
 
+## D138 · 2026-08-04 · engineering · [BUG]
+
+**I027 shipped (P0): the zone perception layer is now causal — the
+trailing strictly-past median replaces the future-centered one,
+`Zone.impulse_bar_index` gates knowability in `fresh_zones`, and
+structural TPs only use confirmed swings. Live and replay semantics
+are byte-identical (prefix-vs-full parity: ZERO divergence across 15
+agent×symbol cells on real H4 data).**
+
+Found by auditing whether the I024 live re-prepare (history-so-far)
+matches the validated full-series replays. It did not: live fired
+only ~70–75% of the replay's signals because up to 100 FUTURE bars
+voted on impulse validity, and a zone was tradable up to 3 bars
+before its defining displacement existed. Audit + harnesses:
+`reviews/audits/2026-08-04-prefix-parity/`. Regression pins:
+`tests/test_causal_zones.py`.
+
+## D139 · 2026-08-04 · engineering · [STRATEGY-EVIDENCE]
+
+**The squad's replay edge was substantially a lookahead artifact:
+2019→2026 replay A/B (identical data/roster, only the D138 semantics
+change) goes +29 207 pips / PF 1.52 → −2 324 pips / PF 0.95. The
+G7/E004-lineage evidence is invalidated as a live forecast. Rin is
+the causal survivor (PF 1.20, +1 014 pips, 218 trades); Nagi
+small-sample positive; Bachira/Isagi collapse to ~breakeven-negative;
+Chigiri (already causal) unchanged.**
+
+Consequences: (1) the honest expectation for the squad as currently
+parameterised is ~breakeven — the coming shadow-paper weeks are
+measurement, not harvest; (2) roster re-validation/re-tuning under
+causal semantics is chartered to `finance-research-experiments`
+behind its pre-registration discipline (Rin's surviving
+parameterisation is the anchor); no retuning was done in this repo;
+(3) v1's LIVE track record stands (live is naturally causal) but
+v1 backtest evidence produced with the old detector carries the same
+contamination — logged to the brain-box shared-findings ledger.
+
+## D140 · 2026-08-04 · engineering · [BUG]
+
+**I028 shipped: `run_loop` survives feed outages — bounded-backoff
+retry on MT5 refresh errors with `system_status` rows on the tape and
+one page per failure streak, plus a feed-staleness latch (no closed
+bar for 9h outside the FX weekend gap → `stale` row + page,
+`recovered` row when bars flow again).**
+
+Completes the Aug 3 outage post-mortem: the DNS death would now (a)
+not kill the process on a raising read, (b) land on the squad's own
+tape while starving, and (c) page once, not per poll. Logic errors in
+`engine.on_bar` still crash loudly (I022). The `SquadLiveRuntime`
+scheduled task → `watchdog_squad.ps1` restart-forever wrapper was
+verified as the ops backstop (runbook 7b.9). Tests:
+`tests/test_squad_live_mt5_loop.py`.
+
 ## Template for subsequent entries
 
 ```markdown

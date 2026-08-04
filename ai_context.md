@@ -1,4 +1,44 @@
-# AI Context — brain dump (updated 2026-08-04, v0.56)
+# AI Context — brain dump (updated 2026-08-04, v0.57)
+
+> v0.57 — **The causality audit: the squad's replay edge was
+> substantially LOOKAHEAD** 2026-08-04, same session as v0.56
+> (D138–D140, I027–I028 shipped; audit chartered by the user's "full
+> fix + research if needed" directive):
+> - **I027/D138 (P0):** auditing whether the I024 live re-prepare
+>   (history-so-far) matches the validated full-series replays found
+>   TWO lookahead channels in `detect_zones` — impulse validity used a
+>   median CENTERED on the impulse bar (±100 bars, so the FUTURE voted
+>   on zone existence) and `fresh_zones` filtered on the BASE candle
+>   index (zone tradable up to 3 bars before its displacement
+>   existed) — plus unconfirmed swings feeding `_structural_tp`.
+>   Empirically live fired only ~70–75% of replay signals. Fix:
+>   trailing strictly-past median, `Zone.impulse_bar_index`
+>   knowability gate, `confirm_bars` TP filter. Post-fix
+>   prefix-vs-full parity: **ZERO divergence** (15/15 agent×symbol
+>   cells) — live == replay byte-for-byte now. Audit + harnesses:
+>   `reviews/audits/2026-08-04-prefix-parity/` (FINDINGS.md); pins:
+>   `tests/test_causal_zones.py`.
+> - **D139 (the verdict):** replay A/B 2019→2026 (36,698 bars,
+>   identical data/roster, ONLY the semantics change): +29,207 pips /
+>   PF 1.52 / mean R +0.30 → **−2,324 pips / PF 0.95 / mean R −0.03**.
+>   G7/E004-lineage evidence invalidated as a live forecast. Per
+>   agent: Bachira 1.67→0.93, Isagi 1.60→0.96 (collapse); **Rin
+>   survives PF 1.20 (+1,014 pips, 218 trades)**; Nagi PF 1.47 (n=30);
+>   Chigiri already-causal, unchanged-negative. Honest expectation
+>   for the current parameterisation: ~breakeven; the shadow weeks
+>   are MEASUREMENT. Roster re-validation/re-tuning under causal
+>   semantics chartered to the research repo (fresh pre-reg; Rin is
+>   the anchor). v1 LIVE record stands (live is naturally causal) but
+>   old-detector v1 backtest evidence carries the same contamination
+>   (logged to brain-box shared-findings).
+> - **I028/D140:** `run_loop` hardened — MT5 refresh errors now retry
+>   with bounded backoff (60s→900s) + `system_status` rows + one page
+>   per streak; feed-staleness latch (`--feed-stale-hours` 9, FX
+>   weekend-gap aware) tapes + pages starvation (the Aug 3 shape);
+>   recovery rows on comeback. on_bar logic errors still crash loudly
+>   (I022). Watchdog restart backstop verified (7b.9).
+> - Suite **2051**: 2047 pass, 1 env-skip, same 3 pre-existing
+>   research-registry fails (research repo on `main`, self-heals).
 
 > v0.56 — **The silent-week post-mortem: squad was BLIND, not quiet**
 > 2026-08-04 (D135–D137, I024–I026 all shipped; user-approved
@@ -231,7 +271,7 @@ branch (feature branches → `product` from now on). Research on
 
 | Area | Files |
 |---|---|
-| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I013,2026-W30-cycle2-triage.md},findings/,personas/,loop-validation.md}`, `company/strategy/{sellability-gaps,auth-migration-charter}.md`, `company/ledger/{company_state.json (133 D### + 19 roles + intake×22 + experiments),decisions_log.md}` |
+| Charter + R&D | `company/protocols/{review-chain,escalation,rd-loop,literature-standards}.md`, `company/roles/{cto,cpo,ceo,research_lead,user_advocate}.md`, `company/rd/{README,intake/{TEMPLATE,I001–I013,2026-W30-cycle2-triage.md},findings/,personas/,loop-validation.md}`, `company/strategy/{sellability-gaps,auth-migration-charter}.md`, `company/ledger/{company_state.json (140 D### + 19 roles + intake×26 + experiments),decisions_log.md}` |
 | Sprint 3 stickiness (COMPLETE) | `agent/platform/{highlights,leaderboard}.py` + players.py F021 additions + alerts.py sink + alerts_sse.py cap + watchdog.py YAML parser, `company/sprints/sprint-3-stickiness/{README,F019…F024,REPORT}.md`, `company/legal/{F020,F021,F022,F023}-review.md`, tests `tests/platform/test_{highlights_*,leaderboard_*,players_form_guide,alerts_jsonl_sink,experiments_kpi_semantics}.py` |
 | Sprint 2b live readiness | `agent/platform/{watchdog,live_executor}.py`, `scripts/run_watchdog.py`, `company/sprints/sprint-2b-live-readiness/{README,F017-ops-watchdog,F018-demo-order-executor,REPORT}.md`, `company/legal/{F017,F018}-review.md` + `executor-demo-warning.md`, `docs/RUNBOOK_demo_launch.md` sec 7c, tests `tests/platform/test_{watchdog_*,run_watchdog_script,live_executor_module,executor_api}.py` |
 | Sprint 2 real-trading | `agent/platform/{rate_limiter,kill_switches,kill_switch_admin,risk_budget,broker_health,approval_queue,alerts,alerts_sse,alerts_telegram,auth}.py`, `agent/platform/pages.py` (KILL_SWITCHES / RISK / APPROVALS / LIVE_MODE_TOGGLE / ALERTS + HQ R&D pulse), `scripts/{serve_platform,check_claim_register,install_git_hooks}.py`, `scripts/git-hooks/pre-commit`, `company/legal/{live-mode,approval-queue}-warning.md` + `claim_register.md` |
@@ -253,14 +293,20 @@ calendar tz anchors live, leave everything running. **2) Auth
 migration sprint** (D115 charter) is the next chartered build lane —
 cross-user leaderboard ranking and any multi-user copy stay blocked
 on it; needs a scope-lock chartering session. **3) RELAUNCH the squad runtime
-on the VM** — pull `product` (D135–D137 fixes), restart the three
+on the VM** — pull `product` (D135–D140 fixes), restart the three
 scheduled tasks, and verify within one H4 close that tick summaries
 show real per-agent reads (zone-touch / no-breakout narratives), NOT
 `timestamp_miss`. The w/c 2026-08-04 bundle is the first honest
 measurement week: expect 0 silent weekdays / ~90 bars AND nonzero
-proposal counts when setups occur. Open intake queue: I002
-(awaiting-verification), I007–I009, I012–I013 (I012 only awaits the
-D108 audit-cadence CEO ratification — the pinned test shipped).
+proposal counts when setups occur — but with D139 expectations set
+(causal semantics ⇒ ~breakeven squad; Rin is the one with a proven
+causal edge; this week is measurement, not harvest). **4) CHARTER
+the causal re-validation study** in `finance-research-experiments`
+(fresh pre-registration, causal detector semantics, Rin's surviving
+parameterisation as anchor; Bachira/Isagi need re-tuning or benching
+verdicts). Open intake queue: I002 (awaiting-verification),
+I007–I009, I012–I013 (I012 only awaits the D108 audit-cadence CEO
+ratification — the pinned test shipped).
 
 **Parked (no start without discussion):** wiring four-gate composition
 to squad's real-order path; Sprint 4 `/feedback` route (D084 defers —
