@@ -68,9 +68,13 @@ def test_pip_size_non_fx_fields():
 
 
 def test_pip_value_per_min_lot():
+    # Values per company/rd/field_cards/tier2-first-wave.md.
     assert pip_value_per_min_lot_for("EURUSD") == pytest.approx(0.10)
     assert pip_value_per_min_lot_for("USDJPY") == pytest.approx(0.07)
     assert pip_value_per_min_lot_for("XAUUSD") == pytest.approx(0.10)
+    assert pip_value_per_min_lot_for("XAGUSD") == pytest.approx(0.50)
+    assert pip_value_per_min_lot_for("USTEC") == pytest.approx(0.01)
+    assert pip_value_per_min_lot_for("BTCUSD") == pytest.approx(0.01)
 
 
 # ---------------------------------------------------------------------------

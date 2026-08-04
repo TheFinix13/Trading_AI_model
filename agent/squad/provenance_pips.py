@@ -56,22 +56,24 @@ PIP_SIZE_OVERRIDES: dict[str, float] = {
 # Sandbox pip VALUE per broker-minimum lot (0.01), used only by the
 # Sentinel R1 implied-risk check. FX majors: 0.01 lot = 1,000 base
 # units -> $0.10/pip. JPY quote pairs: 1,000 units x 0.01 JPY = 10 JPY
-# ~= $0.07. Non-FX values are honest approximations pending field
-# cards -- they set R1's risk scale, not the KPI math.
+# ~= $0.07. Non-FX values follow the D148 field card
+# (company/rd/field_cards/tier2-first-wave.md) -- Exness-style CFD
+# contract sizes at 0.01 min lot. They set R1's risk scale, not the
+# KPI math.
 PIP_VALUE_PER_MIN_LOT_DEFAULT: float = 0.10
 PIP_VALUE_PER_MIN_LOT_OVERRIDES: dict[str, float] = {
-    "XAUUSD": 0.10,    # 0.01 lot = 1 oz x $0.10 pip
-    "XAGUSD": 0.50,    # 0.01 lot = 50 oz x $0.01 pip
-    "USOIL": 0.10,
+    "XAUUSD": 0.10,    # 1 lot = 100 oz -> 0.01 lot = 1 oz x $0.10 pip
+    "XAGUSD": 0.50,    # 1 lot = 5,000 oz -> 0.01 lot = 50 oz x $0.01 pip
+    "USOIL": 0.10,     # 1 lot = 1,000 bbl -> 0.01 lot = 10 bbl x $0.01 pip
     "UKOIL": 0.10,
     "NATGAS": 0.10,
-    "USTEC": 0.10,
-    "US500": 0.10,
-    "US30": 0.10,
-    "DE40": 0.10,
-    "UK100": 0.10,
-    "JP225": 0.10,
-    "BTCUSD": 0.10,
+    "USTEC": 0.01,     # 1 lot = 1 index unit ($1/pt) -> 0.01 lot = $0.01/pt
+    "US500": 0.01,
+    "US30": 0.01,
+    "DE40": 0.01,
+    "UK100": 0.01,
+    "JP225": 0.01,
+    "BTCUSD": 0.01,    # 1 lot = 1 BTC -> 0.01 BTC x $1 pip = $0.01
 }
 
 
