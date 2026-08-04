@@ -1,4 +1,22 @@
-# AI Context — brain dump (updated 2026-08-04, v0.66)
+# AI Context — brain dump (updated 2026-08-04, v0.67)
+
+> v0.67 — **Phase AM: first-ever Tier-2 survey (virgin data).**
+> Field cards shipped (`company/rd/field_cards/tier2-first-wave.md`,
+> `48cf140`) with honest min-lot economics (indices/BTC $0.01/pt) +
+> three declared distortions (zone grammar price-scale filters OFF
+> on non-FX, FX cost model understates, regime_fit tilts high).
+> Survey (XAU/XAG/USOIL/USTEC H4 2015–2022, equity=500 = the real
+> v2 demo account, 2023+ seals intact): **chigiri:XAGUSD PASSES the
+> floor — n=134, 50.0% wins, PF 1.541, meanR +0.243 — strongest
+> cell any survey has produced**; barou:USTEC marginal pass
+> (98/1.156). Isagi and Rin negative on ALL four Tier-2 fields.
+> Pattern registry: Chigiri travels (AUDUSD/silver/gold-lite) while
+> failing at home; Rin = deep-liquidity FX specialist (EURUSD +
+> USDJPY only); Isagi does not travel at all; Barou rare-fires on
+> trending fields. Chartered follow-up queue now: Rin:USDJPY,
+> Chigiri:AUDUSD, Chigiri:XAGUSD, Bachira:NZDUSD (+ proposed
+> Barou multi-field multi-start rolling USDJPY+USTEC into his
+> n-growth charter — user call).
 
 > v0.66 — **I030 FIXED + AL re-survey + Chigiri holdout kill.**
 > Pip semantics now symbol-aware across the squad path (product
