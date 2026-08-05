@@ -1,4 +1,25 @@
-# AI Context — brain dump (updated 2026-08-04, v0.67)
+# AI Context — brain dump (updated 2026-08-05, v0.68)
+
+> v0.68 — **Phase AN: the FIRST full-ladder validated cell.**
+> Family of 5 chartered follow-ups ran as pre-registered (research
+> `phase_an_field_followups/`, K=5 multi-start ISOLATION replays,
+> honest per-field costs, floors declared before execution).
+> **chigiri_hyoma:XAGUSD PASSED everything:** design 2015–2022 median
+> PF 1.248 [1.229–1.292], meanR +0.070, 5/5 starts; sealed 2023-01→
+> 2026-05 one-shot open median PF 1.27, meanR +0.198, 4/5 (verdict:
+> validated-with-single-pass-caveat; recency fade noted — the
+> 2024-01 start is the one negative path). XAGUSD 2023+ seal now
+> CONSUMED (DATA_LEDGER row). The other 6 cells FAILED isolation:
+> Rin:USDJPY survey headline collapsed (PF 0.924, 0/5 — squad
+> context was filtering ~120 toxic trades; registry lesson: surveys
+> in squad context inflate KPIs, isolation is the weapon's truth).
+> Barou:USDJPY is a real near-miss (PF 1.138 vs 1.15 floor, meanR
+> +0.105, 5/5, n=418 — his n-growth question answered: field
+> problem, not weapon problem; legit path = Barou v1.x patch with
+> fresh pre-reg). Barou home USDCAD fails isolation (0.957, 1/5).
+> Chigiri:AUDUSD + Bachira:NZDUSD closed (fail final). Recommended
+> next: Chigiri:XAGUSD → paper-loop candidacy (needs XAGUSD
+> live-path I030 residue cleared first), Barou v1.x patch charter.
 
 > v0.67 — **Phase AM: first-ever Tier-2 survey (virgin data).**
 > Field cards shipped (`company/rd/field_cards/tier2-first-wave.md`,
@@ -499,11 +520,14 @@ the causal re-validation study** in `finance-research-experiments`
 parameterisation as anchor; Bachira/Isagi need re-tuning or benching
 verdicts). Open intake queue: I002 (awaiting-verification),
 I007–I009, I012–I013 (I012 only awaits the D108 audit-cadence CEO
-ratification — the pinned test shipped). **5) The three chartered
-field follow-ups (post-AL-A1):** Rin:USDJPY, Chigiri:AUDUSD,
-Bachira:NZDUSD — each needs its own pre-registration under the
-multi-start standard (K=5 staggered starts on 2015–2022 design
-region, median judged, then ONE sealed 2023+ open). **6) MT5
+ratification — the pinned test shipped). **5) Phase AN DONE (2026-08-05) — act on the verdicts:**
+(a) Chigiri:XAGUSD paper-loop candidacy — clear the XAGUSD I030
+live-path residue (position sizer + zone-grammar pip thresholds),
+then shadow/paper on the v2 $500 demo, judged on fresh tape only;
+(b) charter Barou v1.x balance patch targeting the USDJPY near-miss
+(ONE mechanism change, fresh pre-reg + floors); (c) Rin:USDJPY,
+Chigiri:AUDUSD, Bachira:NZDUSD, Barou:USDCAD/USTEC — CLOSED, fail
+is final on those windows. **6) MT5
 calendar export still blocked on VM** — user must sync the Calendar
 tab in the terminal Toolbox, then re-run the diagnostic script
 (commit `f0a9062`) and report the Experts-tab lines (unblocks
