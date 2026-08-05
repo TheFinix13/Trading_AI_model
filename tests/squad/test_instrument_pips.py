@@ -204,8 +204,8 @@ def test_paper_broker_major_pnl_unchanged():
     assert record.r_multiple == pytest.approx(-1.0, abs=0.05)
 
 
-def test_open_fill_cost_uses_symbol_pip_size():
-    """I030 residue: fill spread/slip must scale with pip_size_for."""
+def test_open_fill_cost_tier2_uses_field_pip_fx_keeps_legacy():
+    """Tier-2 fill costs use field pip; FX (incl. JPY) keeps * 1e-4."""
     from agent.alphas.backtest import _open
     from agent.alphas.base import AlphaSignal
     from agent.config import load_config
@@ -222,9 +222,14 @@ def test_open_fill_cost_uses_symbol_pip_size():
     )
     major = _open(sig, bar, cfg)  # legacy default = 1e-4
     silver = _open(sig, bar, cfg, symbol="XAGUSD")
+    jpy = _open(sig, bar, cfg, symbol="USDJPY")
     # Silver pip is 100x larger than major → fill cost in PRICE is 100x.
     assert (silver.entry_price - bar.open) == pytest.approx(
         (major.entry_price - bar.open) * 100.0, rel=1e-9,
+    )
+    # JPY must NOT flip to 0.01 — that would break AN-comparable FX tapes.
+    assert (jpy.entry_price - bar.open) == pytest.approx(
+        (major.entry_price - bar.open), rel=1e-12,
     )
 
 

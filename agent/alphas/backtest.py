@@ -106,14 +106,24 @@ def _open(signal, entry_bar: Bar, cfg: Config, *, symbol: str | None = None) -> 
     Costs are pulled per-TF via :meth:`BacktestConfig.cost_for` so cells on M1
     don't get charged D1's spread.
 
-    ``symbol`` (I030): converts cost_pips → price via ``pip_size_for``. Default
-    ``None`` keeps the legacy major pip size (1e-4) bit-identical for every
-    existing alpha-isolation caller that never passed a symbol.
+    ``symbol`` (I030 / field-card): converts cost_pips → price. Non-FX
+    Tier-2 fields (XAGUSD, …) use ``pip_size_for`` so 1 cost-pip is one
+    field pip. FX — including JPY — keeps the legacy ``* 1e-4`` bit
+    pattern: every prior M001 study (incl. AN-5 Barou:USDJPY) charged
+    costs that way, and flipping JPY mid-charter reshapes the entire
+    fill path. Default ``None`` = major 1e-4.
     """
-    from agent.squad.provenance_pips import DEFAULT_PIP_SIZE_MAJOR, pip_size_for
+    from agent.squad.provenance_pips import (
+        DEFAULT_PIP_SIZE_MAJOR,
+        PIP_SIZE_OVERRIDES,
+        pip_size_for,
+    )
 
     spread_p, slip_p, commission = cfg.backtest.cost_for(entry_bar.timeframe.value)
-    pip = pip_size_for(symbol) if symbol else DEFAULT_PIP_SIZE_MAJOR
+    if symbol and symbol.upper() in PIP_SIZE_OVERRIDES:
+        pip = pip_size_for(symbol)
+    else:
+        pip = DEFAULT_PIP_SIZE_MAJOR
     spread = spread_p * pip
     slip = slip_p * pip
     if signal.direction == Direction.LONG:
