@@ -116,3 +116,11 @@
 # aggregator = "phi41"
 # poll_seconds = 45
 # symbols = ["EURUSD", "GBPUSD", "USDCAD"]
+#
+# Phase AN-3 candidacy (chigiri_hyoma:XAGUSD sealed PASS 2026-08-05).
+# Uncomment to shadow-paper silver on the v2 $500 demo semantics.
+# Requires the broker feed to serve XAGUSD H4 (MT5 symbol or cache).
+# symbols = ["EURUSD", "GBPUSD", "USDCAD", "XAGUSD"]
+# equity = 500
+# [squad_live.field_assignments]
+# chigiri_hyoma = ["XAGUSD"]

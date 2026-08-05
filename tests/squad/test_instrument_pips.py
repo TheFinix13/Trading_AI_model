@@ -8,14 +8,21 @@ Before 2026-08-04 every pip conversion in the squad layer hardcoded the
 """
 from __future__ import annotations
 
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
 from agent.squad.provenance_pips import (
     pip_size_for,
+    pip_value_per_lot_for,
     pip_value_per_min_lot_for,
 )
+
+_SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+if str(_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS))
 from agent.squad.sentinel import SentinelContext, evaluate_proposal
 from agent.squad.types import SCHEMA_VERSION, AgentProposal, LadderRung
 
@@ -65,6 +72,13 @@ def test_pip_size_non_fx_fields():
     assert pip_size_for("USOIL") == pytest.approx(0.01)
     assert pip_size_for("USTEC") == pytest.approx(1.0)
     assert pip_size_for("BTCUSD") == pytest.approx(1.0)
+
+
+def test_pip_value_per_lot_majors_and_silver():
+    # 1.0 lot = 100 x min-lot; majors stay the legacy $10/pip.
+    assert pip_value_per_lot_for("EURUSD") == pytest.approx(10.0)
+    assert pip_value_per_lot_for("XAGUSD") == pytest.approx(50.0)
+    assert pip_value_per_min_lot_for("XAGUSD") == pytest.approx(0.50)
 
 
 def test_pip_value_per_min_lot():
@@ -188,3 +202,55 @@ def test_paper_broker_major_pnl_unchanged():
     record = broker.score(ot)
     assert record.pnl_pips == pytest.approx(-20.0, abs=0.5)
     assert record.r_multiple == pytest.approx(-1.0, abs=0.05)
+
+
+def test_open_fill_cost_uses_symbol_pip_size():
+    """I030 residue: fill spread/slip must scale with pip_size_for."""
+    from agent.alphas.backtest import _open
+    from agent.alphas.base import AlphaSignal
+    from agent.config import load_config
+    from agent.types import Bar, Direction, Timeframe
+
+    cfg = load_config()
+    sig = AlphaSignal(
+        direction=Direction.LONG, entry=25.00, stop=24.80, take_profit=25.30,
+        reason="test",
+    )
+    bar = Bar(
+        time=_ts(), open=25.00, high=25.05, low=24.95, close=25.01,
+        volume=1000, timeframe=Timeframe.H4,
+    )
+    major = _open(sig, bar, cfg)  # legacy default = 1e-4
+    silver = _open(sig, bar, cfg, symbol="XAGUSD")
+    # Silver pip is 100x larger than major → fill cost in PRICE is 100x.
+    assert (silver.entry_price - bar.open) == pytest.approx(
+        (major.entry_price - bar.open) * 100.0, rel=1e-9,
+    )
+
+
+def test_field_assignment_widens_chigiri_to_xagusd():
+    from agent.squad.roster import build_roster
+
+    roster = build_roster(
+        symbols=("EURUSD", "GBPUSD", "USDCAD", "XAGUSD"),
+        field_assignments={"chigiri_hyoma": ("XAGUSD",)},
+    )
+    chigiri = next(a for a in roster.proposers if a.agent_id == "chigiri_hyoma")
+    assert "XAGUSD" in chigiri.symbols
+    # Untouched agent stays on natural homes (no silent widen).
+    isagi = next(a for a in roster.proposers if a.agent_id == "isagi_yoichi")
+    assert "XAGUSD" not in isagi.symbols
+
+
+def test_parse_field_assignments_cli_tokens():
+    from run_squad_live import parse_field_assignments
+
+    assert parse_field_assignments(None) is None
+    assert parse_field_assignments([]) is None
+    got = parse_field_assignments(["chigiri_hyoma:XAGUSD", "barou_shoei:USDJPY,USTEC"])
+    assert got == {
+        "chigiri_hyoma": ("XAGUSD",),
+        "barou_shoei": ("USDJPY", "USTEC"),
+    }
+    with pytest.raises(ValueError):
+        parse_field_assignments(["badtoken"])

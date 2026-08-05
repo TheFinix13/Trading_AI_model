@@ -75,23 +75,59 @@ def _configure_logging(verbose: bool) -> None:
     )
 
 
+def parse_field_assignments(
+    raw: list[str] | dict | None,
+) -> dict[str, tuple[str, ...]] | None:
+    """Parse ``agent_id:SYM[,SYM…]`` CLI tokens or a toml mapping.
+
+    Returns ``None`` when empty (byte-identical roster path). Raises
+    ``ValueError`` on malformed tokens so misconfig fails loud at boot.
+    """
+    if not raw:
+        return None
+    out: dict[str, list[str]] = {}
+    if isinstance(raw, dict):
+        for agent_id, syms in raw.items():
+            if isinstance(syms, str):
+                syms = [syms]
+            out.setdefault(str(agent_id), []).extend(str(s).upper() for s in syms)
+    else:
+        for token in raw:
+            if ":" not in token:
+                raise ValueError(
+                    f"field assignment {token!r} must be agent_id:SYMBOL[,SYMBOL…]"
+                )
+            agent_id, syms = token.split(":", 1)
+            added = [s.strip().upper() for s in syms.split(",") if s.strip()]
+            if not agent_id.strip() or not added:
+                raise ValueError(f"field assignment {token!r} is empty")
+            out.setdefault(agent_id.strip(), []).extend(added)
+    return {k: tuple(dict.fromkeys(v)) for k, v in out.items()} or None
+
+
 def build_live_roster(
     symbols,
     *,
     parity_mode: bool = False,
     enable_sae: bool = False,
+    field_assignments: dict[str, tuple[str, ...]] | None = None,
 ) -> SquadRoster:
     """Roster for the live runtime.
 
     Sae stays DISABLED unless ``enable_sae`` (the ``--enable-sae``
     flag). The Phase AE research pre-registration gate is the default;
     the flag only makes enabling operational without code edits.
+
+    ``field_assignments`` widens a proposer's symbol whitelist beyond its
+    natural home fields (D148). First live use: chigiri_hyoma → XAGUSD
+    after Phase AN-3 sealed pass.
     """
     return build_roster(
         symbols=tuple(symbols),
         barou_v12=False,
         barou_v13=not parity_mode,
         sae_config=SaeConfig(sae_enabled=True) if enable_sae else None,
+        field_assignments=field_assignments,
     )
 
 
@@ -277,22 +313,43 @@ def run_loop(args, cfg: dict) -> str:
     if notifier is not None:
         notify_fn = notifier.notify_row
 
+    field_assignments = parse_field_assignments(
+        getattr(args, "field_assign", None),
+    )
     roster = build_live_roster(
         symbols,
         parity_mode=args.parity_mode,
         enable_sae=bool(getattr(args, "enable_sae", False)),
+        field_assignments=field_assignments,
     )
     source_label = (
         f"live_market:{args.feed}" if args.feed != "cache"
         else "cache_replay"
     )
+    # Tier-2 / field-card studies (AN-3 XAGUSD) require equity=500 = the
+    # real v2 demo account. Default stays the historic $100 sandbox so
+    # majors-only boots are unchanged unless the operator opts in.
+    equity = float(getattr(args, "equity", 100.0) or 100.0)
+    if field_assignments and equity < 500.0:
+        log.warning(
+            "field_assignments set but equity=%.0f < 500 — R1 will likely "
+            "block Tier-2 min-lot risk (field card). Prefer --equity 500.",
+            equity,
+        )
     engine = SquadEngine(
         roster,
         out_dir,
         aggregator_arm=args.aggregator,
         notifier=notify_fn,
         source_label=source_label,
+        equity=equity,
     )
+    if field_assignments:
+        log.info(
+            "field assignments active: %s (equity=$%.0f)",
+            {k: list(v) for k, v in field_assignments.items()},
+            equity,
+        )
 
     broker = None
     feed_name = args.feed or default_feed_name()
@@ -685,6 +742,21 @@ def build_arg_parser(sl: dict | None = None) -> argparse.ArgumentParser:
         help="symbols to trade (default EURUSD GBPUSD USDCAD)",
     )
     ap.add_argument(
+        "--field-assign", nargs="+", default=None, metavar="AGENT:SYM",
+        help=(
+            "widen a proposer's whitelist: agent_id:SYMBOL[,SYMBOL…]. "
+            "Example: --field-assign chigiri_hyoma:XAGUSD. Requires the "
+            "symbol also in --symbols. Default None = natural homes only."
+        ),
+    )
+    ap.add_argument(
+        "--equity", type=float, default=None,
+        help=(
+            "sandbox equity for Sentinel R1 (default 100; use 500 for "
+            "Tier-2 / v2 demo account per field cards)"
+        ),
+    )
+    ap.add_argument(
         "--poll", type=float,
         default=float(sl.get("poll_seconds") or 45),
         help="seconds between polls (cache: sleep between bars; mt5: idle poll)",
@@ -760,6 +832,14 @@ def main() -> None:
     args = build_arg_parser(sl).parse_args()
     if args.symbols is None and sl.get("symbols"):
         args.symbols = list(sl["symbols"])
+    if args.field_assign is None and sl.get("field_assignments"):
+        # toml table → flatten to CLI-shaped tokens for one parser path
+        args.field_assign = [
+            f"{aid}:{','.join(syms) if isinstance(syms, (list, tuple)) else syms}"
+            for aid, syms in dict(sl["field_assignments"]).items()
+        ]
+    if args.equity is None:
+        args.equity = float(sl["equity"]) if sl.get("equity") is not None else 100.0
 
     _configure_logging(args.verbose)
     outcome = run_loop(args, cfg)

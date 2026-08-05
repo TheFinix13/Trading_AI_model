@@ -121,6 +121,16 @@ _PIPS_PER_UNIT_OVERRIDES: dict[str, float] = {
 }
 
 
+def pip_value_per_lot_for(symbol: str) -> float:
+    """USD per pip at 1.0 lot (= 100 x min-lot value).
+
+    PaperBroker dollar PnL uses this. Majors stay $10.0/pip so the
+    legacy ``BacktestConfig.pip_value_per_lot`` default is unchanged
+    on EURUSD/GBPUSD/USDCAD. XAGUSD → $50/pip (field card).
+    """
+    return pip_value_per_min_lot_for(symbol) * 100.0
+
+
 def pip_value_per_min_lot_for(symbol: str) -> float:
     """Sandbox pip value (USD per pip at broker-minimum lot) for R1.
 

@@ -5,11 +5,11 @@ submitter: "research_lead (Phase AL Tier-1 field survey)"
 submitted_at: 2026-08-04T16:45:00Z
 classification: BUG
 priority: P1
-status: fix_landed
+status: partially_closed
 route: bug
 linked_features: []
 linked_decisions: [D148, D149]
-linked_experiments: ["phase_al_tier1_field_survey", "i030_pip_semantics"]
+linked_experiments: ["phase_al_tier1_field_survey", "i030_pip_semantics", "phase_an_field_followups"]
 contact: null
 resolved_at: null
 history:
@@ -21,6 +21,10 @@ history:
     at: 2026-08-04T17:30:00Z
     by: platform_engineer
     note: "Squad-path fix shipped: per-symbol pip tables in provenance_pips.py (pip_size_for / pips_per_unit_for / pip_value_per_min_lot_for), threaded through sentinel R1, arm4 R6 risk dollars, paper-broker sl/mae/mfe/pnl/r_multiple, Rin+Barou stop-pips math, and all five proposers' provenance stamps. 10 pinned regression tests (tests/squad/test_instrument_pips.py). Parity PROVEN: 2019 full-roster replay on the 3 majors is byte-identical pre-fix vs post-fix across trades/proposals/rejections/events (each call site keeps its legacy mult-or-div op so majors' float bit patterns are unchanged). Remaining before close: USDJPY re-survey (AL amendment) must show JPY trades flow; v1-derived live path (position sizer) + zone-grammar pip thresholds stay major-calibrated -- FIELD_CARD scope per D148."
+  - stage: paper_path_residue_cleared
+    at: 2026-08-05T07:00:00Z
+    by: platform_engineer
+    note: "Chigiri:XAGUSD paper candidacy unblocked on the squad shadow path: (1) build_roster field_assignments + run_squad_live --field-assign / --equity 500 + platform.toml.example; (2) PaperBroker dollar PnL via pip_value_per_lot_for; (3) alphas.backtest._open fill spread/slip via pip_size_for(symbol) (majors default None = legacy 1e-4). Zone-grammar + v1 PositionSizer remain major-calibrated — not on Chigiri's ATR path; required before any zone agent or real-order graduation on Tier-2."
 ---
 
 # I030 — pip semantics hardcoded to 0.0001 blocks JPY pairs and every Tier-2 field

@@ -1,4 +1,18 @@
-# AI Context — brain dump (updated 2026-08-05, v0.68)
+# AI Context — brain dump (updated 2026-08-05, v0.69)
+
+> v0.69 — **AN fade settled + XAGUSD paper wiring + Barou v1.4 chartered.**
+> Sealed-fade audit (`SEALED_FADE_AUDIT.md`): `thin_sample_artifact` —
+> calendar 2024 on the full path is still PF 1.498; the lone 2024-01
+> start loss is burn-in cutting 2024-H1 (not edge death). 2025 softness
+> (n=18, PF 0.732) stays a paper-loop risk flag. Squad-vs-isolation
+> doctrine filed (`METHODOLOGY_squad_vs_isolation.md`): isolation =
+> weapon truth, squad = deployment truth; both required, neither
+> substitutes. **Paper path for Chigiri:XAGUSD shipped:**
+> `--field-assign` / `--equity 500`, symbol-aware fill costs + dollar
+> PnL, runbook `docs/runbooks/chigiri_xagusd_paper.md`. Zone grammar +
+> v1 PositionSizer still FX (not on Chigiri path). **Barou v1.4**
+> pre-registered: stop/ATR ≤ 2.25 gate (default OFF live); design
+> multi-start running; sealed USDJPY 2023+ opens only on design n-ok.
 
 > v0.68 — **Phase AN: the FIRST full-ladder validated cell.**
 > Family of 5 chartered follow-ups ran as pre-registered (research
@@ -520,14 +534,15 @@ the causal re-validation study** in `finance-research-experiments`
 parameterisation as anchor; Bachira/Isagi need re-tuning or benching
 verdicts). Open intake queue: I002 (awaiting-verification),
 I007–I009, I012–I013 (I012 only awaits the D108 audit-cadence CEO
-ratification — the pinned test shipped). **5) Phase AN DONE (2026-08-05) — act on the verdicts:**
-(a) Chigiri:XAGUSD paper-loop candidacy — clear the XAGUSD I030
-live-path residue (position sizer + zone-grammar pip thresholds),
-then shadow/paper on the v2 $500 demo, judged on fresh tape only;
-(b) charter Barou v1.x balance patch targeting the USDJPY near-miss
-(ONE mechanism change, fresh pre-reg + floors); (c) Rin:USDJPY,
-Chigiri:AUDUSD, Bachira:NZDUSD, Barou:USDCAD/USTEC — CLOSED, fail
-is final on those windows. **6) MT5
+ratification — the pinned test shipped). **5) Act on AN follow-through (in flight):**
+(a) VM: enable Chigiri:XAGUSD paper per `docs/runbooks/chigiri_xagusd_paper.md`
+(pull `product`, set field_assignments + equity=500, restart
+SquadLiveRuntime); judge on fresh tape only;
+(b) Barou v1.4 design→sealed charter running (stop/ATR≤2.25); live
+stays v1.3 until sealed PASS;
+(c) Rin:USDJPY / Chigiri:AUDUSD / Bachira:NZDUSD / Barou:USDCAD/USTEC
+CLOSED. Zone-grammar + v1 PositionSizer I030 residue remains for
+real-order / zone-agent Tier-2 only. **6) MT5
 calendar export still blocked on VM** — user must sync the Calendar
 tab in the terminal Toolbox, then re-run the diagnostic script
 (commit `f0a9062`) and report the Experts-tab lines (unblocks

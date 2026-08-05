@@ -102,8 +102,10 @@ def build_roster(
     symbols: tuple[str, ...] | list[str] = DEFAULT_SYMBOLS,
     barou_v12: bool = False,
     barou_v13: bool = True,
+    barou_v14: bool = False,
     news_config: NewsDefenderConfig | None = None,
     sae_config: SaeConfig | None = None,
+    field_assignments: dict[str, tuple[str, ...]] | None = None,
 ) -> SquadRoster:
     """Construct the 7-proposer + Kunigami + Karasu roster (Sae opt-in).
 
@@ -120,6 +122,15 @@ def build_roster(
     :mod:`agent.squad.sae_config`). Sae is instantiated regardless
     (so ``roster.sae`` is always a real object), but only appears
     in ``roster.proposers`` when ``sae_config.sae_enabled=True``.
+
+    ``field_assignments`` maps ``agent_id -> extra symbols`` and is the
+    ONLY sanctioned way to widen an agent's symbol whitelist beyond its
+    natural home fields (D148 doctrine: a field assignment is an
+    operational deployment decision, never a weapon change). First use:
+    Phase AN-3 validated chigiri_hyoma on XAGUSD (2026-08-05). Symbols
+    are appended after the narrowing pass, so the assignment survives a
+    universe that includes the new field. Default ``None`` = byte-
+    identical rosters to every pre-existing replay/parity path.
     """
     news_cfg = news_config or DEFAULT_NEWS_CONFIG
     sae_cfg = sae_config or DEFAULT_SAE_CONFIG
@@ -133,9 +144,12 @@ def build_roster(
 
     # Phase Y v1.3 weapon is Barou's constructor default (weapon_v13=True).
     # Pass weapon_v13=False for g7retry1-parity replays that predate Phase Y.
+    # barou_v14 (default False): AN autopsy stop/ATR entry gate — research
+    # / sealed charter only until a PASS verdict promotes it.
     barou = A7BarouV1(
         continuation_entry_enabled=barou_v12,
         weapon_v13=barou_v13,
+        weapon_v14=barou_v14,
     )
 
     kunigami = A10KunigamiV1()
@@ -159,6 +173,24 @@ def build_roster(
     for agent in proposers + [kunigami]:
         if hasattr(agent, "symbols") and agent.symbols:
             agent.symbols = [s for s in agent.symbols if s in symbols] or list(agent.symbols)
+
+    # Explicit field assignments widen AFTER the narrowing pass.
+    if field_assignments:
+        by_id = {a.agent_id: a for a in proposers}
+        for agent_id, extra in field_assignments.items():
+            agent = by_id.get(agent_id)
+            if agent is None or not hasattr(agent, "symbols"):
+                log.warning(
+                    "field assignment ignored: no proposer %r", agent_id,
+                )
+                continue
+            added = [s for s in extra if s not in agent.symbols]
+            if added:
+                agent.symbols = list(agent.symbols) + added
+                log.info(
+                    "field assignment: %s += %s (symbols now %s)",
+                    agent_id, added, agent.symbols,
+                )
 
     return SquadRoster(
         proposers=proposers,

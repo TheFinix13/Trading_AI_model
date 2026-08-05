@@ -60,6 +60,7 @@ from typing import Any, Optional
 
 from agent.squad.ledger import ThoughtLedger
 from agent.squad.provenance_pips import (
+    atr_pips_at,
     expected_r_from_prices,
     pip_size_for,
     regime_fit_from_atr,
@@ -252,6 +253,8 @@ class A7BarouV1(BaseStriker):
         isagi_agent_id: str = BAROU_ISAGI_AGENT_ID,
         continuation_entry_enabled: bool = False,
         weapon_v13: bool = True,
+        weapon_v14: bool = False,
+        stop_atr_max: float = 2.25,
     ) -> None:
         super().__init__(
             agent_id=agent_id,
@@ -270,6 +273,11 @@ class A7BarouV1(BaseStriker):
         # v1 weapon stays available behind ``weapon_v13=False`` for
         # cache-reproduction tests only.
         self._weapon_v13 = bool(weapon_v13)
+        # Phase AN follow-up (2026-08-05): v1.4 = v1.3 + ONE entry gate
+        # (reject stop_distance > stop_atr_max × ATR). Default OFF until
+        # the sealed charter passes — live keeps deployed v1.3.
+        self._weapon_v14 = bool(weapon_v14)
+        self._stop_atr_max = float(stop_atr_max)
         self._weapon_params: dict[str, Any] = dict(
             BAROU_V13_PARAMS if self._weapon_v13 else BAROU_V1_PARAMS
         )
@@ -553,13 +561,42 @@ class A7BarouV1(BaseStriker):
                     bachira_read_present, bachira_direction,
                     BAROU_V1_1_LONE_CONVICTION_LIFT, conviction,
                 )
+        # v1.4 ONE-mechanism gate (AN-5 autopsy Candidate A): skip late /
+        # chase entries whose structural stop is too far from price in ATR
+        # units. Threshold frozen at 2.25 in the Barou v1.x PROTOCOL before
+        # any sealed replay. Default off on the live roster.
+        stop_atr_ratio: float | None = None
+        if self._weapon_v14:
+            pip = pip_size_for(market.symbol)
+            stop_pips = abs(float(sig.entry) - float(final_stop)) / pip
+            atr_pips = atr_pips_at(prep.bars, i, pip_size=pip)
+            if atr_pips is not None and atr_pips > 0:
+                stop_atr_ratio = stop_pips / atr_pips
+                if stop_atr_ratio > self._stop_atr_max:
+                    log.debug(
+                        "[barou v1.4] stop/ATR gate reject @ tick=%d %s "
+                        "ratio=%.3f > %.3f",
+                        market.tick_id, market.symbol,
+                        stop_atr_ratio, self._stop_atr_max,
+                    )
+                    return None
+
         ladder = [LadderRung(price=float(final_tp), fraction=1.0)]
         meta = getattr(sig, "meta", {}) or {}
         devour_applied = "barou_devour_applied" in my_recent_thought.tags
+        if self._weapon_v14:
+            weapon_label = "barou_v14"
+        elif self._weapon_v13:
+            weapon_label = "barou_v13"
+        else:
+            weapon_label = "barou_v1"
         rationale: dict[str, Any] = {
             "wrapped": "agent.alphas.concepts.zone_alpha.SupplyDemandAlpha",
             "params": dict(self._weapon_params),
-            "weapon": "barou_v13" if self._weapon_v13 else "barou_v1",
+            "weapon": weapon_label,
+            "barou_v14_enabled": bool(self._weapon_v14),
+            "barou_v14_stop_atr_max": float(self._stop_atr_max),
+            "barou_v14_stop_atr_ratio": stop_atr_ratio,
             "signal_reason": sig.reason,
             "htf_align": meta.get("htf_align"),
             "bar_index": int(i),

@@ -93,7 +93,7 @@ class _CausalFVGTracker:
         self._active = still
 
 
-def _open(signal, entry_bar: Bar, cfg: Config) -> Trade:
+def _open(signal, entry_bar: Bar, cfg: Config, *, symbol: str | None = None) -> Trade:
     """Market entry on the next bar's open. Stop/TP are RE-ANCHORED to the actual
     fill using the signal's own risk geometry (its stop distance and reward:risk).
 
@@ -104,10 +104,18 @@ def _open(signal, entry_bar: Bar, cfg: Config) -> Trade:
     fill makes every alpha pay the same honest risk for the same reward.
 
     Costs are pulled per-TF via :meth:`BacktestConfig.cost_for` so cells on M1
-    don't get charged D1's spread."""
+    don't get charged D1's spread.
+
+    ``symbol`` (I030): converts cost_pips → price via ``pip_size_for``. Default
+    ``None`` keeps the legacy major pip size (1e-4) bit-identical for every
+    existing alpha-isolation caller that never passed a symbol.
+    """
+    from agent.squad.provenance_pips import DEFAULT_PIP_SIZE_MAJOR, pip_size_for
+
     spread_p, slip_p, commission = cfg.backtest.cost_for(entry_bar.timeframe.value)
-    spread = spread_p * 0.0001
-    slip = slip_p * 0.0001
+    pip = pip_size_for(symbol) if symbol else DEFAULT_PIP_SIZE_MAJOR
+    spread = spread_p * pip
+    slip = slip_p * pip
     if signal.direction == Direction.LONG:
         fill = entry_bar.open + spread / 2 + slip
     else:

@@ -16,7 +16,11 @@ from agent.alphas.backtest import _check_exit as prod_exit
 from agent.alphas.backtest import _open as prod_open
 from agent.alphas.base import AlphaSignal
 from agent.config import Config, load_config
-from agent.squad.provenance_pips import pip_size_for, pips_per_unit_for
+from agent.squad.provenance_pips import (
+    pip_size_for,
+    pip_value_per_lot_for,
+    pips_per_unit_for,
+)
 from agent.squad.tqs import compute_tqs
 from agent.squad.types import AgentProposal
 from agent.types import Bar, Direction
@@ -104,7 +108,7 @@ class PaperBroker:
             conviction=float(proposal.conviction),
             meta=dict(proposal.rationale),
         )
-        trade = prod_open(shim, next_bar, self.cfg)
+        trade = prod_open(shim, next_bar, self.cfg, symbol=proposal.symbol)
         rat = proposal.rationale or {}
         return OpenPaperTrade(
             trade=trade,
@@ -219,7 +223,7 @@ class PaperBroker:
                 pip = (trade.entry_price - bar.close) * ppu
             trade.pnl_pips = pip
             trade.pnl = (
-                pip * trade.lot_size * self.cfg.backtest.pip_value_per_lot
+                pip * trade.lot_size * pip_value_per_lot_for(ot.symbol)
                 - trade.commission
             )
         return self.score(ot)
