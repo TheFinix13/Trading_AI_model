@@ -36,7 +36,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -199,6 +199,40 @@ def _in_weekend_gap(now: datetime) -> bool:
     if wd == 6 and now.hour < 22:  # Sunday before the open
         return True
     return False
+
+
+def _weekend_overlap_seconds(start: datetime, end: datetime) -> float:
+    """Seconds of [start, end] that fall inside FX weekend gaps.
+
+    Each gap runs Friday 20:00 UTC -> Sunday 22:00 UTC (50h), matching
+    :func:`_in_weekend_gap`. Used to age the feed in MARKET hours: the
+    raw wall-clock age of the newest bar includes the weekend, so the
+    first idle poll after the Sunday reopen would otherwise always look
+    ~50h stale and page (2026-08-09 22:00 false alarm).
+    """
+    if end <= start:
+        return 0.0
+    # Anchor on the Friday 20:00 at or before `start`, minus one week so
+    # a `start` that is already inside a gap is still covered.
+    anchor = (start - timedelta(days=(start.weekday() - 4) % 7)).replace(
+        hour=20, minute=0, second=0, microsecond=0,
+    ) - timedelta(days=7)
+    total = 0.0
+    gap_start = anchor
+    while gap_start < end:
+        gap_end = gap_start + timedelta(hours=50)  # Fri 20:00 -> Sun 22:00
+        lo = max(start, gap_start)
+        hi = min(end, gap_end)
+        if hi > lo:
+            total += (hi - lo).total_seconds()
+        gap_start += timedelta(days=7)
+    return total
+
+
+def _market_age_seconds(newest_bar: datetime, now: datetime) -> float:
+    """Age of the newest closed bar counting only market-open time."""
+    raw = (now - newest_bar).total_seconds()
+    return max(0.0, raw - _weekend_overlap_seconds(newest_bar, now))
 
 
 def _build_notifier(cfg: dict, *, no_telegram: bool):
@@ -575,11 +609,19 @@ def run_loop(args, cfg: dict) -> str:
                     and not feed_stale_alerted
                     and newest_bar_seen is not None
                     and stale_after_s > 0
-                    and (now - newest_bar_seen).total_seconds() > stale_after_s
+                    # Age in MARKET hours: weekend-gap time is excluded,
+                    # so the Sunday-reopen poll doesn't see a ~50h raw
+                    # age and page falsely (2026-08-09 incident). A feed
+                    # that died mid-week still ages normally.
+                    and _market_age_seconds(newest_bar_seen, now)
+                    > stale_after_s
                     and not _in_weekend_gap(now)
                 ):
                     feed_stale_alerted = True
                     age_h = (now - newest_bar_seen).total_seconds() / 3600.0
+                    market_age_h = (
+                        _market_age_seconds(newest_bar_seen, now) / 3600.0
+                    )
                     _emit_system_status(
                         out_dir,
                         {
@@ -587,19 +629,22 @@ def run_loop(args, cfg: dict) -> str:
                             "status": "stale",
                             "newest_bar_time": newest_bar_seen.isoformat(),
                             "age_hours": round(age_h, 2),
+                            "market_age_hours": round(market_age_h, 2),
                             "threshold_hours": float(args.feed_stale_hours),
                             "message": (
-                                f"no closed bar for {age_h:.1f}h outside "
-                                "the weekend gap — feed is starving"
+                                f"no closed bar for {market_age_h:.1f} "
+                                f"market-hours ({age_h:.1f}h wall clock) — "
+                                "feed is starving"
                             ),
                         },
                         notifier=notifier,
                         notify_text=(
                             f"squad feed STALE: newest closed bar is "
-                            f"{age_h:.1f}h old (threshold "
-                            f"{args.feed_stale_hours:.0f}h) and it isn't "
-                            "the weekend. Check the MT5 terminal / VM "
-                            "network."
+                            f"{market_age_h:.1f} market-hours old "
+                            f"({age_h:.1f}h wall clock, threshold "
+                            f"{args.feed_stale_hours:.0f}h). Weekend time "
+                            "is already excluded — check the MT5 terminal "
+                            "/ VM network."
                         ),
                     )
                 if feed_name == "cache" and getattr(feed, "remaining", 1) == 0:

@@ -25,6 +25,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
@@ -268,3 +270,39 @@ def test_weekend_gap_window():
     assert not gap(datetime(2026, 8, 2, 22, 30, tzinfo=UTC_))  # Sunday open
     assert not gap(datetime(2026, 7, 31, 12, 0, tzinfo=UTC_))  # Friday midday
     assert not gap(datetime(2026, 8, 4, 12, 0, tzinfo=UTC_))   # Tuesday
+
+
+def test_market_age_excludes_weekend_gap():
+    """Regression for the 2026-08-09 22:00 false staleness page.
+
+    The newest bar closed Friday 20:00; the first idle poll after the
+    Sunday 22:00 reopen saw a raw age of ~50h and paged. In market
+    hours that age is minutes, not hours.
+    """
+    UTC_ = timezone.utc
+    age = run_squad_live._market_age_seconds
+    fri_2000 = datetime(2026, 8, 7, 20, 0, tzinfo=UTC_)   # Friday close
+    sun_2205 = datetime(2026, 8, 9, 22, 5, tzinfo=UTC_)   # just reopened
+    # Raw age is 50h05m; the entire Fri 20:00 -> Sun 22:00 gap is
+    # excluded, leaving 5 minutes of market time.
+    assert age(fri_2000, sun_2205) == pytest.approx(5 * 60.0)
+
+    # Last H4 close 16:00 Friday: 4h of Friday market time + 5 min.
+    fri_1600 = datetime(2026, 8, 7, 16, 0, tzinfo=UTC_)
+    assert age(fri_1600, sun_2205) == pytest.approx(4 * 3600.0 + 5 * 60.0)
+
+    # Monday 09:00 with still no bar: 11h market age -> genuinely stale
+    # at the default 9h threshold.
+    mon_0900 = datetime(2026, 8, 10, 9, 0, tzinfo=UTC_)
+    assert age(fri_2000, mon_0900) == pytest.approx(11 * 3600.0)
+
+    # A mid-week death ages at wall-clock speed (no weekend inside).
+    wed_1200 = datetime(2026, 8, 5, 12, 0, tzinfo=UTC_)
+    thu_1200 = datetime(2026, 8, 6, 12, 0, tzinfo=UTC_)
+    assert age(wed_1200, thu_1200) == pytest.approx(24 * 3600.0)
+
+    # Spanning two weekends excludes both 50h gaps.
+    fri_prev = datetime(2026, 7, 31, 20, 0, tzinfo=UTC_)
+    mon_after = datetime(2026, 8, 10, 9, 0, tzinfo=UTC_)
+    raw = (mon_after - fri_prev).total_seconds()
+    assert age(fri_prev, mon_after) == pytest.approx(raw - 2 * 50 * 3600.0)
