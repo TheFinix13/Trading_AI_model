@@ -27,6 +27,8 @@ from agent.platform.squad_notify import (  # noqa: E402
     build_squad_halt,
     build_squad_kickoff,
     build_squad_miss,
+    build_squad_shot,
+    build_squad_tackle,
     resolve_config,
 )
 
@@ -313,6 +315,81 @@ class TestSquadNotifierRouting:
         client = _FakeClient()
         n = _notifier(client)
         n.notify_row({"pnl_pips": "not-a-number"}, "trades.jsonl")
+
+    def test_open_event_pages_a_shot_with_geometry(self):
+        client = _FakeClient()
+        n = _notifier(client)
+        n.notify_row({
+            "type": "open", "agent_id": "bachira_meguru",
+            "symbol": "USDCAD", "direction": "long",
+            "entry": 1.37341, "stop": 1.37041, "take_profit": 1.37791,
+            "lot": 0.01, "conviction": 0.82,
+        }, "events.jsonl")
+        text = _texts(client)[0]
+        assert "SHOT ON TARGET — Bachira #8" in text
+        assert "LONG @ `1.37341`" in text
+        assert "SL `1.37041`" in text and "TP `1.37791`" in text
+        assert "conviction `0.82`" in text
+        assert "no broker order" in text
+
+    def test_sentinel_block_pages_a_tackle_with_rule_and_reason(self):
+        client = _FakeClient()
+        n = _notifier(client)
+        n.notify_row({
+            "type": "blocked", "agent_id": "nagi_seishiro",
+            "symbol": "EURUSD", "rule": "R1",
+            "reason": "min-lot risk 5.27 exceeds 5.0% equity cap 5.00",
+            "conviction": 0.93,
+        }, "events.jsonl")
+        text = _texts(client)[0]
+        assert "TACKLED — Nagi #7" in text
+        assert "Sentinel wall holds (`R1`)" in text
+        assert "min-lot risk 5.27" in text
+        assert "conviction was `0.93`" in text
+
+    def test_peer_duel_block_names_the_winner(self):
+        client = _FakeClient()
+        n = _notifier(client)
+        n.notify_row({
+            "type": "blocked", "agent_id": "reo_mikage",
+            "symbol": "EURUSD", "by": "isagi_yoichi",
+            "reason": "lower conviction on the same ball",
+        }, "events.jsonl")
+        text = _texts(client)[0]
+        assert "TACKLED — Reo" in text
+        assert "Isagi #11 takes it" in text
+
+    def test_close_events_stay_silent_no_double_page(self):
+        """trades.jsonl already pages the goal/miss -- the mirrored
+        close event row must not produce a second message."""
+        client = _FakeClient()
+        n = _notifier(client)
+        n.notify_row({"type": "close", "agent_id": "isagi_yoichi",
+                      "symbol": "EURUSD", "pnl_pips": 10.0},
+                     "events.jsonl")
+        n.notify_row({"type": "proposal", "agent_id": "isagi_yoichi",
+                      "symbol": "EURUSD"}, "events.jsonl")
+        n.notify_row({"type": "tick_summary"}, "events.jsonl")
+        assert client.calls == []
+
+    def test_goal_carries_trade_path_and_hold(self):
+        client = _FakeClient()
+        n = _notifier(client)
+        row = _trade_row()
+        row.update({
+            "mfe_pips": 44.0, "mae_pips": 31.0,
+            "entry_time": "2026-08-05T12:00:00+00:00",
+            "exit_time": "2026-08-10T12:00:00+00:00",
+        })
+        n.notify_row(row, "trades.jsonl")
+        text = _texts(client)[0]
+        assert "path best `+44.0p` / worst `-31.0p`" in text
+        assert "held `5.0d`" in text
+
+    def test_malformed_event_row_never_raises(self):
+        client = _FakeClient()
+        n = _notifier(client)
+        n.notify_row({"type": "open", "entry": "garbage"}, "events.jsonl")
 
     def test_stop_sends_halt_plus_table_after_trades(self):
         client = _FakeClient()

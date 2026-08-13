@@ -101,10 +101,38 @@ def build_squad_kickoff(*, source_label: str, n_rows: int | None,
     )
 
 
+def _fmt_px(v: float) -> str:
+    """Price with natural precision (1.16405 / 148.32 / 38.9)."""
+    return f"{v:g}"
+
+
+def _trade_path_line(*, mfe_pips: float | None, mae_pips: float | None,
+                     hold_hours: float | None) -> str | None:
+    """One 'how the trade travelled' line for goal/miss messages.
+
+    A quant reading the phone wants the shape of the trade, not just
+    the terminal pips: best excursion, worst excursion, time held.
+    """
+    bits: list[str] = []
+    if mfe_pips is not None or mae_pips is not None:
+        mfe_txt = f"+{mfe_pips:.1f}p" if mfe_pips is not None else "?"
+        mae_txt = f"-{abs(mae_pips):.1f}p" if mae_pips is not None else "?"
+        bits.append(f"path best `{mfe_txt}` / worst `{mae_txt}`")
+    if hold_hours is not None:
+        if hold_hours >= 48:
+            bits.append(f"held `{hold_hours / 24.0:.1f}d`")
+        else:
+            bits.append(f"held `{hold_hours:.0f}h`")
+    return " | ".join(bits) if bits else None
+
+
 def build_squad_goal(*, agent_id: str, symbol: str, pips: float,
                      tqs: float | None = None,
                      r_multiple: float | None = None,
-                     exit_reason: str = "") -> str:
+                     exit_reason: str = "",
+                     mfe_pips: float | None = None,
+                     mae_pips: float | None = None,
+                     hold_hours: float | None = None) -> str:
     lines = [f"*{symbol} | GOAL — {_player(agent_id)}*"]
     stat_bits = [f"`{_fmt_pips(pips)}`"]
     if r_multiple is not None:
@@ -112,6 +140,10 @@ def build_squad_goal(*, agent_id: str, symbol: str, pips: float,
     if tqs is not None:
         stat_bits.append(f"TQS `{tqs:.2f}`")
     lines.append(" | ".join(stat_bits))
+    path = _trade_path_line(mfe_pips=mfe_pips, mae_pips=mae_pips,
+                            hold_hours=hold_hours)
+    if path:
+        lines.append(path)
     if exit_reason:
         lines.append(f"Exit: {exit_reason}")
     return "\n".join(lines)
@@ -119,14 +151,61 @@ def build_squad_goal(*, agent_id: str, symbol: str, pips: float,
 
 def build_squad_miss(*, agent_id: str, symbol: str, pips: float,
                      r_multiple: float | None = None,
-                     exit_reason: str = "") -> str:
+                     exit_reason: str = "",
+                     mfe_pips: float | None = None,
+                     mae_pips: float | None = None,
+                     hold_hours: float | None = None) -> str:
     lines = [f"*{symbol} | Shot MISSED — {_player(agent_id)}*"]
     stat_bits = [f"`{_fmt_pips(pips)}`"]
     if r_multiple is not None:
         stat_bits.append(f"`{r_multiple:+.2f}R`")
     lines.append(" | ".join(stat_bits))
+    path = _trade_path_line(mfe_pips=mfe_pips, mae_pips=mae_pips,
+                            hold_hours=hold_hours)
+    if path:
+        lines.append(path)
     if exit_reason:
         lines.append(f"Exit: {exit_reason}")
+    return "\n".join(lines)
+
+
+def build_squad_shot(*, agent_id: str, symbol: str, direction: str,
+                     entry: float, stop: float, take_profit: float,
+                     lot: float | None = None,
+                     conviction: float | None = None) -> str:
+    """Shadow fill announcement — the play-by-play the phone was
+    missing: who shot, which way, and the exact geometry of the trade."""
+    lines = [f"*{symbol} | SHOT ON TARGET — {_player(agent_id)}*"]
+    lines.append(
+        f"{str(direction).upper()} @ `{_fmt_px(entry)}` | "
+        f"SL `{_fmt_px(stop)}` | TP `{_fmt_px(take_profit)}`"
+    )
+    bits: list[str] = []
+    if conviction is not None:
+        bits.append(f"conviction `{conviction:.2f}`")
+    if lot is not None:
+        bits.append(f"lot `{lot:g}`")
+    if bits:
+        lines.append(" | ".join(bits))
+    lines.append("Shadow fill — no broker order.")
+    return "\n".join(lines)
+
+
+def build_squad_tackle(*, agent_id: str, symbol: str,
+                       rule: str | None = None, by: str | None = None,
+                       reason: str = "",
+                       conviction: float | None = None) -> str:
+    """A proposal was turned away — say by whom and exactly why, so
+    Sentinel decisions stop being invisible off-system."""
+    lines = [f"*{symbol} | TACKLED — {_player(agent_id)}*"]
+    if by:
+        lines.append(f"One ball, one shooter — {_player(by)} takes it.")
+    else:
+        lines.append(f"Sentinel wall holds (`{rule or '?'}`).")
+    if reason:
+        lines.append(f"Why: {reason[:200]}")
+    if conviction is not None:
+        lines.append(f"Shot conviction was `{conviction:.2f}`.")
     return "\n".join(lines)
 
 
@@ -246,15 +325,65 @@ class SquadNotifier:
     # -- per-row routing -----------------------------------------------------
 
     def notify_row(self, row: dict, source_file: str) -> None:
-        """One paper-loop row. Only trades.jsonl rows produce messages."""
-        if source_file != "trades.jsonl":
-            return  # proposals / rejections: never page
+        """One paper-loop row.
+
+        ``trades.jsonl`` rows page as goal/miss; ``events.jsonl``
+        ``open``/``blocked`` rows page as shot/tackle play-by-play
+        (2026-08-13 enrichment — Sentinel decisions and shadow fills
+        were previously invisible off-system). Everything else —
+        proposals_all/proposals_rejected raw rows, tick summaries,
+        ``close`` events (already paged via trades.jsonl) — is silent.
+        """
         try:
-            self._handle_trade(row)
+            if source_file == "trades.jsonl":
+                self._handle_trade(row)
+            elif source_file == "events.jsonl":
+                self._handle_event(row)
         except Exception as e:  # fail-open, like the v1 notifier
             log.warning("Squad Telegram routing failed: %s", e)
 
     # -- internals -----------------------------------------------------------
+
+    def _handle_event(self, row: dict) -> None:
+        kind = row.get("type")
+        if kind == "open":
+            self._safe_send(build_squad_shot(
+                agent_id=str(row.get("agent_id", "?")),
+                symbol=str(row.get("symbol", "?")),
+                direction=str(row.get("direction", "?")),
+                entry=float(row.get("entry") or 0.0),
+                stop=float(row.get("stop") or 0.0),
+                take_profit=float(row.get("take_profit") or 0.0),
+                lot=(float(row["lot"]) if row.get("lot") is not None
+                     else None),
+                conviction=(float(row["conviction"])
+                            if row.get("conviction") is not None else None),
+            ))
+        elif kind == "blocked":
+            self._safe_send(build_squad_tackle(
+                agent_id=str(row.get("agent_id", "?")),
+                symbol=str(row.get("symbol", "?")),
+                rule=row.get("rule"),
+                by=row.get("by"),
+                reason=str(row.get("reason", "") or ""),
+                conviction=(float(row["conviction"])
+                            if row.get("conviction") is not None else None),
+            ))
+
+    @staticmethod
+    def _hold_hours(row: dict) -> float | None:
+        """Hold duration from a trades.jsonl row's iso timestamps."""
+        try:
+            entry_t = row.get("entry_time")
+            exit_t = row.get("exit_time")
+            if not entry_t or not exit_t:
+                return None
+            from datetime import datetime as _dt
+            t0 = _dt.fromisoformat(str(entry_t))
+            t1 = _dt.fromisoformat(str(exit_t))
+            return max(0.0, (t1 - t0).total_seconds() / 3600.0)
+        except (ValueError, TypeError):
+            return None
 
     def _handle_trade(self, row: dict) -> None:
         agent_id = row.get("agent_id", "?")
@@ -266,6 +395,11 @@ class SquadNotifier:
         if isinstance(tc, dict) and tc.get("tqs") is not None:
             tqs = float(tc["tqs"])
         exit_reason = str(row.get("exit_reason", "") or "")
+        mfe = (float(row["mfe_pips"]) if row.get("mfe_pips") is not None
+               else None)
+        mae = (float(row["mae_pips"]) if row.get("mae_pips") is not None
+               else None)
+        hold_hours = self._hold_hours(row)
 
         stats = self._per_agent.setdefault(
             agent_id, {"goals": 0, "trades": 0, "pips": 0.0})
@@ -275,11 +409,13 @@ class SquadNotifier:
             stats["goals"] += 1
             self._safe_send(build_squad_goal(
                 agent_id=agent_id, symbol=symbol, pips=pips, tqs=tqs,
-                r_multiple=r_multiple, exit_reason=exit_reason))
+                r_multiple=r_multiple, exit_reason=exit_reason,
+                mfe_pips=mfe, mae_pips=mae, hold_hours=hold_hours))
         else:
             self._safe_send(build_squad_miss(
                 agent_id=agent_id, symbol=symbol, pips=pips,
-                r_multiple=r_multiple, exit_reason=exit_reason))
+                r_multiple=r_multiple, exit_reason=exit_reason,
+                mfe_pips=mfe, mae_pips=mae, hold_hours=hold_hours))
 
         self._closes += 1
         if self._closes % self.summary_every == 0:
@@ -302,6 +438,8 @@ __all__ = [
     "build_squad_kickoff",
     "build_squad_goal",
     "build_squad_miss",
+    "build_squad_shot",
+    "build_squad_tackle",
     "build_squad_halt",
     "build_squad_full_time",
     "build_league_table",
