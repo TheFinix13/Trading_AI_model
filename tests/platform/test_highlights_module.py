@@ -61,6 +61,26 @@ QUIET_ROWS = [
      "symbol": "EURUSD", "tick_id": 5, "proposal_count": 0},
 ]
 
+# Pre-2026-08-13 live tapes: activity counts exist ONLY inside
+# tick_summary rows (the engine wrote proposal/blocked/open rows to the
+# split jsonl files, never to events.jsonl). Mirrors the real Aug 7
+# NFP bar: 2+2 proposals across two symbols, one Sentinel survivor.
+LEGACY_DAY = "2026-08-07"
+LEGACY_ROWS = [
+    {"t": f"{LEGACY_DAY}T12:00:00Z", "type": "tick_summary",
+     "symbol": "EURUSD", "tick_id": 10, "proposal_count": 2,
+     "post_sentinel_count": 0,
+     "players_who_proposed": ["bachira_meguru", "isagi_yoichi"]},
+    {"t": f"{LEGACY_DAY}T12:00:00Z", "type": "tick_summary",
+     "symbol": "USDCAD", "tick_id": 11, "proposal_count": 2,
+     "post_sentinel_count": 1,
+     "players_who_proposed": ["bachira_meguru", "isagi_yoichi"]},
+    {"t": f"{LEGACY_DAY}T16:00:00Z", "type": "tick_summary",
+     "symbol": "EURUSD", "tick_id": 12, "proposal_count": 1,
+     "post_sentinel_count": 0,
+     "players_who_proposed": ["nagi_seishiro"]},
+]
+
 
 def _write_tape(live: Path, rows: list, extra_lines: list[str] = ()) -> None:
     live.mkdir(parents=True, exist_ok=True)
@@ -213,6 +233,54 @@ class TestQuietDay:
         assert report["headline"] == (
             f"{QUIET_DAY}: quiet match -- 2 bars evaluated, "
             "no shots taken.")
+
+
+# --------------------------------------------------------------------
+# Legacy tapes (pre-2026-08-13): counts fall back to tick summaries
+# --------------------------------------------------------------------
+
+class TestLegacyTickSummaryFallback:
+    def _live(self, tmp_path):
+        live = tmp_path / "squad_live"
+        _write_tape(live, LEGACY_ROWS)
+        return live
+
+    def test_counts_estimated_from_tick_summaries(self, tmp_path):
+        report = highlights.match_report(LEGACY_DAY,
+                                         live_dir=self._live(tmp_path))
+        ft = report["full_time"]
+        assert ft["estimated_from_tick_summaries"] is True
+        assert ft["shots"] == 5          # 2 + 2 + 1
+        assert ft["on_target"] == 1      # post-sentinel survivors
+        assert ft["tackles"] == 4        # 5 - 1
+        assert report["quiet"] is False, (
+            "the NFP bar fired 5 proposals -- reporting it as a quiet "
+            "day is the exact bug this fallback fixes")
+
+    def test_headline_discloses_estimation(self, tmp_path):
+        report = highlights.match_report(LEGACY_DAY,
+                                         live_dir=self._live(tmp_path))
+        assert "counts from tick summaries" in report["headline"]
+        assert "5 shots" in report["headline"]
+
+    def test_players_fall_back_to_who_proposed(self, tmp_path):
+        report = highlights.match_report(LEGACY_DAY,
+                                         live_dir=self._live(tmp_path))
+        by_agent = {p["agent"]: p for p in report["players"]}
+        assert by_agent["bachira_meguru"]["shots"] == 2
+        assert by_agent["isagi_yoichi"]["shots"] == 2
+        assert by_agent["nagi_seishiro"]["shots"] == 1
+
+    def test_dedicated_rows_still_win_when_present(self, tmp_path):
+        live = _seeded(tmp_path)
+        report = highlights.match_report(ACTIVE_DAY, live_dir=live)
+        assert report["full_time"]["estimated_from_tick_summaries"] is False
+
+    def test_zero_count_summaries_stay_quiet(self, tmp_path):
+        live = _seeded(tmp_path)
+        report = highlights.match_report(QUIET_DAY, live_dir=live)
+        assert report["quiet"] is True
+        assert report["full_time"]["estimated_from_tick_summaries"] is False
 
 
 # --------------------------------------------------------------------

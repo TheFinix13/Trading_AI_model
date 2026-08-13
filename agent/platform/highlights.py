@@ -203,10 +203,30 @@ def _full_time(day_rows: list[dict]) -> dict:
     net_pips = round(sum(float(r["pnl_pips"]) for r in closes), 1)
     r_vals = [v for r in closes if (v := _num(r, "r")) is not None]
     tqs_vals = [v for r in closes if (v := _num(r, "tqs")) is not None]
+    shots = len(proposals)
+    n_tackles = len(tackles)
+    on_target = len(opens)
+    estimated = False
+    if not proposals and not tackles and not opens and ticks:
+        # Historical tapes recorded before 2026-08-13 carry only
+        # tick_summary rows (the live engine wrote proposals / blocks /
+        # fills to the split jsonl files, never to events.jsonl). The
+        # activity counts are still sitting in the summaries — fall back
+        # to them rather than reporting an all-quiet day that wasn't
+        # (the Aug 1-10 "0 shots" weekly report bug).
+        est_shots = sum(int(r.get("proposal_count") or 0) for r in ticks)
+        est_pass = sum(int(r.get("post_sentinel_count") or 0) for r in ticks)
+        if est_shots > 0:
+            estimated = True
+            shots = est_shots
+            n_tackles = max(0, est_shots - est_pass)
+            # Post-sentinel survivors are an upper bound on fills
+            # (downstream concurrency gates aren't in the summary).
+            on_target = est_pass
     return {
-        "shots": len(proposals),
-        "tackles": len(tackles),
-        "on_target": len(opens),
+        "shots": shots,
+        "tackles": n_tackles,
+        "on_target": on_target,
         "resolved": len(closes),
         "goals": goals,
         "misses": len(closes) - goals,
@@ -215,6 +235,7 @@ def _full_time(day_rows: list[dict]) -> dict:
         "mean_tqs": (round(sum(tqs_vals) / len(tqs_vals), 3)
                      if tqs_vals else None),
         "ticks_evaluated": len(ticks),
+        "estimated_from_tick_summaries": estimated,
     }
 
 
@@ -225,8 +246,10 @@ def _headline(day: str, ft: dict, quiet: bool) -> str:
     goal_word = "goal" if ft["goals"] == 1 else "goals"
     pips_txt = (f"{ft['net_pips']:+.1f}p net" if ft["resolved"]
                 else "no trades resolved")
+    est_txt = (" (counts from tick summaries)"
+               if ft.get("estimated_from_tick_summaries") else "")
     return (f"{day}: {ft['shots']} shots, {ft['on_target']} on target, "
-            f"{ft['goals']} {goal_word} -- {pips_txt}.")
+            f"{ft['goals']} {goal_word} -- {pips_txt}{est_txt}.")
 
 
 def _players_involved(day_rows: list[dict]) -> list[dict]:
@@ -256,6 +279,20 @@ def _players_involved(day_rows: list[dict]) -> list[dict]:
             d["net_pips"] += float(r["pnl_pips"])
             if float(r["pnl_pips"]) > 0:
                 d["goals"] += 1
+    if not per:
+        # Pre-2026-08-13 tapes: per-agent shot counts only exist inside
+        # tick_summary rows (players_who_proposed). Same fallback
+        # rationale as _full_time.
+        for r in day_rows:
+            if r.get("type") != "tick_summary":
+                continue
+            who = r.get("players_who_proposed")
+            if not isinstance(who, list):
+                continue
+            for key in who:
+                key = str(key).strip()
+                if key:
+                    rec(key)["shots"] += 1
     out = sorted(per.values(), key=lambda d: (-d["resolved"], -d["shots"],
                                               d["agent"]))
     for d in out:
