@@ -481,6 +481,47 @@ class SquadEngine:
             except Exception as exc:  # noqa: BLE001
                 log.warning("notifier failed: %s", exc)
 
+    def _emit_event(self, row: dict) -> None:
+        """Append one dedicated typed row to ``events.jsonl``.
+
+        The ``/highlights`` match reports, the F001/F002 surfaces and
+        the weekly squad report all read ``events.jsonl`` and expect
+        ``proposal`` / ``blocked`` / ``open`` / ``close`` rows. Until
+        2026-08-13 the live engine wrote those only to the split files
+        (``proposals_all.jsonl`` / ``proposals_rejected.jsonl`` /
+        ``trades.jsonl``), so every downstream narrative surface saw an
+        all-quiet tape (the "0 shots" weekly report of Aug 1-10). The
+        split files remain the raw archive; these rows are the
+        human-readable spine.
+        """
+        self._append_jsonl(TICK_SUMMARY_FILE, row)
+
+    @staticmethod
+    def _blocked_event(rej: dict) -> dict:
+        """Map one rejection row to a ``blocked`` tape event.
+
+        Peer-duel losses (aggregation picked another shooter) carry
+        ``by``; rule blocks (Sentinel, min-lot scale, concurrency,
+        arm4 slots) carry ``rule`` so the narrative reads "the wall
+        holds" rather than inventing a phantom tackler.
+        """
+        loser = str(rej.get("loser_agent_id") or "")
+        winner = str(rej.get("winner_agent_id") or "")
+        reason_code = str(rej.get("rejection_reason") or "")
+        row: dict = {
+            "type": "blocked",
+            "timestamp": rej.get("timestamp"),
+            "agent_id": loser or winner,
+            "symbol": rej.get("symbol"),
+            "reason": str(rej.get("sentinel_reason") or reason_code or "?"),
+            "conviction": rej.get("loser_conviction"),
+        }
+        if winner and loser and winner != loser:
+            row["by"] = winner
+        else:
+            row["rule"] = str(rej.get("sentinel_rule") or reason_code or "?")
+        return row
+
     def _emit_tick_summary(
         self,
         *,
@@ -713,6 +754,21 @@ class SquadEngine:
             proposals_this_tick.append(decision)
             result.proposals.append(decision)
             self._append_jsonl("proposals_all.jsonl", decision.to_jsonable())
+            self._emit_event({
+                "type": "proposal",
+                "timestamp": decision.timestamp.isoformat(),
+                "agent_id": decision.agent_id,
+                "symbol": decision.symbol,
+                "direction": decision.direction,
+                "conviction": float(decision.conviction),
+                "regime_fit": float(decision.regime_fit),
+                "entry": float(decision.entry),
+                "stop": float(decision.stop),
+                "narrative": str(
+                    (decision.rationale or {}).get("signal_reason") or "",
+                ),
+                "tick_id": int(tick_id),
+            })
             self.per_agent_proposals_today[decision.agent_id] = (
                 self.per_agent_proposals_today.get(decision.agent_id, 0) + 1
             )
@@ -732,6 +788,7 @@ class SquadEngine:
         for rej in outcome.rejected:
             result.rejected.append(rej)
             self._append_jsonl("proposals_rejected.jsonl", rej)
+            self._emit_event(self._blocked_event(rej))
 
         # ---- Sentinel + open ----
         closed_extra = self._admit(
@@ -781,9 +838,32 @@ class SquadEngine:
                     self.open_trades.pop(symbol, None)
         return closed
 
+    def _emit_close_event(self, tr: TradeRecord) -> None:
+        tqs_val = None
+        if isinstance(tr.tqs_components, dict):
+            tqs_val = tr.tqs_components.get("tqs")
+        self._emit_event({
+            "type": "close",
+            "timestamp": tr.exit_time.isoformat(),
+            "agent_id": tr.agent_id,
+            "symbol": tr.symbol,
+            "direction": tr.direction,
+            "entry": float(tr.entry),
+            "exit_price": float(tr.exit_price),
+            "exit_reason": tr.exit_reason,
+            "pnl_pips": float(tr.pnl_pips),
+            "r": float(tr.r_multiple),
+            "tqs": float(tqs_val) if tqs_val is not None else None,
+            "mae_pips": float(tr.mae_pips),
+            "mfe_pips": float(tr.mfe_pips),
+            "bars_held": int(tr.bars_held),
+            "entry_time": tr.entry_time.isoformat(),
+        })
+
     def _finalise(self, ot: OpenPaperTrade) -> TradeRecord:
         tr = self.broker.score(ot)
         self._append_jsonl("trades.jsonl", tr.to_jsonable())
+        self._emit_close_event(tr)
         from agent.squad.agents.a10_kunigami import ClosedTradeRecord
         self.roster.kunigami.record_closed_trade(ClosedTradeRecord(
             agent_id=tr.agent_id,
@@ -858,11 +938,13 @@ class SquadEngine:
                     "winner_direction": proposal.direction,
                     "rejection_reason": f"sentinel_{decision.rule}_block",
                     "sentinel_reason": decision.reason,
+                    "sentinel_rule": decision.rule,
                     "rank_at_block": int(rank_idx),
                     "timestamp": proposal.timestamp.isoformat(),
                 }
                 result.rejected.append(rej)
                 self._append_jsonl("proposals_rejected.jsonl", rej)
+                self._emit_event(self._blocked_event(rej))
                 continue
 
             # Sentinel passed. Track for the per-tick summary event
@@ -902,6 +984,7 @@ class SquadEngine:
                 }
                 result.rejected.append(rej)
                 self._append_jsonl("proposals_rejected.jsonl", rej)
+                self._emit_event(self._blocked_event(rej))
                 continue
 
             if self.multi_position:
@@ -922,6 +1005,7 @@ class SquadEngine:
                     }
                     result.rejected.append(rej)
                     self._append_jsonl("proposals_rejected.jsonl", rej)
+                    self._emit_event(self._blocked_event(rej))
                     continue
             elif symbol in self.open_trades:
                 rej = {
@@ -938,6 +1022,7 @@ class SquadEngine:
                 }
                 result.rejected.append(rej)
                 self._append_jsonl("proposals_rejected.jsonl", rej)
+                self._emit_event(self._blocked_event(rej))
                 continue
 
             try:
@@ -962,6 +1047,23 @@ class SquadEngine:
                     ot.trade.commission = (
                         scaled_lot / FIXED_LOT * ot.trade.commission
                     )
+                self._emit_event({
+                    "type": "open",
+                    "timestamp": (
+                        ot.trade.entry_time.isoformat()
+                        if getattr(ot.trade, "entry_time", None)
+                        else proposal.timestamp.isoformat()
+                    ),
+                    "agent_id": proposal.agent_id,
+                    "symbol": symbol,
+                    "direction": proposal.direction,
+                    "entry": float(ot.trade.entry_price),
+                    "stop": float(ot.trade.stop_price),
+                    "take_profit": float(ot.trade.tp_price),
+                    "lot": float(ot.trade.lot_size),
+                    "conviction": float(proposal.conviction),
+                    "tick_id": int(tick_id),
+                })
                 if self.multi_position:
                     self.open_trades_multi.setdefault(symbol, []).append(ot)
                     if len(self.open_trades_multi[symbol]) >= ARM4_K_POSITIONS:
@@ -1041,6 +1143,7 @@ class SquadEngine:
             last = bars_by_symbol[sym][-1]
             tr = self.broker.force_close(ot, last)
             self._append_jsonl("trades.jsonl", tr.to_jsonable())
+            self._emit_close_event(tr)
             n_trades += 1
             self.open_trades.pop(sym, None)
         for sym, trades in list(self.open_trades_multi.items()):
@@ -1048,6 +1151,7 @@ class SquadEngine:
             for ot in trades:
                 tr = self.broker.force_close(ot, last)
                 self._append_jsonl("trades.jsonl", tr.to_jsonable())
+                self._emit_close_event(tr)
                 n_trades += 1
             self.open_trades_multi.pop(sym, None)
 

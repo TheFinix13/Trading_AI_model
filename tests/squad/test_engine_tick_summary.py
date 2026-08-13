@@ -193,12 +193,18 @@ def test_proposal_that_passes_sentinel_recorded_in_summary(
     )
 
     rows = _read_events_jsonl(engine.out_dir)
-    assert len(rows) == 1
-    row = rows[0]
-    assert row["type"] == "tick_summary"
+    # 2026-08-13: the shadow fill also lands as a dedicated "open" row
+    # (the /highlights tape), preceding the tick_summary footer.
+    summaries = [r for r in rows if r["type"] == "tick_summary"]
+    assert len(summaries) == 1
+    row = summaries[0]
     assert row["proposal_count"] == 1
     assert row["post_sentinel_count"] == 1
     assert row["players_who_proposed"] == ["isagi_yoichi"]
+    opens = [r for r in rows if r["type"] == "open"]
+    assert len(opens) == 1
+    assert opens[0]["agent_id"] == "isagi_yoichi"
+    assert opens[0]["symbol"] == "EURUSD"
 
 
 def test_tick_summary_includes_thoughts_top5_field(tmp_path: Path):
