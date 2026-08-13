@@ -1,4 +1,38 @@
-# AI Context — brain dump (updated 2026-08-05, v0.70)
+# AI Context — brain dump (updated 2026-08-13, v0.71)
+
+> v0.71 — **Observability week: the tape now tells the whole story
+> (branch confirmed by user 2026-08-13: v2 → `product`, v1 → `main`;
+> research: v1 → research `main`, v2 → `multi-agent-ensemble`).**
+> Root cause of the Aug 1–10 "0 shots" weekly squad report found: the
+> live engine wrote proposals/blocks/fills ONLY to the split files
+> (`proposals_all/proposals_rejected/trades.jsonl`) while every
+> narrative surface (/highlights, F001/F002, weekly report) reads
+> `events.jsonl`, which carried only `tick_summary` rows. Fixes:
+> (1) `engine.py` now emits dedicated `proposal`/`blocked`/`open`/
+> `close` rows to events.jsonl (split files unchanged, raw archive);
+> (2) `highlights.py` falls back to tick_summary counts for pre-fix
+> historical tapes (headline discloses "counts from tick summaries");
+> (3) `squad_notify.py` pages SHOT ON TARGET (fill geometry +
+> conviction) and TACKLED (Sentinel rule + reason, or peer duel
+> winner) from events.jsonl rows; goal/miss now carry MFE/MAE path +
+> hold time. (4) Feed staleness ages in MARKET hours
+> (`_market_age_seconds` excludes Fri 20:00→Sun 22:00 gaps) — kills
+> the Sunday-reopen ~50h false page of 2026-08-09. (5) SAE ON by
+> default in `watchdog_squad.ps1` (`-NoSae` opt-out; observability
+> decision, NOT a validated-edge claim — Phase AE FAIL stands).
+> (6) New `watchdog_platform.ps1` keeps serve_platform.py:8787 alive
+> (it was down with no restarter — the localhost refusal of Aug 10).
+> Tests: +tape-consistency suite (tests/test_squad_tape_events.py),
+> +market-age, +fallback, +notify routing; full suite 2100 pass /
+> 4 fail (3 research-manifest fails pre-existing on clean checkout,
+> 1 tick-summary test updated for the new open rows). Finding, NOT
+> changed: squad has NO time-based exit — `target_hold_hours` only
+> feeds TQS scoring, so Bachira's GBPUSD short legitimately rode 5d
+> to SL vs a 24h "target"; adding a time stop = strategy change →
+> research pre-reg first. Research lane: E033 scheduled-news blackout
+> pre-reg DRAFTED (finance-research-experiments
+> `experiments/E033_scheduled_news_blackout/PROTOCOL.md`, untracked;
+> cites AD.2 prior AGAINST + AE "avoidable, not tradable" FOR).
 
 > v0.70 — **Barou v1.4 sealed FAIL; Chigiri:XAGUSD paper ready.**
 > Stop/ATR≤2.25 gate: design PASS (PF 1.163) then sealed 2023–2026
