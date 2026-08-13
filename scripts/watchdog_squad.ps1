@@ -34,7 +34,15 @@
 param(
     [string]$RepoDir = $(Split-Path -Parent $PSScriptRoot),
 
-    [int]$Poll = 45
+    [int]$Poll = 45,
+
+    # SAE event specialist ON by default per the 2026-08-13 user
+    # decision (missed Aug 7 NFP + Aug 11 CPI while disabled). Shadow
+    # paper only -- no broker orders either way. Pass -NoSae to run
+    # the pre-2026-08-13 lineup. Research context: Phase AE scored SAE
+    # "avoidable, not tradable" as a TRADER; running him live-shadow
+    # is an observability decision, not a validated-edge claim.
+    [switch]$NoSae
 )
 
 Set-Location $RepoDir
@@ -61,8 +69,10 @@ while ($true) {
         Start-Sleep -Seconds $killHoldSeconds
         continue
     }
-    Write-Watchdog "Launching: python scripts\run_squad_live.py --feed mt5 --poll $Poll"
-    python scripts\run_squad_live.py --feed mt5 --poll $Poll
+    $runArgs = @("scripts\run_squad_live.py", "--feed", "mt5", "--poll", "$Poll")
+    if (-not $NoSae) { $runArgs += "--enable-sae" }
+    Write-Watchdog "Launching: python $($runArgs -join ' ')"
+    python @runArgs
     $code = $LASTEXITCODE
     Write-Watchdog "Squad process exited (code=$code). Restarting in ${restartDelaySeconds}s..."
     Start-Sleep -Seconds $restartDelaySeconds
