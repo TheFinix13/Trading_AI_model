@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import sys
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -246,6 +246,88 @@ def test_agent_vs_external_pnl_split(tmp_path: Path) -> None:
     # account delta -21.90 = agent +28.10 (TP) + external -50 (manual drop).
     assert view.account_delta == pytest.approx(-21.90)
     assert view.external_pnl == pytest.approx(-50.0)
+
+
+def _hb(ts: datetime, symbol: str, balance: float, n_open: int = 0) -> dict:
+    return {"ts": ts, "symbol": symbol, "balance": balance,
+            "equity": balance, "open_positions": n_open}
+
+
+def test_stale_process_flapping_is_not_flagged_external(tmp_path: Path) -> None:
+    """Regression for the 2026-08-10 report: during the Aug 7 DD halt the
+    EURUSD process's account snapshot froze at the pre-close balance
+    (979.36) while USDCAD's froze at the post-close balance (958.48).
+    The old merged-interleave diff turned that ONE agent close (-20.88,
+    journaled only when the halt lifted at 00:59) into ~90 alternating
+    ±20.88 "external move" flags. Per-process detection + late-booked
+    close matching must produce ZERO checklist flags for this."""
+    t0 = datetime(2026, 8, 7, 13, 0, tzinfo=timezone.utc)
+
+    eur = wr.SymbolWeek(symbol="EURUSD")
+    usd = wr.SymbolWeek(symbol="USDCAD")
+    # EURUSD: frozen at 979.36 for 12h of 15-min heartbeats, refreshes to
+    # 958.48 only after the halt lifts (00:59 next day).
+    for i in range(48):
+        eur.heartbeats.append(_hb(t0 + timedelta(minutes=15 * i),
+                                  "EURUSD", 979.36, n_open=1))
+    eur.heartbeats.append(_hb(t0 + timedelta(hours=12, minutes=15),
+                              "EURUSD", 958.48))
+    # USDCAD: saw the post-close balance from 13:38 onward.
+    usd.heartbeats.append(_hb(t0 + timedelta(minutes=23), "USDCAD", 979.36))
+    for i in range(48):
+        usd.heartbeats.append(_hb(t0 + timedelta(minutes=38 + 15 * i),
+                                  "USDCAD", 958.48))
+    # The agent close journaled at 00:59 next day (halt auto-clear).
+    eur.trades["3053710966"] = wr.TradeRow(
+        ticket="3053710966", pnl=-20.88,
+        closed_ts=t0 + timedelta(hours=12, minutes=-1),
+    )
+
+    weeks = {"EURUSD": eur, "USDCAD": usd}
+    view = wr.build_account_view(weeks)
+
+    # USDCAD's own stream shows the one real step (13:23 -> 13:38); it is
+    # unexplained at that instant but matches the late-booked agent close.
+    assert len(view.external_moves) == 1
+    mv = view.external_moves[0]
+    assert mv["residual"] == pytest.approx(-20.88)
+    assert mv["seen_by"] == ["USDCAD"]
+    assert mv.get("late_match") is not None
+    assert mv["late_match"]["ticket"] == "3053710966"
+
+    # EURUSD's own step (00:54 -> 01:09) is explained by the close at
+    # 00:59 falling inside its window, so it is not a move at all.
+
+    # And the checklist must NOT flag anything account-level.
+    flags = wr.build_checklist(weeks, view)
+    assert not [f for f in flags if "external/manual equity move" in f]
+
+
+def test_same_event_seen_by_two_processes_dedupes_to_narrowest(tmp_path) -> None:
+    """A genuinely external move observed by two live processes must be
+    reported ONCE, localized by the process with the tightest heartbeat
+    window around it."""
+    t0 = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
+    a = wr.SymbolWeek(symbol="EURUSD")
+    b = wr.SymbolWeek(symbol="GBPUSD")
+    # EURUSD heartbeats far apart: 09:00 -> 15:00 (wide smear).
+    a.heartbeats += [_hb(t0, "EURUSD", 1000.0),
+                     _hb(t0 + timedelta(hours=6), "EURUSD", 950.0)]
+    # GBPUSD heartbeats tight: 10:00 -> 10:15.
+    b.heartbeats += [_hb(t0 + timedelta(hours=1), "GBPUSD", 1000.0),
+                     _hb(t0 + timedelta(hours=1, minutes=15), "GBPUSD", 950.0)]
+
+    view = wr.build_account_view({"EURUSD": a, "GBPUSD": b})
+    assert len(view.external_moves) == 1
+    mv = view.external_moves[0]
+    assert mv["seen_by"] == ["EURUSD", "GBPUSD"]
+    assert mv["from_ts"] == t0 + timedelta(hours=1)
+    assert mv["to_ts"] == t0 + timedelta(hours=1, minutes=15)
+    assert mv["residual"] == pytest.approx(-50.0)
+    assert mv.get("late_match") is None
+    # Still a real flag — nothing explains it.
+    flags = wr.build_checklist({"EURUSD": a, "GBPUSD": b}, view)
+    assert [f for f in flags if "external/manual equity move" in f]
 
 
 def test_kill_cascade_detection() -> None:

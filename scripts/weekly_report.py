@@ -293,6 +293,12 @@ class AccountView:
 # not an external trade.
 EXTERNAL_MOVE_TOLERANCE_USD = 0.50
 
+# Two processes observing the SAME account event report it within one
+# heartbeat interval of each other when both are live; observations of an
+# equal residual whose windows fall within this many minutes are merged
+# into one move instead of being double-reported.
+EXTERNAL_MOVE_DEDUPE_MINUTES = 30.0
+
 
 def build_account_view(weeks: dict[str, SymbolWeek]) -> AccountView:
     view = AccountView()
@@ -315,31 +321,109 @@ def build_account_view(weeks: dict[str, SymbolWeek]) -> AccountView:
         view.external_pnl = view.account_delta - _agent_pnl_between(
             closes, points[0]["ts"], points[-1]["ts"])
 
-    open_by_symbol: dict[str, int] = {}
-    prev: dict | None = None
-    for pt in points:
-        if prev is not None:
-            delta = pt["balance"] - prev["balance"]
-            if abs(delta) > 0.01:
-                explained = _agent_pnl_between(closes, prev["ts"], pt["ts"])
-                residual = delta - explained
-                if abs(residual) > EXTERNAL_MOVE_TOLERANCE_USD:
-                    known = {s: n for s, n in open_by_symbol.items()}
-                    view.external_moves.append({
-                        "from_ts": prev["ts"],
-                        "to_ts": pt["ts"],
-                        "delta": delta,
-                        "agent_explained": explained,
-                        "residual": residual,
-                        "all_agent_flat": bool(known) and all(
-                            n == 0 for n in known.values()),
-                        "open_by_symbol": known,
-                    })
-        open_by_symbol[pt["symbol"]] = pt["open_positions"]
-        prev = pt
-
+    view.external_moves = _detect_external_moves(weeks, points, closes)
     view.cascades = _kill_cascades(weeks)
     return view
+
+
+def _detect_external_moves(weeks: dict[str, SymbolWeek], points: list[dict],
+                           closes: list[tuple]) -> list[dict]:
+    """Find balance changes the agent's own closed trades do not explain.
+
+    Deltas are computed WITHIN each symbol process's own heartbeat stream,
+    never across the merged interleave. All processes log the same account,
+    but a process whose snapshot goes stale (e.g. frozen during a
+    kill-switch halt, as on 2026-08-07) makes the merged timeline "flap"
+    between the stale and fresh balances every few minutes — the
+    2026-08-10 report turned ONE agent close into ~90 false ±$20.88
+    "external move" flags that way. Within a single process's stream a
+    stale snapshot is just a flat line; the step appears once, when that
+    process refreshes.
+
+    Equal residuals observed by several processes within
+    ``EXTERNAL_MOVE_DEDUPE_MINUTES`` are merged into one move (``seen_by``
+    lists the observers). A residual that matches an agent close booked at
+    a DIFFERENT time (a late-booked close — e.g. journaled only when a
+    halt lifted) is annotated via ``late_match`` rather than flagged as
+    manual/external.
+    """
+    raw: list[dict] = []
+    for sym, wk in weeks.items():
+        prev: dict | None = None
+        for pt in sorted(wk.heartbeats, key=lambda h: h["ts"]):
+            if prev is not None:
+                delta = pt["balance"] - prev["balance"]
+                if abs(delta) > 0.01:
+                    explained = _agent_pnl_between(closes, prev["ts"], pt["ts"])
+                    residual = delta - explained
+                    if abs(residual) > EXTERNAL_MOVE_TOLERANCE_USD:
+                        raw.append({
+                            "from_ts": prev["ts"],
+                            "to_ts": pt["ts"],
+                            "delta": delta,
+                            "agent_explained": explained,
+                            "residual": residual,
+                            "seen_by": {sym},
+                        })
+            prev = pt
+    raw.sort(key=lambda m: m["from_ts"])
+
+    dedupe_window = timedelta(minutes=EXTERNAL_MOVE_DEDUPE_MINUTES)
+    moves: list[dict] = []
+    for mv in raw:
+        merged = False
+        for prior in moves:
+            same_amount = (abs(prior["residual"] - mv["residual"])
+                           <= EXTERNAL_MOVE_TOLERANCE_USD)
+            windows_close = (mv["from_ts"] <= prior["to_ts"] + dedupe_window
+                             and prior["from_ts"] <= mv["to_ts"] + dedupe_window)
+            if same_amount and windows_close:
+                # Keep the NARROWEST observation window as the
+                # representative — a process that heartbeats through the
+                # event localizes it best; a stale/frozen process only
+                # reports it as one wide smear.
+                seen = prior["seen_by"] | mv["seen_by"]
+                if (mv["to_ts"] - mv["from_ts"]
+                        < prior["to_ts"] - prior["from_ts"]):
+                    prior.update(mv)
+                prior["seen_by"] = seen
+                merged = True
+                break
+        if not merged:
+            moves.append(mv)
+
+    # Late-booked close matching: an unexplained residual that equals an
+    # agent close journaled OUTSIDE the observation window is that close
+    # surfacing late, not a manual trade. Each close is consumable once.
+    consumed: set[int] = set()
+    for mv in moves:
+        for i, (ts, pnl, csym, ticket) in enumerate(closes):
+            if i in consumed:
+                continue
+            if mv["from_ts"] < ts <= mv["to_ts"]:
+                continue  # already counted in agent_explained
+            if abs(pnl - mv["residual"]) <= EXTERNAL_MOVE_TOLERANCE_USD:
+                consumed.add(i)
+                mv["late_match"] = {
+                    "symbol": csym, "ticket": ticket, "booked_ts": ts,
+                    "pnl": pnl,
+                }
+                break
+
+    # Attach position context from the merged timeline (last count each
+    # symbol process reported at or before the move's start).
+    for mv in moves:
+        state: dict[str, int] = {}
+        for pt in points:
+            if pt["ts"] > mv["from_ts"]:
+                break
+            state[pt["symbol"]] = pt["open_positions"]
+        mv["open_by_symbol"] = state
+        mv["all_agent_flat"] = bool(state) and all(
+            n == 0 for n in state.values())
+        mv["seen_by"] = sorted(mv["seen_by"])
+
+    return moves
 
 
 def _agent_pnl_between(closes: list[tuple], start: datetime, end: datetime) -> float:
@@ -516,6 +600,11 @@ def build_checklist(weeks: dict[str, SymbolWeek],
                         f"hard cap {RISK_FLAG_ABS_PCT:.1f}%).")
 
     for mv in account.external_moves:
+        if mv.get("late_match"):
+            # Amount matches an agent close journaled at another time — an
+            # observability lag, not manual/external activity. Shown in the
+            # account table with a note; not a review flag.
+            continue
         where = ("all agent symbols FLAT" if mv["all_agent_flat"]
                  else f"open positions {mv['open_by_symbol']}")
         flags.append(
@@ -523,7 +612,7 @@ def build_checklist(weeks: dict[str, SymbolWeek],
             f"{mv['delta']:+.2f} between {mv['from_ts']:%Y-%m-%d %H:%M} and "
             f"{mv['to_ts']:%Y-%m-%d %H:%M} UTC, agent trades explain "
             f"{mv['agent_explained']:+.2f}, unexplained {mv['residual']:+.2f} "
-            f"({where}).")
+            f"(seen by {', '.join(mv['seen_by'])}; {where}).")
 
     for grp in account.cascades:
         syms = ", ".join(sorted({s for s, _ in grp}))
@@ -786,19 +875,29 @@ def render_account_section(view: AccountView,
     out.append("")
     if view.external_moves:
         out.append("Balance changes the agent's own closed trades do NOT "
-                   "explain (manual trades, other EAs, deposits/withdrawals):")
+                   "explain (manual trades, other EAs, deposits/withdrawals). "
+                   "Deltas are per-process (never across the merged "
+                   "interleave); a 'late-booked' note means the amount "
+                   "matches an agent close journaled at another time (e.g. "
+                   "surfaced only when a halt lifted) — not manual activity:")
         out.append("")
         out.append("| From (UTC) | To (UTC) | Balance delta | Agent-explained "
-                   "| Unexplained | Agent positions at the time |")
-        out.append("|---|---|---|---|---|---|")
+                   "| Unexplained | Seen by | Agent positions at the time "
+                   "| Note |")
+        out.append("|---|---|---|---|---|---|---|---|")
         for mv in view.external_moves:
             pos = ("all flat" if mv["all_agent_flat"]
                    else ", ".join(f"{s}={n}" for s, n
                                   in sorted(mv["open_by_symbol"].items()))
                    or "unknown")
+            late = mv.get("late_match")
+            note = (f"late-booked agent close {late['symbol']} "
+                    f"ticket={late['ticket']} (journaled "
+                    f"{_fmt_ts(late['booked_ts'])})" if late else "-")
             out.append(f"| {_fmt_ts(mv['from_ts'])} | {_fmt_ts(mv['to_ts'])} "
                        f"| {mv['delta']:+.2f} | {mv['agent_explained']:+.2f} "
-                       f"| {mv['residual']:+.2f} | {pos} |")
+                       f"| {mv['residual']:+.2f} "
+                       f"| {', '.join(mv['seen_by'])} | {pos} | {note} |")
     else:
         out.append("None detected - every balance change in the heartbeat "
                    "timeline is explained by the agent's own closed trades "

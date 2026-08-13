@@ -541,6 +541,9 @@ class PositionMonitor:
                         f"Kill switch activated ({active_path.name}): {reason}",
                         create_kill_file=False,
                     )
+                # A halt stops RISK, not observation: keep the account
+                # snapshot fresh and resolve closed tickets while halted.
+                await self._observe_while_halted()
                 return
             self._kill_switch_handled = False
 
@@ -657,6 +660,53 @@ class PositionMonitor:
 
         except Exception as e:
             log.debug("Monitor check error: %s", e)
+
+    async def _observe_while_halted(self) -> None:
+        """Passive observation pass run every cycle while a kill switch is
+        in force. A halt must stop RISK (no management actions, no new
+        orders) — it must not blind observability.
+
+        Before 2026-08-13 the halted branch returned without touching the
+        broker at all, which caused two coupled artifacts during the
+        2026-08-07 daily-DD halt: (a) ``last_account`` froze, so each symbol
+        process heartbeat-logged its own pre/post-close snapshot for 11h
+        and the weekly report's merged timeline "flapped" ±$20.88, spawning
+        ~90 false external-move flags; (b) the DD protective close was not
+        journaled/notified until the UTC-rollover auto-clear, so the
+        "Trade CLOSED" Telegram message arrived AFTER the re-arm messages.
+
+        This pass only reads positions/account, refreshes the heartbeat
+        snapshot, tracks excursion for tickets we already manage, and
+        resolves closed tickets. It never sends an order and never moves a
+        stop.
+        """
+        positions = await self.broker.get_open_positions(self.live_config.symbol)
+        try:
+            account = await self.broker.get_account_info()
+        except BrokerReadError as e:
+            log.warning("Account read failed during halt, skipping (will "
+                        "retry next poll): %s", e)
+            await self._maybe_reconnect_broker()
+            return
+        self._account_read_failures = 0
+        self.last_account = account
+        self.last_open_position_count = len(positions)
+
+        # Keep MAE/MFE current for tickets we already track so an eventual
+        # close reconstructs honestly; do NOT adopt unknown tickets here
+        # (adoption implies management, which a halt forbids).
+        for pos in positions:
+            if pos.ticket in self._excursion or pos.ticket in self._entry_ctx:
+                self._track_excursion(pos)
+
+        current_tickets = {p.ticket for p in positions}
+        closed_tickets = self._known_tickets - current_tickets
+        if closed_tickets:
+            for ticket in closed_tickets:
+                await self._handle_close(ticket)
+            self._breakeven_applied -= closed_tickets
+            self._partial_applied -= closed_tickets
+        self._known_tickets = current_tickets
 
     async def _latest_closed_price(self, symbol: str, timeframe: str) -> float | None:
         """Return the close of the most recent CLOSED bar for a timeframe,

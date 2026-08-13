@@ -1,4 +1,35 @@
-# AI Context — brain dump (updated 2026-08-04, v0.30)
+# AI Context — brain dump (updated 2026-08-13, v0.31)
+
+> v0.31 — **Halt-observability fixes from the 2026-08-10 weekly review
+> (observation-only, no strategy change; UNCOMMITTED pending branch
+> declaration).** Aug 1–10 week: −$45.64, 0/4 wins (NFP Aug 7 ran over
+> the EURUSD short + USDCAD long; daily-DD halt + protective close +
+> UTC-rollover self-re-arm all validated live end-to-end for the first
+> time). Two coupled artifacts diagnosed to ONE root cause —
+> `PositionMonitor._check_positions` returned early while a kill switch
+> was active, so during the 11.4h halt (a) `last_account` froze per
+> process (EURUSD/GBPUSD at pre-close $979.36, USDCAD at post-close
+> $958.48) making the weekly report's merged timeline flap ±$20.88 into
+> ~90 false "external move" flags, and (b) the EURUSD protective close
+> wasn't journaled/Telegram'd until the 00:59 auto-clear, AFTER the
+> re-arm messages. Fixes: (1) `monitor.py` new `_observe_while_halted()`
+> — halted cycles still read positions/account, refresh the heartbeat
+> snapshot and resolve closed tickets; strictly passive (no orders, no
+> stop moves, no adoption). (2) `weekly_report.py` external-move
+> detection rewritten: deltas per process stream (never the merged
+> interleave), cross-process dedupe keeping the narrowest observation
+> window (`seen_by` column), and late-booked close matching (residual ==
+> an agent close journaled at another time → annotated, not flagged).
+> 5 new tests; suite 526 pass. Squad (v2) same-window finding: report
+> zip shows `sae_enabled: false` in the live shadow loop (why SAE
+> couldn't flag NFP) and the squad DID fire on the NFP 12:00 bar —
+> 5 proposals, Sentinel blocked 4, the surviving USDCAD ticket became
+> Bachira goal #8 (+1.50R TP Aug 9); squad weekly report generator
+> under-counts (reads only dedicated event types, ignores
+> `tick_summary.proposal_count`) — v2-lane fix queued. Open v1 design
+> asks from user: scheduled-news blackout pre-reg study (E033 candidate,
+> research repo), news/fundamental layer design, v2-reviews-v1
+> "big brother" tape review.
 
 > v0.30 — **VM self-healing DONE and verified by unattended reboot**
 > (2026-08-04 12:42 UK). New `scripts/setup_self_healing.ps1` +

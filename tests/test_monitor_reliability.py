@@ -556,3 +556,112 @@ def test_successful_read_resets_failure_streak():
     asyncio.run(mon._check_positions())
     assert mon._account_read_failures == 0
     mon.broker.reconnect.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Observe-while-halted (2026-08-13 fix): a kill-switch halt stops RISK,
+# not observation. Before the fix the halted branch returned without
+# touching the broker, so (a) last_account froze — every heartbeat
+# re-reported the pre-halt balance for the whole 2026-08-07 DD halt,
+# flapping the weekly report's merged timeline ±$20.88 — and (b) the DD
+# protective close was only journaled at the UTC-rollover auto-clear,
+# AFTER the re-arm Telegram messages.
+# ---------------------------------------------------------------------------
+
+
+def _make_halted_monitor(tmp_path, symbol: str = "EURUSD") -> PositionMonitor:
+    mon = _make_monitor(symbol)
+    mon.live_config.kill_file = str(tmp_path / "kill.txt")
+    (tmp_path / "kill.txt").write_text("Auto-kill: Daily DD halt: 3.1% (limit 3.0%)")
+    mon.config.kill_switch_file = tmp_path / "master_kill_absent"
+    # Emergency close already fired when the halt was created (production
+    # sequence: DD halt -> protective close -> kill file).
+    mon._kill_switch_handled = True
+    return mon
+
+
+def test_halted_monitor_keeps_account_snapshot_fresh_and_resolves_closes(tmp_path):
+    """Reproduces EURUSD ticket 3053710966 (2026-08-07): position closed by
+    the DD protective close at halt time, but the close was only journaled
+    11h later when the halt auto-cleared, and heartbeats re-reported the
+    stale pre-close balance all night."""
+    mon = _make_monitor("EURUSD")
+    fake_pos = Position(
+        ticket=3053710966, symbol="EURUSD", direction=Direction.SHORT,
+        volume=0.04, open_price=1.15203, open_time=_utc(),
+        stop_loss=1.16055, take_profit=1.14694,
+        profit=-15.0, current_price=1.15600,
+    )
+    mon.broker.get_open_positions = AsyncMock(return_value=[fake_pos])
+    mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+        balance=979.36, equity=958.40,
+    ))
+    mon.broker.get_latest_bars = AsyncMock(return_value=[])
+    asyncio.run(mon._check_positions())  # normal cycle, position tracked
+    assert mon.last_account.balance == pytest.approx(979.36)
+
+    # Halt begins: kill file present, protective close already executed by
+    # _emergency_close_all (position gone at the broker, balance rebooked).
+    mon.live_config.kill_file = str(tmp_path / "kill.txt")
+    (tmp_path / "kill.txt").write_text(
+        "Auto-kill: Daily DD halt: 3.1% (limit 3.0%)")
+    mon.config.kill_switch_file = tmp_path / "master_kill_absent"
+    mon._kill_switch_handled = True
+    mon.broker.get_open_positions = AsyncMock(return_value=[])
+    mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+        balance=958.48, equity=958.48,
+    ))
+    mon.broker.get_closed_trade = AsyncMock(return_value=ClosedTrade(
+        exit_price=1.15725, profit=-20.88, reason="expert",
+    ))
+    closes: list[tuple[int, dict]] = []
+    mon.trade_closed_cb = lambda t, i: closes.append((t, i))
+
+    asyncio.run(mon._check_positions())  # halted cycle
+
+    # Snapshot must be FRESH (the heartbeat reads last_account).
+    assert mon.last_account.balance == pytest.approx(958.48)
+    assert mon.last_open_position_count == 0
+    # The close must be resolved NOW, not at the next UTC rollover.
+    assert closes and closes[0][0] == 3053710966
+    assert closes[0][1]["pnl"] == pytest.approx(-20.88)
+    assert mon._known_tickets == set()
+
+
+def test_halted_monitor_never_manages_or_adopts_positions(tmp_path):
+    """The halted observation pass must be strictly passive: no orders, no
+    stop moves, and no adoption of unknown tickets (adoption implies
+    management, which a halt forbids)."""
+    mon = _make_halted_monitor(tmp_path)
+    foreign = Position(
+        ticket=555, symbol="EURUSD", direction=Direction.LONG,
+        volume=0.01, open_price=1.15000, open_time=_utc(),
+        stop_loss=1.14500, take_profit=1.16000,
+        profit=1.0, current_price=1.15100,
+    )
+    mon.broker.get_open_positions = AsyncMock(return_value=[foreign])
+    mon.broker.get_account_info = AsyncMock(return_value=MagicMock(
+        balance=958.48, equity=959.48,
+    ))
+    mon.broker.close_position = AsyncMock()
+    mon.broker.modify_position = AsyncMock()
+
+    asyncio.run(mon._check_positions())
+
+    mon.broker.close_position.assert_not_awaited()
+    mon.broker.modify_position.assert_not_awaited()
+    assert 555 not in mon._entry_ctx      # not adopted while halted
+    assert mon.last_account.balance == pytest.approx(958.48)
+    # Ticket still becomes "known" so its eventual close is not missed.
+    assert mon._known_tickets == {555}
+
+
+def test_halted_monitor_survives_broker_read_failure(tmp_path):
+    mon = _make_halted_monitor(tmp_path)
+    mon.broker.get_open_positions = AsyncMock(return_value=[])
+    mon.broker.get_account_info = AsyncMock(
+        side_effect=BrokerReadError("IPC send failed"))
+    mon.broker.reconnect = AsyncMock(return_value=True)
+
+    asyncio.run(mon._check_positions())  # must not raise
+    assert mon.last_account is None      # snapshot honestly absent, not fake
