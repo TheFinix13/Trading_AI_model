@@ -11,11 +11,14 @@ Two agents run on the Windows VM:
 | **v1** | `C:\Users\Fiyin\Documents\GitHub\Trading_AI_model` | `main` | The live demo-MT5 zones trading agent. Places orders. |
 | **v2** | `C:\Users\Fiyin\Documents\GitHub\TradingAgent2` | `product` | The squad + dashboard. Shadow only, places no orders. |
 
-> **Stale path warning.** Old notes register v2 tasks against
-> `C:\TradingAgent-platform`. That clone is not where the pulled code
-> lives any more. A scheduled task pointed there fails silently every
-> time it fires — which is exactly what happened to the Night Auditor.
-> If you see that path in a snippet, the snippet is out of date.
+> **Retired path.** `C:\TradingAgent-platform` was the original v2 clone
+> and is dead. A scheduled task pointed there fails silently every time
+> it fires — which is exactly what happened to the Night Auditor. As of
+> 2026-08-19 the path is gone from every doc and script in both repos:
+> `RUNBOOK_demo_launch.md` was corrected inline, and
+> `install_vm_shortcuts.ps1` no longer auto-detects it and warns if you
+> point it there on purpose. If you still see it in a chat scrollback,
+> that scrollback is out of date.
 
 ---
 
@@ -152,6 +155,55 @@ again, `v2log` will show why.
 **Nuclear option.** `Restart-Computer`, then touch nothing. Everything is
 registered to come back on its own; if it doesn't, that is the bug worth
 reporting.
+
+---
+
+## Appendix — the raw commands, per agent
+
+The shortcuts above are a convenience layer, not a replacement. This is
+the canonical hand-typed form for each agent, kept here so it is written
+down rather than reconstructed from memory each time. **The two agents
+are fully independent: nothing below touches both, and there is no
+combined update command.**
+
+### v1 — live trading agent (branch `main`, tasks `TradingAgent-*`)
+
+```powershell
+cd C:\Users\Fiyin\Documents\GitHub\Trading_AI_model
+git fetch origin main
+git pull --ff-only origin main
+
+# restart the three symbol watchdogs
+Get-ScheduledTask -TaskName "TradingAgent-*" | ForEach-Object {
+    Stop-ScheduledTask  -TaskName $_.TaskName -ErrorAction SilentlyContinue
+    Start-ScheduledTask -TaskName $_.TaskName
+}
+
+# weekly report
+python scripts\weekly_report.py --days 14
+```
+
+### v2 — squad + dashboard (branch `product`)
+
+```powershell
+cd C:\Users\Fiyin\Documents\GitHub\TradingAgent2
+git fetch origin product
+git pull --ff-only origin product
+
+# clear a stale kill file, then restart the four v2 tasks
+Remove-Item "$HOME\Documents\TradingAgentLogs\squad_live\kill.txt" -ErrorAction SilentlyContinue
+foreach ($t in @("SquadLiveRuntime","PlatformServer","OpsWatchdog","NightAuditor")) {
+    Stop-ScheduledTask  -TaskName $t -ErrorAction SilentlyContinue
+    Start-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue
+}
+
+# weekly report
+python scripts\weekly_squad_report.py --days 10
+```
+
+The dashboard task is `PlatformServer` on the current VM; the runbook
+calls it `PlatformWebUI`. `update_platform.ps1` accepts either, but a
+hand-typed command has to use the name actually registered.
 
 ---
 

@@ -33,7 +33,7 @@
     powershell -ExecutionPolicy Bypass -File scripts\install_vm_shortcuts.ps1
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File scripts\install_vm_shortcuts.ps1 -V2Dir C:\TradingAgent-platform
+    powershell -ExecutionPolicy Bypass -File scripts\install_vm_shortcuts.ps1 -V2Dir C:\Users\Fiyin\Documents\GitHub\TradingAgent2
 #>
 param(
     [string]$V1Dir = "",
@@ -58,20 +58,30 @@ if (-not (Test-Path (Join-Path $V1Dir "scripts\update_agent.ps1"))) {
 Write-Ok "v1 clone: $V1Dir"
 
 # --- locate the v2 clone ---------------------------------------------------
+# C:\TradingAgent-platform is DELIBERATELY absent from this list. It is
+# the retired clone that silently broke the Night Auditor: the task fired
+# on schedule, found stale code, and failed with nobody watching. An old
+# copy of it may still be on disk, so auto-detecting it would resurrect
+# exactly that incident. If it is genuinely the clone you want, pass
+# -V2Dir explicitly and take the warning below.
+$staleV2 = "C:\TradingAgent-platform"
 if (-not $V2Dir) {
     $parent = Split-Path -Parent $V1Dir
     $candidates = @(
-        (Join-Path $parent "multi-pair-trading-agent-product"),
-        (Join-Path $parent "TradingAgent-platform"),
         (Join-Path $parent "TradingAgent2"),
-        "C:\TradingAgent-platform",
-        "C:\TradingAgent2",
+        (Join-Path $parent "multi-pair-trading-agent-product"),
+        (Join-Path $HOME "Documents\GitHub\TradingAgent2"),
         (Join-Path $HOME "Documents\GitHub\multi-pair-trading-agent-product"),
-        (Join-Path $HOME "Documents\GitHub\TradingAgent2")
+        "C:\TradingAgent2"
     )
     foreach ($c in $candidates) {
         if (Test-Path (Join-Path $c "scripts\run_squad_live.py")) { $V2Dir = $c; break }
     }
+}
+if ($V2Dir -and ($V2Dir.TrimEnd('\') -ieq $staleV2.TrimEnd('\'))) {
+    Write-Warn2 "$staleV2 is the RETIRED v2 clone -- this is the path that"
+    Write-Info  "silently broke the Night Auditor. Expected:"
+    Write-Info  "  C:\Users\Fiyin\Documents\GitHub\TradingAgent2"
 }
 
 if ($V2Dir -and (Test-Path (Join-Path $V2Dir "scripts\run_squad_live.py"))) {
@@ -82,7 +92,7 @@ if ($V2Dir -and (Test-Path (Join-Path $V2Dir "scripts\run_squad_live.py"))) {
 } else {
     Write-Warn2 "v2 clone not found; v2 commands will be installed but will report the missing path"
     Write-Info "Re-run with -V2Dir <path> once you know it."
-    if (-not $V2Dir) { $V2Dir = "C:\TradingAgent-platform" }
+    if (-not $V2Dir) { $V2Dir = "C:\Users\Fiyin\Documents\GitHub\TradingAgent2" }
 }
 
 # --- build the profile block ----------------------------------------------
