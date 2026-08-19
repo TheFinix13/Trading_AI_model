@@ -1,4 +1,37 @@
-# AI Context — brain dump (updated 2026-08-13, v0.71)
+# AI Context — brain dump (updated 2026-08-19, v0.72)
+
+> v0.72 — **$500-book groundwork + one-command VM update (`97b1fac`,
+> `afcff74`, pushed to `product`).** (1) `scripts/update_platform.ps1` is
+> the v2 twin of the trading clone's `update_agent.ps1`: self-locating,
+> expects branch `product`, `--ff-only`, refuses to pull over
+> uncommitted changes; verify step answers the v2 questions — is anything
+> listening on 8787, is `sae_enabled` true in `state.json`, what equity
+> R1 is sizing against, per-player books, tape age. Driven by `v2up` /
+> `v2status` from the profile shortcuts installed out of the v1 clone.
+> (2) **Config bug fixed:** `load_config` never parsed `[squad_live]`
+> `equity` / `field_assignments` (nor `burn_in_bars` /
+> `feed_stale_hours`), although `platform.toml.example` has documented
+> them since AN-3 and `run_squad_live.main()` reads them — so the file
+> silently stayed on the $100 sandbox and the XAGUSD field card was
+> silently dropped; only CLI flags worked. Unset keys stay `None`/`{}` so
+> runtime fallbacks remain authoritative. `equity = 500` in
+> `platform.toml` now works: R1's per-trade cap goes $5 → $25, max
+> admissible stop 50 → 250 pips EURUSD (10 → 50 XAGUSD). Tests:
+> `tests/platform/test_squad_live_config_block.py` (+12); platform suite
+> 1141 pass / 3 fail (all 3 pre-existing research-manifest fails).
+> (3) **F025 chartered, NOT started** —
+> `company/sprints/sprint-4-squad-demo-execution/`. The operator wants v2
+> on the real $500 Exness demo; that is a feature, not a flag. Nothing
+> calls `approval_queue.submit` on the squad path and `live_executor`'s
+> only caller is the human Execute button. Eight blockers documented; the
+> two that bite first are the lot contradiction (squad fills `FIXED_LOT`
+> 0.1, executor hard-caps `max_volume_lots` 0.01 → every order refused on
+> gate 8) and **Sentinel R1 measuring risk at min-lot while fills are
+> 10×**, which makes the advertised 5 %-per-trade cap wrong by 10× on a
+> real account — a correctness bug to fix BEFORE the bridge. Plus: no
+> close path, no magic number, `record_fill(…, 0.0)` leaves the risk
+> budget inert, kill switch doesn't cover XAGUSD, no aggregate exposure
+> cap. G7 still has no passing verdict (§11.18 FAIL 3/7).
 
 > v0.71 — **Observability week: the tape now tells the whole story
 > (branch confirmed by user 2026-08-13: v2 → `product`, v1 → `main`;
