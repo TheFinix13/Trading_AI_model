@@ -32,7 +32,7 @@
     powershell.exe -ExecutionPolicy Bypass -File scripts\watchdog_squad.ps1
 #>
 param(
-    [string]$RepoDir = $(Split-Path -Parent $PSScriptRoot),
+    [string]$RepoDir = "",
 
     [int]$Poll = 45,
 
@@ -45,7 +45,16 @@ param(
     [switch]$NoSae
 )
 
+if (-not $RepoDir) {
+    $RepoDir = Split-Path -Parent $PSScriptRoot
+}
+
 Set-Location $RepoDir
+
+# Task Scheduler sessions have no activated venv on PATH. Prefer the
+# repo venv explicitly (same lesson as watchdog_agent.ps1 / 3f46569).
+$venvPython = Join-Path $RepoDir ".venv\Scripts\python.exe"
+$python = if (Test-Path $venvPython) { $venvPython } else { "python" }
 
 $logDir = Join-Path $HOME "Documents\TradingAgentLogs\squad_live"
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
@@ -58,7 +67,7 @@ function Write-Watchdog([string]$Message) {
     Add-Content -Path $watchdogLog -Value $line
 }
 
-Write-Watchdog "Squad watchdog started (repo=$RepoDir, poll=${Poll}s)"
+Write-Watchdog "Squad watchdog started (repo=$RepoDir, poll=${Poll}s, python=$python)"
 
 $restartDelaySeconds = 15
 $killHoldSeconds = 60
@@ -71,8 +80,8 @@ while ($true) {
     }
     $runArgs = @("scripts\run_squad_live.py", "--feed", "mt5", "--poll", "$Poll")
     if (-not $NoSae) { $runArgs += "--enable-sae" }
-    Write-Watchdog "Launching: python $($runArgs -join ' ')"
-    python @runArgs
+    Write-Watchdog "Launching: $python $($runArgs -join ' ')"
+    & $python @runArgs
     $code = $LASTEXITCODE
     Write-Watchdog "Squad process exited (code=$code). Restarting in ${restartDelaySeconds}s..."
     Start-Sleep -Seconds $restartDelaySeconds

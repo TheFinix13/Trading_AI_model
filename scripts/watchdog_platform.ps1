@@ -35,14 +35,21 @@
     powershell.exe -ExecutionPolicy Bypass -File scripts\watchdog_platform.ps1
 #>
 param(
-    [string]$RepoDir = $(Split-Path -Parent $PSScriptRoot),
+    [string]$RepoDir = "",
 
     [string]$BindHost = "0.0.0.0",
 
     [int]$Port = 8787
 )
 
+if (-not $RepoDir) {
+    $RepoDir = Split-Path -Parent $PSScriptRoot
+}
+
 Set-Location $RepoDir
+
+$venvPython = Join-Path $RepoDir ".venv\Scripts\python.exe"
+$python = if (Test-Path $venvPython) { $venvPython } else { "python" }
 
 $logDir = Join-Path $HOME "Documents\TradingAgentLogs\platform"
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
@@ -66,8 +73,8 @@ while ($true) {
         Start-Sleep -Seconds $stopHoldSeconds
         continue
     }
-    Write-Watchdog "Launching: python scripts\serve_platform.py --host $BindHost --port $Port"
-    python scripts\serve_platform.py --host $BindHost --port $Port
+    Write-Watchdog "Launching: $python scripts\serve_platform.py --host $BindHost --port $Port"
+    & $python scripts\serve_platform.py --host $BindHost --port $Port
     $code = $LASTEXITCODE
     Write-Watchdog "Platform server exited (code=$code). Restarting in ${restartDelaySeconds}s..."
     Start-Sleep -Seconds $restartDelaySeconds
