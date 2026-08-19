@@ -706,14 +706,36 @@ The password lives ONLY in the platform keyring (entered once via
 
 ### 7c.1 One-time setup (on the Windows VM)
 
-1. **Store the credentials** — open `/settings/broker`, add an alias
+1. **Pin the platform's own MT5 terminal FIRST** — before storing any
+   credentials, set `[broker] terminal_path` + `portable = true` in
+   `platform.toml` and confirm a second portable terminal exists at
+   that path (setup: `docs/runbooks/dual-mt5-terminals.md`):
+
+```toml
+[broker]
+terminal_path = "C:/MT5-V2/terminal64.exe"
+portable = true
+```
+
+   This step is not optional on a single-terminal VM and it is not
+   last for a reason. Incident
+   `company/rd/intake/I015-mt5-account-contention-v1-killed.md` (P0,
+   2026-07-24, resolved under D124): with no pin, a platform-side
+   `mt5.initialize(login=…)` switches the machine-default terminal's
+   logged-in account out from under the v1 zones agent. v1 saw equity
+   drop ~$969 → $500 in one poll, concluded catastrophic drawdown,
+   wrote `kill.txt`, and attempted emergency closes against the wrong
+   account. The very next step's connection probe is itself an
+   `mt5.initialize(login=…)` call, so an unpinned run reproduces I015
+   before the executor is even enabled.
+2. **Store the credentials** — open `/settings/broker`, add an alias
    (suggested: `v2-demo`) with login `436983644`, server
    `Exness-MT5Trial9`, and the password. Probe it from the same page;
    the health pill must go green before anything else matters.
-2. **Set the risk budget** — `/risk`: per-day / per-symbol /
+3. **Set the risk budget** — `/risk`: per-day / per-symbol /
    per-strategy caps. Defaults ($100 / $50 / $50 max loss) are sane
    for a $500 demo.
-3. **Enable the executor** in `platform.toml` (all five keys matter;
+4. **Enable the executor** in `platform.toml` (all six keys matter;
    `demo_only = true` is a required acknowledgement, not decoration):
 
 ```toml
@@ -723,9 +745,21 @@ demo_only = true                 # required ack; absent/false refuses
 allowed_server_patterns = ["*Trial*", "*Demo*", "*demo*"]
 max_volume_lots = 0.01
 broker_alias = "v2-demo"
+magic = 314159                   # optional; this IS the default
 ```
 
-4. **Restart the platform server** (or the Windows service) so the
+   `magic` (F025 B5) is the MT5 magic number stamped on every order
+   and every close this executor sends. It is what makes a position on
+   a shared account attributable to v2 — reconciliation, "close only
+   my positions", and any post-hoc attribution all need it. The
+   default `314159` is deliberately distinct from the v1 zones agent's
+   `271828` (`agent/live/broker.py`), so the two never claim each
+   other's positions even if the step-1 pin were lost. A zero,
+   negative or non-integer value is ignored in favour of the default:
+   magic `0` means "unattributed" to MT5, which is the state this key
+   exists to end. `/api/executor/status` echoes the value in use, and
+   every `executions.jsonl` row carries it.
+5. **Restart the platform server** (or the Windows service) so the
    config is re-read.
 
 ### 7c.2 The ceremony order (every session)
@@ -756,6 +790,42 @@ curl -X POST http://127.0.0.1:8787/api/approvals/submit `
    `filled: ticket <n>` and the position visible in the MT5 terminal
    on the VM. The fill lands in `executions.jsonl`, the risk ledger,
    and the alerts stream (Telegram if the bridge is on).
+
+### 7c.2a Closing a position from the platform (F025 B4)
+
+Orders go out with SL/TP attached and are otherwise broker-managed.
+`POST /api/executor/close/<ticket>` is the operator's unwind path.
+There is no UI for it — use the internal endpoint:
+
+```powershell
+curl -X POST http://127.0.0.1:8787/api/executor/close/12345678 `
+  -H "X-Bluelock-Token: <your install token>"
+```
+
+What it will and will not do:
+
+- Same refusal stack as Execute: executor `enabled`, a configured
+  `broker_alias` with stored credentials, and the DEMO-ONLY guard
+  against the server the adapter actually reports. Install-token
+  gated and rate-limited like every other `/api/*` write.
+- **Only tickets this executor filled itself** may be closed — the
+  ticket must appear in `executions.jsonl` with `status: "filled"`.
+  Anything else (an unknown ticket, or the v1 agent's ticket) refuses
+  with `close_refused`. The `magic` number is the broker-side half of
+  the same claim; the audit log is the authoritative list here.
+- **The kill switch does NOT block a close.** This is deliberate: a
+  close reduces risk, so it stays available exactly when the kill
+  switch is on. A halt that also trapped you in your positions would
+  be a worse failure than the one it prevents.
+- Idempotent: closing an already-closed ticket refuses cleanly.
+- Every attempt appends a row (`closed` / `close_refused` /
+  `close_error`) to `executions.jsonl` and publishes a `trade_fill`
+  alert carrying the matching `status`.
+
+Expected on success: `{"ok": true, "status": "closed", ...}` and the
+position gone from the MT5 terminal on the VM. Note that the squad's
+own paper `_check_exit` does NOT reach the broker — a real position
+closes only via SL/TP, this route, or the terminal itself.
 
 ### 7c.3 Kill-switch drill (do this once after wiring)
 

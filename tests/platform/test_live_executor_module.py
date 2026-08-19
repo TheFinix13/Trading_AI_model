@@ -193,7 +193,8 @@ class TestExecuteFill:
         live_executor.execute_approved(aid, adapter, _demo_cfg())
         send = [c for c in adapter.calls
                 if c[0] == "send_market_order"][0]
-        assert send[1:] == ("EURUSD", "buy", 0.01, 1.0820, 1.0920)
+        assert send[1:] == ("EURUSD", "buy", 0.01, 1.0820, 1.0920,
+                            live_executor.DEFAULT_MAGIC)
 
     def test_fill_records_to_risk_budget(self) -> None:
         aid = _ready()
@@ -442,3 +443,364 @@ class TestAdapterSeam:
         assert [c[0] for c in fake.calls] == [
             "connect", "account_info", "send_market_order",
             "close_position", "shutdown"]
+
+
+# ---------------------------------------------------------------------
+# F025 B5 -- magic number on outgoing orders
+# ---------------------------------------------------------------------
+
+class TestMagicConfig:
+    def test_default_is_non_zero(self) -> None:
+        # Magic 0 means "unattributed" to MT5 -- the state B5 ends.
+        assert live_executor.DEFAULT_MAGIC != 0
+        assert live_executor.load_executor_config({})["magic"] == \
+            live_executor.DEFAULT_MAGIC
+
+    def test_does_not_collide_with_v1_zones_agent(self) -> None:
+        """The v1 agent stamps int(271828) in agent/live/broker.py. If
+        the dual-terminal pin (I015) were ever lost, a shared magic
+        would let each agent claim the other's positions."""
+        assert live_executor.DEFAULT_MAGIC != 271828
+
+    def test_explicit_value_is_honoured(self) -> None:
+        cfg = live_executor.load_executor_config({"magic": 424242})
+        assert cfg["magic"] == 424242
+
+    def test_junk_and_zero_fall_back_to_default(self) -> None:
+        for junk in (0, -1, "magic", None, [], {}):
+            cfg = live_executor.load_executor_config({"magic": junk})
+            assert cfg["magic"] == live_executor.DEFAULT_MAGIC, junk
+
+    def test_platform_config_shape_parses_magic(self) -> None:
+        cfg = live_executor.load_executor_config(
+            {"live_executor": {"magic": 777}})
+        assert cfg["magic"] == 777
+
+    def test_toml_block_parsed_by_config_module(
+            self, tmp_path: Path) -> None:
+        """agent/platform/config.py parses [live_executor] magic with
+        the same fail-closed posture as the other keys."""
+        from agent.platform.config import load_config
+        path = tmp_path / "platform.toml"
+        path.write_text("[live_executor]\nmagic = 555\n",
+                        encoding="utf-8")
+        cfg = load_config(tmp_path, path=path)
+        assert cfg["live_executor"]["magic"] == 555
+
+    def test_toml_junk_magic_keeps_default(self, tmp_path: Path) -> None:
+        from agent.platform.config import load_config
+        path = tmp_path / "platform.toml"
+        path.write_text('[live_executor]\nmagic = 0\n', encoding="utf-8")
+        cfg = load_config(tmp_path, path=path)
+        assert cfg["live_executor"]["magic"] == \
+            live_executor.DEFAULT_MAGIC
+
+    def test_config_default_matches_module_default(
+            self, tmp_path: Path) -> None:
+        from agent.platform.config import load_config
+        cfg = load_config(tmp_path, path=tmp_path / "absent.toml")
+        assert cfg["live_executor"]["magic"] == \
+            live_executor.DEFAULT_MAGIC
+
+
+class TestMagicOnOutgoingOrders:
+    def test_send_receives_configured_magic(self) -> None:
+        aid = _ready()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        live_executor.execute_approved(aid, adapter,
+                                       _demo_cfg(magic=98765))
+        send = [c for c in adapter.calls
+                if c[0] == "send_market_order"][0]
+        assert send[6] == 98765
+
+    def test_fill_row_records_magic(self) -> None:
+        aid = _ready()
+        live_executor.execute_approved(
+            aid, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        rows = live_executor.recent_executions()
+        assert rows[0]["status"] == "filled"
+        assert rows[0]["magic"] == live_executor.DEFAULT_MAGIC
+
+    def test_refusal_row_records_magic(self) -> None:
+        live_executor.execute_approved(
+            "apr_nope", live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        rows = live_executor.recent_executions()
+        assert rows[0]["status"] == "refused"
+        assert rows[0]["magic"] == live_executor.DEFAULT_MAGIC
+
+    def test_fill_alert_carries_magic(self) -> None:
+        aid = _ready()
+        live_executor.execute_approved(
+            aid, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        events = [e for e in alerts.recent(10)
+                  if e["type"] == "trade_fill"]
+        assert events[0]["payload"]["magic"] == \
+            live_executor.DEFAULT_MAGIC
+
+    def test_status_surface_exposes_magic(self) -> None:
+        status = live_executor.executor_status(_demo_cfg(magic=31337))
+        assert status["magic"] == 31337
+
+
+# ---------------------------------------------------------------------
+# F025 B4 -- the close path
+# ---------------------------------------------------------------------
+
+def _filled_ticket(ticket: int = 10001) -> int:
+    """Drive a real fill through the executor so the ticket exists in
+    executions.jsonl as `filled` -- the only closable state."""
+    aid = _ready()
+    result = live_executor.execute_approved(
+        aid, live_executor.FakeMt5OrderAdapter(
+            send_result={"ticket": ticket, "price": 1.0,
+                         "volume": 0.01}),
+        _demo_cfg())
+    assert result["status"] == "filled"
+    return ticket
+
+
+class TestClosePositionRefusals:
+    def test_disabled_executor_refuses(self) -> None:
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg(enabled=False))
+        assert result["ok"] is False
+        assert result["status"] == "close_refused"
+        assert "disabled" in result["reason"]
+        assert adapter.calls == []
+
+    def test_unknown_ticket_refused(self) -> None:
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.close_executed_position(
+            999999, adapter, _demo_cfg())
+        assert result["status"] == "close_refused"
+        assert "audit log" in result["reason"]
+        assert adapter.calls == []
+
+    def test_non_integer_ticket_refused(self) -> None:
+        result = live_executor.close_executed_position(
+            "; rm -rf /", live_executor.FakeMt5OrderAdapter(),
+            _demo_cfg())
+        assert result["status"] == "close_refused"
+        assert "integer" in result["reason"]
+
+    def test_refused_ticket_from_a_refusal_row_is_not_closable(
+            self) -> None:
+        """A refusal row carries no ticket, so nothing about a refused
+        execution makes a ticket closable."""
+        live_executor.execute_approved(
+            "apr_nope", live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        result = live_executor.close_executed_position(
+            10001, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        assert result["status"] == "close_refused"
+
+    def test_no_broker_alias_refuses(self) -> None:
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg(broker_alias=""))
+        assert result["status"] == "close_refused"
+        assert "broker_alias" in result["reason"]
+        assert adapter.calls == []
+
+    def test_demo_guard_applies_to_closes(self) -> None:
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter(
+            server="Exness-MT5Real8")
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg())
+        assert result["status"] == "close_refused"
+        assert "demo guard" in result["reason"]
+        assert not any(c[0] == "close_position" for c in adapter.calls)
+        assert adapter.shutdown_called is True
+
+    def test_missing_demo_ack_refuses(self) -> None:
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg(demo_only=False))
+        assert result["status"] == "close_refused"
+        assert "demo_only" in result["reason"]
+
+    def test_connect_refused_is_a_refusal(self) -> None:
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter(connect_ok=False)
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg())
+        assert result["status"] == "close_refused"
+        assert "connect" in result["reason"]
+
+
+class TestClosePositionSuccess:
+    def test_close_succeeds_and_reaches_adapter(self) -> None:
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg())
+        assert result["ok"] is True
+        assert result["status"] == "closed"
+        assert result["ticket"] == ticket
+        assert ("close_position", ticket,
+                live_executor.DEFAULT_MAGIC) in adapter.calls
+
+    def test_close_passes_configured_magic(self) -> None:
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg(magic=4242))
+        assert ("close_position", ticket, 4242) in adapter.calls
+
+    def test_close_appends_audit_row(self) -> None:
+        ticket = _filled_ticket()
+        live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        rows = live_executor.recent_executions()
+        assert rows[0]["status"] == "closed"
+        assert rows[0]["ticket"] == ticket
+        assert rows[0]["magic"] == live_executor.DEFAULT_MAGIC
+        # The close row inherits the fill's identity so the round trip
+        # reconciles.
+        assert rows[0]["symbol"] == "EURUSD"
+        assert rows[0]["approval_id"]
+
+    def test_close_publishes_alert(self) -> None:
+        ticket = _filled_ticket()
+        alerts.reset()
+        live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        events = [e for e in alerts.recent(10)
+                  if e["type"] == "trade_fill"]
+        assert len(events) == 1
+        assert events[0]["payload"]["status"] == "closed"
+        assert events[0]["payload"]["ticket"] == ticket
+
+    def test_close_always_shuts_the_adapter_down(self) -> None:
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        live_executor.close_executed_position(ticket, adapter,
+                                             _demo_cfg())
+        assert adapter.shutdown_called is True
+
+
+class TestCloseIdempotency:
+    def test_second_close_refuses_cleanly(self) -> None:
+        ticket = _filled_ticket()
+        first = live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        assert first["status"] == "closed"
+        adapter = live_executor.FakeMt5OrderAdapter()
+        second = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg())
+        assert second["ok"] is False
+        assert second["status"] == "close_refused"
+        assert "already closed" in second["reason"]
+        # No second close reached the broker.
+        assert adapter.calls == []
+
+    def test_second_close_is_recorded_too(self) -> None:
+        ticket = _filled_ticket()
+        live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        statuses = [r["status"] for r in live_executor.recent_executions()]
+        assert statuses[:2] == ["close_refused", "closed"]
+
+
+class TestCloseErrorPaths:
+    def test_adapter_error_becomes_close_error(self) -> None:
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter(
+            close_result={"error": "position already gone"})
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg())
+        assert result["ok"] is False
+        assert result["status"] == "close_error"
+        assert "already gone" in result["reason"]
+
+    def test_adapter_raising_is_contained(self) -> None:
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter(close_raises=True)
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg())
+        assert result["status"] == "close_error"
+        assert "adapter raised" in result["reason"]
+        assert adapter.shutdown_called is True
+
+    def test_unconfirmed_close_is_an_error(self) -> None:
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter(close_result={})
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg())
+        assert result["status"] == "close_error"
+
+    def test_close_error_publishes_alert_and_row(self) -> None:
+        ticket = _filled_ticket()
+        alerts.reset()
+        adapter = live_executor.FakeMt5OrderAdapter(
+            close_result={"error": "off quotes"})
+        live_executor.close_executed_position(ticket, adapter,
+                                              _demo_cfg())
+        events = [e for e in alerts.recent(10)
+                  if e["type"] == "trade_fill"]
+        assert events[0]["payload"]["status"] == "close_error"
+        assert live_executor.recent_executions()[0]["status"] == \
+            "close_error"
+
+    def test_failed_close_does_not_block_a_retry(self) -> None:
+        """A close_error leaves the ticket closable -- unlike an
+        approval, a position that is still open must stay unwindable."""
+        ticket = _filled_ticket()
+        live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(
+                close_result={"error": "off quotes"}), _demo_cfg())
+        retry = live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        assert retry["status"] == "closed"
+
+
+class TestCloseIsNotBlockedByKillSwitch:
+    """Deliberate asymmetry with execute_approved: a close is
+    risk-REDUCING, so it must remain available exactly when the kill
+    switch is on. A halt that trapped the operator in their positions
+    would be a worse failure than the one it prevents."""
+
+    def test_global_kill_does_not_block_a_close(self) -> None:
+        from agent.platform import kill_switch_admin
+        ticket = _filled_ticket()
+        assert kill_switch_admin.activate_kill(
+            symbol=None, reason="B4 asymmetry", by="test") is True
+        kill_switches.reset_cache_for_tests()
+        assert kill_switches.is_killed("EURUSD") is True
+        result = live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        assert result["ok"] is True
+        assert result["status"] == "closed"
+
+    def test_per_symbol_kill_does_not_block_a_close(self) -> None:
+        from agent.platform import kill_switch_admin
+        ticket = _filled_ticket()
+        assert kill_switch_admin.activate_kill(
+            "EURUSD", reason="B4 asymmetry", by="test") is True
+        kill_switches.reset_cache_for_tests()
+        result = live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        assert result["status"] == "closed"
+
+    def test_new_orders_are_still_blocked_by_the_same_kill(self) -> None:
+        """The asymmetry is one-directional: the send path must still
+        refuse while the close path proceeds."""
+        from agent.platform import kill_switch_admin
+        ticket = _filled_ticket()
+        aid = _open_gates_and_approve()
+        assert kill_switch_admin.activate_kill(
+            symbol=None, reason="B4 asymmetry", by="test") is True
+        kill_switches.reset_cache_for_tests()
+        send = live_executor.execute_approved(
+            aid, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        assert send["status"] == "refused"
+        assert "kill" in send["reason"].lower()
+        close = live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        assert close["status"] == "closed"

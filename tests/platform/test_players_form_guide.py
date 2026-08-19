@@ -288,8 +288,9 @@ def test_list_players_cards_carry_form_and_gate(tmp_live_dir: Path):
     cards = {p["id"]: p for p in players.list_players(live_dir=tmp_live_dir)}
     assert cards["isagi"]["form"] is not None
     assert set(cards["isagi"]["form"].split("-")) <= {"W", "L"}
-    # Sae rides the shipped manifest -> benched on the index card too.
-    assert cards["sae"]["gate"] == "benched"
+    # Aoshi rides the shipped manifest -> benched on the index card too.
+    # (Phase AE's campaign id keeps the pre-rename spelling; it's sealed.)
+    assert cards["aoshi"]["gate"] == "benched"
     assert cards["kunigami"]["gate"] == "retired"
 
 

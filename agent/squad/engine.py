@@ -42,6 +42,10 @@ from agent.squad.sentinel import (
     check_r6_per_symbol_risk_cap,
     evaluate_proposal as sentinel_evaluate_proposal,
 )
+from agent.squad.agents.a09_sae import (
+    AGENT_ID as AOSHI_AGENT_ID,
+    LEGACY_AGENT_IDS as AOSHI_LEGACY_AGENT_IDS,
+)
 from agent.squad.types import AgentProposal, MarketState, Thought, YieldReason
 from agent.squad.workspace import ReasoningWorkspace, WorkspaceSnapshot
 from agent.types import Bar
@@ -67,6 +71,18 @@ WORKSPACE_SNAPSHOT_CAP = 60
 # Top-N thoughts embedded into every tick_summary event so historical
 # replays surface the same "peek into the squad's head" as LIVE mode.
 TICK_SUMMARY_TOP_THOUGHTS = 5
+
+# Agent-id renames, so a state.json written by an earlier build keeps its
+# per-agent books instead of silently resetting the player to starting
+# equity. Only the A9 event specialist has been renamed (2026-08-19,
+# sae_itoshi -> aoshi_tokimitsu).
+AGENT_ID_RENAMES: dict[str, str] = {
+    legacy: AOSHI_AGENT_ID for legacy in AOSHI_LEGACY_AGENT_IDS
+}
+
+
+def _migrate_agent_id(agent_id: str) -> str:
+    return AGENT_ID_RENAMES.get(agent_id, agent_id)
 
 JSONL_FILES = (
     "proposals_all.jsonl",
@@ -372,10 +388,12 @@ class SquadEngine:
         })
         self.last_bar_times.update(dict(state.get("last_bar_times") or {}))
         self.per_agent_consecutive_losses.update({
-            k: int(v) for k, v in (state.get("per_agent_consecutive_losses") or {}).items()
+            _migrate_agent_id(k): int(v)
+            for k, v in (state.get("per_agent_consecutive_losses") or {}).items()
         })
         self.per_agent_equity.update({
-            k: float(v) for k, v in (state.get("per_agent_equity") or {}).items()
+            _migrate_agent_id(k): float(v)
+            for k, v in (state.get("per_agent_equity") or {}).items()
         })
         self.workspace_publish_counts.update(
             dict(state.get("workspace_publish_counts") or {}),

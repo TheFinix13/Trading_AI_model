@@ -1,4 +1,42 @@
-# AI Context — brain dump (updated 2026-08-19, v0.72)
+# AI Context — brain dump (updated 2026-08-19, v0.73)
+
+> v0.73 — **F025 safe prerequisites landed + A9 renamed
+> `sae_itoshi` → `aoshi_tokimitsu`.** Four of the eight F025 blockers
+> were fixable without touching the squad→executor bridge, so they
+> shipped ahead of the sprint: (B4) `live_executor.close_executed_position`
+> — a real close path, deliberately kill-switch-EXEMPT (a kill switch
+> must never trap you in a position) but still demo-only and
+> executor-enable gated, exposed at `POST /api/executor/close/<ticket>`;
+> (B5) magic number `314159` stamped on every outgoing MT5 request and
+> every `executions.jsonl` row, so v2's orders are attributable against
+> v1's on a shared account, configurable via `[live_executor] magic`;
+> (B7) kill-switch coverage 6 → 17 symbols (XAGUSD/XAUUSD/indices/oil
+> were silently fail-OPEN), and the settings grid now reads
+> `supported_symbols` off the API instead of a hardcoded majors list, so
+> adding a symbol no longer needs a page edit; plus the RUNBOOK §7c.1
+> gap where the `[broker] terminal_path` + `portable = true` pin (the
+> D124 account-contention fix) wasn't in the enable ceremony. **Still
+> open and still blocking the $500 bridge: B1 (nothing calls
+> `approval_queue.submit` on the squad path), B2 (squad fills 0.1 lot
+> vs executor's 0.01 hard cap — every order would refuse on gate 8),
+> B3 (Sentinel R1 measures risk at min-lot while fills are 10× — the
+> advertised 5 %-per-trade cap is wrong by 10× on a real account; fix
+> BEFORE the bridge), B6 (`record_fill(…, 0.0)` leaves the risk budget
+> inert), B8 (no aggregate exposure cap).** G7 still FAIL 3/7.
+> **A9 rename:** the M001 roster assigns A9 to Aoshi Tokimitsu
+> ("macro-event-only vol-breakout — FOMC/NFP/CPI", verbatim this
+> weapon) while "Sae Itoshi (foil)" is the frozen ADVERSARIAL baseline
+> the squad must beat; shipping the striker under the opponent's name
+> made every report ambiguous between a player and a benchmark. Renamed
+> across roster/players/pages/engine; `state.json` migrates
+> `per_agent_equity` + `per_agent_consecutive_losses` on load
+> (`AGENT_ID_RENAMES`), legacy ids stay resolvable so pre-rename tapes
+> and bookmarked `/players/sae` URLs still land. **Config keys keep the
+> old spelling on purpose** — `SaeConfig`, `sae_enabled`,
+> `--enable-sae`, `a09_sae.py` — so the VM watchdogs need no edit.
+> Phase AE's FAIL verdict is unrevised: he is on the pitch as
+> telemetry, not as a trusted trader. Suite: 2165 pass / 4 fail
+> (3 pre-existing research-manifest fails + 1 fixed here).
 
 > v0.72 — **$500-book groundwork + one-command VM update (`97b1fac`,
 > `afcff74`, pushed to `product`).** (1) `scripts/update_platform.ps1` is
@@ -621,7 +659,8 @@ to squad's real-order path; Sprint 4 `/feedback` route (D084 defers —
 F013/F014 signals drain via User Advocate + CPO Monday triage);
 external peer-review budget (Sprint 6+ whitepaper); squad → real
 broker orders; v1 zones live-path rewrite; any touch of
-`agent/{live,risk,squad}/*` from a non-integration sprint; enabling
-Sae AT ALL (Phase AE FAIL — v2 needs fresh pre-reg, D111); PLG
+`agent/{live,risk,squad}/*` from a non-integration sprint; TRUSTING
+Aoshi's event trades (Phase AE FAIL stands, D111 — he is enabled for
+OBSERVATION since 2026-08-13; a redesign needs fresh pre-reg); PLG
 cooldown retune (E013 f/u); any spend
 (Finance zero-authority).

@@ -153,12 +153,16 @@ def _defaults(repo_root: Path) -> dict:
         # any connected server whose name doesn't match
         # `allowed_server_patterns` (fail-closed). Real-broker
         # connections stay a hard NO per escalation.md section 5.
+        # `magic` (F025 B5) is stamped on every order the executor
+        # sends so a position on a shared account is attributable to
+        # v2; it must stay distinct from the v1 zones agent's 271828.
         "live_executor": {
             "enabled": False,
             "demo_only": False,   # absent-in-toml == not acknowledged
             "allowed_server_patterns": ["*Trial*", "*Demo*", "*demo*"],
             "max_volume_lots": 0.01,
             "broker_alias": "",
+            "magic": 314159,
         },
     }
 
@@ -348,6 +352,15 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
         if le.get("broker_alias"):
             cfg["live_executor"]["broker_alias"] = str(
                 le["broker_alias"]).strip()
+        # A zero / negative / junk magic would put unattributable
+        # orders on the account, so it keeps the default instead.
+        if le.get("magic") is not None:
+            try:
+                magic = int(le["magic"])
+                if magic > 0:
+                    cfg["live_executor"]["magic"] = magic
+            except (TypeError, ValueError):
+                pass
     if cfg["live_dir"] is None:
         cfg["live_dir"] = Path(cfg["log_root"]) / "squad_live"
     return cfg

@@ -16,9 +16,8 @@ Public API
 
     KILL_DIR_ENV: str = "BLUELOCK_KILL_DIR"
     DEFAULT_KILL_DIRNAME: str = "kill"
-    SUPPORTED_SYMBOLS: tuple[str, ...] = (
-        "EURUSD", "GBPUSD", "USDCAD", "USDJPY", "USDCHF",
-    )
+    SUPPORTED_SYMBOLS: tuple[str, ...]   # majors, then metals /
+                                         # energies / indices
     GLOBAL_KEY: str = "GLOBAL"
 
     kill_dir() -> Path
@@ -57,8 +56,21 @@ from agent.platform import credentials  # for the config-dir default
 
 KILL_DIR_ENV: str = "BLUELOCK_KILL_DIR"
 DEFAULT_KILL_DIRNAME: str = "kill"
+# F025 B7 (2026-08-19): a per-symbol kill is only a real safety control
+# for symbols in this tuple -- `is_killed` fails OPEN for anything else
+# (see its docstring), so the original five majors left a per-symbol
+# kill on XAGUSD silently doing nothing while the squad was already
+# cleared to shadow-paper it (Phase AN-3). The list now covers every
+# instrument `agent/squad/provenance_pips.py` has pip conventions for,
+# which is the authoritative set of symbols the squad can size a trade
+# on. The first five entries keep their original ORDER because
+# `list_killed` documents ordering behaviour.
 SUPPORTED_SYMBOLS: tuple[str, ...] = (
     "EURUSD", "GBPUSD", "USDCAD", "USDJPY", "USDCHF",
+    "XAUUSD", "XAGUSD",
+    "USOIL", "UKOIL", "NATGAS",
+    "USTEC", "US500", "US30", "DE40", "UK100", "JP225",
+    "BTCUSD",
 )
 GLOBAL_KEY: str = "GLOBAL"
 
@@ -144,6 +156,13 @@ def is_killed(symbol: str | None = None) -> bool:
       global flag exists.
     - Unknown symbol -- returns False (validated only in the admin
       write path; the read path never raises).
+
+    The unknown-symbol case is fail-OPEN, which is the wrong default
+    for a safety primitive: a symbol absent from
+    :data:`SUPPORTED_SYMBOLS` can only be halted by the GLOBAL flag,
+    and a per-symbol kill on it is silently a no-op. Widening the
+    tuple (F025 B7) narrows that gap rather than closing it; changing
+    the semantics is a separate decision.
     """
     entry = _read_state()
     if GLOBAL_KEY in entry.killed_scopes:

@@ -30,6 +30,14 @@ silently replayable), an alert is published, and there is NO
 automatic retry. Every attempt -- refusals included -- appends one
 row to ``<config_dir>/executions.jsonl``.
 
+Every outgoing order carries ``magic`` (:data:`DEFAULT_MAGIC`), which
+is what makes an order from THIS executor attributable on a shared
+account. :func:`close_executed_position` (F025 B4) is the unwind
+path: same gate stack as :func:`execute_approved`, restricted to
+tickets this executor's own audit log recorded as ``filled``, and
+DELIBERATELY not gated on the kill switch -- a close reduces risk and
+must stay available exactly when the kill switch is on.
+
 MetaTrader5 is a Windows-only package; ALL MT5 interaction rides the
 injectable :class:`Mt5OrderAdapter` seam. :class:`RealMt5OrderAdapter`
 imports MetaTrader5 lazily inside methods; tests (and non-Windows
@@ -57,6 +65,19 @@ EXECUTIONS_FILENAME: str = "executions.jsonl"
 DEFAULT_MAX_VOLUME_LOTS: float = 0.01
 DEFAULT_ALLOWED_SERVER_PATTERNS: tuple[str, ...] = (
     "*Trial*", "*Demo*", "*demo*")
+
+# F025 B5 -- MT5 `magic` stamped on every order this executor sends, so
+# a position on a shared account can be attributed back to the v2
+# platform (reconciliation, "close only my positions", post-hoc
+# audits). Collision check at 2026-08-19: the ONLY other magic in
+# either clone is the v1 zones agent's `int(271828)` (Euler), in
+# agent/live/broker.py's open + close requests; there is no
+# agent/broker/ package. 314159 (pi) keeps the v1 idiom while being a
+# distinct value, so even if the dual-terminal pin (§7c.1 / I015) were
+# ever lost and both agents landed on one account, neither would claim
+# the other's positions. Must stay non-zero: MT5 treats magic 0 as
+# "unattributed", which is the state B5 exists to end.
+DEFAULT_MAGIC: int = 314159
 
 # Reported by executor_status().state:
 #   disabled       -- [live_executor] enabled is false (gate #5)
@@ -88,9 +109,11 @@ class Mt5OrderAdapter(Protocol):
     def account_info(self) -> dict: ...
 
     def send_market_order(self, symbol: str, side: str, volume: float,
-                          sl: float, tp: float) -> dict: ...
+                          sl: float, tp: float,
+                          magic: int = DEFAULT_MAGIC) -> dict: ...
 
-    def close_position(self, ticket: int) -> dict: ...
+    def close_position(self, ticket: int,
+                       magic: int = DEFAULT_MAGIC) -> dict: ...
 
     def shutdown(self) -> None: ...
 
@@ -150,7 +173,8 @@ class RealMt5OrderAdapter:
         }
 
     def send_market_order(self, symbol: str, side: str, volume: float,
-                          sl: float, tp: float) -> dict:
+                          sl: float, tp: float,
+                          magic: int = DEFAULT_MAGIC) -> dict:
         mt5 = self._mt5()
         tick = mt5.symbol_info_tick(symbol)
         if tick is None:
@@ -165,6 +189,7 @@ class RealMt5OrderAdapter:
             "sl": float(sl),
             "tp": float(tp),
             "deviation": 20,
+            "magic": int(magic),
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
@@ -178,7 +203,8 @@ class RealMt5OrderAdapter:
                 "price": float(getattr(result, "price", 0.0)),
                 "volume": float(getattr(result, "volume", volume))}
 
-    def close_position(self, ticket: int) -> dict:
+    def close_position(self, ticket: int,
+                       magic: int = DEFAULT_MAGIC) -> dict:
         mt5 = self._mt5()
         positions = mt5.positions_get(ticket=int(ticket))
         if not positions:
@@ -197,6 +223,9 @@ class RealMt5OrderAdapter:
             "position": int(ticket),
             "price": tick.ask if closing_buy else tick.bid,
             "deviation": 20,
+            # The closing deal is an order too -- stamp it so the round
+            # trip reads as ours end-to-end, not just the open leg.
+            "magic": int(magic),
             "type_time": mt5.ORDER_TIME_GTC,
             "type_filling": mt5.ORDER_FILLING_IOC,
         }
@@ -224,14 +253,18 @@ class FakeMt5OrderAdapter:
     def __init__(self, *, server: str = "Exness-MT5Trial9",
                  connect_ok: bool = True,
                  send_result: dict | None = None,
+                 close_result: dict | None = None,
                  connect_raises: bool = False,
-                 send_raises: bool = False) -> None:
+                 send_raises: bool = False,
+                 close_raises: bool = False) -> None:
         self.server = server
         self.connect_ok = connect_ok
         self.send_result = send_result if send_result is not None \
             else {"ticket": 10001, "price": 1.0, "volume": 0.01}
+        self.close_result = close_result
         self.connect_raises = connect_raises
         self.send_raises = send_raises
+        self.close_raises = close_raises
         self.calls: list[tuple] = []
         self.connected_alias: str | None = None
         self.shutdown_called = False
@@ -250,15 +283,21 @@ class FakeMt5OrderAdapter:
                 "balance": 500.0, "currency": "USD"}
 
     def send_market_order(self, symbol: str, side: str, volume: float,
-                          sl: float, tp: float) -> dict:
+                          sl: float, tp: float,
+                          magic: int = DEFAULT_MAGIC) -> dict:
         self.calls.append(("send_market_order", symbol, side, volume,
-                           sl, tp))
+                           sl, tp, magic))
         if self.send_raises:
             raise RuntimeError("fake send explosion")
         return dict(self.send_result)
 
-    def close_position(self, ticket: int) -> dict:
-        self.calls.append(("close_position", ticket))
+    def close_position(self, ticket: int,
+                       magic: int = DEFAULT_MAGIC) -> dict:
+        self.calls.append(("close_position", ticket, magic))
+        if self.close_raises:
+            raise RuntimeError("fake close explosion")
+        if self.close_result is not None:
+            return dict(self.close_result)
         return {"ticket": int(ticket), "closed": True}
 
     def shutdown(self) -> None:
@@ -297,12 +336,21 @@ def load_executor_config(cfg: dict | None = None) -> dict:
             max_vol = DEFAULT_MAX_VOLUME_LOTS
     except (TypeError, ValueError):
         max_vol = DEFAULT_MAX_VOLUME_LOTS
+    # A zero / negative / junk magic would send unattributable orders,
+    # so it falls back to the default rather than being honoured.
+    try:
+        magic = int(block.get("magic", DEFAULT_MAGIC))
+        if magic <= 0:
+            magic = DEFAULT_MAGIC
+    except (TypeError, ValueError):
+        magic = DEFAULT_MAGIC
     return {
         "enabled": block.get("enabled") is True,
         "demo_only": block.get("demo_only") is True,
         "allowed_server_patterns": cleaned,
         "max_volume_lots": max_vol,
         "broker_alias": str(block.get("broker_alias") or "").strip(),
+        "magic": magic,
     }
 
 
@@ -400,8 +448,9 @@ def _mark_consumed(approval_id: str) -> None:
         _CONSUMED.add(approval_id)
 
 
-def recent_executions(limit: int = 20) -> list[dict]:
-    """Last N rows of the executions audit JSONL, newest first."""
+def _execution_rows() -> list[dict]:
+    """Every parseable row of the executions audit JSONL, oldest
+    first. Corrupt lines are skipped, never raised."""
     path = _executions_path()
     if not path.is_file():
         return []
@@ -420,7 +469,42 @@ def recent_executions(limit: int = 20) -> list[dict]:
             continue
         if isinstance(row, dict):
             rows.append(row)
-    return rows[::-1][:max(0, int(limit))]
+    return rows
+
+
+def recent_executions(limit: int = 20) -> list[dict]:
+    """Last N rows of the executions audit JSONL, newest first."""
+    return _execution_rows()[::-1][:max(0, int(limit))]
+
+
+def _closable_fill(ticket: int) -> tuple[dict | None, str]:
+    """Resolve ``ticket`` against THIS executor's own audit log.
+
+    Returns ``(fill_row, "")`` when the ticket was filled by this
+    executor and has not been closed since, else ``(None, reason)``.
+    The audit log -- not the broker's position list -- is the
+    authoritative set of tickets this route may touch, which is what
+    stops it unwinding the v1 zones agent's positions.
+    """
+    fill: dict | None = None
+    for row in _execution_rows():
+        try:
+            row_ticket = int(row["ticket"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if row_ticket != ticket:
+            continue
+        status = row.get("status")
+        if status == "filled":
+            fill = row
+        elif status == "closed":
+            # Idempotent: a ticket already closed refuses cleanly
+            # rather than sending a second close to the broker.
+            return None, f"ticket {ticket} is already closed"
+    if fill is None:
+        return None, (f"ticket {ticket} is not a filled order in this "
+                      f"executor's audit log (refusing)")
+    return fill, ""
 
 
 # ---------------------------------------------------------------------
@@ -439,6 +523,7 @@ def _publish_alert(event_type: str, payload: dict) -> None:
 
 def _outcome(approval_id: str, entry: dict | None, status: str,
              reason: str, *, ticket: int | None = None,
+             magic: int | None = None,
              record: bool = True) -> dict:
     row = {
         "at": _iso_now(),
@@ -449,6 +534,9 @@ def _outcome(approval_id: str, entry: dict | None, status: str,
         "status": status,
         "reason": reason,
         "ticket": ticket,
+        # F025 B5 -- the identity the order carried (or would have
+        # carried), so a row can be matched to a broker-side position.
+        "magic": magic,
     }
     if record:
         _append_execution(row)
@@ -472,35 +560,38 @@ def execute_approved(approval_id: str, adapter: Mt5OrderAdapter,
     """
     approval_id = str(approval_id)
     block = load_executor_config(cfg)
+    magic = block["magic"]
 
     # Gate #5 -- default-disabled.
     if not block["enabled"]:
         return _outcome(approval_id, None, "refused",
                         "executor disabled ([live_executor] enabled = "
-                        "false is the default)")
+                        "false is the default)", magic=magic)
 
     entry = approval_queue.get_entry(approval_id)
     if entry is None:
         return _outcome(approval_id, None, "refused",
-                        "unknown approval id")
+                        "unknown approval id", magic=magic)
 
     # Single-use: one human approval, at most one send attempt.
     if _is_consumed(approval_id):
         return _outcome(approval_id, entry, "refused",
-                        "approval already consumed (single-use)")
+                        "approval already consumed (single-use)",
+                        magic=magic)
 
     # The four Sprint-2 gates, re-run fresh immediately before send.
     ok, why = approval_queue.can_send_live_order(entry)
     if not ok:
         return _outcome(approval_id, entry, "refused",
-                        f"gate refused: {why}")
+                        f"gate refused: {why}", magic=magic)
 
     # Broker alias + stored credentials must exist (the adapter loads
     # the tuple itself; it is never logged and never leaves process).
     alias = block["broker_alias"]
     if not alias:
         return _outcome(approval_id, entry, "refused",
-                        "no [live_executor] broker_alias configured")
+                        "no [live_executor] broker_alias configured",
+                        magic=magic)
     try:
         creds_present = broker_connection.load_credentials(alias) \
             is not None
@@ -508,16 +599,18 @@ def execute_approved(approval_id: str, adapter: Mt5OrderAdapter,
         creds_present = False
     if not creds_present:
         return _outcome(approval_id, entry, "refused",
-                        f"no stored credentials for alias {alias!r}")
+                        f"no stored credentials for alias {alias!r}",
+                        magic=magic)
 
     try:
         connected = adapter.connect(alias)
     except Exception as exc:
         return _outcome(approval_id, entry, "refused",
-                        f"adapter connect failed: {exc!s:.120}")
+                        f"adapter connect failed: {exc!s:.120}",
+                        magic=magic)
     if not connected:
         return _outcome(approval_id, entry, "refused",
-                        "adapter connect refused")
+                        "adapter connect refused", magic=magic)
 
     try:
         # DEMO-ONLY guard against the server the adapter ACTUALLY
@@ -529,7 +622,7 @@ def execute_approved(approval_id: str, adapter: Mt5OrderAdapter,
         guard_ok, guard_why = demo_guard(server, cfg)
         if not guard_ok:
             return _outcome(approval_id, entry, "refused",
-                            f"demo guard: {guard_why}")
+                            f"demo guard: {guard_why}", magic=magic)
 
         # Volume hard-cap.
         volume = float(entry["size"])
@@ -537,7 +630,7 @@ def execute_approved(approval_id: str, adapter: Mt5OrderAdapter,
             return _outcome(
                 approval_id, entry, "refused",
                 f"volume {volume} exceeds max_volume_lots "
-                f"{block['max_volume_lots']} (hard cap)")
+                f"{block['max_volume_lots']} (hard cap)", magic=magic)
 
         # Send. From here on the approval is consumed regardless of
         # outcome -- an errored send must not be silently replayable.
@@ -545,7 +638,8 @@ def execute_approved(approval_id: str, adapter: Mt5OrderAdapter,
         try:
             result = adapter.send_market_order(
                 str(entry["symbol"]), str(entry["side"]), volume,
-                float(entry["stop"]), float(entry["take_profit"]))
+                float(entry["stop"]), float(entry["take_profit"]),
+                magic)
         except Exception as exc:
             result = {"error": f"adapter raised: {exc!s:.120}"}
 
@@ -563,7 +657,8 @@ def execute_approved(approval_id: str, adapter: Mt5OrderAdapter,
                 "volume": volume,
                 "reason": reason,
             })
-            return _outcome(approval_id, entry, "error", reason)
+            return _outcome(approval_id, entry, "error", reason,
+                            magic=magic)
 
         ticket = int(result["ticket"])
         # Audit the fill into the F012 ledger (pnl 0.0 at fill time --
@@ -578,9 +673,169 @@ def execute_approved(approval_id: str, adapter: Mt5OrderAdapter,
             "side": entry.get("side"),
             "volume": volume,
             "ticket": ticket,
+            "magic": magic,
         })
         return _outcome(approval_id, entry, "filled", "ok",
-                        ticket=ticket)
+                        ticket=ticket, magic=magic)
+    finally:
+        try:
+            adapter.shutdown()
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------
+# close flow (F025 B4)
+# ---------------------------------------------------------------------
+
+def _close_outcome(ticket: int | None, fill: dict | None, status: str,
+                   reason: str, *, magic: int | None = None) -> dict:
+    row = {
+        "at": _iso_now(),
+        "approval_id": (fill or {}).get("approval_id"),
+        "symbol": (fill or {}).get("symbol"),
+        "side": (fill or {}).get("side"),
+        "volume": (fill or {}).get("volume"),
+        "status": status,
+        "reason": reason,
+        "ticket": ticket,
+        "magic": magic,
+    }
+    _append_execution(row)
+    return {
+        "ok": status == "closed",
+        "status": status,
+        "reason": reason,
+        "ticket": ticket,
+        "approval_id": row["approval_id"],
+    }
+
+
+def close_executed_position(ticket: int, adapter: Mt5OrderAdapter,
+                            cfg: dict | None = None) -> dict:
+    """Unwind ONE position this executor opened. Returns
+    ``{ok, status: closed|close_refused|close_error, reason, ticket,
+    approval_id}``.
+
+    The gate stack matches :func:`execute_approved` -- gate #5, a
+    configured broker alias with stored credentials, and the
+    DEMO-ONLY guard against the server the adapter ACTUALLY reports --
+    with two deliberate differences:
+
+    * The KILL SWITCH IS NOT CONSULTED, and that asymmetry is the
+      point. Sending a new order is risk-adding, so the kill switch
+      blocks it; closing is risk-REDUCING, so it must stay available
+      exactly when the kill switch is on. Gating it would leave the
+      operator halted and holding positions with no way to unwind
+      them from the platform -- which is the failure F025 B4 exists
+      to fix, not one to reproduce.
+    * Only tickets recorded ``filled`` in this executor's own
+      ``executions.jsonl`` are closable (see :func:`_closable_fill`).
+
+    There is no retry on any path, and closing an already-closed
+    ticket refuses rather than raising.
+    """
+    try:
+        ticket = int(ticket)
+    except (TypeError, ValueError):
+        return _close_outcome(None, None, "close_refused",
+                              f"ticket is not an integer: {ticket!r:.60}")
+
+    block = load_executor_config(cfg)
+    magic = block["magic"]
+
+    # Gate #5 -- default-disabled, same as the send path.
+    if not block["enabled"]:
+        return _close_outcome(ticket, None, "close_refused",
+                              "executor disabled ([live_executor] "
+                              "enabled = false is the default)",
+                              magic=magic)
+
+    # NOTE: no approval_queue.can_send_live_order() call here. That
+    # composition includes kill_switches.is_killed, and per the
+    # docstring a close must survive a halt. The audit-log check below
+    # is what bounds this path instead.
+    fill, why = _closable_fill(ticket)
+    if fill is None:
+        return _close_outcome(ticket, None, "close_refused", why,
+                              magic=magic)
+
+    alias = block["broker_alias"]
+    if not alias:
+        return _close_outcome(ticket, fill, "close_refused",
+                              "no [live_executor] broker_alias "
+                              "configured", magic=magic)
+    try:
+        creds_present = broker_connection.load_credentials(alias) \
+            is not None
+    except Exception:
+        creds_present = False
+    if not creds_present:
+        return _close_outcome(ticket, fill, "close_refused",
+                              f"no stored credentials for alias "
+                              f"{alias!r}", magic=magic)
+
+    try:
+        connected = adapter.connect(alias)
+    except Exception as exc:
+        return _close_outcome(ticket, fill, "close_refused",
+                              f"adapter connect failed: {exc!s:.120}",
+                              magic=magic)
+    if not connected:
+        return _close_outcome(ticket, fill, "close_refused",
+                              "adapter connect refused", magic=magic)
+
+    try:
+        # DEMO-ONLY guard against the server the adapter ACTUALLY
+        # connected to -- not against config or stored intent.
+        try:
+            server = str(adapter.account_info().get("server", ""))
+        except Exception:
+            server = ""
+        guard_ok, guard_why = demo_guard(server, cfg)
+        if not guard_ok:
+            return _close_outcome(ticket, fill, "close_refused",
+                                  f"demo guard: {guard_why}",
+                                  magic=magic)
+
+        try:
+            result = adapter.close_position(ticket, magic)
+        except Exception as exc:
+            result = {"error": f"adapter raised: {exc!s:.120}"}
+
+        if not isinstance(result, dict):
+            result = {"error": "adapter returned a non-dict result"}
+
+        # Closes ride the existing `trade_fill` event type with a
+        # `status` of closed / close_error: F014's Legal rolling
+        # constraint makes adding an EVENT_TYPES member a re-review
+        # event, and the payload already carries everything a
+        # subscriber needs to tell a close from an open.
+        if result.get("error") or not result.get("closed"):
+            reason = str(result.get("error") or
+                         "adapter did not confirm the close")
+            _publish_alert("trade_fill", {
+                "status": "close_error",
+                "approval_id": fill.get("approval_id"),
+                "symbol": fill.get("symbol"),
+                "side": fill.get("side"),
+                "volume": fill.get("volume"),
+                "ticket": ticket,
+                "reason": reason,
+            })
+            return _close_outcome(ticket, fill, "close_error", reason,
+                                  magic=magic)
+
+        _publish_alert("trade_fill", {
+            "status": "closed",
+            "approval_id": fill.get("approval_id"),
+            "symbol": fill.get("symbol"),
+            "side": fill.get("side"),
+            "volume": fill.get("volume"),
+            "ticket": ticket,
+            "magic": magic,
+        })
+        return _close_outcome(ticket, fill, "closed", "ok", magic=magic)
     finally:
         try:
             adapter.shutdown()
@@ -609,6 +864,7 @@ def executor_status(cfg: dict | None = None) -> dict:
         "allowed_server_patterns": list(block["allowed_server_patterns"]),
         "max_volume_lots": block["max_volume_lots"],
         "broker_alias_configured": bool(block["broker_alias"]),
+        "magic": block["magic"],
         "adapter_available": available,
         "state": state,
         "recent_executions": recent_executions(10),
@@ -632,6 +888,7 @@ __all__ = [
     "EXECUTIONS_FILENAME",
     "DEFAULT_MAX_VOLUME_LOTS",
     "DEFAULT_ALLOWED_SERVER_PATTERNS",
+    "DEFAULT_MAGIC",
     "EXECUTOR_STATES",
     "Mt5OrderAdapter",
     "RealMt5OrderAdapter",
@@ -641,6 +898,7 @@ __all__ = [
     "is_enabled",
     "demo_guard",
     "execute_approved",
+    "close_executed_position",
     "recent_executions",
     "executor_status",
     "reset_state_for_tests",

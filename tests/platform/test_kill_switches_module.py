@@ -154,6 +154,88 @@ class TestUnsupportedFilesIgnored:
         assert kill_switches.is_killed("EURUSD") is False
 
 
+class TestSymbolCoverage:
+    """F025 B7: every symbol the squad can size a trade on must be
+    killable. Before this, a per-symbol kill on XAGUSD -- the Phase
+    AN-3 candidate -- silently did nothing."""
+
+    def test_majors_keep_their_original_order(self) -> None:
+        # list_killed documents ordering behaviour, so the first five
+        # entries are pinned.
+        assert kill_switches.SUPPORTED_SYMBOLS[:5] == (
+            "EURUSD", "GBPUSD", "USDCAD", "USDJPY", "USDCHF")
+
+    def test_metals_are_covered(self) -> None:
+        for sym in ("XAGUSD", "XAUUSD"):
+            assert sym in kill_switches.SUPPORTED_SYMBOLS, sym
+
+    def test_covers_every_symbol_provenance_pips_knows(self) -> None:
+        """provenance_pips' override tables are the authoritative set of
+        non-FX instruments the squad has pip conventions for; a symbol
+        it can size but the kill switch can't halt is a safety gap."""
+        from agent.squad.provenance_pips import (
+            PIP_SIZE_OVERRIDES, PIP_VALUE_PER_MIN_LOT_OVERRIDES,
+        )
+        known = set(PIP_SIZE_OVERRIDES) | set(
+            PIP_VALUE_PER_MIN_LOT_OVERRIDES)
+        missing = sorted(known - set(kill_switches.SUPPORTED_SYMBOLS))
+        assert missing == [], f"not killable: {missing}"
+
+    def test_xagusd_kill_actually_halts_xagusd(
+        self, _fresh_kill_dir: Path
+    ) -> None:
+        _write_flag(_fresh_kill_dir, "XAGUSD", "silver spread blowout")
+        kill_switches.reset_cache_for_tests()
+        assert kill_switches.is_killed("XAGUSD") is True
+        assert kill_switches.is_killed("XAUUSD") is False
+        assert kill_switches.is_killed("EURUSD") is False
+
+    def test_new_symbols_round_trip_through_the_admin_path(
+        self, _fresh_kill_dir: Path
+    ) -> None:
+        for sym in ("XAGUSD", "USTEC", "USOIL", "BTCUSD"):
+            assert kill_switches.is_killed(sym) is False, sym
+            kill_switch_admin.activate_kill(sym, reason="coverage test")
+            assert kill_switches.is_killed(sym) is True, sym
+            kill_switch_admin.clear_kill(sym)
+            assert kill_switches.is_killed(sym) is False, sym
+
+    def test_list_killed_orders_new_symbols_by_tuple_position(
+        self, _fresh_kill_dir: Path
+    ) -> None:
+        _write_flag(_fresh_kill_dir, "BTCUSD", "c")
+        _write_flag(_fresh_kill_dir, "XAGUSD", "b")
+        _write_flag(_fresh_kill_dir, "EURUSD", "a")
+        kill_switches.reset_cache_for_tests()
+        rows = kill_switches.list_killed()
+        assert [r["scope"] for r in rows] == [
+            "EURUSD", "XAGUSD", "BTCUSD"]
+
+    def test_unknown_symbol_gap_is_still_open(
+        self, _fresh_kill_dir: Path
+    ) -> None:
+        """DOCUMENTED REMAINING GAP -- not a fix, a description.
+
+        `is_killed` fails OPEN for a symbol outside SUPPORTED_SYMBOLS:
+        a per-symbol kill flag for it is silently ignored and only the
+        GLOBAL flag can halt it. B7 widened the list, which narrows the
+        gap to instruments nothing in the platform can size yet; it did
+        NOT change the fail-open semantics, because flipping a safety
+        primitive's default is a separate decision.
+        """
+        assert "NZDUSD" not in kill_switches.SUPPORTED_SYMBOLS
+        _write_flag(_fresh_kill_dir, "NZDUSD", "ignored on purpose")
+        kill_switches.reset_cache_for_tests()
+        # The flag exists on disk and is still not a kill.
+        assert (_fresh_kill_dir / "NZDUSD.flag").is_file()
+        assert kill_switches.is_killed("NZDUSD") is False
+        assert kill_switches.list_killed() == []
+        # GLOBAL remains the only thing that halts it.
+        _write_flag(_fresh_kill_dir, kill_switches.GLOBAL_KEY, "halt")
+        kill_switches.reset_cache_for_tests()
+        assert kill_switches.is_killed("NZDUSD") is True
+
+
 class TestLiveModeOffContract:
     """Sanity: kill_switches.is_killed() is the SECOND gate in the
     4-check live-order pathway. Sprint 2 doesn't wire it into live

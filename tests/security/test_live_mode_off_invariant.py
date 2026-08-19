@@ -436,3 +436,148 @@ class TestStaleApprovalRefused:
         assert approval_queue.get_approved_ttl_seconds() == 300
         approval_queue.set_approved_ttl_seconds(60)
         assert approval_queue.get_approved_ttl_seconds() == 60
+
+
+# =====================================================================
+# F025 B4 EXTENSION (the close path). Everything above this line is
+# unmodified. `close_executed_position` is a SECOND caller on the
+# broker path, so its gates belong in this file too. It carries the
+# same refusal stack as `execute_approved` -- gate #5, alias + stored
+# credentials, DEMO-ONLY guard -- with ONE deliberate exception: the
+# kill switch does not block a close. That asymmetry is pinned here as
+# an invariant in its own right, because a halt that also trapped the
+# operator in their open positions would be a worse failure than the
+# one the halt prevents.
+# =====================================================================
+
+
+def _filled_ticket(ticket: int = 10001) -> int:
+    """Drive a real fill so the ticket exists in executions.jsonl as
+    `filled` -- the only state the close path accepts."""
+    aid = _approved_entry()
+    result = live_executor.execute_approved(
+        aid, live_executor.FakeMt5OrderAdapter(
+            send_result={"ticket": ticket, "price": 1.0,
+                         "volume": 0.01}),
+        _demo_cfg())
+    assert result["status"] == "filled"
+    return ticket
+
+
+class TestCloseRefusesWhenExecutorDisabled:
+    """Gate #5 covers the close path too: a clean install can no more
+    close a position than open one."""
+
+    def test_disabled_by_default_refuses(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg(enabled=False))
+        assert result["ok"] is False
+        assert result["status"] == "close_refused"
+        assert "disabled" in result["reason"]
+        assert adapter.calls == []  # never even connected
+
+    def test_clean_install_config_refuses(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.close_executed_position(
+            ticket, adapter, {})
+        assert result["status"] == "close_refused"
+        assert adapter.calls == []
+
+
+class TestCloseDemoOnlyGuard:
+    """Invariant #3 holds on the close path: structurally unable to
+    reach a non-demo server, even to unwind."""
+
+    def test_real_looking_server_refused(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter(
+            server="Exness-MT5Real8")
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg())
+        assert result["status"] == "close_refused"
+        assert "demo guard" in result["reason"]
+        assert not any(c[0] == "close_position" for c in adapter.calls)
+        assert adapter.shutdown_called is True
+
+    def test_missing_demo_only_ack_refused(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg(demo_only=False))
+        assert result["status"] == "close_refused"
+        assert "demo_only" in result["reason"]
+        assert not any(c[0] == "close_position" for c in adapter.calls)
+
+    def test_no_stored_credentials_refused(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        ticket = _filled_ticket()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.close_executed_position(
+            ticket, adapter, _demo_cfg(broker_alias="not-stored"))
+        assert result["status"] == "close_refused"
+        assert "credentials" in result["reason"]
+        assert adapter.calls == []
+
+
+class TestCloseSurvivesKillSwitch:
+    """The ONE deliberate asymmetry. Sending is risk-adding and the
+    kill switch blocks it; closing is risk-reducing and must stay
+    available while the halt is engaged."""
+
+    def test_global_kill_blocks_send_but_not_close(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        ticket = _filled_ticket()
+        aid = _approved_entry()
+        assert kill_switch_admin.activate_kill(
+            symbol=None, reason="F025 B4 asymmetry", by="test") is True
+        kill_switches.reset_cache_for_tests()
+
+        send = live_executor.execute_approved(
+            aid, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        assert send["status"] == "refused"
+        assert "kill" in send["reason"].lower()
+
+        close = live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        assert close["ok"] is True
+        assert close["status"] == "closed"
+
+    def test_per_symbol_kill_does_not_block_close(self) -> None:
+        _executor_reset()
+        _store_demo_creds()
+        ticket = _filled_ticket()
+        assert kill_switch_admin.activate_kill(
+            "EURUSD", reason="F025 B4 asymmetry", by="test") is True
+        kill_switches.reset_cache_for_tests()
+        assert kill_switches.is_killed("EURUSD") is True
+        close = live_executor.close_executed_position(
+            ticket, live_executor.FakeMt5OrderAdapter(), _demo_cfg())
+        assert close["status"] == "closed"
+
+    def test_close_still_bounded_to_own_tickets_under_kill(self) -> None:
+        """Waiving the kill switch does NOT waive the audit-log bound:
+        a ticket this executor never filled stays unclosable."""
+        _executor_reset()
+        _store_demo_creds()
+        assert kill_switch_admin.activate_kill(
+            symbol=None, reason="F025 B4 asymmetry", by="test") is True
+        kill_switches.reset_cache_for_tests()
+        adapter = live_executor.FakeMt5OrderAdapter()
+        result = live_executor.close_executed_position(
+            777777, adapter, _demo_cfg())
+        assert result["status"] == "close_refused"
+        assert "audit log" in result["reason"]
+        assert adapter.calls == []

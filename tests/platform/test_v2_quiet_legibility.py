@@ -2,7 +2,7 @@
 
 Covers the four surfaces the pass added:
 
-1. **Roster** — ``sae_itoshi`` and ``karasu_tabito`` join the /v2 pitch
+1. **Roster** — ``aoshi_tokimitsu`` and ``karasu_tabito`` join the /v2 pitch
    ROSTER (Sae as the event-specialist striker, Karasu as a defender).
 2. **upcoming_events collector** — read-only view over the news cache:
    USD + High + future-only, Sae-window tagging, fetched-at age, and
@@ -35,25 +35,25 @@ UTC = timezone.utc
 
 class TestRosterAdditions:
 
-    def test_sae_and_karasu_on_the_pitch(self):
-        assert "sae_itoshi" in squad_events.ROSTER
+    def test_aoshi_and_karasu_on_the_pitch(self):
+        assert "aoshi_tokimitsu" in squad_events.ROSTER
         assert "karasu_tabito" in squad_events.ROSTER
 
     def test_positions_make_sense(self):
-        sae = squad_events.ROSTER["sae_itoshi"]
+        aoshi = squad_events.ROSTER["aoshi_tokimitsu"]
         karasu = squad_events.ROSTER["karasu_tabito"]
-        # Sae is the event-specialist striker: most advanced player on
+        # Aoshi is the event-specialist striker: most advanced player on
         # the pitch (roster y grows toward the goal).
         others = [r["y"] for aid, r in squad_events.ROSTER.items()
-                  if aid != "sae_itoshi"]
-        assert sae["y"] > max(others)
+                  if aid != "aoshi_tokimitsu"]
+        assert aoshi["y"] > max(others)
         # Karasu defends: back line, below every proposer.
         proposer_ys = [r["y"] for aid, r in squad_events.ROSTER.items()
                        if aid not in ("karasu_tabito", "kunigami_rensuke")]
         assert karasu["y"] < min(proposer_ys)
 
     def test_required_render_fields_present(self):
-        for aid in ("sae_itoshi", "karasu_tabito"):
+        for aid in ("aoshi_tokimitsu", "karasu_tabito"):
             r = squad_events.ROSTER[aid]
             for field in ("name", "num", "x", "y", "color", "role"):
                 assert field in r, f"{aid} missing {field!r}"
@@ -64,7 +64,7 @@ class TestRosterAdditions:
         (tmp_path / "events.jsonl").write_text("", encoding="utf-8")
         (tmp_path / "run_meta.json").write_text("{}", encoding="utf-8")
         _, summary = squad_events.build_timeline(tmp_path)
-        assert "sae_itoshi" in summary["roster"]
+        assert "aoshi_tokimitsu" in summary["roster"]
         assert "karasu_tabito" in summary["roster"]
 
 
@@ -287,10 +287,13 @@ class TestV2PageQuietSurfaces:
         assert "in_sae_window" in V2_PAGE
         assert "calendar_fetched_age_seconds" in V2_PAGE
 
-    def test_sae_disabled_visual_state(self):
+    def test_aoshi_disabled_visual_state(self):
         # Dim class + the benched label + the applier function.
         assert ".player-off" in V2_PAGE
-        assert "Sae (off)" in V2_PAGE
+        # Label is composed from the roster name at runtime so the
+        # rename lives in one place; assert on the suffix, not "Sae".
+        assert '" (off)"' in V2_PAGE
+        assert "pl_aoshi_tokimitsu" in V2_PAGE
         assert "applySaeState" in V2_PAGE
 
     def test_sae_window_tag_style(self):

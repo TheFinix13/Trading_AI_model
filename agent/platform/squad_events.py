@@ -72,13 +72,22 @@ ROSTER: dict[str, dict] = {
     # the back line next to Kunigami. Never proposes.
     "karasu_tabito":    {"name": "Karasu",   "num": 4,  "x": 26, "y": 20,
                          "color": "#79c0ff", "role": "defender · news window R7"},
-    # Sae (event-specialist striker): most advanced position on the
-    # pitch. DISABLED BY DEFAULT (Phase AE pre-reg gate) -- the /v2 UI
+    # Aoshi (event-specialist striker, shipped as `sae_itoshi` before the
+    # 2026-08-19 rename): most advanced position on the pitch. The /v2 UI
     # renders him dimmed with an "(off)" label while state.json says
     # sae_enabled=false.
-    "sae_itoshi":       {"name": "Sae",      "num": 20, "x": 76, "y": 90,
+    "aoshi_tokimitsu":  {"name": "Aoshi",    "num": 20, "x": 76, "y": 90,
                          "color": "#e3b341", "role": "event striker · fade/ride"},
 }
+
+# Pre-rename agent ids, so tapes written before 2026-08-19 still resolve
+# to a player card instead of rendering as an unknown id.
+LEGACY_ROSTER_IDS: dict[str, str] = {"sae_itoshi": "aoshi_tokimitsu"}
+
+
+def canonical_agent_id(agent_id: str) -> str:
+    """Map a tape's agent id onto the current roster key."""
+    return LEGACY_ROSTER_IDS.get(agent_id, agent_id)
 
 # Rejection reasons that are Sentinel/system rules rather than a peer
 # out-competing the proposal. Shown as the "wall", not a tackle.

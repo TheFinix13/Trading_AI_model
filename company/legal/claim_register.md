@@ -292,6 +292,7 @@ Public module constants: `KILL_DIR_ENV`, `DEFAULT_KILL_DIRNAME`,
 | `kill_dir` | `Path` | Current kill-flag directory. Defaults to `<config_dir>/kill`; env var `BLUELOCK_KILL_DIR` overrides. | `kill_switches.kill_dir`. | None -- filesystem path. |
 | `is_killed(None)` | `bool` | True iff the global kill flag exists. | `kill_switches.is_killed`. | Safety-control claim; documented in F013's live-mode warning. |
 | `is_killed("EURUSD")` | `bool` | True iff the global kill OR the EURUSD per-symbol flag exists. | Same. | Same. |
+| `SUPPORTED_SYMBOLS` | `tuple[str, ...]` | The scopes a PER-SYMBOL kill actually halts: the five FX majors (original order preserved, `list_killed` documents it) plus, since F025 B7, every instrument `agent/squad/provenance_pips.py` has pip conventions for — XAUUSD, XAGUSD, USOIL, UKOIL, NATGAS, USTEC, US500, US30, DE40, UK100, JP225, BTCUSD. A symbol NOT in this tuple fails OPEN: `is_killed` returns False for it and only the GLOBAL flag halts it, so "per-symbol kill" is a claim scoped to this list. | `kill_switches.SUPPORTED_SYMBOLS`; validated in `kill_switch_admin._normalise_scope`; echoed by `/api/kill-switches/status`. | Safety-control scope claim. |
 | `list_killed` → `scope` | `"GLOBAL"` \| supported symbol | The active kill scopes, global-first then symbols in `SUPPORTED_SYMBOLS` order. | `kill_switches.list_killed`. | Safety-control state; surfaces in `/settings/kill-switches`. |
 | `list_killed` → `reason` | `str` | Operator-supplied reason (max 200 chars), scrubbed of trailing whitespace. | `kill_switch_admin.activate_kill` -> flag file. | None -- operator-authored text. |
 | `list_killed` → `activated_at` | ISO-8601 str | When the flag was written. | Same. | None. |
@@ -301,6 +302,19 @@ Rolling constraint (Legal): the "kill-switch is active" copy in any
 future UI or Telegram alert MUST cite the scope value verbatim (never
 paraphrase "GLOBAL" as "everything" without also citing the reason
 string).
+
+Coverage constraint (F025 B7): "every symbol the squad can trade is
+killable" holds only while `SUPPORTED_SYMBOLS` is a superset of the
+instruments the platform can size an order on. Adding a tradable
+instrument WITHOUT adding it here silently downgrades its per-symbol
+kill to a no-op, which is a failed safety claim rather than a missing
+feature. The `/settings/kill-switches` grid derives its cells from the
+status payload's `supported_symbols`, so a tuple addition reaches the UI
+with no page edit (pinned by
+`tests/platform/test_kill_switches_page.py::TestGridLayout::test_grid_reads_supported_symbols_from_status`).
+Residual gap, unchanged: `is_killed()` is fail-OPEN for a symbol absent
+from the tuple — only GLOBAL halts it (pinned by
+`test_kill_switches_module.py::test_unknown_symbol_gap_is_still_open`).
 
 ### F011 — `agent/platform/kill_switch_admin.py` (Sprint 2)
 
@@ -701,22 +715,25 @@ lazy MetaTrader5 import),
 `live_executor.is_enabled(cfg=None) -> bool`,
 `live_executor.demo_guard(server, cfg=None) -> tuple[bool, str]`,
 `live_executor.execute_approved(approval_id, adapter, cfg=None) -> dict`,
+`live_executor.close_executed_position(ticket, adapter, cfg=None) -> dict`,
 `live_executor.recent_executions(limit=20) -> list[dict]`,
 `live_executor.executor_status(cfg=None) -> dict`.
 
 Public module constants: `EXECUTIONS_FILENAME`,
 `DEFAULT_MAX_VOLUME_LOTS`, `DEFAULT_ALLOWED_SERVER_PATTERNS`,
-`EXECUTOR_STATES`. Test-only helper marked `# claim-exempt`:
-`reset_state_for_tests`.
+`DEFAULT_MAGIC`, `EXECUTOR_STATES`. Test-only helper marked
+`# claim-exempt`: `reset_state_for_tests`.
 
 | Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
 |---|---|---|---|---|
 | `is_enabled` | `bool` | Gate #5. `[live_executor] enabled` in platform.toml; DEFAULT FALSE — a clean install refuses every execution. | `live_executor.is_enabled`. | Executor warning (`company/legal/executor-demo-warning.md`) renders on `/approvals`. |
 | `demo_guard` | `(bool, str)` | DEMO-ONLY guard: requires the literal `demo_only = true` acknowledgement AND a connected-server name matching `allowed_server_patterns` (fnmatch, fail-closed on blank/missing/unmatched). Real-broker connections stay a hard NO (escalation.md §5). | `live_executor.demo_guard`. | Same warning. |
 | `execute_approved` | `dict` | THE one caller of the four gates: re-runs `approval_queue.can_send_live_order` immediately before send (fresh, never cached), then demo guard, volume hard-cap, creds presence; single-use approvals; fill → `risk_budget.record_fill` + `trade_fill` alert; error → alert, NO auto-retry. Every attempt (refusals included) appends to `<config_dir>/executions.jsonl`. | `live_executor.execute_approved`. | Same warning + all four gate disclaimers compose. |
-| `executor_status` | `dict` | `{enabled, demo_only_ack, allowed_server_patterns, max_volume_lots, broker_alias_configured, adapter_available, state: disabled\|not-on-windows\|ready, recent_executions}`. Never echoes credentials. | `live_executor.executor_status`. | None — state. |
-| `recent_executions` | `list[dict]` | Last N rows of the executions audit JSONL, newest first. | `live_executor.recent_executions`. | None — state. |
-| `load_executor_config` | `dict` | Normalised `[live_executor]` block (enabled, demo_only, patterns, max_volume_lots, broker_alias). | `live_executor.load_executor_config`. | None — meta. |
+| `close_executed_position` | `dict` | F025 B4 unwind path: `{ok, status: closed\|close_refused\|close_error, reason, ticket, approval_id}`. Same refusal stack as `execute_approved` (gate #5, alias + stored creds, DEMO-ONLY guard) EXCEPT the kill switch, which deliberately does not block a close — closing is risk-reducing and must stay available while a halt is engaged. Closable tickets are ONLY those recorded `filled` in this executor's own `executions.jsonl`; unknown and already-closed tickets refuse. No auto-retry. Every attempt appends a row and publishes a `trade_fill` alert carrying the matching `status`. | `live_executor.close_executed_position`, `POST /api/executor/close/<ticket>`. | Same warning. |
+| `executor_status` | `dict` | `{enabled, demo_only_ack, allowed_server_patterns, max_volume_lots, broker_alias_configured, magic, adapter_available, state: disabled\|not-on-windows\|ready, recent_executions}`. Never echoes credentials. | `live_executor.executor_status`. | None — state. |
+| `recent_executions` | `list[dict]` | Last N rows of the executions audit JSONL, newest first. Each row carries the `magic` the order did (or would have) carried. | `live_executor.recent_executions`. | None — state. |
+| `load_executor_config` | `dict` | Normalised `[live_executor]` block (enabled, demo_only, patterns, max_volume_lots, broker_alias, magic). | `live_executor.load_executor_config`. | None — meta. |
+| `DEFAULT_MAGIC` | `int` | F025 B5: the MT5 magic number stamped on every order and close this executor sends, so positions on a shared account are attributable to v2. `314159`, deliberately distinct from the v1 zones agent's `271828` (`agent/live/broker.py`). Zero / negative / junk config values fall back to the default — magic `0` means "unattributed", the state the key exists to end. | `live_executor.DEFAULT_MAGIC`, `[live_executor] magic`. | None — meta. |
 | `adapter_available` | `bool` | Whether MetaTrader5 is importable on this host (Windows-only package). | `live_executor.adapter_available`. | None — capability probe. |
 | `Mt5OrderAdapter` / `RealMt5OrderAdapter` / `FakeMt5OrderAdapter` | protocol / impl / test double | The injectable MT5 seam: `connect`, `account_info`, `send_market_order`, `close_position`, `shutdown`. The real adapter imports MetaTrader5 lazily inside methods; credentials ride `broker_connection.load_credentials` and are never logged or echoed. | `live_executor`. | Same warning. |
 
@@ -731,6 +748,23 @@ Single-use constraint: an approval that has been executed (or failed
 execution) is consumed and can never fire a second order. Removing
 the consumption marking would allow replay of a single human approval
 into multiple orders — P0 regression.
+
+Close-path asymmetry (F025 B4, NOT yet ratified by a Legal review —
+`close_executed_position` ships as a documented prerequisite under
+`company/sprints/sprint-4-squad-demo-execution/F025-squad-to-demo-account-bridge.md`
+and should be read at that sprint's review): the kill switch blocks
+new orders but deliberately does NOT block a close, because a close
+is risk-reducing and a halt that trapped the operator in open
+positions would be the worse failure. Everything else in the F018
+refusal stack still applies to closes, plus a bound the send path
+does not have: only tickets recorded `filled` in this executor's own
+`executions.jsonl` are closable, so the route cannot touch the v1
+zones agent's positions. Both properties are pinned in the
+extend-only P0 file (`tests/security/test_live_mode_off_invariant.py`
+— `TestCloseSurvivesKillSwitch`, `TestCloseDemoOnlyGuard`,
+`TestCloseRefusesWhenExecutorDisabled`). Gating a close on the kill
+switch, or widening the closable set beyond the audit log, changes a
+safety claim and needs a fresh Legal review.
 
 ### F021 — `agent/platform/players.py` additions (Sprint 3)
 

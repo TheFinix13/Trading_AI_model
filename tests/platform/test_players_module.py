@@ -97,6 +97,15 @@ def test_normalize_id_unknown_returns_none():
     assert players.normalize_id("   ") is None
 
 
+def test_legacy_sae_slug_still_resolves_to_aoshi():
+    # Renamed 2026-08-19. A bookmarked /players/sae must not 404, and a
+    # pre-rename tape row must still land on the right card.
+    assert players.normalize_id("sae") == "aoshi"
+    assert players.normalize_id("sae_itoshi") == "aoshi"
+    assert players.normalize_id("Sae") == "aoshi"
+    assert "sae" not in players.valid_ids()
+
+
 def test_valid_ids_is_ten_and_ordered():
     ids = players.valid_ids()
     assert len(ids) == 10
@@ -104,7 +113,7 @@ def test_valid_ids_is_ten_and_ordered():
     assert ids[-1] == "kunigami"
     assert set(ids) == {
         "isagi", "bachira", "rin", "chigiri", "reo", "nagi",
-        "barou", "karasu", "sae", "kunigami",
+        "barou", "karasu", "aoshi", "kunigami",
     }
 
 
@@ -292,8 +301,8 @@ def test_get_player_status_field_matches_roster(tmp_live_dir: Path):
     assert payload["status"] == "active"
     ret = players.get_player("kunigami", live_dir=tmp_live_dir)
     assert ret["status"] == "retired"
-    sae = players.get_player("sae", live_dir=tmp_live_dir)
-    assert sae["status"] == "standby"
+    aoshi = players.get_player("aoshi", live_dir=tmp_live_dir)
+    assert aoshi["status"] == "standby"
 
 
 def test_get_player_source_hint_retired():
@@ -302,8 +311,8 @@ def test_get_player_source_hint_retired():
 
 
 def test_get_player_source_hint_standby_no_rows(tmp_live_dir: Path):
-    sae = players.get_player("sae", live_dir=tmp_live_dir)
-    assert "standby" in sae["source_hint"].lower()
+    aoshi = players.get_player("aoshi", live_dir=tmp_live_dir)
+    assert "standby" in aoshi["source_hint"].lower()
 
 
 def test_get_player_source_hint_active_no_rows(tmp_live_dir: Path):

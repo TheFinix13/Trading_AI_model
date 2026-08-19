@@ -68,8 +68,10 @@ class TestActivate:
     def test_activate_unknown_symbol_raises(
         self, _isolated_config: Path
     ) -> None:
+        # NZDUSD, not XAUUSD: gold joined SUPPORTED_SYMBOLS under
+        # F025 B7, so it is no longer an unknown-symbol example.
         with pytest.raises(ValueError, match="unknown symbol"):
-            kill_switch_admin.activate_kill("XAUUSD")
+            kill_switch_admin.activate_kill("NZDUSD")
 
     def test_activate_global_via_none_or_string(
         self, _isolated_config: Path

@@ -1,4 +1,24 @@
-"""A9 -- Sae Itoshi v1 (`sae_itoshi`) -- event specialist striker.
+"""A9 -- Aoshi Tokimitsu v1 (`aoshi_tokimitsu`) -- event specialist striker.
+
+Renamed from `sae_itoshi` on 2026-08-19 (research decision, recorded in
+`programs/M001_multi_agent_ensemble/reviews/evolution_ledger.md`). The
+M001 roster assigns the A9 slot to Aoshi Tokimitsu -- canon brief
+"macro-event-only vol-breakout (FOMC / NFP / CPI)", verbatim what this
+agent does -- while "Sae Itoshi (foil)" is the frozen ADVERSARIAL
+baseline the squad must beat, also used as the heritage floor
+("Frozen-Sae") in the research standards. Shipping the striker under the
+opponent's name made every report ambiguous between a player and a
+benchmark.
+
+Scope of the rename: the data-visible identity only -- ``agent_id``,
+``canon_player``, and the dashboard/Telegram display name. Config and
+plumbing names (``SaeConfig``, the ``sae_enabled`` state key, the
+``--enable-sae`` CLI flag, ``roster.sae``, this module's filename) are
+deliberately UNCHANGED: ``--enable-sae`` is baked into the watchdog
+script running on the VM and ``sae_enabled`` is read by the dashboard
+and by ``scripts/update_platform.ps1``, so renaming them buys nothing
+and risks a live break. Sealed Phase AE artifacts keep ``sae_itoshi``
+and the ``sae_fade`` / ``sae_ride`` mechanic tags by design.
 
 Sae is the elite striker who takes over decisive moments. In v1 he
 only proposes INSIDE a scheduled high-impact USD event window
@@ -64,8 +84,18 @@ from agent.types import Bar
 log = logging.getLogger(__name__)
 
 
+AGENT_ID = "aoshi_tokimitsu"
+
+LEGACY_AGENT_IDS: tuple[str, ...] = ("sae_itoshi",)
+"""Identities this agent has shipped under, oldest last.
+
+Consumed by ``SquadEngine._load_state`` to migrate per-agent books
+written before the 2026-08-19 rename, and by the dashboard roster so
+pre-rename tapes still resolve to a player card."""
+
+
 SAE_V1_CANON_ROLE = CanonRole(
-    canon_player="sae_itoshi",
+    canon_player=AGENT_ID,
     weapon="event_release_impulse",
     ego=0.75,
     target_hold_hours=6.0,
@@ -111,7 +141,7 @@ class A9SaeV1(BaseStriker):
 
     def __init__(
         self,
-        agent_id: str = "sae_itoshi",
+        agent_id: str = AGENT_ID,
         canon_role: Optional[CanonRole] = None,
         home_tf: str = "H4",
         symbols: Optional[Iterable[str]] = None,
@@ -555,12 +585,22 @@ def _build_proposal(
     )
 
 
+A9AoshiV1 = A9SaeV1
+AoshiTokimitsu = A9SaeV1
+AOSHI_V1_CANON_ROLE = SAE_V1_CANON_ROLE
+
+# Pre-rename import names, kept so nothing outside this module breaks.
 SaeItoshi = A9SaeV1
 
 
 __all__ = [
+    "AGENT_ID",
+    "AOSHI_V1_CANON_ROLE",
+    "A9AoshiV1",
     "A9SaeV1",
+    "AoshiTokimitsu",
     "BarsProvider",
+    "LEGACY_AGENT_IDS",
     "SAE_V1_CANON_ROLE",
     "SaeItoshi",
 ]

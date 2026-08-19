@@ -203,6 +203,75 @@ class TestExecuteEndpoint:
             srv.shutdown()
 
 
+class TestCloseEndpoint:
+    """F025 B4 -- POST /api/executor/close/<ticket>. Same posture as
+    the execute route: default-disabled, install-token gated, and only
+    tickets in this executor's own audit log."""
+
+    def test_refuses_when_disabled(self, tmp_path: Path) -> None:
+        srv = _make_server(tmp_path)
+        try:
+            host, port = srv.server_address
+            code, _, body = _request(
+                f"http://{host}:{port}/api/executor/close/12345",
+                method="POST", body={})
+            assert code == 409
+            assert body["ok"] is False
+            assert body["status"] == "close_refused"
+        finally:
+            srv.shutdown()
+
+    def test_gated_when_token_enforced(self, tmp_path: Path) -> None:
+        srv = _make_server(tmp_path, enforce_install_token=True)
+        try:
+            host, port = srv.server_address
+            code, _, _ = _request(
+                f"http://{host}:{port}/api/executor/close/12345",
+                method="POST", body={})
+            assert code == 401
+        finally:
+            srv.shutdown()
+
+    def test_unknown_ticket_refused(self, tmp_path: Path) -> None:
+        srv = _make_server(tmp_path)
+        try:
+            host, port = srv.server_address
+            code, _, body = _request(
+                f"http://{host}:{port}/api/executor/close/98765432",
+                method="POST", body={})
+            assert code == 409
+            assert body["ok"] is False
+            assert body["ticket"] == 98765432
+        finally:
+            srv.shutdown()
+
+    def test_non_numeric_ticket_is_not_routed(self, tmp_path: Path) -> None:
+        """The route pattern only accepts digits, so a junk ticket
+        never reaches the executor at all."""
+        srv = _make_server(tmp_path)
+        try:
+            host, port = srv.server_address
+            code, _, _ = _request(
+                f"http://{host}:{port}/api/executor/close/not-a-ticket",
+                method="POST", body={})
+            assert code == 404
+        finally:
+            srv.shutdown()
+
+    def test_refusal_is_on_the_audit_tape(self, tmp_path: Path) -> None:
+        srv = _make_server(tmp_path)
+        try:
+            host, port = srv.server_address
+            _request(f"http://{host}:{port}/api/executor/close/4242",
+                     method="POST", body={})
+            rows = live_executor.recent_executions()
+            assert rows
+            assert rows[0]["status"] == "close_refused"
+            assert rows[0]["ticket"] == 4242
+        finally:
+            srv.shutdown()
+
+
 class TestApprovalsPageIntegration:
     def test_page_served_with_executor_hooks(self, tmp_path: Path) -> None:
         srv = _make_server(tmp_path)

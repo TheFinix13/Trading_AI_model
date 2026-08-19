@@ -73,7 +73,7 @@ def test_build_live_roster_default_keeps_sae_out_of_proposers():
     """P0 Phase AE gate: default roster excludes Sae from proposers."""
     roster = build_live_roster(("EURUSD", "GBPUSD", "USDCAD"))
     assert roster.sae_enabled is False
-    assert all(a.agent_id != "sae_itoshi" for a in roster.proposers)
+    assert all(a.agent_id != "aoshi_tokimitsu" for a in roster.proposers)
     # Sae object still exists for hydration/diagnostics.
     assert isinstance(roster.sae, A9SaeV1)
     assert roster.sae.enabled is False
@@ -84,7 +84,7 @@ def test_build_live_roster_enable_sae_adds_proposer():
         ("EURUSD", "GBPUSD", "USDCAD"), enable_sae=True,
     )
     assert roster.sae_enabled is True
-    assert any(a.agent_id == "sae_itoshi" for a in roster.proposers)
+    assert any(a.agent_id == "aoshi_tokimitsu" for a in roster.proposers)
 
 
 # ---------------------------------------------------------------------------

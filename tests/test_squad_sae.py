@@ -1,4 +1,8 @@
-"""Unit tests for A9 Sae Itoshi (event specialist).
+"""Unit tests for A9 Aoshi Tokimitsu (event specialist).
+
+Shipped as `aoshi_tokimitsu` until the 2026-08-19 rename; the config knob
+names (`SaeConfig`, `sae_enabled`) and this module's filename keep the
+original spelling deliberately, so only the agent identity moved.
 
 Sae only proposes inside a scheduled high-impact USD event window
 [T - 30 min, T + 60 min] via two mechanics (fade / ride). He is
@@ -52,7 +56,7 @@ def _market(
     )
 
 
-def _thought(agent_id: str = "sae_itoshi", tick_id: int = 1) -> Thought:
+def _thought(agent_id: str = "aoshi_tokimitsu", tick_id: int = 1) -> Thought:
     ts = datetime(2026, 3, 20, 18, 0, tzinfo=UTC)
     return Thought(
         schema_version=SCHEMA_VERSION,
@@ -139,15 +143,15 @@ def test_sae_disabled_by_default():
     r = build_roster()
     assert r.sae_enabled is False
     ids = [a.agent_id for a in r.proposers]
-    assert "sae_itoshi" not in ids
+    assert "aoshi_tokimitsu" not in ids
     # Still discoverable via by_id() as a side-channel.
-    assert "sae_itoshi" in r.by_id()
+    assert "aoshi_tokimitsu" in r.by_id()
 
 
 def test_sae_enters_proposers_when_enabled():
     r = build_roster(sae_config=SaeConfig(sae_enabled=True))
     ids = [a.agent_id for a in r.proposers]
-    assert "sae_itoshi" in ids
+    assert "aoshi_tokimitsu" in ids
     assert r.sae_enabled is True
 
 
@@ -215,7 +219,7 @@ def test_sae_fade_fires_on_qualifying_bar():
     p = sae.intend(_market(as_of=as_of), _thought())
     assert p is not None
     assert p.direction == "short"
-    assert p.agent_id == "sae_itoshi"
+    assert p.agent_id == "aoshi_tokimitsu"
     assert p.rationale["mechanic"] == "sae_fade"
     # Stop just above the high.
     assert p.stop > event_bar.high
@@ -431,7 +435,7 @@ def test_sae_observe_abstains_off_symbol():
 
 def test_sae_canon_role_locked():
     sae = A9SaeV1()
-    assert sae.agent_id == "sae_itoshi"
+    assert sae.agent_id == "aoshi_tokimitsu"
     assert sae.canon_role == SAE_V1_CANON_ROLE
     assert sae.tier == 1
     assert sae.playstyle == "event_specialist"

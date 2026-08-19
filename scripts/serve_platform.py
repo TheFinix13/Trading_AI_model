@@ -92,6 +92,8 @@ _APPROVAL_ACTION_RE = re.compile(
     r"^/api/approvals/([A-Za-z0-9_-]+)/(approve|reject)$")
 _EXECUTOR_EXECUTE_RE = re.compile(
     r"^/api/executor/execute/([A-Za-z0-9_-]+)$")
+_EXECUTOR_CLOSE_RE = re.compile(
+    r"^/api/executor/close/(\d+)$")
 
 # Path to the F007 live-broker warning served over /api/broker/live-warning.
 _LIVE_WARNING_PATH = REPO_ROOT / "company" / "legal" / "live-broker-warning.md"
@@ -976,6 +978,21 @@ def make_handler(log_root: Path, repo_root: Path, reviews_dir: Path,
                 adapter = live_executor.RealMt5OrderAdapter()
                 result = live_executor.execute_approved(
                     approval_id, adapter)
+                status_code = 200 if result["ok"] else 409
+                self._json(result, status_code)
+                return
+            # F025 B4 -- close ONE position this executor opened. Same
+            # install-token + rate-limit preamble and the same
+            # gate #5 / alias / creds / DEMO-ONLY stack as execute,
+            # minus the kill-switch check: a close is risk-reducing and
+            # stays available while the kill switch is on (see
+            # live_executor.close_executed_position).
+            m = _EXECUTOR_CLOSE_RE.match(path)
+            if m is not None:
+                ticket = int(m.group(1))
+                adapter = live_executor.RealMt5OrderAdapter()
+                result = live_executor.close_executed_position(
+                    ticket, adapter)
                 status_code = 200 if result["ok"] else 409
                 self._json(result, status_code)
                 return

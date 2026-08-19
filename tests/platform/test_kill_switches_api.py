@@ -158,7 +158,9 @@ class TestActivateEndpoint:
             code, _, body = _request(
                 f"http://{host}:{port}/api/kill-switches/activate",
                 method="POST",
-                body={"symbol": "XAUUSD", "reason": "x"})
+                # NZDUSD, not XAUUSD: gold joined SUPPORTED_SYMBOLS
+                # under F025 B7 and is a valid scope now.
+                body={"symbol": "NZDUSD", "reason": "x"})
             assert code == 400
             assert body["ok"] is False
             assert "unknown symbol" in body["error"]

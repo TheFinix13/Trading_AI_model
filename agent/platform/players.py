@@ -146,10 +146,10 @@ _ROSTER: tuple[dict, ...] = (
         "home_tf": "N/A",
     },
     {
-        "id": "sae",
-        "name": "Sae",
-        "canon_player": "sae_itoshi",
-        "agent_key": "sae_itoshi",
+        "id": "aoshi",
+        "name": "Aoshi",
+        "canon_player": "aoshi_tokimitsu",
+        "agent_key": "aoshi_tokimitsu",
         "playstyle_tag": "Event-window specialist (disabled by default)",
         "status": "standby",
         "tier": 1,
@@ -181,6 +181,13 @@ _DEFAULT_BIO_DIR = REPO_ROOT / "company" / "roster" / "players"
 
 _VALID_IDS: tuple[str, ...] = tuple(r["id"] for r in _ROSTER)
 
+# Pre-rename slugs, kept resolvable so bookmarked /players/<id> URLs and
+# tapes written before the 2026-08-19 rename don't 404.
+_LEGACY_IDS: dict[str, str] = {
+    "sae": "aoshi",
+    "sae-itoshi": "aoshi",
+}
+
 
 # --------------------------------------------------------------------
 # ID normalisation
@@ -203,6 +210,8 @@ def normalize_id(raw: str | None) -> str | None:
     # exact match on canonical id
     if lower in _VALID_IDS:
         return lower
+    if lower in _LEGACY_IDS:
+        return _LEGACY_IDS[lower]
     # match on the canon_player key ("isagi_yoichi" -> "isagi")
     for entry in _ROSTER:
         cp = entry["canon_player"].replace("_", "-")

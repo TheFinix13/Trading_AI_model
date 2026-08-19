@@ -19,15 +19,43 @@ from agent.platform.pages import (  # noqa: E402
     KILL_SWITCHES_PAGE, _BASE_CSS_VERSION,
 )
 
+# Scopes the grid must still render if the status payload ever arrives
+# without `supported_symbols` (older server, cached response).
+_FALLBACK_SCOPES: tuple[str, ...] = (
+    "EURUSD", "GBPUSD", "USDCAD", "USDJPY", "USDCHF",
+)
+
 
 class TestGridLayout:
     def test_grid_container_present(self) -> None:
         assert 'id="ks-grid"' in KILL_SWITCHES_PAGE
         assert 'class="ks-grid"' in KILL_SWITCHES_PAGE
 
-    def test_symbols_rendered_in_js_array(self) -> None:
-        for sym in ("GLOBAL", *SUPPORTED_SYMBOLS):
+    def test_fallback_symbols_rendered_in_js_array(self) -> None:
+        for sym in _FALLBACK_SCOPES:
             assert f'"{sym}"' in KILL_SWITCHES_PAGE, sym
+
+    def test_grid_reads_supported_symbols_from_status(self) -> None:
+        """The grid tracks SUPPORTED_SYMBOLS instead of lagging it.
+
+        F025 B7 widened SUPPORTED_SYMBOLS to every instrument the squad
+        can size a trade on (metals, energies, indices). A hardcoded JS
+        array made those killable only via the API, not by clicking --
+        so the grid now derives its scopes from the
+        `/api/kill-switches/status` payload, which already carries
+        `supported_symbols`. Any future addition to the tuple appears on
+        the page with no page edit at all.
+        """
+        assert "state.supported_symbols" in KILL_SWITCHES_PAGE
+        assert "gridScopes(state)" in KILL_SWITCHES_PAGE
+        # GLOBAL is prepended by the page, never served in the tuple.
+        assert '["GLOBAL"].concat(' in KILL_SWITCHES_PAGE
+        assert "GLOBAL" not in SUPPORTED_SYMBOLS
+
+    def test_symbols_beyond_the_majors_need_no_page_edit(self) -> None:
+        beyond = [s for s in SUPPORTED_SYMBOLS if s not in _FALLBACK_SCOPES]
+        assert beyond, "B7 widened the tuple; this guards against a revert"
+        assert "XAGUSD" in beyond
 
     def test_activate_and_clear_buttons_present(self) -> None:
         assert 'data-act="activate"' in KILL_SWITCHES_PAGE

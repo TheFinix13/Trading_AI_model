@@ -1628,14 +1628,18 @@ function drawPitch(){
 let saeEnabled = null;
 function applySaeState(enabled){
   saeEnabled = (enabled === undefined) ? null : enabled;
-  const pg = document.getElementById("pl_sae_itoshi");
+  // Renamed sae_itoshi -> aoshi_tokimitsu on 2026-08-19; fall back to
+  // the old element id so a pre-rename tape still dims the right node.
+  const pg = document.getElementById("pl_aoshi_tokimitsu")
+    || document.getElementById("pl_sae_itoshi");
   if(!pg) return;
   const off = (matchId === "__live__" && saeEnabled === false);
   pg.classList.toggle("player-off", off);
   const labels = pg.querySelectorAll("text");
   const nm = labels[labels.length - 1];
-  if(nm) nm.textContent = off ? "Sae (off)"
-    : ((roster.sae_itoshi || {name: "Sae"}).name);
+  const known = roster.aoshi_tokimitsu || roster.sae_itoshi;
+  const base = (known || {name: "Aoshi"}).name;
+  if(nm) nm.textContent = off ? base + " (off)" : base;
 }
 function playerPos(aid){ const r=roster[aid];
   return r? [r.x, 130-(r.y*1.2)-5] : [50,65]; }
@@ -2516,7 +2520,7 @@ function renderQuietLine(st){
     });
     if(parts.length) txt += " \u00b7 warm-up: "+parts.join(", ");
   }
-  if(st.sae_enabled===false) txt += " \u00b7 Sae benched (pre-reg gate)";
+  if(st.sae_enabled===false) txt += " \u00b7 Aoshi benched (pre-reg gate)";
   if(st.calendar_fetched_age_seconds==null) txt += " \u00b7 calendar cache missing";
   span.innerText = txt;
 }
@@ -6049,14 +6053,22 @@ async function postAction(url, body){
   return {status: r.status, body: out};
 }
 
-const SYMBOLS = ["GLOBAL", "EURUSD", "GBPUSD", "USDCAD", "USDJPY", "USDCHF"];
+// Used only when the status payload predates supported_symbols; a
+// hardcoded list here silently made new instruments unkillable by click
+// even after kill_switches.SUPPORTED_SYMBOLS grew (F025/B7).
+const FALLBACK_SYMBOLS = ["EURUSD", "GBPUSD", "USDCAD", "USDJPY", "USDCHF"];
+
+function gridScopes(state){
+  const supported = (state.supported_symbols || []).filter(function(s){ return !!s; });
+  return ["GLOBAL"].concat(supported.length ? supported : FALLBACK_SYMBOLS);
+}
 
 function renderGrid(state, box){
   const killed = new Set((state.killed_scopes || []).map(function(k){ return k.scope; }));
   const reasons = {};
   (state.killed_scopes || []).forEach(function(k){ reasons[k.scope] = k.reason; });
   var out = "";
-  SYMBOLS.forEach(function(sym){
+  gridScopes(state).forEach(function(sym){
     const on = killed.has(sym);
     const scopeLabel = sym === "GLOBAL" ? "Global (all pairs)" : sym;
     out += '<div class="ks-cell'+(on?' on':'')+'" data-scope="'+esc(sym)+'">';
