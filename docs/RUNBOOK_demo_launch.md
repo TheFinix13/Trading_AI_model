@@ -1,16 +1,37 @@
 # Runbook — Demo-MT5 Launch & Verification
 
+> ## Read this before copying any command below
+>
+> **This is a build-and-first-launch runbook, not the day-to-day command
+> set.** For routine operation — pulling changes, restarting, reports,
+> health checks — use **`docs/VM_QUICKSTART.md` in the v1 clone**. That
+> page is the single reference and it wins over anything here.
+>
+> **Two paths and two branch names in this file are stale.** They date
+> from the original build and are left in place because the surrounding
+> setup narrative still reads correctly, but do not paste them:
+>
+> | Appears below as | Actually is |
+> |---|---|
+> | clone `C:\TradingAgent-platform` | `C:\Users\Fiyin\Documents\GitHub\TradingAgent2` |
+> | branch `next-gen` | `product` (single serving branch since the D110 merge) |
+>
+> A scheduled task registered against the retired clone path fails
+> silently every time it fires — that is a real incident that already
+> happened to the Night Auditor, not a hypothetical. **Register v2 tasks
+> with `scripts\setup_platform_tasks.ps1`**, which resolves the clone from
+> its own location and then verifies every task points there.
+
 > **Demo MT5 only — hard rule.** This runbook never involves live broker
 > keys. The account is an Exness **demo** ($500+ recommended, see
 > [08 — Live Trading & Deployment](08-live-trading-and-deployment.md)
 > section 08.3). Nothing here changes strategy behaviour.
 
-> **Branch note.** The VM agent runs the **`main`** branch. The
-> **`next-gen`** branch (where this runbook and the progress dashboard
-> live) is the next-generation platform line, kept fully separate from
-> `main` — it will eventually host heavier trading once research from
-> `finance-research-experiments` is validated through the full pipeline.
-> Never deploy `next-gen` to the VM until that gate is passed.
+> **Branch note.** The VM's v1 trading agent runs **`main`**. The v2
+> platform line — this runbook, the dashboard, the squad — runs
+> **`product`**, which has been the single serving branch since the D110
+> reconciliation merge. Where this file still says `next-gen`, read
+> `product`.
 
 Companion docs: [08 — Live Trading & Deployment](08-live-trading-and-deployment.md)
 (full setup detail), [runbooks/vmware-windows.md](runbooks/vmware-windows.md)
@@ -583,28 +604,70 @@ git fetch && git checkout product && git reset --hard origin/product
 Same architecture as the v1 agents (section 2): **`AtLogOn`
 interactive-user tasks + Autologon**, never a Windows Service — the
 squad's `--feed mt5` reads bars over MT5's desktop-session IPC.
-Register once, from the platform clone:
+
+> **Use `scripts\setup_platform_tasks.ps1` instead of the block below.**
+> It registers all four v2 tasks (squad loop, dashboard, ops watchdog,
+> night auditor) against the clone it is run from, and then verifies each
+> task's working directory actually points there. The hand-rolled
+> commands below are kept as reference for what it does, and because they
+> show the trigger shape — but they hardcode
+> `C:\TradingAgent-platform`, which is **no longer the clone that holds
+> the pulled code** (the current one is
+> `C:\Users\Fiyin\Documents\GitHub\TradingAgent2`). A task registered
+> against the wrong clone fails silently every time it fires. If you do
+> run these by hand, substitute your real path everywhere, and note that
+> they omit the dashboard task entirely — which is why the dashboard had
+> no restarter on 2026-08-10.
+>
+> Day-to-day restarts are `scripts\update_platform.ps1` (or `v2up`);
+> see `docs/VM_QUICKSTART.md` in the v1 clone for the whole command set.
+
+Reference form (substitute `$repo` for your clone):
 
 ```powershell
-cd C:\TradingAgent-platform
+$repo = "C:\Users\Fiyin\Documents\GitHub\TradingAgent2"
+cd $repo
 
-# 1) Squad runtime, restart-forever wrapper (kill.txt still stops it):
+# 1) Squad runtime, restart-forever wrapper (kill.txt still stops it).
+#    watchdog_squad.ps1 passes --enable-sae by default; -NoSae opts out.
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
   -Argument "-ExecutionPolicy Bypass -File scripts\watchdog_squad.ps1" `
-  -WorkingDirectory "C:\TradingAgent-platform"
+  -WorkingDirectory $repo
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
 Register-ScheduledTask -TaskName "SquadLiveRuntime" -Action $action -Trigger $trigger `
-  -RunLevel Limited -Description "v2 squad shadow-paper runtime (restart loop; MT5 read-only)"
+  -RunLevel Limited -Force `
+  -Description "v2 squad shadow-paper runtime (restart loop; MT5 read-only)"
 Start-ScheduledTask -TaskName "SquadLiveRuntime"
 
-# 2) Ops watchdog loop (5-min cadence; pages transitions via ops Telegram):
-$action = New-ScheduledTaskAction -Execute "C:\TradingAgent-platform\.venv\Scripts\python.exe" `
+# 2) Dashboard on 8787. Bind 0.0.0.0 so Tailscale clients reach it.
+#    Missing from earlier revisions of this runbook -- that omission is
+#    why nothing restarted the dashboard when it died on 2026-08-10.
+$action = New-ScheduledTaskAction -Execute "powershell.exe" `
+  -Argument "-ExecutionPolicy Bypass -File scripts\watchdog_platform.ps1 -BindHost 0.0.0.0 -Port 8787" `
+  -WorkingDirectory $repo
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+Register-ScheduledTask -TaskName "PlatformWebUI" -Action $action -Trigger $trigger `
+  -RunLevel Limited -Force -Description "v2 dashboard on 0.0.0.0:8787 (watchdog-wrapped)"
+Start-ScheduledTask -TaskName "PlatformWebUI"
+
+# 3) Ops watchdog loop (5-min cadence; pages transitions via ops Telegram):
+$action = New-ScheduledTaskAction -Execute "$repo\.venv\Scripts\python.exe" `
   -Argument "scripts\run_watchdog.py --loop 300" `
-  -WorkingDirectory "C:\TradingAgent-platform"
+  -WorkingDirectory $repo
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
 Register-ScheduledTask -TaskName "OpsWatchdog" -Action $action -Trigger $trigger `
-  -RunLevel Limited -Description "F017 ops watchdog loop (observe-only, 8-check registry)"
+  -RunLevel Limited -Force `
+  -Description "F017 ops watchdog loop (observe-only, 8-check registry)"
 Start-ScheduledTask -TaskName "OpsWatchdog"
+```
+
+If an older `PlatformServer` task exists, remove it — two tasks binding
+8787 will fight, and `update_platform.ps1` treats either name as the
+dashboard so it will restart whichever it finds:
+
+```powershell
+Stop-ScheduledTask -TaskName PlatformServer -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName PlatformServer -Confirm:$false
 ```
 
 **Verify (do all four before walking away):**
@@ -642,11 +705,15 @@ the wrapper itself.
 > stubs under `<live_dir>\audits\` and sends ONE ops-Telegram line
 > ("all nominal" or "N anomalies: …"). No LLM, no mutations, no git.
 
-Register once, from the platform clone. **Use YOUR clone's real path**
-— on the current VM that is `C:\Users\Fiyin\Documents\GitHub\TradingAgent2`,
-the same repo the SquadLiveRuntime watchdog logs as `repo=` (a task
-registered against a path that doesn't hold the pulled code fails
-silently every morning). `-Force` makes re-registration idempotent:
+**`scripts\setup_platform_tasks.ps1` registers this for you** against
+the correct clone, alongside the other three tasks. Prefer it.
+
+If you register by hand, **use YOUR clone's real path** — on the current
+VM that is `C:\Users\Fiyin\Documents\GitHub\TradingAgent2`, the same repo
+the SquadLiveRuntime watchdog logs as `repo=`. A task registered against
+a path that doesn't hold the pulled code fails silently every morning,
+which is precisely what happened to a NightAuditor pointed at the retired
+`C:\TradingAgent-platform`. `-Force` makes re-registration idempotent:
 
 ```powershell
 $repo = "C:\Users\Fiyin\Documents\GitHub\TradingAgent2"   # <- your clone

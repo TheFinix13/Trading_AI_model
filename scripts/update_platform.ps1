@@ -61,8 +61,20 @@ function Write-Bad([string]$Text)   { Write-Host "  [FAIL] $Text" -ForegroundCol
 function Write-Info([string]$Text)  { Write-Host "         $Text" -ForegroundColor Gray }
 
 $liveDir = Join-Path $HOME "Documents\TradingAgentLogs\squad_live"
-# Task names as registered by docs\RUNBOOK_demo_launch.md sections 4 + 7.
-$taskNames = @("SquadLiveRuntime", "PlatformWebUI", "OpsWatchdog", "NightAuditor")
+# Task names as registered by docs\RUNBOOK_demo_launch.md sections 4 + 7,
+# plus the aliases actually present on VMs registered before those names
+# settled. The dashboard task in particular exists as "PlatformServer" on
+# the current VM while the runbook says "PlatformWebUI" -- looking for
+# only one of them reported a running dashboard as missing.
+# One entry per logical job; the array is the accepted names for it, so
+# only a job with NO name present counts as unregistered.
+$taskRoles = @(
+    @{ Role = "squad loop"; Names = @("SquadLiveRuntime") },
+    @{ Role = "dashboard";  Names = @("PlatformWebUI", "PlatformServer") },
+    @{ Role = "ops watchdog"; Names = @("OpsWatchdog") },
+    @{ Role = "night auditor"; Names = @("NightAuditor") }
+)
+$taskNames = $taskRoles | ForEach-Object { $_.Names } 
 
 Write-Host ""
 Write-Host "v2 squad + platform -- update + restart" -ForegroundColor White
@@ -161,11 +173,18 @@ if ($StatusOnly -or $NoRestart) {
 # ---------------------------------------------------------------------------
 Write-Head "verify"
 
-foreach ($n in $taskNames) {
-    $t = Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue
-    if (-not $t) { Write-Warn2 "$n: not registered"; continue }
-    if ($t.State -eq "Running") { Write-Ok "$n: Running" }
-    else { Write-Warn2 "$n: $($t.State)" }
+foreach ($role in $taskRoles) {
+    $found = $null
+    foreach ($n in $role.Names) {
+        $t = Get-ScheduledTask -TaskName $n -ErrorAction SilentlyContinue
+        if ($t) { $found = $t; break }
+    }
+    if (-not $found) {
+        Write-Warn2 "$($role.Role): not registered (looked for $($role.Names -join ' / '))"
+        continue
+    }
+    if ($found.State -eq "Running") { Write-Ok "$($role.Role) [$($found.TaskName)]: Running" }
+    else { Write-Warn2 "$($role.Role) [$($found.TaskName)]: $($found.State)" }
 }
 
 # Dashboard reachable? This is the localhost:8787 refusal from Aug 10.
