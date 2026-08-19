@@ -1,4 +1,68 @@
-# AI Context — brain dump (updated 2026-08-19, v0.74)
+# AI Context — brain dump (updated 2026-08-19, v0.75)
+
+> v0.75 — **Right-of-first-refusal approvals (D150) + F025 B6/B8 fixed.
+> B1 deliberately NOT built: D065 governance.** Operator asked for "auto
+> execution AND a dashboard prompt". Read literally those contradict — an
+> auto-executed proposal leaves nothing to approve — so it shipped as ONE
+> decision path with TWO routes to a fill: every proposal queues and
+> notifies, the operator gets `[approvals] timeout_seconds` (1800 on demo)
+> to Execute or Reject, and **silence at window close authorises the
+> send**. Answers F025 design decision #1 ("who clicks Execute"), which
+> the charter calls a values decision. **Auto-execution is NOT
+> `approve(id, by="auto")`** — that would satisfy gate #4 through existing
+> code while writing `approved` into `approvals.jsonl` for a decision no
+> human made, so `auto_approved` / `resolved_by: auto_timeout` is a
+> distinct status the audit cannot confuse with the operator. **New
+> `approval_driver.py` supplies the clock:** `timeout_reap` is lazy
+> (called only from `can_send_order`/`list_entries`/`_resolve`), so
+> without a poller a 30-min window would resolve when an HTTP request
+> next touched the queue — firing proposals **when the dashboard was
+> opened and never while unattended**, the exact inverse of the intent.
+> Found + fixed: `approval_submitted` never routed to Telegram
+> (`False` since Sprint 2), so with a 5-min TTL a 3am setup appeared on
+> `/approvals`, told nobody, and was discarded by 3:05 — now dual-routed
+> like a kill-switch trip. Legal: `approval-queue-warning.md` REWRITTEN
+> (the old "ignored proposals are discarded" promise is now false and was
+> struck, not left beside the new behaviour); claim register carries
+> inaction-inversion + audit-attribution + gate-scope constraints; the
+> flag has no HTTP surface and only literal `true` arms it.
+> **B6 was bigger than its blocker text.** "`record_fill` called with
+> literal zero" undersells it — zero at fill time is correct. The defect:
+> nothing recorded the loss when a position CLOSED, and the adapter had
+> no way to observe closure at all (only connect/account_info/send/close/
+> shutdown). **A stop-out executes at the broker and never calls back**,
+> so the only visible closes were our own voluntary ones — the minority
+> that matter least. Adapter gained `open_tickets` (magic-filtered, so
+> v1's positions stay invisible) + `closed_deal_profit`; new
+> `position_reconciler.py` charges externally-closed positions to the
+> budget. Fail-quiet: unreachable broker changes nothing, missing deal
+> history = "unknown" NOT "no loss" (ticket stays `filled`, retries, keeps
+> counting toward open risk). Sign bug caught by tests: `record_fill`
+> takes SIGNED pnl and the scanner negates only negative rows, so a
+> pre-converted positive "loss" read as a win and charged nothing.
+> **B8 needed the same capability** — "total risk currently open" is
+> unanswerable without knowing what's open. Cap = 10% of equity, folded
+> into gate #3 (not a 6th gate) so it composes into the live-mode-off
+> invariant; skipped entirely unless BOTH `open_risk` and `equity` are
+> supplied, so a caller that cannot observe positions gets no fabricated
+> total. Honest limit: denominated against static `[squad_live] equity`
+> because the gate runs before broker connect — F025 design decision #3
+> (equity source of truth) still OPEN and the "$500→$1000" question wants
+> the live value. `_serialise_toml` also silently dropped the new section
+> until fixed. **B1 NOT attempted, on purpose:** D065 +
+> `company/handoffs/F013-legal-to-ceo.json` make any commit adding
+> `approval_queue.submit()` on a live pathway a new-sprint +
+> fresh-security-and-legal-review event, "Non-negotiable" per the F025
+> charter. Also note `max_volume_lots` 0.10 was chosen by the operator but
+> NOT implemented — `F018-review.md` rolling constraint #1 makes raising
+> the default a fresh-Legal-review event, so it is documented in
+> `platform.toml.example` and `DEFAULT_MAX_VOLUME_LOTS` stays 0.01.
+> Correction to a prior note: the internal endpoint is
+> `/api/approvals/submit` (not `/n/submit`). Suite **2289 pass / 3 fail**
+> (the 3 pre-existing research-manifest fails); +57 tests. Remaining F025
+> blockers: **B1** (governance-gated), **B2** (lot contradiction), **B7**
+> residue, equity source of truth, paper-vs-broker position
+> reconciliation. G7 still no pass.
 
 > v0.74 — **B3 fixed: risk-derived fill sizing, default OFF (I031).**
 > The defect that made the $500 account unsafe. Sentinel R1 computes

@@ -39,8 +39,20 @@ DEFAULT_TIMEOUT_SECONDS: int = 5 * 60  # 5 minutes
 # window after the click -- `can_send_order` refuses afterwards.
 # Configurable via `[approvals] approved_ttl_seconds` in platform.toml.
 DEFAULT_APPROVED_TTL_SECONDS: int = 5 * 60  # 5 minutes
+# F025 B1 (right-of-first-refusal): `auto_approved` is a SEPARATE status
+# from `approved` on purpose. Auto-execution could have been implemented
+# as `approve(id, by="auto")` -- the four-gate stack would have passed
+# unchanged -- but then `approvals.jsonl` would read `approved` for a
+# decision no human made, hollowing out gate #4 while leaving it looking
+# intact. A distinct status keeps the audit trail incapable of
+# misattributing machine action to the operator.
 STATUSES: tuple[str, ...] = (
-    "pending", "approved", "rejected", "timed_out", "approval_expired")
+    "pending", "approved", "auto_approved", "rejected", "timed_out",
+    "approval_expired")
+# Statuses that satisfy gate #4. `auto_approved` is included ONLY when
+# the operator has enabled auto-execution; the status cannot be reached
+# otherwise (see `timeout_reap`).
+_SENDABLE_STATUSES: frozenset[str] = frozenset({"approved", "auto_approved"})
 AUDIT_FILENAME: str = "approvals.jsonl"
 
 LIVE_MODE_NAMESPACE: str = "bluelock"
@@ -60,6 +72,9 @@ _ENTRIES: dict[str, dict] = {}
 _LOCK = threading.RLock()
 _TIMEOUT_SECONDS: int = DEFAULT_TIMEOUT_SECONDS
 _APPROVED_TTL_SECONDS: int = DEFAULT_APPROVED_TTL_SECONDS
+# Default False so a clean install keeps the original guarantee: a
+# proposal you ignore is discarded, never sent.
+_AUTO_EXECUTE_ON_TIMEOUT: bool = False
 
 
 def _audit_path() -> Path:
@@ -172,48 +187,86 @@ def reject(approval_id: str, reason: str, by: str = "user") -> bool:
 
 
 def timeout_reap(now: float | None = None) -> list[str]:
-    """Mark every stale `pending` entry as `timed_out` AND every
-    stale `approved` entry as `approval_expired` (A005: an approval
-    is only fresh for `_APPROVED_TTL_SECONDS` after the click).
-    Returns the list of ids that were expired in this call."""
+    """Resolve every entry whose window has elapsed.
+
+    A stale `pending` entry goes one of two ways. With auto-execution
+    OFF (the default) it becomes `timed_out` and is discarded, which is
+    the original F013 guarantee. With auto-execution ON it becomes
+    `auto_approved` -- the refusal window closed without the operator
+    objecting, so gate #4 opens. Either way the entry leaves `pending`,
+    so a click landing afterwards finds nothing to resolve.
+
+    A stale `approved` or `auto_approved` entry becomes
+    `approval_expired` (A005 freshness). This matters more for the auto
+    path than the manual one: if the driver opens gate #4 while the
+    executor is down, the entry must go cold rather than fire whenever
+    the executor next comes back.
+
+    Callers MUST NOT rely on this running by itself. It is invoked
+    lazily by `can_send_order`, `list_entries` and `_resolve`, so with
+    nothing polling, an auto-execution deadline would only resolve when
+    a request happened to arrive -- `approval_driver` exists to give the
+    window a real clock.
+
+    Returns the ids resolved in this call.
+    """
     cutoff = now if now is not None else _now()
     expired: list[tuple[str, str]] = []
     with _LOCK:
+        auto = _AUTO_EXECUTE_ON_TIMEOUT
         for approval_id, record in _ENTRIES.items():
             if (record["status"] == "pending"
                     and record["timeout_at_epoch"] <= cutoff):
-                record["status"] = "timed_out"
+                if auto:
+                    record["status"] = "auto_approved"
+                    record["resolution_reason"] = "refusal_window_elapsed"
+                    record["resolved_by"] = "auto_timeout"
+                    # Subject to the same A005 freshness window as a
+                    # human approval -- see the docstring.
+                    record["approved_at"] = _iso(cutoff)
+                    record["approved_at_epoch"] = cutoff
+                    record["approved_expires_at"] = _iso(
+                        cutoff + _APPROVED_TTL_SECONDS)
+                    record["approved_expires_at_epoch"] = (
+                        cutoff + _APPROVED_TTL_SECONDS)
+                    expired.append((approval_id, "auto_approved"))
+                else:
+                    record["status"] = "timed_out"
+                    record["resolution_reason"] = "timeout"
+                    record["resolved_by"] = "system"
+                    expired.append((approval_id, "timed_out"))
                 record["resolved_at"] = _iso(cutoff)
-                record["resolved_by"] = "system"
-                record["resolution_reason"] = "timeout"
-                expired.append((approval_id, "timed_out"))
-            elif (record["status"] == "approved"
+            elif (record["status"] in _SENDABLE_STATUSES
                     and record.get("approved_expires_at_epoch") is not None
                     and record["approved_expires_at_epoch"] <= cutoff):
                 record["status"] = "approval_expired"
                 record["resolved_by"] = "system"
                 record["resolution_reason"] = "approved_ttl_expired"
                 expired.append((approval_id, "approval_expired"))
+    _REAP_REASONS = {"timed_out": "timeout",
+                     "auto_approved": "refusal_window_elapsed",
+                     "approval_expired": "approved_ttl_expired"}
     for approval_id, event in expired:
         _append_audit({"event": event, "id": approval_id,
                        "resolved_at": _iso(cutoff),
-                       "resolved_by": "system",
-                       "resolution_reason": ("timeout"
-                                             if event == "timed_out"
-                                             else "approved_ttl_expired")})
+                       "resolved_by": ("auto_timeout"
+                                       if event == "auto_approved"
+                                       else "system"),
+                       "resolution_reason": _REAP_REASONS[event]})
     return [approval_id for approval_id, _ in expired]
 
 
 def can_send_order(approval_id: str) -> bool:
     """The fourth live-mode-off gate. True iff the entry exists and its
-    status is `approved`. Auto-reaps timeouts AND stale approvals
-    (A005 approved-freshness window) before answering."""
+    status is `approved` (operator clicked) or `auto_approved` (refusal
+    window elapsed with auto-execution enabled). Auto-reaps timeouts AND
+    stale approvals (A005 approved-freshness window) before answering."""
     timeout_reap()
     with _LOCK:
         record = _ENTRIES.get(approval_id)
     if record is None:
         return False
-    return record["status"] == "approved"
+    return record["status"] in _SENDABLE_STATUSES
 
 
 def get_entry(approval_id: str) -> dict | None:
@@ -260,17 +313,37 @@ def get_approved_ttl_seconds() -> int:
     return _APPROVED_TTL_SECONDS
 
 
+def set_auto_execute_on_timeout(enabled: bool) -> None:  # claim-exempt: config setter, no HTTP surface
+    """Enable/disable right-of-first-refusal auto-execution.
+
+    Deliberately NOT exposed over HTTP. Turning this on inverts the
+    meaning of operator inaction -- an ignored proposal becomes an order
+    instead of a discard -- which is a change to what
+    `company/legal/approval-queue-warning.md` promises, so it belongs in
+    reviewed config (`[approvals] auto_execute_on_timeout`) alongside a
+    dated decision entry, not behind a toggle someone can flip mid-
+    session.
+    """
+    global _AUTO_EXECUTE_ON_TIMEOUT
+    _AUTO_EXECUTE_ON_TIMEOUT = bool(enabled)
+
+
+def get_auto_execute_on_timeout() -> bool:
+    return _AUTO_EXECUTE_ON_TIMEOUT
+
+
 def reset_state() -> None:  # claim-exempt: test-only
     """Clear the in-memory queue AND drop the JSONL audit file.
 
     Callers must have set `credentials.set_config_dir(...)` to a
     throwaway directory before invoking this. Real deployments should
     never call it."""
-    global _TIMEOUT_SECONDS, _APPROVED_TTL_SECONDS
+    global _TIMEOUT_SECONDS, _APPROVED_TTL_SECONDS, _AUTO_EXECUTE_ON_TIMEOUT
     with _LOCK:
         _ENTRIES.clear()
         _TIMEOUT_SECONDS = DEFAULT_TIMEOUT_SECONDS
         _APPROVED_TTL_SECONDS = DEFAULT_APPROVED_TTL_SECONDS
+        _AUTO_EXECUTE_ON_TIMEOUT = False
     audit = _audit_path()
     try:
         if audit.exists():

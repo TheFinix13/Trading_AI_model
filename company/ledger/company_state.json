@@ -3212,6 +3212,20 @@
         "company/strategy/balance-patch-roadmap-v1.md",
         "company/rd/intake/I030-pip-semantics-hardcoded-blocks-jpy-and-tier2-fields.md"
       ]
+    },
+    {
+      "id": "D150",
+      "date": "2026-08-19",
+      "role": "ceo",
+      "decision": "[LEGAL-CLAIM] Right-of-first-refusal approvals adopted for the $500 demo bridge: every proposal is queued and announced, the operator has a disclosed window (timeout_seconds, 1800s on demo) to Execute or Reject, and silence at window close authorises the send. Strikes the 'ignored proposals are discarded' promise; narrows 'no order without a human click' to 'no order without a disclosed window in which the operator could refuse'. auto_execute_on_timeout defaults False, has no HTTP surface, and only literal true arms it. approval_submitted Telegram delivery flipped on (dual-routed) -- an unannounced proposal would expire or execute unseen. Delivered alongside: B6 (position_reconciler charges broker-side closes against the risk budget) and B8 (aggregate open-risk cap at 10% of equity). Operator chose max_volume_lots 0.10 but it is NOT implemented as a default change -- F018-review.md rolling constraint #1 makes that a fresh-Legal-review event, so the value is documented in platform.toml.example only and DEFAULT_MAX_VOLUME_LOTS stays 0.01.",
+      "context": "'Auto-execute AND dashboard approval' is incoherent read literally -- an auto-executed proposal leaves nothing to approve -- so it was implemented as one decision path with two routes to a fill. This answers F025 design decision #1 ('who clicks Execute'), which the spec calls a values decision. Two implementation facts drove the design: auto-execution is NOT approve(id, by='auto'), which would have written 'approved' into approvals.jsonl for a decision no human made, so auto_approved/resolved_by:auto_timeout is a distinct status; and timeout_reap is lazy, so approval_driver.py supplies the clock (without it a 30-min window would resolve only when an HTTP request touched the queue, firing proposals when the dashboard was opened and never while unattended). B6 and B8 turned out to be one problem: neither is fixable by arithmetic because a stop-out closes server-side and never calls back into this code, so the adapter gained open_tickets/closed_deal_profit and a reconciler charges externally-closed positions against the budget. B1 NOT attempted: D065 and company/handoffs/F013-legal-to-ceo.json make any commit adding approval_queue.submit() on a live pathway a new-sprint plus fresh-security-and-legal-review event, non-negotiable per the F025 charter. Still open: B1, B2 (lot contradiction), B7 (kill-switch symbol coverage), equity source of truth (B8's cap is denominated against static [squad_live] equity, which drifts as the account grows), and paper-vs-broker position reconciliation. G7 still has no pass.",
+      "links": [
+        "company/legal/claim_register.md",
+        "company/legal/approval-queue-warning.md",
+        "agent/platform/approval_driver.py",
+        "agent/platform/position_reconciler.py",
+        "company/sprints/sprint-4-squad-demo-execution/F025-squad-to-demo-account-bridge.md"
+      ]
     }
   ],
   "sprint_verdicts": [

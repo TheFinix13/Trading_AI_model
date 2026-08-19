@@ -2921,6 +2921,71 @@ commit briefly landed on `main` (7e1473c, unpushed), cherry-picked
 to `multi-agent-ensemble` (f524abc); local main left 1-ahead
 pending user direction.
 
+## D150 · 2026-08-19 · ceo · [LEGAL-CLAIM]
+
+**Right-of-first-refusal approvals adopted as the execution model for
+the $500 demo bridge, which strikes the "ignored proposals are
+discarded" promise and narrows the human-in-the-loop claim.** Every
+squad proposal is queued and announced; the operator has a disclosed
+window (`[approvals] timeout_seconds`, 1800 s on the demo) to click
+Execute or Reject; silence at the end of the window authorises the
+send. This gives one decision path two routes to a fill rather than
+two contradictory mechanisms — the alternative reading of "auto-execute
+AND dashboard approval" is incoherent, since an auto-executed proposal
+leaves nothing to approve.
+
+Legal consequences accepted, recorded in `company/legal/claim_register.md`
+under the inaction-inversion constraint: (1) the claim "no order is sent
+without a human click" is FALSE while the flag is armed, and the
+supportable claim is narrower — no order without a disclosed window in
+which the operator could refuse; (2) `approval-queue-warning.md` was
+rewritten, striking the discard sentence rather than leaving it beside
+the new behaviour; (3) `auto_execute_on_timeout` gets no HTTP surface
+and only literal `true` arms it, because a typo must not start placing
+orders; (4) the late-click race resolves in favour of execution, with
+the F025 B4 close path as the documented unwind.
+
+Two implementation facts drove the design. Auto-execution is NOT
+`approve(id, by="auto")` — that would have satisfied gate #4 through
+existing code while writing `approved` into `approvals.jsonl` for a
+decision no human made, so `auto_approved` / `resolved_by:
+auto_timeout` is a distinct status the audit cannot confuse with the
+operator. And `timeout_reap` is lazy, so `agent/platform/approval_driver.py`
+now supplies the clock; without it a 30-minute window would have
+resolved whenever an HTTP request next touched the queue, firing
+proposals when the operator opened the dashboard and never while the
+machine was unattended.
+
+Also: `approval_submitted` Telegram delivery was False through Sprint 2
+and is now dual-routed. A proposal that notifies nobody expires unseen
+— or, armed, executes unseen — which would have made the right of
+refusal theoretical.
+
+Sizing: the operator chose 0.10 for `max_volume_lots` to honour F025 B3
+risk-derived sizing (0.08 requested on a $500 book at the 5% cap, ~$24
+risk). NOT IMPLEMENTED as a default change — `DEFAULT_MAX_VOLUME_LOTS`
+remains 0.01 and the value is documented in `platform.toml.example`
+only, because `F018-review.md` rolling constraint #1 makes raising the
+default a fresh-Legal-review event. Recording the intent here so the
+review has the derivation. Worth noting the old 0.01 was not merely
+conservative: while the squad filled a flat 0.1 lot, that cap refused
+every order outright, so it had been acting as an unplanned backstop.
+
+Delivered under this decision: B6 (`agent/platform/position_reconciler.py`
+charges realised losses from broker-side closes against the risk budget)
+and B8 (`risk_budget` aggregate open-risk cap, 10% of equity), which are
+steps 4 of the F025 recommended sequencing and carry no governance gate.
+B1 is NOT delivered and was not attempted: D065 and
+`company/handoffs/F013-legal-to-ceo.json` make any commit adding
+`approval_queue.submit(...)` on a live pathway a new-sprint plus
+fresh-security-and-legal-review event, marked non-negotiable in
+`company/sprints/sprint-4-squad-demo-execution/F025-squad-to-demo-account-bridge.md`.
+Still open besides B1: B2 (lot contradiction), B7 (kill-switch symbol
+coverage), the F025 design decisions on equity source of truth (B8's cap
+is currently denominated against the static `[squad_live] equity`, which
+drifts as the account grows) and paper-vs-broker position reconciliation.
+G7 still has no pass.
+
 ## Template for subsequent entries
 
 ```markdown

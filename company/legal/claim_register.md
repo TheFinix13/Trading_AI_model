@@ -415,6 +415,8 @@ Public accessors: `submit(entry) -> str`,
 `set_timeout_seconds(seconds) -> None`,
 `get_approved_ttl_seconds() -> int`,
 `set_approved_ttl_seconds(seconds) -> None`,
+`get_auto_execute_on_timeout() -> bool`,
+`set_auto_execute_on_timeout(enabled) -> None`,
 `is_live_mode_enabled() -> bool`,
 `set_live_mode(enabled) -> bool`,
 `enable_ceremony(acknowledged, confirmation) -> tuple[bool, str]`,
@@ -435,15 +437,130 @@ Test-only helper marked `# claim-exempt`: `reset_state`.
 | `submit` | `str` (approval_id) | Enqueue a proposal. Assigns id, validates payload, appends to JSONL audit. Sprint 2 does NOT call this from any live pathway (D065). | `approval_queue.submit`. | None -- internal endpoint gated by `[internal].token`. |
 | `approve` | `bool` | Move pending -> approved. Idempotent (returns False on second call). Audit-logged. | `approval_queue.approve`. | Verbatim `company/legal/approval-queue-warning.md` renders above the pending list. |
 | `reject` | `bool` | Move pending -> rejected with reason. Audit-logged. Rejected orders have zero market side-effect. | `approval_queue.reject`. | Same as approve. |
-| `can_send_order` | `bool` | Fourth of four live-mode-off gates. True iff status == "approved". Auto-reaps stale pending AND stale approved (A005 freshness window) before answering. | `approval_queue.can_send_order`. | Composed into the invariant test. |
+| `can_send_order` | `bool` | Fourth of four live-mode-off gates. True iff status is `approved` (operator clicked) or `auto_approved` (F025 B1 refusal window elapsed with auto-execution armed). Auto-reaps stale pending AND stale approved/auto-approved (A005 freshness window) before answering. | `approval_queue.can_send_order`. | Composed into the invariant test. |
+| `get_auto_execute_on_timeout` / `set_auto_execute_on_timeout` | `bool` / None | F025 B1 right-of-first-refusal switch (`[approvals] auto_execute_on_timeout`, DEFAULT FALSE). While False an ignored proposal is discarded (`timed_out`). While True an ignored proposal is SENT (`auto_approved`). Deliberately has no HTTP surface — see the inaction-inversion constraint below. | `approval_queue.get_auto_execute_on_timeout`. | Verbatim `company/legal/approval-queue-warning.md`, whose auto-execution section renders only while the flag is True. |
 | `get_approved_ttl_seconds` / `set_approved_ttl_seconds` | `int` / None | A005 approved-freshness window (`[approvals] approved_ttl_seconds`, default 300 s). An `approved` entry past the window flips to `approval_expired` and every gate refuses it. | `approval_queue.get_approved_ttl_seconds`. | Freshness-window rolling constraint below. |
 | `can_send_live_order` | `(bool, str)` | Composes ALL FOUR gates (live-mode + kill-switch + risk-budget + approval). The `test_live_mode_off_invariant` pin. | `approval_queue.can_send_live_order`. | Composed disclaimer of all four dependencies. |
-| `timeout_reap` | `list[str]` | Expire stale pending entries (-> `timed_out`) AND stale approved entries (-> `approval_expired`, A005). Called under the hood by `can_send_order`, `list_entries`, and `_resolve` (so a late click can never approve an expired entry). | `approval_queue.timeout_reap`. | None -- state. |
+| `timeout_reap` | `list[str]` | Resolve stale pending entries (-> `timed_out`, or `auto_approved` when F025 B1 is armed) AND stale approved/auto-approved entries (-> `approval_expired`, A005). Called under the hood by `can_send_order`, `list_entries`, and `_resolve` (so a late click can never approve an expired entry). Lazy: `approval_driver` supplies the clock. | `approval_queue.timeout_reap`. | None -- state. |
 | `list_entries` | `list[dict]` | Newest-first, optional status filter, `limit` cap. Returns copies (mutation-safe). | `approval_queue.list_entries`. | None -- state. |
 
 Rolling constraint (Legal): the "5-minute timeout" claim is only
 accurate while `DEFAULT_TIMEOUT_SECONDS == 300`. Any change (config
-knob or default) must strike or update the claim wherever cited.
+knob or default) must strike or update the claim wherever cited. The
+demo deployment sets `[approvals] timeout_seconds = 1800`, so any
+surface citing "5 minutes" to that operator is wrong — the warning doc
+renders the configured value rather than a literal.
+
+Inaction-inversion constraint (Legal, F025 B1 2026-08-19): with
+`auto_execute_on_timeout` True, operator inaction changes meaning from
+"discard" to "send". This DIRECTLY CONTRADICTS the pre-F025 promise
+that "proposals you ignore expire and are discarded — they do NOT get
+retried automatically", which is why that sentence was struck from
+`approval-queue-warning.md` rather than left standing beside the new
+behaviour. Consequences Legal has accepted:
+
+- The claim "no order is sent without a human click" is FALSE while the
+  flag is True. The supportable claim is narrower: no order is sent
+  without a disclosed window in which the operator could refuse.
+- The flag has no HTTP surface by design. It is reviewed config plus a
+  dated decision entry, not a session toggle, because flipping it
+  changes what the operator's silence authorises.
+- A non-bool value in config leaves it False (no coercion): a typo must
+  never arm auto-execution.
+- The late-click race resolves in favour of execution. Once the window
+  closes the entry is no longer `pending`, so `reject` returns False
+  rather than appearing to cancel an order already going out. The
+  documented unwind for that case is the F025 B4 close path.
+
+Audit-attribution constraint (Legal, F025 B1 2026-08-19): auto-execution
+must NOT be implemented as `approve(id, by="auto")`. That would satisfy
+gate #4 with the existing code path but write `approved` into
+`approvals.jsonl` for a decision no human made, leaving the gate looking
+intact while hollow. `auto_approved` is therefore a distinct status with
+`resolved_by: "auto_timeout"` and reason `refusal_window_elapsed`, so
+the audit trail is structurally incapable of misattributing machine
+action to the operator. Pinned by
+`tests/platform/test_approval_auto_execute.py::TestAuditAttribution`.
+
+Gate-scope constraint (Legal, F025 B1): auto-approval opens gate #4 and
+nothing else. Live-mode, kill-switch and risk-budget still refuse an
+`auto_approved` entry, pinned by
+`tests/platform/test_approval_auto_execute.py::TestAutoPathDoesNotBypassGates`.
+
+### F025 B1 — `agent/platform/approval_driver.py` (2026-08-19)
+
+Public accessors: `tick(adapter_factory=None) -> list[dict]`,
+`start(tick_seconds=None, adapter_factory=None) -> bool`,
+`stop(timeout=5.0) -> None`, `is_running() -> bool`.
+Public module constant: `DEFAULT_TICK_SECONDS`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `tick` | `list[dict]` | Resolve elapsed refusal windows, then hand every entry that reached `auto_approved` to `live_executor.execute_approved`. One result dict per attempt. Contains per-entry exceptions so one bad entry cannot strand later proposals. | `approval_driver.tick`. | None — composes the executor's disclaimers. |
+| `start` / `stop` / `is_running` | `bool` / None / `bool` | Lifecycle of the background clock. `start` is idempotent. Daemon thread. | `approval_driver.start`. | None — lifecycle. |
+
+Clock-necessity constraint (Legal, F025 B1): `timeout_reap` is invoked
+lazily, so without this driver a refusal window would resolve only when
+an HTTP request happened to touch the queue — proposals would fire when
+the operator opened the dashboard and never while the machine was
+unattended, which is the inverse of the documented behaviour. If the
+driver is disabled while `auto_execute_on_timeout` is True, the
+disclosed window is not being honoured and the arrangement is
+misdescribed. Pinned by
+`tests/platform/test_approval_driver.py::TestThreadLifecycle::test_thread_actually_fires_a_tick`.
+
+No-gate-duplication constraint: the driver deliberately re-implements no
+gate. `execute_approved` re-runs the full four-gate stack fresh
+immediately before send, so a kill-switch trip or live-mode flip between
+reap and send still refuses. The driver offers the entry; it does not
+decide the entry is safe.
+
+### F025 B6/B8 — `agent/platform/position_reconciler.py` (2026-08-19)
+
+Public accessors: `open_risk() -> float`,
+`reconcile(adapter, magic=DEFAULT_MAGIC) -> dict`.
+
+| Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
+|---|---|---|---|---|
+| `open_risk` | `float` | Total worst-case loss committed to positions still believed open. Feeds the B8 aggregate cap. Only as fresh as the last `reconcile`. | `position_reconciler.open_risk`. | None — state. |
+| `reconcile` | `dict` (`ok`, `checked`, `closed`, `recorded`, `skipped`, `errors`) | Ask the broker which of OUR tickets are still open and charge the rest against the risk budget with their realised P&L. Only tickets recorded `filled` in this executor's own `executions.jsonl` are considered, and `open_tickets` filters by magic, so the v1 agent's positions are invisible. | `position_reconciler.reconcile`. | None — internal. |
+
+Stop-out-visibility constraint (Legal, F025 B6 2026-08-19): B6 was
+described as "`record_fill` is called with literal zero", but passing
+zero at fill time is correct — nothing is realised at that moment. The
+actual defect is that nothing recorded the loss when a position CLOSED,
+and the closes that matter most are the ones this platform never
+performs: a stop-out executes at the broker and never calls back into
+this code. Any claim that the per-day / per-symbol / per-strategy caps
+bound losses is therefore FALSE unless `reconcile` is running on a
+schedule against a reachable broker. If reconciliation is not running,
+those three caps read as untouched forever.
+
+Never-guess constraint: `reconcile` is fail-quiet. An unreachable broker
+returns `ok=False` and changes nothing, because recording a phantom loss
+would consume budget that is still available, and recording a phantom
+close would drop a live position out of `open_risk` and let the
+aggregate cap over-admit. Missing deal history is treated as "unknown",
+NOT as "no loss" — the ticket stays `filled`, retries next pass, and
+keeps counting toward open risk meanwhile. Pinned by
+`tests/platform/test_position_reconciler.py::TestNeverGuesses`.
+
+Signed-P&L constraint: `record_fill` takes SIGNED P&L and
+`_scan_today_losses` keeps only negative rows, negating them itself.
+Passing a pre-converted positive "loss" reads as a win and charges
+nothing. Wins consequently need no special handling and cannot mint
+budget. Pinned by
+`tests/platform/test_position_reconciler.py::TestWinsDoNotMintBudget`.
+
+Aggregate-cap honesty constraint (Legal, F025 B8): the cap is a fraction
+of the DECLARED book (`[squad_live] equity`), not the live account
+balance, because the gate runs before the broker connect. On a book that
+is growing or drawing down, the declared number drifts from reality and
+the cap drifts with it — F025 design decision #3 ("equity source of
+truth") is still open, and the `$500 → $1000` question specifically
+wants the live value. `risk_budget.can_send_order` skips the aggregate
+check entirely when `open_risk`/`equity` are not both supplied, so a
+caller unable to observe open positions does not get a fabricated total.
 
 Freshness-window constraint (Legal, A005 2026-07-24): an approval is
 only executable for `approved_ttl_seconds` (default 300 s) after the

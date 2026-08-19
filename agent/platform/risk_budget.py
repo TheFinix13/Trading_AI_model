@@ -88,6 +88,15 @@ except ImportError:  # pragma: no cover
 DEFAULT_PER_DAY_MAX_LOSS: float = 100.0
 DEFAULT_PER_SYMBOL_MAX_LOSS: float = 50.0
 DEFAULT_PER_STRATEGY_MAX_LOSS: float = 50.0
+# F025 B8 -- aggregate OPEN risk, as a fraction of equity.
+#
+# The three caps above all measure money already LOST today. None of
+# them sees money currently AT RISK, so before this cap an arbitrary
+# number of positions could be opened concurrently: each one is
+# individually inside the per-trade ceiling, and none has lost anything
+# yet, so every cap reports full headroom. On a $500 book at 5% per
+# trade that is $24 a position with no ceiling on the total.
+DEFAULT_MAX_OPEN_RISK_FRAC: float = 0.10
 
 CONFIG_FILENAME: str = "risk_budget.toml"
 STATE_FILENAME: str = "risk_state.jsonl"
@@ -106,6 +115,7 @@ def _default_config() -> dict:
         "per_day": {"max_loss": DEFAULT_PER_DAY_MAX_LOSS},
         "per_symbol": {"default": DEFAULT_PER_SYMBOL_MAX_LOSS},
         "per_strategy": {"default": DEFAULT_PER_STRATEGY_MAX_LOSS},
+        "aggregate": {"max_open_risk_frac": DEFAULT_MAX_OPEN_RISK_FRAC},
     }
 
 
@@ -152,6 +162,10 @@ def _merge_config(raw: dict) -> dict:
             if isinstance(k, str) and k:
                 merged_strat[k] = _coerce_number(v, merged_strat["default"])
         cfg["per_strategy"] = merged_strat
+    aggregate = raw.get("aggregate") or {}
+    if isinstance(aggregate, dict):
+        cfg["aggregate"]["max_open_risk_frac"] = _coerce_number(
+            aggregate.get("max_open_risk_frac"), DEFAULT_MAX_OPEN_RISK_FRAC)
     return cfg
 
 
@@ -189,6 +203,10 @@ def _serialise_toml(cfg: dict) -> str:
         if strat == "default":
             continue
         lines.append(f"{strat} = {float(cap)}")
+    lines.append("")
+    lines.append("[aggregate]")
+    lines.append("max_open_risk_frac = "
+                 f"{float(cfg['aggregate']['max_open_risk_frac'])}")
     return "\n".join(lines) + "\n"
 
 
@@ -418,13 +436,28 @@ def remaining_budget(scope: str = "all",
 
 def can_send_order(symbol: str, strategy: str,
                    worst_case_loss: float,
-                   now: float | None = None) -> tuple[bool, str]:
+                   now: float | None = None,
+                   open_risk: float | None = None,
+                   equity: float | None = None) -> tuple[bool, str]:
     """Return ``(allowed, reason)`` for a proposed live order.
 
     ``worst_case_loss`` must be a NON-NEGATIVE dollar amount; a
     negative or non-finite value is treated as an invalid ask and
     refused with a descriptive reason. Returns ``(True, "ok")`` iff
-    every one of the three caps has enough headroom for the ask.
+    every cap has enough headroom for the ask.
+
+    ``open_risk`` and ``equity`` add the F025 B8 aggregate check: the
+    worst-case loss already committed to positions that are still open,
+    plus this ask, must stay inside ``max_open_risk_frac`` of equity.
+    Both must be supplied for the check to run -- passing neither
+    preserves the historical three-cap behaviour, because a caller with
+    no way to observe open positions cannot honestly assert a total.
+
+    That permissive default is deliberate but load-bearing: the
+    aggregate cap is only real if a caller feeds it a TRUE open-risk
+    figure, which in turn requires detecting positions closed at the
+    broker (a stop-out never touches this platform's code). See
+    ``position_reconciler``.
     """
     try:
         loss = float(worst_case_loss)
@@ -459,6 +492,26 @@ def can_send_order(symbol: str, strategy: str,
             f"per-strategy cap exceeded for {strategy}: "
             f"{strat_used + loss:.2f} > {strat_cap:.2f}"
         )
+
+    if open_risk is not None and equity is not None:
+        try:
+            open_now = float(open_risk)
+            eq = float(equity)
+        except (TypeError, ValueError):
+            return False, "invalid open_risk/equity (not numeric)"
+        if not math.isfinite(open_now) or open_now < 0:
+            return False, "invalid open_risk (must be finite and >= 0)"
+        if not math.isfinite(eq) or eq <= 0:
+            return False, "invalid equity (must be finite and > 0)"
+        frac = float(cfg["aggregate"].get(
+            "max_open_risk_frac", DEFAULT_MAX_OPEN_RISK_FRAC))
+        aggregate_cap = frac * eq
+        if open_now + loss > aggregate_cap:
+            return False, (
+                f"aggregate open-risk cap exceeded: "
+                f"{open_now + loss:.2f} > {aggregate_cap:.2f} "
+                f"({frac:.0%} of {eq:.2f})"
+            )
     return True, "ok"
 
 

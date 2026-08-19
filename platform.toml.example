@@ -34,8 +34,33 @@
 # Approved-freshness window (A005): an approved entry is executable
 # for this many seconds after the click; afterwards it reads
 # "approval_expired" and every gate refuses it. Default 300 (5 min).
+# F013 / F025 B1 approval semantics.
+#   approved_ttl_seconds     -- A005 freshness: how long an approval stays
+#                               executable after it is granted (default
+#                               300). Past this the entry reads
+#                               `approval_expired` and every gate refuses.
+#   timeout_seconds          -- the REFUSAL WINDOW: how long a proposal
+#                               waits for you (default 300). The demo runs
+#                               1800 so a phone alert has time to land.
+#   auto_execute_on_timeout  -- DEFAULT FALSE. Read this before setting it.
+#
+# While `auto_execute_on_timeout` is false, a proposal you ignore is
+# discarded and nothing reaches the broker without your click.
+#
+# While it is TRUE, the meaning of your silence inverts: a proposal you
+# ignore is SENT when `timeout_seconds` elapses. Rejecting is then the
+# only way to stop one, and only before the window closes -- afterwards
+# the unwind is the Close button, because the order is already out.
+# `company/legal/approval-queue-warning.md` documents the arrangement to
+# the operator and the claim register records why the old "ignored
+# proposals are discarded" promise had to be struck.
+#
+# Only the literal `true` arms it -- "yes"/1/"true" leave it false, so a
+# typo cannot start placing orders. There is deliberately no HTTP toggle.
 # [approvals]
 # approved_ttl_seconds = 300
+# timeout_seconds = 1800
+# auto_execute_on_timeout = false
 
 # F023 alerts durability + resource caps.
 #   jsonl_sink      -- opt-in (literal true only; default false). When
@@ -144,3 +169,25 @@
 # equity = 500
 # [squad_live.field_assignments]
 # chigiri_hyoma = ["XAGUSD"]
+
+# F018 demo-order executor. Gate #5 -- `enabled` is DEFAULT FALSE, so a
+# clean install refuses every execution regardless of the four gates.
+#   max_volume_lots -- hard cap applied to every order, checked after
+#                      sizing. Default 0.01.
+#
+# The default 0.01 is not merely conservative, it has been doing real
+# work: while the squad filled a flat 0.1 lot, this cap refused every
+# order outright, which is why no misconfigured book could be reached.
+# Raising it removes that backstop, so raise it only together with
+# `[squad_live] risk_derived_sizing = true` -- otherwise you have lifted
+# the ceiling while the engine still asks for a fixed 0.1 lot.
+#
+# Sizing on the $500 demo at the 5% cap: a 30-pip EURUSD stop wants 0.08
+# lots (~$24 risk). 0.01 would risk ~$3, roughly 0.6% -- real fills, real
+# spread, negligible money, and a fine way to prove the plumbing before
+# trusting the size. Pick deliberately:
+#   0.01 -- plumbing test. $500 -> $1000 is ~110 net winners away.
+#   0.10 -- honours risk-derived sizing on this book (0.08 requested).
+# [live_executor]
+# enabled = false
+# max_volume_lots = 0.10

@@ -65,16 +65,16 @@ class TestRoutingMatrix:
 
     def test_trading_events_stay_on_primary(self) -> None:
         client = _FakeClient()
-        _configure_both(per_event={"approval_submitted": True})
-        for ev_type in ("trade_fill", "stop_hit", "risk_budget_breach",
-                        "approval_submitted"):
+        _configure_both()
+        for ev_type in ("trade_fill", "stop_hit", "risk_budget_breach"):
             client.calls.clear()
             event = alerts.publish(ev_type, {})
             assert alerts_telegram.send(event, client=client) is True
             assert client.chats() == [PRIMARY_CHAT], ev_type
 
     @pytest.mark.parametrize("ev_type", ["kill_switch_trip",
-                                         "platform_down"])
+                                         "platform_down",
+                                         "approval_submitted"])
     def test_safety_events_go_to_both(self, ev_type: str) -> None:
         client = _FakeClient()
         _configure_both()
@@ -84,8 +84,12 @@ class TestRoutingMatrix:
 
     def test_ops_event_set_is_explicit_constant(self) -> None:
         assert alerts_telegram.OPS_EVENTS == frozenset({"watchdog_alert"})
+        # `approval_submitted` joined the safety class in F025 B1: under
+        # right-of-first-refusal the notification is the operator's only
+        # window to refuse, so a dropped delivery has a market
+        # consequence in the same way a missed kill-switch trip does.
         assert alerts_telegram.DUAL_ROUTE_EVENTS == frozenset(
-            {"kill_switch_trip", "platform_down"})
+            {"kill_switch_trip", "platform_down", "approval_submitted"})
 
 
 class TestFallback:

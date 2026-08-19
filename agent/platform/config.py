@@ -99,7 +99,14 @@ def _defaults(repo_root: Path) -> dict:
         # is only executable for this many seconds after the click;
         # afterwards it flips to `approval_expired` and every gate
         # refuses it (fail-closed).
-        "approvals": {"approved_ttl_seconds": 300},
+        # `timeout_seconds` is the refusal window: how long a proposal
+        # waits for the operator. With `auto_execute_on_timeout` False
+        # (the default) an elapsed window discards the proposal; with it
+        # True the window elapsing IS the authorisation to send, so the
+        # two keys must be read together.
+        "approvals": {"approved_ttl_seconds": 300,
+                      "timeout_seconds": 300,
+                      "auto_execute_on_timeout": False},
         # F013 -- internal-only token used to gate
         # `POST /api/approvals/submit`. Sprint 2 does NOT call this
         # endpoint from any live pathway (D065). Left empty by default;
@@ -283,6 +290,17 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
                     cfg["approvals"]["approved_ttl_seconds"] = ttl
             except (TypeError, ValueError):
                 pass
+        if approvals.get("timeout_seconds") is not None:
+            try:
+                window = int(approvals["timeout_seconds"])
+                if window > 0:
+                    cfg["approvals"]["timeout_seconds"] = window
+            except (TypeError, ValueError):
+                pass
+        # Any non-bool (string "yes", 1, None) leaves this False rather
+        # than being coerced -- a typo must not arm auto-execution.
+        if approvals.get("auto_execute_on_timeout") is True:
+            cfg["approvals"]["auto_execute_on_timeout"] = True
     internal = raw.get("internal")
     if isinstance(internal, dict):
         if internal.get("token"):

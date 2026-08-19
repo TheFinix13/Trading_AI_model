@@ -44,6 +44,11 @@ OPS_EVENTS: frozenset[str] = frozenset({
 DUAL_ROUTE_EVENTS: frozenset[str] = frozenset({
     "kill_switch_trip",
     "platform_down",
+    # F025 B1: under right-of-first-refusal, this notification IS the
+    # operator's only chance to refuse -- silence means the order goes.
+    # Dual-routed for the same reason as a kill-switch trip: a missed
+    # delivery has a market consequence.
+    "approval_submitted",
 })
 
 _DEFAULT_PER_EVENT: dict[str, bool] = {
@@ -51,7 +56,12 @@ _DEFAULT_PER_EVENT: dict[str, bool] = {
     "stop_hit": True,
     "kill_switch_trip": True,
     "risk_budget_breach": True,
-    "approval_submitted": False,
+    # Was False through Sprint 2, when nothing submitted from a live path
+    # so there was nothing to announce. It cannot stay False now: a
+    # proposal that notifies nobody expires unseen (or, with
+    # auto-execution armed, executes unseen), which makes the operator's
+    # right of refusal theoretical.
+    "approval_submitted": True,
     "platform_down": True,
     # F017 -- an ops alarm is exactly what Telegram is for.
     "watchdog_alert": True,

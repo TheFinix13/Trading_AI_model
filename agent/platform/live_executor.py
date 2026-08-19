@@ -115,6 +115,15 @@ class Mt5OrderAdapter(Protocol):
     def close_position(self, ticket: int,
                        magic: int = DEFAULT_MAGIC) -> dict: ...
 
+    # F025 B6/B8 -- position-lifecycle observation. Without these the
+    # platform cannot tell that a position was stopped out, because an
+    # SL hit closes server-side and never calls back into this code. A
+    # daily-loss cap that only sees voluntary closes misses exactly the
+    # losses it exists to limit.
+    def open_tickets(self, magic: int = DEFAULT_MAGIC) -> set[int]: ...
+
+    def closed_deal_profit(self, ticket: int) -> float | None: ...
+
     def shutdown(self) -> None: ...
 
 
@@ -234,6 +243,43 @@ class RealMt5OrderAdapter:
             return {"error": "close failed"}
         return {"ticket": int(ticket), "closed": True}
 
+    def open_tickets(self, magic: int = DEFAULT_MAGIC) -> set[int]:
+        """Tickets currently open that carry OUR magic number.
+
+        Filtered by magic so the v1 zones agent's positions on the same
+        terminal are invisible here, for the same reason
+        ``_closable_fill`` refuses tickets absent from our audit log.
+        """
+        mt5 = self._mt5()
+        positions = mt5.positions_get()
+        if not positions:
+            return set()
+        return {int(p.ticket) for p in positions
+                if int(getattr(p, "magic", 0)) == int(magic)}
+
+    def closed_deal_profit(self, ticket: int) -> float | None:
+        """Realised profit for a closed position, or None if unknown.
+
+        Sums every history deal carrying ``position_id == ticket`` and
+        includes commission and swap, so the figure charged against the
+        risk budget is what the account actually lost rather than the
+        raw price difference. None (not 0.0) when the history is
+        unavailable -- the caller must not read "no data" as "no loss".
+        """
+        mt5 = self._mt5()
+        try:
+            deals = mt5.history_deals_get(position=int(ticket))
+        except Exception:
+            return None
+        if not deals:
+            return None
+        total = 0.0
+        for d in deals:
+            total += (float(getattr(d, "profit", 0.0))
+                      + float(getattr(d, "commission", 0.0))
+                      + float(getattr(d, "swap", 0.0)))
+        return total
+
     def shutdown(self) -> None:
         if self._connected:
             try:
@@ -256,7 +302,10 @@ class FakeMt5OrderAdapter:
                  close_result: dict | None = None,
                  connect_raises: bool = False,
                  send_raises: bool = False,
-                 close_raises: bool = False) -> None:
+                 close_raises: bool = False,
+                 open_tickets_result: set[int] | None = None,
+                 deal_profits: dict[int, float] | None = None,
+                 open_tickets_raises: bool = False) -> None:
         self.server = server
         self.connect_ok = connect_ok
         self.send_result = send_result if send_result is not None \
@@ -265,6 +314,9 @@ class FakeMt5OrderAdapter:
         self.connect_raises = connect_raises
         self.send_raises = send_raises
         self.close_raises = close_raises
+        self.open_tickets_result = open_tickets_result
+        self.deal_profits = dict(deal_profits or {})
+        self.open_tickets_raises = open_tickets_raises
         self.calls: list[tuple] = []
         self.connected_alias: str | None = None
         self.shutdown_called = False
@@ -299,6 +351,21 @@ class FakeMt5OrderAdapter:
         if self.close_result is not None:
             return dict(self.close_result)
         return {"ticket": int(ticket), "closed": True}
+
+    def open_tickets(self, magic: int = DEFAULT_MAGIC) -> set[int]:
+        self.calls.append(("open_tickets", magic))
+        if self.open_tickets_raises:
+            raise RuntimeError("fake positions_get explosion")
+        if self.open_tickets_result is None:
+            # Default: everything this fake filled is still open, so a
+            # reconciler run against an unconfigured fake is a no-op
+            # rather than an accidental mass close-out.
+            return {int(self.send_result.get("ticket", 0))}
+        return set(self.open_tickets_result)
+
+    def closed_deal_profit(self, ticket: int) -> float | None:
+        self.calls.append(("closed_deal_profit", ticket))
+        return self.deal_profits.get(int(ticket))
 
     def shutdown(self) -> None:
         self.calls.append(("shutdown",))
@@ -344,6 +411,23 @@ def load_executor_config(cfg: dict | None = None) -> dict:
             magic = DEFAULT_MAGIC
     except (TypeError, ValueError):
         magic = DEFAULT_MAGIC
+    # F025 B8 -- the declared book the aggregate open-risk cap is a
+    # fraction of. Taken from `[squad_live] equity` (the same number
+    # Sentinel R1 sizes against) rather than the live account balance,
+    # because the aggregate gate runs BEFORE the broker connect and so
+    # has no balance to read. A missing/junk value disables the
+    # aggregate check rather than defaulting to a guess -- see the
+    # `open_risk`/`equity` contract on `risk_budget.can_send_order`.
+    equity = None
+    if isinstance(cfg, dict):
+        squad = cfg.get("squad_live")
+        if isinstance(squad, dict):
+            try:
+                candidate = float(squad.get("equity"))
+                if candidate > 0:
+                    equity = candidate
+            except (TypeError, ValueError):
+                equity = None
     return {
         "enabled": block.get("enabled") is True,
         "demo_only": block.get("demo_only") is True,
@@ -351,6 +435,7 @@ def load_executor_config(cfg: dict | None = None) -> dict:
         "max_volume_lots": max_vol,
         "broker_alias": str(block.get("broker_alias") or "").strip(),
         "magic": magic,
+        "equity": equity,
     }
 
 
@@ -537,6 +622,14 @@ def _outcome(approval_id: str, entry: dict | None, status: str,
         # F025 B5 -- the identity the order carried (or would have
         # carried), so a row can be matched to a broker-side position.
         "magic": magic,
+        # F025 B6/B8 -- the reconciler needs both to do its job: the
+        # agent to attribute a realised loss to the right per-strategy
+        # cap, and the worst-case loss to total up risk still open.
+        # Neither is recoverable later, because the approval entry that
+        # carried them is in another process's memory.
+        "source_agent": (entry or {}).get("source_agent"),
+        "worst_case_loss": ((entry or {}).get("risk_snapshot")
+                            or {}).get("worst_case_loss"),
     }
     if record:
         _append_execution(row)
@@ -580,7 +673,23 @@ def execute_approved(approval_id: str, adapter: Mt5OrderAdapter,
                         magic=magic)
 
     # The four Sprint-2 gates, re-run fresh immediately before send.
-    ok, why = approval_queue.can_send_live_order(entry)
+    # F025 B8 folds the aggregate open-risk cap into gate #3 rather than
+    # adding a sixth gate, so it composes into the existing
+    # live-mode-off invariant instead of sitting outside it.
+    equity = block.get("equity")
+    if equity:
+        from agent.platform import position_reconciler as _recon
+        open_now = _recon.open_risk()
+
+        def _risk_with_aggregate(sym: str, strat: str,
+                                 worst: float) -> tuple[bool, str]:
+            return risk_budget.can_send_order(
+                sym, strat, worst, open_risk=open_now, equity=equity)
+
+        ok, why = approval_queue.can_send_live_order(
+            entry, risk_budget_check=_risk_with_aggregate)
+    else:
+        ok, why = approval_queue.can_send_live_order(entry)
     if not ok:
         return _outcome(approval_id, entry, "refused",
                         f"gate refused: {why}", magic=magic)
