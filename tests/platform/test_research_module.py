@@ -318,17 +318,14 @@ def test_get_state_shipped_manifest_publishes_expected_ids():
     """Regression lock -- the shipped manifest publishes 6 entries
     against the shipped research_root when it's on this machine.
     Skips gracefully when the sibling repo isn't checked out."""
-    root = Path("/Users/the1finix/Documents/GitHub/finance-research-experiments")
-    if not root.is_dir():
-        pytest.skip("finance-research-experiments not on this machine")
-    st = research.get_state(research_root=root)
-    ids = {e["campaign_id"] for e in st["entries"]}
-    expected = {
-        "E001_concept_ablation", "E004_walk_forward",
-        "E007_impulse_origin_bounce", "E022_structure_aware_tp_snap",
-        "E024_near_tp_stall_exit", "phase_ac_pitch_assignment",
-    }
-    assert expected.issubset(ids)
+    from tests.platform.research_root_helper import available_lanes
+    lanes = available_lanes()
+    if not lanes:
+        pytest.skip("no research checkout on a lane this suite pins")
+    for root, branch, expected in lanes:
+        st = research.get_state(research_root=root)
+        ids = {e["campaign_id"] for e in st["entries"]}
+        assert expected.issubset(ids), f"lane {branch} at {root}"
 
 
 # --------------------------------------------------------------------

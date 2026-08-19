@@ -107,8 +107,8 @@ class TestTruthfulValueOnRealLedger:
         # ledger, this pin must be revisited rather than deleted.
         assert statuses <= {"closed-negative", "not-started",
                             "awaiting-panel", "closed-positive",
-                            "closed", "shipped", "done", "queued",
-                            "parked"}, (
+                            "closed-null", "closed", "shipped", "done",
+                            "queued", "parked"}, (
             "a running experiment appeared -- update this pin "
             "deliberately, per I012 audit-cadence rules")
         assert state["kpis"]["experiments_in_flight"] == 0

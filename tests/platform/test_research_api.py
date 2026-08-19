@@ -201,25 +201,24 @@ def test_read_only_invariant_on_research_root(configured_server):
 # --------------------------------------------------------------------
 
 def test_api_verdicts_shipped_manifest_publishes_expected(tmp_path: Path):
-    """When the sibling repo is on this machine, hitting /api/research
-    /verdicts with the shipped (default) manifest publishes every
-    CPO-approved campaign (six Sprint 0 entries + Phase AE, D112).
-    Skips when the sibling repo is not checked out."""
-    sibling = Path("/Users/the1finix/Documents/GitHub/finance-research-experiments")
-    if not sibling.is_dir():
-        pytest.skip("finance-research-experiments not on this machine")
-    srv = _make_server(tmp_path, research_root=sibling)
-    try:
-        base = f"http://127.0.0.1:{srv.server_address[1]}"
-        _, payload = _get_json(base + "/api/research/verdicts")
-        ids = {e["campaign_id"] for e in payload["entries"]}
-        expected = {
-            "E001_concept_ablation", "E004_walk_forward",
-            "E007_impulse_origin_bounce", "E022_structure_aware_tp_snap",
-            "E024_near_tp_stall_exit", "phase_ac_pitch_assignment",
-            "phase_ae_sae_event_specialist",
-        }
-        assert expected.issubset(ids)
-        assert payload["published_total"] == 7
-    finally:
-        srv.shutdown()
+    """/api/research/verdicts publishes the CPO-approved campaigns the
+    available research lane actually holds.
+
+    The shipped manifest spans both lanes (E0xx on `main`, M001 phases
+    on `multi-agent-ensemble`) and no single checkout carries both, so
+    this asserts per-lane rather than pinning a union that exists in no
+    branch -- see `research_root_helper.LANE_EXPECTED_IDS`."""
+    from tests.platform.research_root_helper import available_lanes
+    lanes = available_lanes()
+    if not lanes:
+        pytest.skip("no research checkout on a lane this suite pins")
+    for root, branch, expected in lanes:
+        srv = _make_server(tmp_path, research_root=root)
+        try:
+            base = f"http://127.0.0.1:{srv.server_address[1]}"
+            _, payload = _get_json(base + "/api/research/verdicts")
+            ids = {e["campaign_id"] for e in payload["entries"]}
+            assert expected.issubset(ids), f"lane {branch} at {root}"
+            assert payload["published_total"] >= len(expected)
+        finally:
+            srv.shutdown()
