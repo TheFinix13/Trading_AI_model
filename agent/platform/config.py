@@ -77,6 +77,12 @@ def _defaults(repo_root: Path) -> dict:
             "field_assignments": {},
             "burn_in_bars": None,
             "feed_stale_hours": None,
+            # F025 blocker B3. False = historical fixed-lot fill (every
+            # banked replay and the shadow tape stay byte-identical).
+            # True sizes each fill to Sentinel's 5 %-of-equity budget,
+            # which can only shrink a position. Must be True before any
+            # squad fill settles in real money.
+            "risk_derived_sizing": False,
         },
         # F009 -- per-install-token rate limit on non-localhost /api/*.
         # `requests_per_minute` sets both bucket capacity and refill rate.
@@ -238,6 +244,10 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
                     parsed[str(agent_id).strip()] = vals
             if parsed:
                 cfg["squad_live"]["field_assignments"] = parsed
+        if sl.get("risk_derived_sizing") is not None:
+            cfg["squad_live"]["risk_derived_sizing"] = bool(
+                sl["risk_derived_sizing"],
+            )
     rl = raw.get("rate_limit")
     if isinstance(rl, dict):
         if rl.get("requests_per_minute") is not None:

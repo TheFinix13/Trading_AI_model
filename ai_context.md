@@ -1,4 +1,40 @@
-# AI Context — brain dump (updated 2026-08-19, v0.73)
+# AI Context — brain dump (updated 2026-08-19, v0.74)
+
+> v0.74 — **B3 fixed: risk-derived fill sizing, default OFF (I031).**
+> The defect that made the $500 account unsafe. Sentinel R1 computes
+> `sl_pips × pip_value_per_min_lot` (value at the 0.01 min lot) and
+> refuses above 5 % of equity — but the engine filled `FIXED_LOT` 0.1,
+> **ten times the lot R1 measured**, because no step ever sized the
+> position to the budget R1 checked. Second half of the bug: the one lot
+> override was gated `if risk_scale != 1.0`, so on the ordinary path any
+> computed lot was discarded. Worked shape on $500 / 5 % ($25 budget),
+> EURUSD: a 30-pip stop actually risks $30 (6 %), and the 250-pip stop
+> **R1 explicitly allows** (min-lot cost exactly $25) risks **$250 —
+> 50 % of the account, two losers from zero.** Invisible for eleven
+> months because R-multiples normalise by the stop, so a uniform lot
+> error cancels in every research KPI. **Diagnosis: R1 is not the bug.**
+> R1 is a FLOOR check ("is there any size at which this is acceptable?")
+> and correct as one; what never existed is the CAP — the step that
+> sizes down to the budget. So R1 is unchanged and the fix is additive.
+> `lot_intent.risk_budget_lot()` returns the largest lot inside the
+> budget, rounded DOWN, per-symbol pip value (I030), **capped at
+> `desired_lot` so enabling can only SHRINK a position**, and returning
+> 0.0 rather than MIN_LOT when unfundable. Wired behind
+> `risk_derived_sizing` (default `False`; `[squad_live]` key or
+> `--risk-derived-sizing`); the override now compares against the lot
+> actually filled, and R5/R7 advisory scales compose on top rather than
+> replacing it. **Default OFF is load-bearing** — all banked replays and
+> the whole shadow tape are fixed-lot, so flipping the default would
+> silently break comparability; pinned by
+> `test_default_off_still_fills_fixed_lot`, and `test_squad_parity`
+> stays green. Also found and deliberately NOT fixed: **F19 `lot_intent`
+> is dead code on the fill path** (every agent implements it, G7 grades
+> its dispersion, `engine._admit` never calls it) and **R6 has the same
+> min-lot basis** (arm4-only, not live). Both need pre-registration, not
+> a bug fix. Suite 2232 pass / 3 fail (the 3 pre-existing
+> research-manifest fails). Intake: `I031`. Remaining F025 blockers:
+> B1 (no squad→approval_queue call), B2 (0.1 fill vs 0.01 executor cap),
+> B6 (inert risk budget), B8 (no aggregate exposure cap).
 
 > v0.73 — **F025 safe prerequisites landed + A9 renamed
 > `sae_itoshi` → `aoshi_tokimitsu`.** Four of the eight F025 blockers

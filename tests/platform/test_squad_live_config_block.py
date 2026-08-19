@@ -28,6 +28,30 @@ def _repo(tmp_path: Path, body: str) -> Path:
     return repo
 
 
+class TestRiskDerivedSizing:
+    """F025 blocker B3. The default is the load-bearing assertion: it has
+    to stay False so banked replays and the shadow tape are unaffected by
+    a config file that simply omits the key."""
+
+    def test_default_is_off(self, tmp_path: Path):
+        repo = _repo(tmp_path, "[squad_live]\nfeed = \"mt5\"\n")
+        cfg = load_config(repo)
+        assert cfg["squad_live"]["risk_derived_sizing"] is False
+
+    def test_no_config_file_is_off(self, tmp_path: Path):
+        repo = tmp_path / "empty"
+        repo.mkdir()
+        assert load_config(repo)["squad_live"]["risk_derived_sizing"] is False
+
+    def test_true_is_parsed(self, tmp_path: Path):
+        repo = _repo(tmp_path, "[squad_live]\nrisk_derived_sizing = true\n")
+        assert load_config(repo)["squad_live"]["risk_derived_sizing"] is True
+
+    def test_explicit_false_is_parsed(self, tmp_path: Path):
+        repo = _repo(tmp_path, "[squad_live]\nrisk_derived_sizing = false\n")
+        assert load_config(repo)["squad_live"]["risk_derived_sizing"] is False
+
+
 class TestEquity:
 
     def test_equity_from_file_is_parsed(self, tmp_path: Path):

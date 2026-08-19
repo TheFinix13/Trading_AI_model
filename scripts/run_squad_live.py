@@ -48,6 +48,8 @@ from agent.platform.config import load_config  # noqa: E402
 from agent.platform.squad_notify import SquadNotifier  # noqa: E402
 from agent.squad import PORT_LABEL  # noqa: E402
 from agent.squad.engine import SquadEngine  # noqa: E402
+from agent.squad.lot_intent import FIXED_LOT  # noqa: E402
+from agent.squad.sentinel import SANDBOX_PER_TRADE_RISK_FRAC  # noqa: E402
 from agent.squad.feed import (  # noqa: E402
     DEFAULT_SYMBOLS,
     CacheFeed,
@@ -370,6 +372,7 @@ def run_loop(args, cfg: dict) -> str:
             "block Tier-2 min-lot risk (field card). Prefer --equity 500.",
             equity,
         )
+    risk_derived_sizing = bool(getattr(args, "risk_derived_sizing", False))
     engine = SquadEngine(
         roster,
         out_dir,
@@ -377,7 +380,14 @@ def run_loop(args, cfg: dict) -> str:
         notifier=notify_fn,
         source_label=source_label,
         equity=equity,
+        risk_derived_sizing=risk_derived_sizing,
     )
+    if risk_derived_sizing:
+        log.info(
+            "risk-derived sizing ON: fills sized to %.0f%% of $%.2f equity "
+            "per trade (was fixed %.2f lot regardless of stop width)",
+            SANDBOX_PER_TRADE_RISK_FRAC * 100, equity, FIXED_LOT,
+        )
     if field_assignments:
         log.info(
             "field assignments active: %s (equity=$%.0f)",
@@ -828,6 +838,18 @@ def build_arg_parser(sl: dict | None = None) -> argparse.ArgumentParser:
             "DEFAULT OFF -- the Phase AE research pre-registration gate "
             "stays; this flag only makes enabling operational without "
             "code edits"
+        ),
+    )
+    ap.add_argument(
+        "--risk-derived-sizing", action="store_true",
+        default=bool(sl.get("risk_derived_sizing", False)),
+        help=(
+            "size each fill to Sentinel's 5%%-of-equity budget instead of "
+            "a fixed 0.1 lot. DEFAULT OFF so banked replays and the "
+            "shadow tape stay byte-identical. Fixes F025 blocker B3: R1 "
+            "measures risk at the 0.01 min-lot while fills are 10x that, "
+            "so the advertised per-trade cap understates real risk by "
+            "10x. MUST be on before any fill settles in real money"
         ),
     )
     ap.add_argument(

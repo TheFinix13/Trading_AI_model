@@ -125,6 +125,18 @@
 # books in state.json also start from this number.
 # equity = 500
 #
+# `risk_derived_sizing` sizes every fill to that same 5% budget instead
+# of a flat 0.1 lot. Leave it OFF for research parity: all banked
+# replays and the whole shadow tape were produced fixed-lot, and
+# changing it makes new tape non-comparable with old.
+#
+# TURN IT ON before any squad fill reaches a funded account. R1 measures
+# risk at the 0.01 min lot while fills are 0.1 — ten times larger — so
+# the "5% per trade" cap is really 50% on the widest stop R1 permits.
+# On a $500 book that is two losers from zero. Enabling can only shrink
+# a position, never grow one (F025 blocker B3).
+# risk_derived_sizing = true
+#
 # Phase AN-3 candidacy (chigiri_hyoma:XAGUSD sealed PASS 2026-08-05).
 # Uncomment to shadow-paper silver on the v2 $500 demo semantics.
 # Requires the broker feed to serve XAGUSD H4 (MT5 symbol or cache).

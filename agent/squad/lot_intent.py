@@ -241,6 +241,64 @@ def kelly_lot_intent(
 
 
 # ---------------------------------------------------------------------------
+# Risk-budget sizing (B3) -- the missing step between R1 and the fill
+# ---------------------------------------------------------------------------
+
+def risk_budget_lot(
+    *,
+    sl_pips: float,
+    equity: float,
+    pip_value_per_min_lot: float,
+    desired_lot: float = FIXED_LOT,
+    per_trade_risk_frac: float = 0.05,
+    min_lot_floor: float = MIN_LOT,
+) -> float:
+    """Largest lot whose stop-out loss stays inside the risk budget.
+
+    Closes the gap F025 blocker B3 describes. Sentinel R1 asks "even at
+    the broker minimum, does this stop risk more than the cap?" and
+    refuses if so -- a FLOOR check, and correct as one. What never
+    existed is the step that sizes the position DOWN to the budget, so
+    the engine filled ``FIXED_LOT`` (0.1) regardless: ten times the lot
+    R1 measured. On the $100 shadow book that was harmless bookkeeping
+    because nothing settled in real money. On a funded account the
+    advertised "5 % per trade" cap understates true risk by 10x.
+
+    Worked example, $500 equity / 5 % cap / EURUSD ($10 per pip at 1.0
+    lot): the budget is $25, so a 30-pip stop permits
+    ``25 / (30 x 10) = 0.083`` lots, rounded down to 0.08 for a real
+    risk of $24. The same stop at ``FIXED_LOT`` risks $30 (6 %), and a
+    250-pip stop -- which R1 *allows*, since at min-lot it costs exactly
+    the $25 cap -- risks $250 at ``FIXED_LOT``. That is the 50 %-per-
+    trade case, and it is two losers from an empty account.
+
+    Never sizes UP: the result is capped at ``desired_lot``, so enabling
+    this can only reduce exposure relative to the fixed-lot behaviour it
+    replaces. Returns ``0.0`` when the budget cannot fund even
+    ``min_lot_floor``, which the caller must treat as a skip rather than
+    rounding back up -- rounding up is precisely the bug.
+
+    ``pip_value_per_min_lot`` is the per-symbol value from
+    ``provenance_pips`` (I030), NOT the 0.10 major-pair constant, so JPY
+    crosses and metals size correctly too.
+    """
+    if sl_pips <= 0 or equity <= 0 or pip_value_per_min_lot <= 0:
+        return 0.0
+    budget_dollars = float(per_trade_risk_frac) * float(equity)
+    # Value per pip at 1.0 lot = 100 x the min-lot (0.01) value.
+    pip_value_per_lot = float(pip_value_per_min_lot) * 100.0
+    loss_per_lot = float(sl_pips) * pip_value_per_lot
+    if loss_per_lot <= 0:
+        return 0.0
+    affordable = budget_dollars / loss_per_lot
+    lot = min(float(desired_lot), affordable)
+    rounded = _round_down_to_min_lot(lot, min_lot_floor)
+    if rounded + 1e-9 < min_lot_floor:
+        return 0.0
+    return rounded
+
+
+# ---------------------------------------------------------------------------
 # Playstyle dispatch
 # ---------------------------------------------------------------------------
 
@@ -406,5 +464,6 @@ __all__ = [
     "conviction_scaled_lot_intent",
     "risk_normalised_lot_intent",
     "kelly_lot_intent",
+    "risk_budget_lot",
     "playstyle_lot_intent",
 ]

@@ -32,8 +32,9 @@ from agent.squad.aggregator_arms.multi_position import (
     _proposal_risk_dollars as arm4_proposal_risk_dollars,
 )
 from agent.squad.ledger import FullLedger
+from agent.squad.lot_intent import risk_budget_lot
 from agent.squad.paper_broker import OpenPaperTrade, PaperBroker, TradeRecord
-from agent.squad.provenance_pips import pip_value_per_min_lot_for
+from agent.squad.provenance_pips import pip_value_per_min_lot_for, pips_per_unit_for
 from agent.squad.roster import SquadRoster, prepare_roster
 from agent.squad.sentinel import (
     MIN_LOT,
@@ -177,6 +178,7 @@ class SquadEngine:
         notifier: NotifyFn | None = None,
         source_label: str = "live_market",
         equity: float = SANDBOX_EQUITY_DOLLARS,
+        risk_derived_sizing: bool = False,
     ) -> None:
         if aggregator_arm not in ("phi41", "arm3", "arm4"):
             raise ValueError(f"unknown aggregator_arm: {aggregator_arm!r}")
@@ -189,6 +191,12 @@ class SquadEngine:
         self.notifier = notifier
         self.source_label = source_label
         self.equity = float(equity)
+        # F025 blocker B3. OFF keeps the historical fixed-lot fill, so
+        # every existing replay and the banked shadow tape stay
+        # byte-identical. ON sizes each fill to the R1 risk budget,
+        # which can only reduce a position relative to FIXED_LOT --
+        # required before any fill settles in real money.
+        self.risk_derived_sizing = bool(risk_derived_sizing)
 
         self.ledger = FullLedger()
         self.workspace = ReasoningWorkspace()
@@ -980,7 +988,30 @@ class SquadEngine:
             # SKIP the trade rather than round back up -- rounding up would
             # negate the point of the scale-down.
             risk_scale = float(getattr(decision, "risk_scale", 1.0) or 1.0)
-            scaled_lot = round(FIXED_LOT * risk_scale, 8)
+            # B3: base lot is FIXED_LOT historically, or the risk-budget
+            # lot when the flag is on. R1 only asked whether min-lot
+            # risk fits the cap; it never sized the fill down to it.
+            base_lot = FIXED_LOT
+            budget_note = ""
+            if self.risk_derived_sizing:
+                # Same pip conversion Sentinel R1 used on this proposal
+                # (I030 symbol-aware), so budget and cap agree.
+                sl_pips = abs(proposal.entry - proposal.stop) * pips_per_unit_for(
+                    symbol,
+                )
+                base_lot = risk_budget_lot(
+                    sl_pips=sl_pips,
+                    equity=self.equity,
+                    pip_value_per_min_lot=pip_value_per_min_lot_for(symbol),
+                    desired_lot=FIXED_LOT,
+                    per_trade_risk_frac=SANDBOX_PER_TRADE_RISK_FRAC,
+                )
+                budget_note = (
+                    f" risk_budget_lot={base_lot:.4f} "
+                    f"(sl={sl_pips:.1f}p, equity=${self.equity:.2f}, "
+                    f"cap={SANDBOX_PER_TRADE_RISK_FRAC * 100:.1f}%)"
+                )
+            scaled_lot = round(base_lot * risk_scale, 8)
             if scaled_lot + 1e-9 < MIN_LOT:
                 rej = {
                     "tick_id": int(tick_id),
@@ -993,8 +1024,9 @@ class SquadEngine:
                     "winner_direction": proposal.direction,
                     "rejection_reason": "sentinel_risk_scale_below_min_lot",
                     "sentinel_reason": (
-                        f"risk_scale={risk_scale:.4f} x FIXED_LOT={FIXED_LOT} "
+                        f"risk_scale={risk_scale:.4f} x base_lot={base_lot} "
                         f"= {scaled_lot:.4f} < min_lot {MIN_LOT}"
+                        f"{budget_note}"
                     ),
                     "sentinel_rule": decision.rule,
                     "rank_at_block": int(rank_idx),
@@ -1060,11 +1092,19 @@ class SquadEngine:
                     target_hold_hours=target_hh,
                     risk_dollars=risk_dollars,
                 )
-                if risk_scale != 1.0:
+                # Override whenever our sizing disagrees with what the
+                # broker filled. Previously this only fired on an
+                # advisory risk_scale != 1.0, so a risk-budget lot would
+                # have been computed and then silently discarded on the
+                # ordinary path. Comparing against the filled lot keeps
+                # the no-op case byte-identical.
+                filled_lot = float(ot.trade.lot_size)
+                if abs(scaled_lot - filled_lot) > 1e-9:
+                    if filled_lot > 0:
+                        ot.trade.commission = (
+                            scaled_lot / filled_lot * ot.trade.commission
+                        )
                     ot.trade.lot_size = scaled_lot
-                    ot.trade.commission = (
-                        scaled_lot / FIXED_LOT * ot.trade.commission
-                    )
                 self._emit_event({
                     "type": "open",
                     "timestamp": (
