@@ -291,9 +291,9 @@ Public module constants: `KILL_DIR_ENV`, `DEFAULT_KILL_DIRNAME`,
 |---|---|---|---|---|
 | `kill_dir` | `Path` | Current kill-flag directory. Defaults to `<config_dir>/kill`; env var `BLUELOCK_KILL_DIR` overrides. | `kill_switches.kill_dir`. | None -- filesystem path. |
 | `is_killed(None)` | `bool` | True iff the global kill flag exists. | `kill_switches.is_killed`. | Safety-control claim; documented in F013's live-mode warning. |
-| `is_killed("EURUSD")` | `bool` | True iff the global kill OR the EURUSD per-symbol flag exists. | Same. | Same. |
-| `SUPPORTED_SYMBOLS` | `tuple[str, ...]` | The scopes a PER-SYMBOL kill actually halts: the five FX majors (original order preserved, `list_killed` documents it) plus, since F025 B7, every instrument `agent/squad/provenance_pips.py` has pip conventions for — XAUUSD, XAGUSD, USOIL, UKOIL, NATGAS, USTEC, US500, US30, DE40, UK100, JP225, BTCUSD. A symbol NOT in this tuple fails OPEN: `is_killed` returns False for it and only the GLOBAL flag halts it, so "per-symbol kill" is a claim scoped to this list. | `kill_switches.SUPPORTED_SYMBOLS`; validated in `kill_switch_admin._normalise_scope`; echoed by `/api/kill-switches/status`. | Safety-control scope claim. |
-| `list_killed` → `scope` | `"GLOBAL"` \| supported symbol | The active kill scopes, global-first then symbols in `SUPPORTED_SYMBOLS` order. | `kill_switches.list_killed`. | Safety-control state; surfaces in `/settings/kill-switches`. |
+| `is_killed("EURUSD")` | `bool` | True iff the global kill OR that symbol's per-symbol flag exists. Since F025 B7 (2026-08-19) this holds for ANY symbol, not only those in `SUPPORTED_SYMBOLS` — a flag halts the symbol it names. | Same. | Same. |
+| `SUPPORTED_SYMBOLS` | `tuple[str, ...]` | An ENUMERATION AID, not a coverage limit: the symbols the admin write path offers and the order `list_killed` sorts them in. Five FX majors (original order preserved) plus every instrument `agent/squad/provenance_pips.py` has pip conventions for — XAUUSD, XAGUSD, USOIL, UKOIL, NATGAS, USTEC, US500, US30, DE40, UK100, JP225, BTCUSD. Before F025 B7 this tuple WAS the coverage limit and `is_killed` failed OPEN outside it; it no longer gates whether a halt is real. | `kill_switches.SUPPORTED_SYMBOLS`; validated in `kill_switch_admin._normalise_scope`; echoed by `/api/kill-switches/status`. | Safety-control scope claim. |
+| `list_killed` → `scope` | `"GLOBAL"` \| any flagged scope | The active kill scopes: global first, then `SUPPORTED_SYMBOLS` order, then any remaining scopes alphabetically. The trailing group makes a mistyped flag visible — `EURUDS.flag` halts nothing and must not also be invisible to the operator who believed they had halted EURUSD. | `kill_switches.list_killed`. | Safety-control state; surfaces in `/settings/kill-switches`. |
 | `list_killed` → `reason` | `str` | Operator-supplied reason (max 200 chars), scrubbed of trailing whitespace. | `kill_switch_admin.activate_kill` -> flag file. | None -- operator-authored text. |
 | `list_killed` → `activated_at` | ISO-8601 str | When the flag was written. | Same. | None. |
 | `list_killed` → `by` | `str` | Who activated the kill (default `"user"`). | Same. | None. |
@@ -303,18 +303,36 @@ future UI or Telegram alert MUST cite the scope value verbatim (never
 paraphrase "GLOBAL" as "everything" without also citing the reason
 string).
 
-Coverage constraint (F025 B7): "every symbol the squad can trade is
-killable" holds only while `SUPPORTED_SYMBOLS` is a superset of the
-instruments the platform can size an order on. Adding a tradable
-instrument WITHOUT adding it here silently downgrades its per-symbol
-kill to a no-op, which is a failed safety claim rather than a missing
-feature. The `/settings/kill-switches` grid derives its cells from the
-status payload's `supported_symbols`, so a tuple addition reaches the UI
-with no page edit (pinned by
+Coverage constraint (F025 B7, CLOSED 2026-08-19): "every symbol the
+squad can trade is killable" no longer depends on `SUPPORTED_SYMBOLS`
+being maintained. `is_killed()` honours every `.flag` on disk, so a
+newly traded instrument is killable the day it starts trading rather
+than the day someone remembers to edit a tuple. The earlier semantics
+were fail-OPEN — a deliberate operator halt on an unlisted symbol
+returned False with no error — and a safety control whose coverage is
+only as current as its last hand edit is not a control. Pinned by
+`test_kill_switches_module.py::TestSymbolCoverage::test_unknown_symbol_gap_is_closed`
+and `TestUnsupportedFilesIgnored::test_a_flag_off_the_supported_list_still_kills`.
+
+Reverting to list-gated coverage requires a fresh Legal review: it
+would restore a silent no-op on exactly the instruments most likely to
+be new and least likely to be in the tuple.
+
+`SUPPORTED_SYMBOLS` remains load-bearing for the UI — the
+`/settings/kill-switches` grid derives its cells from the status
+payload's `supported_symbols`, so a tuple addition reaches the UI with
+no page edit (pinned by
 `tests/platform/test_kill_switches_page.py::TestGridLayout::test_grid_reads_supported_symbols_from_status`).
-Residual gap, unchanged: `is_killed()` is fail-OPEN for a symbol absent
-from the tuple — only GLOBAL halts it (pinned by
-`test_kill_switches_module.py::test_unknown_symbol_gap_is_still_open`).
+A tradable instrument missing from the tuple is therefore still a UI
+gap (no button) even though the kill itself works, and `list_killed`
+sorts such scopes into a trailing alphabetical group so a mistyped or
+off-list flag is visible rather than silent.
+
+Residual gap, UNCHANGED and out of B7's scope: a kill stops NEW orders
+and does nothing about positions already open. Halting is not
+flattening. Wiring the F025 B4 close path to fire on kill would convert
+a halt into a liquidation, which is a policy decision requiring its own
+review, not a bug fix.
 
 ### F011 — `agent/platform/kill_switch_admin.py` (Sprint 2)
 

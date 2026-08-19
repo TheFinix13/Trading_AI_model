@@ -117,8 +117,13 @@ def _scan(directory: Path) -> _CacheEntry:
             if not entry.is_file() or not entry.name.endswith(".flag"):
                 continue
             scope = entry.name[:-len(".flag")]
-            if scope != GLOBAL_KEY and scope not in SUPPORTED_SYMBOLS:
-                continue
+            # F025 B7 (2026-08-19): every flag on disk is honoured, even
+            # for a scope absent from SUPPORTED_SYMBOLS. Filtering here
+            # was the fail-OPEN hole -- an operator could write a kill
+            # for a symbol the squad had just started trading and the
+            # read path would discard it, reporting "not killed" with
+            # total confidence. A safety primitive must not decide that
+            # a halt someone deliberately requested is not real.
             scopes.add(scope)
             try:
                 body = json.loads(entry.read_text(encoding="utf-8"))
@@ -154,25 +159,27 @@ def is_killed(symbol: str | None = None) -> bool:
     - ``symbol=None`` -- returns True iff the global kill flag exists.
     - ``symbol="EURUSD"`` -- returns True iff EURUSD's flag OR the
       global flag exists.
-    - Unknown symbol -- returns False (validated only in the admin
-      write path; the read path never raises).
+    - Any other symbol -- same rule. A flag halts the symbol it names
+      whether or not that symbol is in :data:`SUPPORTED_SYMBOLS`.
 
-    The unknown-symbol case is fail-OPEN, which is the wrong default
-    for a safety primitive: a symbol absent from
-    :data:`SUPPORTED_SYMBOLS` can only be halted by the GLOBAL flag,
-    and a per-symbol kill on it is silently a no-op. Widening the
-    tuple (F025 B7) narrows that gap rather than closing it; changing
-    the semantics is a separate decision.
+    F025 B7 (2026-08-19): this used to return False for any symbol
+    outside :data:`SUPPORTED_SYMBOLS`, so a per-symbol kill on a newly
+    traded instrument was silently a no-op and only GLOBAL could stop
+    it. Widening the tuple narrowed that gap; honouring every flag on
+    disk closes it. :data:`SUPPORTED_SYMBOLS` is now an enumeration
+    aid for the admin write path and :func:`list_killed` ordering, NOT
+    a gate deciding which halts are real -- a safety control whose
+    coverage depends on a hardcoded list is only as current as the last
+    person who remembered to edit it.
+
+    The read path still never raises.
     """
     entry = _read_state()
     if GLOBAL_KEY in entry.killed_scopes:
         return True
     if symbol is None:
         return False
-    sym = symbol.upper().strip()
-    if sym not in SUPPORTED_SYMBOLS:
-        return False
-    return sym in entry.killed_scopes
+    return symbol.upper().strip() in entry.killed_scopes
 
 
 def list_killed() -> list[dict]:
@@ -180,7 +187,14 @@ def list_killed() -> list[dict]:
 
     Shape: ``[{"scope": "EURUSD", "reason": "...", "activated_at":
     "iso8601", "by": "user"}, ...]``. Order: global first, then
-    supported symbols in :data:`SUPPORTED_SYMBOLS` order.
+    supported symbols in :data:`SUPPORTED_SYMBOLS` order, then any
+    remaining scopes alphabetically.
+
+    That trailing group (F025 B7) is what makes a mistyped flag
+    visible. ``EURUDS.flag`` halts nothing, and previously it was also
+    invisible here, so an operator who believed they had killed EURUSD
+    had no way to discover otherwise. Now it appears in the list they
+    check.
     """
     entry = _read_state()
     ordered: list[str] = []
@@ -189,6 +203,7 @@ def list_killed() -> list[dict]:
     for sym in SUPPORTED_SYMBOLS:
         if sym in entry.killed_scopes:
             ordered.append(sym)
+    ordered.extend(sorted(entry.killed_scopes - set(ordered)))
     out: list[dict] = []
     for scope in ordered:
         payload = entry.payloads.get(scope, {})

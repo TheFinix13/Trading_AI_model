@@ -142,16 +142,45 @@ class TestListKilledShape:
 
 
 class TestUnsupportedFilesIgnored:
-    def test_stray_flag_names_are_ignored(self, _fresh_kill_dir: Path) -> None:
-        # A file named after an unsupported symbol should be skipped
-        # entirely -- the module never treats it as "killed".
-        (_fresh_kill_dir / "NZDUSD.flag").write_text('{"reason": "x"}')
-        # Also skip non-.flag files.
+    def test_only_dot_flag_files_count(self, _fresh_kill_dir: Path) -> None:
+        # The extension is still the discriminator -- an editor's
+        # backup or a stray note must not halt trading.
         (_fresh_kill_dir / "EURUSD.notflag").write_text("noise")
         kill_switches.reset_cache_for_tests()
         assert kill_switches.list_killed() == []
-        assert kill_switches.is_killed("NZDUSD") is False
         assert kill_switches.is_killed("EURUSD") is False
+
+    def test_a_flag_off_the_supported_list_still_kills(
+            self, _fresh_kill_dir: Path) -> None:
+        """F025 B7: honour the flag, not the hardcoded list.
+
+        This inverts a pin that previously asserted the flag was
+        ignored. The old behaviour was the fail-OPEN hole: an operator
+        halting a newly traded symbol got no halt and no error.
+        """
+        assert "NZDUSD" not in kill_switches.SUPPORTED_SYMBOLS
+        (_fresh_kill_dir / "NZDUSD.flag").write_text('{"reason": "x"}')
+        kill_switches.reset_cache_for_tests()
+        assert kill_switches.is_killed("NZDUSD") is True
+        # and it must not leak into unrelated symbols
+        assert kill_switches.is_killed("EURUSD") is False
+
+    def test_a_mistyped_flag_is_visible_rather_than_silent(
+            self, _fresh_kill_dir: Path) -> None:
+        # EURUDS halts nothing, but the operator who meant EURUSD has
+        # to be able to SEE that in the list they check.
+        (_fresh_kill_dir / "EURUDS.flag").write_text('{"reason": "typo"}')
+        kill_switches.reset_cache_for_tests()
+        assert kill_switches.is_killed("EURUSD") is False
+        assert [e["scope"] for e in kill_switches.list_killed()] == ["EURUDS"]
+
+    def test_supported_symbols_still_sort_ahead_of_strays(
+            self, _fresh_kill_dir: Path) -> None:
+        for name in ("ZZZUSD", "EURUSD", "AAAUSD"):
+            (_fresh_kill_dir / f"{name}.flag").write_text("{}")
+        kill_switches.reset_cache_for_tests()
+        assert [e["scope"] for e in kill_switches.list_killed()] == [
+            "EURUSD", "AAAUSD", "ZZZUSD"]
 
 
 class TestSymbolCoverage:
@@ -211,29 +240,32 @@ class TestSymbolCoverage:
         assert [r["scope"] for r in rows] == [
             "EURUSD", "XAGUSD", "BTCUSD"]
 
-    def test_unknown_symbol_gap_is_still_open(
+    def test_unknown_symbol_gap_is_closed(
         self, _fresh_kill_dir: Path
     ) -> None:
-        """DOCUMENTED REMAINING GAP -- not a fix, a description.
+        """F025 B7 CLOSED -- this pin was inverted on 2026-08-19.
 
-        `is_killed` fails OPEN for a symbol outside SUPPORTED_SYMBOLS:
-        a per-symbol kill flag for it is silently ignored and only the
-        GLOBAL flag can halt it. B7 widened the list, which narrows the
-        gap to instruments nothing in the platform can size yet; it did
-        NOT change the fail-open semantics, because flipping a safety
-        primitive's default is a separate decision.
+        It previously asserted the fail-OPEN behaviour as a documented
+        gap: a kill flag for a symbol outside SUPPORTED_SYMBOLS was
+        silently ignored, so only GLOBAL could halt it. Widening the
+        tuple narrowed that to instruments nothing could size yet, but
+        left a safety control whose coverage was only as current as the
+        last person who remembered to edit a hardcoded list.
+
+        Every flag on disk is now honoured. The tuple remains an
+        enumeration aid for the admin UI and list ordering.
         """
         assert "NZDUSD" not in kill_switches.SUPPORTED_SYMBOLS
-        _write_flag(_fresh_kill_dir, "NZDUSD", "ignored on purpose")
+        _write_flag(_fresh_kill_dir, "NZDUSD", "halt the new field")
         kill_switches.reset_cache_for_tests()
-        # The flag exists on disk and is still not a kill.
         assert (_fresh_kill_dir / "NZDUSD.flag").is_file()
-        assert kill_switches.is_killed("NZDUSD") is False
-        assert kill_switches.list_killed() == []
-        # GLOBAL remains the only thing that halts it.
+        assert kill_switches.is_killed("NZDUSD") is True
+        assert [e["scope"] for e in kill_switches.list_killed()] == ["NZDUSD"]
+        # GLOBAL still halts everything, unsupported symbols included.
         _write_flag(_fresh_kill_dir, kill_switches.GLOBAL_KEY, "halt")
         kill_switches.reset_cache_for_tests()
         assert kill_switches.is_killed("NZDUSD") is True
+        assert kill_switches.is_killed("ANYTHING_AT_ALL") is True
 
 
 class TestLiveModeOffContract:
