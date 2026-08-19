@@ -1,4 +1,26 @@
-# AI Context — brain dump (updated 2026-08-13, v0.31)
+# AI Context — brain dump (updated 2026-08-19, v0.32)
+
+> v0.32 — **VM operability: one command per agent (`2d529cc`, pushed to
+> `main`).** Updating the VM previously meant retyping the clone path,
+> pulling, stopping/starting each watchdog task and hunting a log to
+> confirm — friction that got updates skipped. `scripts/update_agent.ps1`
+> self-locates via `$PSScriptRoot`, refuses to pull on the wrong branch
+> (expects `main`), refuses to pull over uncommitted changes without
+> stashing, uses `--ff-only`, and verifies: task states, `terminal64.exe`
+> presence, any `kill_switch`/`kill.txt` halt file, per-symbol log ages.
+> `-StatusOnly` is read-only, `-NoRestart` pulls without interrupting an
+> open trade. `scripts/install_vm_shortcuts.ps1` writes a marked,
+> idempotent block into `$PROFILE` giving `v1up` / `v1status` / `v2up` /
+> `v2status` / `agents` / `v1log` / `v2log` / `v1cd` / `v2cd`, with v2
+> clone auto-detection. Cheat sheet: `docs/VM_QUICKSTART.md`. Run once on
+> the VM: `powershell -ExecutionPolicy Bypass -File
+> scripts\install_vm_shortcuts.ps1`. Research lane same day: **E033
+> scheduled-news blackout STOPPED-DEAD at Stage 1** — 0/30 cells
+> `stage1_alive`, tight windows underpowered, and the trades that DID sit
+> on news were net winners (EURUSD fills inside ±30 min of NFP/CPI/FOMC
+> 7/7 at +1.50R; flattening gives back ~0.29R each). No v1 calendar gate
+> will be deployed from that study; the Aug 7 NFP wipe does not
+> generalise across 2015–2025.
 
 > v0.31 — **Halt-observability fixes from the 2026-08-10 weekly review
 > (observation-only, no strategy change; UNCOMMITTED pending branch
