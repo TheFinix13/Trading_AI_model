@@ -834,12 +834,14 @@ lazy MetaTrader5 import),
 `live_executor.execute_approved(approval_id, adapter, cfg=None) -> dict`,
 `live_executor.close_executed_position(ticket, adapter, cfg=None) -> dict`,
 `live_executor.recent_executions(limit=20) -> list[dict]`,
-`live_executor.executor_status(cfg=None) -> dict`.
+`live_executor.executor_status(cfg=None) -> dict`,
+`live_executor.capital_derived_max_lots(equity, lots_per_1k=...) -> float | None`,
+`live_executor.effective_max_volume_lots(equity, explicit=None, lots_per_1k=...) -> float`.
 
 Public module constants: `EXECUTIONS_FILENAME`,
-`DEFAULT_MAX_VOLUME_LOTS`, `DEFAULT_ALLOWED_SERVER_PATTERNS`,
-`DEFAULT_MAGIC`, `EXECUTOR_STATES`. Test-only helper marked
-`# claim-exempt`: `reset_state_for_tests`.
+`DEFAULT_MAX_VOLUME_LOTS`, `DEFAULT_MAX_LOTS_PER_1K`,
+`DEFAULT_ALLOWED_SERVER_PATTERNS`, `DEFAULT_MAGIC`, `EXECUTOR_STATES`.
+Test-only helper marked `# claim-exempt`: `reset_state_for_tests`.
 
 | Accessor | Return / Field | Human meaning | Code path | Disclaimer required? |
 |---|---|---|---|---|
@@ -851,6 +853,9 @@ Public module constants: `EXECUTIONS_FILENAME`,
 | `recent_executions` | `list[dict]` | Last N rows of the executions audit JSONL, newest first. Each row carries the `magic` the order did (or would have) carried. | `live_executor.recent_executions`. | None — state. |
 | `load_executor_config` | `dict` | Normalised `[live_executor]` block (enabled, demo_only, patterns, max_volume_lots, broker_alias, magic). | `live_executor.load_executor_config`. | None — meta. |
 | `DEFAULT_MAGIC` | `int` | F025 B5: the MT5 magic number stamped on every order and close this executor sends, so positions on a shared account are attributable to v2. `314159`, deliberately distinct from the v1 zones agent's `271828` (`agent/live/broker.py`). Zero / negative / junk config values fall back to the default — magic `0` means "unattributed", the state the key exists to end. | `live_executor.DEFAULT_MAGIC`, `[live_executor] magic`. | None — meta. |
+| `capital_derived_max_lots` | `float \| None` | The gate-#6 volume ceiling implied by the account's capital: `(equity / 1000) * DEFAULT_MAX_LOTS_PER_1K`. Returns `None` — not a guess — when capital is unknown, zero, negative or junk, so an arbitrary number can never present as an authoritative ceiling in the audit log. | `live_executor.capital_derived_max_lots`. | None — meta. |
+| `effective_max_volume_lots` | `float` | The ceiling actually enforced at gate #6. Capital sets it; an explicit `[live_executor] max_volume_lots` may only TIGHTEN it, never widen it. With capital unknown, an explicit value is honoured and otherwise `DEFAULT_MAX_VOLUME_LOTS` applies. | `live_executor.effective_max_volume_lots`, `load_executor_config`. | None — meta. |
+| `DEFAULT_MAX_LOTS_PER_1K` | `float` | Lots of ceiling headroom per 1,000 units of account currency (`0.2`). Reproduces the standing 0.10 ceiling on the $500 demo exactly, so capital-derivation is behaviour-neutral at today's book. This is a fat-finger guard, NOT a sizer — `risk_budget_lot` sets actual volume and normally lands far below. | `live_executor.DEFAULT_MAX_LOTS_PER_1K`. | None — meta. |
 | `adapter_available` | `bool` | Whether MetaTrader5 is importable on this host (Windows-only package). | `live_executor.adapter_available`. | None — capability probe. |
 | `Mt5OrderAdapter` / `RealMt5OrderAdapter` / `FakeMt5OrderAdapter` | protocol / impl / test double | The injectable MT5 seam: `connect`, `account_info`, `send_market_order`, `close_position`, `shutdown`. The real adapter imports MetaTrader5 lazily inside methods; credentials ride `broker_connection.load_credentials` and are never logged or echoed. | `live_executor`. | Same warning. |
 
@@ -865,6 +870,18 @@ Single-use constraint: an approval that has been executed (or failed
 execution) is consumed and can never fire a second order. Removing
 the consumption marking would allow replay of a single human approval
 into multiple orders — P0 regression.
+
+Ceiling-asymmetry constraint (2026-08-19): gate #6's ceiling is derived
+from the account's capital, and an explicit `[live_executor]
+max_volume_lots` may only tighten it. The asymmetry IS the safety
+claim — a fat-finger guard that `platform.toml` can widen is not a
+guard, and without it capital-derivation would be advisory. Letting
+config raise the ceiling above the capital-implied figure, or
+defaulting the ceiling when capital is unknown to anything other than
+the deliberately-tiny `DEFAULT_MAX_VOLUME_LOTS`, requires a fresh Legal
+review. Note this ceiling sits ABOVE the per-trade risk cap by design
+(0.10 lots on a 30-pip stop is ~6% of a $500 book) and must never be
+described to an operator as a risk limit; `risk_budget` owns that.
 
 Close-path asymmetry (F025 B4, NOT yet ratified by a Legal review —
 `close_executed_position` ships as a documented prerequisite under

@@ -373,6 +373,7 @@ def run_loop(args, cfg: dict) -> str:
             equity,
         )
     risk_derived_sizing = bool(getattr(args, "risk_derived_sizing", False))
+    player_lot_intent = bool(getattr(args, "player_lot_intent", False))
     engine = SquadEngine(
         roster,
         out_dir,
@@ -381,12 +382,25 @@ def run_loop(args, cfg: dict) -> str:
         source_label=source_label,
         equity=equity,
         risk_derived_sizing=risk_derived_sizing,
+        player_lot_intent=player_lot_intent,
     )
     if risk_derived_sizing:
         log.info(
             "risk-derived sizing ON: fills sized to %.0f%% of $%.2f equity "
             "per trade (was fixed %.2f lot regardless of stop width)",
             SANDBOX_PER_TRADE_RISK_FRAC * 100, equity, FIXED_LOT,
+        )
+    if player_lot_intent and not risk_derived_sizing:
+        log.warning(
+            "--player-lot-intent IGNORED: it requires --risk-derived-sizing, "
+            "because without the budget cap in front of it a player's intent "
+            "would become the final lot (unvalidated free sizing)",
+        )
+    elif engine.player_lot_intent:
+        log.info(
+            "player lot intent ON (TESTING): the proposing agent's "
+            "lot_intent() supplies the desired lot and risk_budget_lot "
+            "still caps it -- this can only size a fill down, never up",
         )
     if field_assignments:
         log.info(
@@ -850,6 +864,21 @@ def build_arg_parser(sl: dict | None = None) -> argparse.ArgumentParser:
             "measures risk at the 0.01 min-lot while fills are 10x that, "
             "so the advertised per-trade cap understates real risk by "
             "10x. MUST be on before any fill settles in real money"
+        ),
+    )
+    ap.add_argument(
+        "--player-lot-intent", action="store_true",
+        default=bool(sl.get("player_lot_intent", False)),
+        help=(
+            "TESTING ONLY. Let the proposing agent's own lot_intent() "
+            "supply the desired lot, which risk_budget_lot then caps -- "
+            "intent proposes, the risk budget disposes, so a fill can "
+            "only be sized DOWN, never up. Every striker already "
+            "implements lot_intent (pre-registered under "
+            "dispersion_primitives_r2) and the fill path has never "
+            "called it. Requires --risk-derived-sizing; ignored without "
+            "it. DEFAULT OFF -- the live path stays on the single "
+            "validated sizer"
         ),
     )
     ap.add_argument(

@@ -20,7 +20,10 @@ The stack, in refusal order (every step fail-closed):
    the CONNECTED server's reported name matches
    ``allowed_server_patterns`` (fnmatch, case-sensitive, fail-closed
    on blank/missing/unmatched).
-6. Volume hard-cap: ``max_volume_lots`` (default 0.01).
+6. Volume hard-cap: ``max_volume_lots``, derived from the account's
+   capital (:data:`DEFAULT_MAX_LOTS_PER_1K` lots per 1,000 units of
+   book). An explicit config value may only tighten it; with capital
+   unknown the ceiling falls back to :data:`DEFAULT_MAX_VOLUME_LOTS`.
 
 On fill: the fill is recorded to ``risk_budget`` (audit row, pnl 0.0
 at fill time -- realised pnl is a later concern), the approval is
@@ -62,7 +65,24 @@ from agent.platform import approval_queue, broker_connection, risk_budget
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
 EXECUTIONS_FILENAME: str = "executions.jsonl"
+# Fallback ceiling used ONLY when the account's capital is unknown. It is
+# deliberately far too small to be useful: an unknown book must not be
+# tradeable at a size anyone would choose on purpose.
 DEFAULT_MAX_VOLUME_LOTS: float = 0.01
+
+# Lots of headroom per 1,000 units of account currency. The volume ceiling
+# is a fat-finger guard, NOT a sizer -- `risk_budget_lot` decides the
+# actual volume and normally lands far below this. The ceiling's only job
+# is to make a volume that could never be correct on THIS account
+# impossible to send.
+#
+# 0.2 reproduces the operator's standing 0.10 on the $500 demo exactly, so
+# adopting capital-derivation changes no behaviour at today's book size;
+# it starts mattering the moment the account grows or shrinks. Worth
+# seeing plainly: 0.10 lots against a 30-pip stop is ~$30, or 6% of $500,
+# so this ceiling sits ABOVE the per-trade risk cap by design and is not a
+# substitute for it.
+DEFAULT_MAX_LOTS_PER_1K: float = 0.2
 DEFAULT_ALLOWED_SERVER_PATTERNS: tuple[str, ...] = (
     "*Trial*", "*Demo*", "*demo*")
 
@@ -376,6 +396,57 @@ class FakeMt5OrderAdapter:
 # config
 # ---------------------------------------------------------------------
 
+def capital_derived_max_lots(equity: float | None,
+                             lots_per_1k: float = DEFAULT_MAX_LOTS_PER_1K
+                             ) -> float | None:
+    """Volume ceiling implied by the account's capital, or None.
+
+    Returns None when capital is unknown or unusable rather than
+    substituting a guess. A guessed ceiling is worse than no ceiling,
+    because it looks authoritative in the logs while being arbitrary --
+    the caller falls back to :data:`DEFAULT_MAX_VOLUME_LOTS`, which is
+    obviously a floor rather than a judgement.
+    """
+    try:
+        book = float(equity)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if not book > 0:
+        return None
+    try:
+        rate = float(lots_per_1k)
+    except (TypeError, ValueError):
+        return None
+    if not rate > 0:
+        return None
+    return (book / 1000.0) * rate
+
+
+def effective_max_volume_lots(equity: float | None,
+                              explicit: float | None = None,
+                              lots_per_1k: float = DEFAULT_MAX_LOTS_PER_1K
+                              ) -> float:
+    """The ceiling actually enforced at gate #6.
+
+    Capital sets the ceiling; an explicit config value may only tighten
+    it. That asymmetry is the whole point: an operator editing
+    ``platform.toml`` can always be MORE conservative than the account
+    justifies, but cannot type a number that lets a $500 book send five
+    lots. Without it, capital-derivation would be advisory, and a
+    fat-finger guard that config can widen is not a guard.
+
+    With capital unknown, the explicit value is honoured if present --
+    the operator asserting a number is better evidence than a fallback
+    -- and otherwise the deliberately-tiny default applies.
+    """
+    derived = capital_derived_max_lots(equity, lots_per_1k)
+    if derived is None:
+        return explicit if explicit is not None else DEFAULT_MAX_VOLUME_LOTS
+    if explicit is None:
+        return derived
+    return min(derived, explicit)
+
+
 def load_executor_config(cfg: dict | None = None) -> dict:
     """Normalised ``[live_executor]`` block.
 
@@ -396,13 +467,18 @@ def load_executor_config(cfg: dict | None = None) -> dict:
         cleaned = [str(p).strip() for p in patterns if str(p).strip()]
     else:
         cleaned = list(DEFAULT_ALLOWED_SERVER_PATTERNS)
+    # An explicit `max_volume_lots` may only ever TIGHTEN the ceiling the
+    # account's capital implies -- see `effective_max_volume_lots`. Junk
+    # and non-positive values are treated as "not set" rather than as
+    # zero, because a zero ceiling would refuse every order and read in
+    # the logs as a gate bug rather than as a config typo.
+    explicit_max_vol: float | None
     try:
-        max_vol = float(block.get("max_volume_lots",
-                                  DEFAULT_MAX_VOLUME_LOTS))
-        if not max_vol > 0:
-            max_vol = DEFAULT_MAX_VOLUME_LOTS
-    except (TypeError, ValueError):
-        max_vol = DEFAULT_MAX_VOLUME_LOTS
+        explicit_max_vol = float(block["max_volume_lots"])
+        if not explicit_max_vol > 0:
+            explicit_max_vol = None
+    except (KeyError, TypeError, ValueError):
+        explicit_max_vol = None
     # A zero / negative / junk magic would send unattributable orders,
     # so it falls back to the default rather than being honoured.
     try:
@@ -432,7 +508,8 @@ def load_executor_config(cfg: dict | None = None) -> dict:
         "enabled": block.get("enabled") is True,
         "demo_only": block.get("demo_only") is True,
         "allowed_server_patterns": cleaned,
-        "max_volume_lots": max_vol,
+        "max_volume_lots": effective_max_volume_lots(equity,
+                                                     explicit_max_vol),
         "broker_alias": str(block.get("broker_alias") or "").strip(),
         "magic": magic,
         "equity": equity,
@@ -996,6 +1073,9 @@ def reset_state_for_tests() -> None:  # claim-exempt: test-only state wipe, no H
 __all__ = [
     "EXECUTIONS_FILENAME",
     "DEFAULT_MAX_VOLUME_LOTS",
+    "DEFAULT_MAX_LOTS_PER_1K",
+    "capital_derived_max_lots",
+    "effective_max_volume_lots",
     "DEFAULT_ALLOWED_SERVER_PATTERNS",
     "DEFAULT_MAGIC",
     "EXECUTOR_STATES",

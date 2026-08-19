@@ -179,6 +179,7 @@ class SquadEngine:
         source_label: str = "live_market",
         equity: float = SANDBOX_EQUITY_DOLLARS,
         risk_derived_sizing: bool = False,
+        player_lot_intent: bool = False,
     ) -> None:
         if aggregator_arm not in ("phi41", "arm3", "arm4"):
             raise ValueError(f"unknown aggregator_arm: {aggregator_arm!r}")
@@ -197,6 +198,25 @@ class SquadEngine:
         # which can only reduce a position relative to FIXED_LOT --
         # required before any fill settles in real money.
         self.risk_derived_sizing = bool(risk_derived_sizing)
+        # TESTING ONLY. Every striker implements `lot_intent` -- seven
+        # sizing functions with per-playstyle tables, pre-registered
+        # under `experiments/dispersion_primitives_r2/PROTOCOL.md` --
+        # and until now the fill path never called any of them, so the
+        # players' sizing opinions existed and were discarded.
+        #
+        # ON, a player's intent supplies the DESIRED lot and
+        # `risk_budget_lot` still caps it: intent proposes, the risk
+        # budget disposes. It can therefore only ever size a fill DOWN
+        # relative to what the budget already permits, never up. That
+        # containment is why this is safe to exercise on the paper loop
+        # while the live path stays on the single validated sizer.
+        #
+        # It requires `risk_derived_sizing`, because without the budget
+        # cap in front of it a player's intent WOULD be the final lot,
+        # which is the unvalidated free-sizing case this deliberately
+        # does not build.
+        self.player_lot_intent = bool(player_lot_intent) \
+            and bool(risk_derived_sizing)
 
         self.ledger = FullLedger()
         self.workspace = ReasoningWorkspace()
@@ -496,6 +516,44 @@ class SquadEngine:
         )
         with path.open("a", encoding="utf-8") as fh:
             fh.write(line)
+
+    def _player_desired_lot(self, proposal, sl_pips: float) -> tuple[float, str]:
+        """Ask the proposing player what size it wants (TESTING ONLY).
+
+        Returns ``(desired_lot, note)``. The caller feeds this to
+        ``risk_budget_lot`` as the DESIRED lot, so the budget still
+        caps it -- this can lower a fill but never raise one above what
+        the budget already allowed.
+
+        Falls back to ``FIXED_LOT`` on anything unexpected (agent not
+        found, no ``lot_intent``, a raise, a non-positive or junk
+        return). A sizing opinion is an optimisation, never a
+        precondition, so a broken one must degrade to today's behaviour
+        rather than stop a trade the squad already agreed on.
+        """
+        agent = None
+        for a in self.roster.proposers:
+            if a.agent_id == proposal.agent_id:
+                agent = a
+                break
+        fn = getattr(agent, "lot_intent", None)
+        if fn is None or not callable(fn):
+            return FIXED_LOT, " lot_intent=n/a"
+        try:
+            want = float(fn(
+                float(proposal.conviction),
+                float(sl_pips),
+                float(self.equity),
+                float(getattr(proposal, "regime_fit", 1.0) or 1.0),
+            ))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("lot_intent failed for %s: %s", proposal.agent_id, exc)
+            return FIXED_LOT, " lot_intent=error"
+        # NaN fails `> 0`, so it lands here rather than poisoning the
+        # sizer with a value that silently survives every comparison.
+        if not want > 0:
+            return FIXED_LOT, f" lot_intent={want}(rejected)"
+        return want, f" lot_intent={want:.4f}"
 
     def _append_jsonl(self, filename: str, row: dict) -> None:
         path = self.out_dir / filename
@@ -999,17 +1057,24 @@ class SquadEngine:
                 sl_pips = abs(proposal.entry - proposal.stop) * pips_per_unit_for(
                     symbol,
                 )
+                desired_lot = FIXED_LOT
+                intent_note = ""
+                if self.player_lot_intent:
+                    desired_lot, intent_note = self._player_desired_lot(
+                        proposal, sl_pips,
+                    )
                 base_lot = risk_budget_lot(
                     sl_pips=sl_pips,
                     equity=self.equity,
                     pip_value_per_min_lot=pip_value_per_min_lot_for(symbol),
-                    desired_lot=FIXED_LOT,
+                    desired_lot=desired_lot,
                     per_trade_risk_frac=SANDBOX_PER_TRADE_RISK_FRAC,
                 )
                 budget_note = (
                     f" risk_budget_lot={base_lot:.4f} "
                     f"(sl={sl_pips:.1f}p, equity=${self.equity:.2f}, "
                     f"cap={SANDBOX_PER_TRADE_RISK_FRAC * 100:.1f}%)"
+                    f"{intent_note}"
                 )
             scaled_lot = round(base_lot * risk_scale, 8)
             if scaled_lot + 1e-9 < MIN_LOT:

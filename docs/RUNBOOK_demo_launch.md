@@ -7,20 +7,21 @@
 > health checks — use **`docs/VM_QUICKSTART.md` in the v1 clone**. That
 > page is the single reference and it wins over anything here.
 >
-> **Two paths and two branch names in this file are stale.** They date
-> from the original build and are left in place because the surrounding
-> setup narrative still reads correctly, but do not paste them:
+> **Paths and branch names here are current as of 2026-08-19.** Every
+> snippet was previously written against the retired clone
+> `C:\TradingAgent-platform` and the retired branch `next-gen`; both have
+> been corrected inline to `C:\Users\Fiyin\Documents\GitHub\TradingAgent2`
+> and `product`. Nothing below needs mental substitution any more.
 >
-> | Appears below as | Actually is |
-> |---|---|
-> | clone `C:\TradingAgent-platform` | `C:\Users\Fiyin\Documents\GitHub\TradingAgent2` |
-> | branch `next-gen` | `product` (single serving branch since the D110 merge) |
+> The one surviving mention of `next-gen` is in the 2026-07-24 fix-batch
+> history, where it is historically accurate.
 >
 > A scheduled task registered against the retired clone path fails
 > silently every time it fires — that is a real incident that already
 > happened to the Night Auditor, not a hypothetical. **Register v2 tasks
 > with `scripts\setup_platform_tasks.ps1`**, which resolves the clone from
-> its own location and then verifies every task points there.
+> its own location and then verifies every task points there, so a task
+> can never silently drift back onto a dead path.
 
 > **Demo MT5 only — hard rule.** This runbook never involves live broker
 > keys. The account is an Exness **demo** ($500+ recommended, see
@@ -30,8 +31,7 @@
 > **Branch note.** The VM's v1 trading agent runs **`main`**. The v2
 > platform line — this runbook, the dashboard, the squad — runs
 > **`product`**, which has been the single serving branch since the D110
-> reconciliation merge. Where this file still says `next-gen`, read
-> `product`.
+> reconciliation merge.
 
 Companion docs: [08 — Live Trading & Deployment](08-live-trading-and-deployment.md)
 (full setup detail), [runbooks/vmware-windows.md](runbooks/vmware-windows.md)
@@ -183,14 +183,14 @@ new dependencies, strictly READ-ONLY (it cannot affect trading):
   winning trades). Sim-only evidence; reads the research repo's replay
   artifact files, never its code.
 
-**On the VM** (run from a SECOND clone on `next-gen` — never the trading
+**On the VM** (run from a SECOND clone on `product` — never the trading
 clone, which stays on `main`):
 
 ```powershell
 # One-time: second clone next to the trading clone
-git clone https://github.com/TheFinix13/Trading_AI_model.git C:\TradingAgent-platform
-cd C:\TradingAgent-platform
-git checkout next-gen
+git clone https://github.com/TheFinix13/Trading_AI_model.git C:\Users\Fiyin\Documents\GitHub\TradingAgent2
+cd C:\Users\Fiyin\Documents\GitHub\TradingAgent2
+git checkout product
 
 # Serve (reads the same log root the main agents write):
 python scripts\serve_platform.py --log-root $HOME\Documents\TradingAgentLogs --host 0.0.0.0 --port 8787
@@ -256,18 +256,18 @@ echo "pause for review" > ~/Documents/TradingAgentLogs/squad_live/kill.txt
 
 Unlike the trading agents, the platform server does NOT need MT5's
 desktop session, so both service approaches work. Run it from the
-**platform clone** (`C:\TradingAgent-platform`, `next-gen`), never the
+**platform clone** (`C:\Users\Fiyin\Documents\GitHub\TradingAgent2`, `product`), never the
 trading clone.
 
 **Option A — Task Scheduler (no extra software):**
 
 ```powershell
-$action = New-ScheduledTaskAction -Execute "C:\TradingAgent-platform\.venv\Scripts\python.exe" `
+$action = New-ScheduledTaskAction -Execute "C:\Users\Fiyin\Documents\GitHub\TradingAgent2\.venv\Scripts\python.exe" `
   -Argument "scripts\serve_platform.py --host 0.0.0.0 --port 8787 --auth-token <secret>" `
-  -WorkingDirectory "C:\TradingAgent-platform"
+  -WorkingDirectory "C:\Users\Fiyin\Documents\GitHub\TradingAgent2"
 $trigger = New-ScheduledTaskTrigger -AtStartup
 Register-ScheduledTask -TaskName "PlatformWebUI" -Action $action -Trigger $trigger `
-  -RunLevel Limited -Description "Read-only trading platform web UI (next-gen)"
+  -RunLevel Limited -Description "Read-only trading platform web UI (product)"
 Start-ScheduledTask -TaskName "PlatformWebUI"
 ```
 
@@ -277,11 +277,11 @@ the trading agents keep their `AtLogOn` + watchdog setup from section 2.)
 **Option B — NSSM (auto-restart on crash):**
 
 ```powershell
-nssm install PlatformWebUI "C:\TradingAgent-platform\.venv\Scripts\python.exe" `
+nssm install PlatformWebUI "C:\Users\Fiyin\Documents\GitHub\TradingAgent2\.venv\Scripts\python.exe" `
   "scripts\serve_platform.py --host 0.0.0.0 --port 8787 --auth-token <secret>"
-nssm set PlatformWebUI AppDirectory "C:\TradingAgent-platform"
-nssm set PlatformWebUI AppStdout "C:\TradingAgent-platform\platform_service.log"
-nssm set PlatformWebUI AppStderr "C:\TradingAgent-platform\platform_service.log"
+nssm set PlatformWebUI AppDirectory "C:\Users\Fiyin\Documents\GitHub\TradingAgent2"
+nssm set PlatformWebUI AppStdout "C:\Users\Fiyin\Documents\GitHub\TradingAgent2\platform_service.log"
+nssm set PlatformWebUI AppStderr "C:\Users\Fiyin\Documents\GitHub\TradingAgent2\platform_service.log"
 nssm start PlatformWebUI
 ```
 
@@ -371,11 +371,11 @@ An explicit `--cache <id>` overrides both.
 
 **On the VM** (both clones already exist per §7b — the trading clone at
 `C:\TradingAgent` on `main` is untouched; the platform clone at
-`C:\TradingAgent-platform` on `next-gen` gets the paper loop):
+`C:\Users\Fiyin\Documents\GitHub\TradingAgent2` on `product` gets the paper loop):
 
 ```powershell
-cd C:\TradingAgent-platform
-git fetch && git checkout next-gen && git reset --hard origin/next-gen
+cd C:\Users\Fiyin\Documents\GitHub\TradingAgent2
+git fetch && git checkout product && git reset --hard origin/product
 
 # Terminal 1 — paper loop (fresh g7retry1 cache, phi41 verdict arm).
 # Startup logs the resolved cache clearly, e.g.:
@@ -453,11 +453,11 @@ within ±0.05. Not byte-identical (float paths, Phase Y Barou default,
 shadow-ledger / Wild-Card Kunigami gate not ported). Do not claim
 G7-validated behaviour.
 
-**On the VM** (platform clone on `next-gen`):
+**On the VM** (platform clone on `product`):
 
 ```powershell
-cd C:\TradingAgent-platform
-git fetch && git checkout next-gen && git reset --hard origin/next-gen
+cd C:\Users\Fiyin\Documents\GitHub\TradingAgent2
+git fetch && git checkout product && git reset --hard origin/product
 
 # Terminal 1 — live-market paper runtime (MT5 read-only for H4 bars).
 # NEVER places broker orders. Startup logs feed + arm + out dir.
@@ -547,7 +547,7 @@ the repo root, and makes /v2 silence legible.
 **VM redeploy** (same clones as §7b.6):
 
 ```powershell
-cd C:\TradingAgent-platform
+cd C:\Users\Fiyin\Documents\GitHub\TradingAgent2
 git fetch && git checkout product && git reset --hard origin/product
 
 # Restart the runtime (Ctrl-C the old one, or write kill.txt and wait
@@ -611,7 +611,7 @@ squad's `--feed mt5` reads bars over MT5's desktop-session IPC.
 > task's working directory actually points there. The hand-rolled
 > commands below are kept as reference for what it does, and because they
 > show the trigger shape — but they hardcode
-> `C:\TradingAgent-platform`, which is **no longer the clone that holds
+> `C:\Users\Fiyin\Documents\GitHub\TradingAgent2`, which is **no longer the clone that holds
 > the pulled code** (the current one is
 > `C:\Users\Fiyin\Documents\GitHub\TradingAgent2`). A task registered
 > against the wrong clone fails silently every time it fires. If you do
@@ -713,7 +713,7 @@ VM that is `C:\Users\Fiyin\Documents\GitHub\TradingAgent2`, the same repo
 the SquadLiveRuntime watchdog logs as `repo=`. A task registered against
 a path that doesn't hold the pulled code fails silently every morning,
 which is precisely what happened to a NightAuditor pointed at the retired
-`C:\TradingAgent-platform`. `-Force` makes re-registration idempotent:
+`C:\Users\Fiyin\Documents\GitHub\TradingAgent2`. `-Force` makes re-registration idempotent:
 
 ```powershell
 $repo = "C:\Users\Fiyin\Documents\GitHub\TradingAgent2"   # <- your clone
