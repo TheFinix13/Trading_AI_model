@@ -1,61 +1,166 @@
-# VM quickstart — the only commands you need
+# VM commands — the single reference
 
-Both agents run on the Windows VM. Neither needs you to remember a
-directory again: each clone ships a self-locating update script, and a
-one-time installer turns those into two-word commands.
+This is the one page. If a command isn't here, it isn't part of the
+routine. Anything you find in an older note, a chat scrollback, or a
+runbook section that contradicts this page is stale — this page wins.
 
-## One-time setup (per VM)
+Two agents run on the Windows VM:
+
+| | Repo on the VM | Branch | What it is |
+|---|---|---|---|
+| **v1** | `C:\Users\Fiyin\Documents\GitHub\Trading_AI_model` | `main` | The live demo-MT5 zones trading agent. Places orders. |
+| **v2** | `C:\Users\Fiyin\Documents\GitHub\TradingAgent2` | `product` | The squad + dashboard. Shadow only, places no orders. |
+
+> **Stale path warning.** Old notes register v2 tasks against
+> `C:\TradingAgent-platform`. That clone is not where the pulled code
+> lives any more. A scheduled task pointed there fails silently every
+> time it fires — which is exactly what happened to the Night Auditor.
+> If you see that path in a snippet, the snippet is out of date.
+
+---
+
+## Part 1 — One-time setup (per VM, and again only if a clone moves)
+
+Run these three, in order, once. **Not after every update.** This is the
+part that has caused the most confusion, so to be explicit: registering
+scheduled tasks is a *setup* action, and starting or restarting them is a
+*daily* action. They are different commands and you almost never need the
+setup ones again.
+
+**1. v1 scheduled tasks** — elevated PowerShell (it sets a machine-wide
+Windows Update reboot policy):
 
 ```powershell
-cd C:\Users\Fiyin\Documents\GitHub\Trading_AI_model
+cd $HOME\Documents\GitHub\Trading_AI_model
+powershell -ExecutionPolicy Bypass -File scripts\setup_self_healing.ps1
+powershell -ExecutionPolicy Bypass -File scripts\verify_self_healing.ps1
+```
+
+This registers `TradingAgent-EURUSD`, `-GBPUSD` and `-USDCAD`, puts MT5
+in Startup, and checks autologon. **This is the command that starts all
+three symbols.**
+
+**2. v2 scheduled tasks** — normal PowerShell, from the v2 clone:
+
+```powershell
+cd $HOME\Documents\GitHub\TradingAgent2
+powershell -ExecutionPolicy Bypass -File scripts\setup_platform_tasks.ps1
+```
+
+Registers `SquadLiveRuntime`, `PlatformWebUI`, `OpsWatchdog` and
+`NightAuditor`, all against the clone it is run from, and confirms each
+task's working directory actually points there. It retires any old
+`PlatformServer` task, since two tasks fighting over port 8787 is worse
+than one.
+
+**3. The shortcuts** — normal PowerShell, from the v1 clone:
+
+```powershell
+cd $HOME\Documents\GitHub\Trading_AI_model
 powershell -ExecutionPolicy Bypass -File scripts\install_vm_shortcuts.ps1
 ```
 
-It auto-detects the v2 clone; if it can't find it, pass the path:
-`-V2Dir C:\TradingAgent-platform`. Then open a **new** PowerShell window.
+Then **open a new PowerShell window**. If it complains about the
+execution policy, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+once.
 
-If it warns about the execution policy, run once:
-`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+Finally, reboot and touch nothing. Within a couple of minutes you should
+get three "Agent ONLINE" Telegram messages and have a dashboard on 8787.
+That hands-off reboot is the only proof that counts.
 
-## Daily commands
+---
+
+## Part 2 — Daily commands (this is all you need)
+
+No `cd`. No paths. No python. Type `agenthelp` any time to print this
+table in the terminal.
 
 | Command | What it does |
 |---|---|
-| `v1status` | v1 health report. Changes nothing. |
-| `v1up` | v1: pull `main`, restart the per-symbol watchdogs, verify. |
-| `v2status` | v2 health report. Changes nothing. |
-| `v2up` | v2: pull `product`, restart squad loop + dashboard, verify. |
-| `agents` | Both status reports, back to back. |
-| `v1log` / `v2log` | Live tail of the freshest log (Ctrl-C to stop). |
+| `agents` | Both health reports, back to back. Start here. |
+| `v1status` / `v2status` | One agent's health report. Changes nothing. |
+| `v1up` / `v2up` | Pull the branch, restart that agent's tasks, verify. |
+| `v1report` / `v2report` | Weekly report zip. |
+| `v2web` | Open the dashboard in a browser with its token filled in. |
+| `v1log` / `v2log` | Live tail of the freshest log. Ctrl-C to stop. |
 | `v1cd` / `v2cd` | Drop into the clone. |
 
-Switches pass through: `v1up -NoRestart` (pull but don't interrupt an
-open trade), `v2up -StatusOnly`, `v1up -Branch <other>`.
+**After I push changes, the entire procedure is:**
 
-## What the scripts refuse to do
+```powershell
+v1up      # if I touched the v1 agent
+v2up      # if I touched the v2 squad or dashboard
+```
 
-Both update scripts stop rather than guess:
+That's it. `v2up` restarts the squad loop and the dashboard for you —
+you do not run `watchdog_squad.ps1` or `watchdog_platform.ps1` by hand,
+and you do not re-run the setup scripts.
 
-- **Wrong branch** — v1 expects `main`, v2 expects `product`. A mismatch
-  is a hard stop, so a v1 update can never land on another lane.
-- **Uncommitted changes** — reported, never stashed or discarded.
-- **Non-fast-forward** — `--ff-only`, so the VM can never end up holding
-  a merge commit or a conflict.
+### Reports
 
-## What the verify step tells you
+Flags pass through, so all your old variants still work:
 
-v1: branch and HEAD, each watchdog task's state, whether MT5's
-`terminal64.exe` is running, whether a `kill_switch` / `kill.txt` halt
-file is sitting there (the usual cause of a silent no-trade week), and
-the tail of each symbol log with its age.
+```powershell
+v1report                                      # last 7 days
+v1report -Days 14
+v1report -Start 2026-07-08 -End 2026-07-14    # a specific incident window
+v1report -Days 7 -Symbols EURUSD,GBPUSD
+v1report -Days 7 -Out D:\reviews\last_week.zip
 
-v2: task states, whether anything is listening on 8787 (the cause of the
-2026-08-10 localhost refusal), `sae_enabled` in `state.json`, the equity
-Sentinel R1 is sizing against, per-player books, and the tape's age.
+v2report -Days 10
+```
 
-## Running without scheduled tasks
+### Switches worth knowing
 
-If the tasks aren't registered, the update scripts say so and print the
-direct watchdog commands. Register them with
-`scripts\setup_self_healing.ps1` (v1) or per
-`docs/RUNBOOK_demo_launch.md` §4 and §7 in the v2 clone.
+```powershell
+v1up -NoRestart      # pull, but don't interrupt an open trade
+v2up -StatusOnly     # identical to v2status
+v1up -Branch <name>  # only if I've asked you to test a branch
+```
+
+---
+
+## Part 3 — When something is wrong
+
+**Ask first, don't act.** `agents` answers most questions on its own: it
+reports each task's state, whether MT5 is running, whether a halt file is
+sitting there (the usual cause of a silent no-trade week), whether
+anything is listening on 8787, whether Aoshi is in the lineup, what
+equity Sentinel is sizing against, and how stale the tape is.
+
+**"No watchdog tasks are registered."** You're in the Part 1 case — run
+the matching setup script above. This is the only situation in which the
+raw watchdog commands below are relevant.
+
+**Running a watchdog by hand.** Only for debugging, when you want to
+watch it in the foreground and read the output live. Each occupies its
+window until you Ctrl-C it, and nothing restarts it afterwards:
+
+```powershell
+# v1 — one window per symbol
+powershell -ExecutionPolicy Bypass -File scripts\watchdog_agent.ps1 -Symbol EURUSD
+
+# v2 — one window each
+powershell -ExecutionPolicy Bypass -File scripts\watchdog_squad.ps1
+powershell -ExecutionPolicy Bypass -File scripts\watchdog_platform.ps1
+```
+
+**Dashboard won't load.** `v2status` tells you whether anything holds
+8787. If nothing does, `v2up` restarts it. If it comes back and dies
+again, `v2log` will show why.
+
+**Nuclear option.** `Restart-Computer`, then touch nothing. Everything is
+registered to come back on its own; if it doesn't, that is the bug worth
+reporting.
+
+---
+
+## What the update scripts refuse to do
+
+Both stop rather than guess, which is why they are safe to run whenever:
+
+- **Wrong branch.** v1 expects `main`, v2 expects `product`. A mismatch is
+  a hard stop, so a v1 update can never land on another lane.
+- **Uncommitted changes.** Reported, never stashed and never discarded.
+- **Non-fast-forward.** `--ff-only`, so the VM can never end up holding a
+  merge commit or a conflict to resolve by hand.

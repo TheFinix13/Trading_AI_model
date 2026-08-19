@@ -116,6 +116,89 @@ function v2log {
 }
 
 function agents { v1status; v2status }
+
+# Reports. Both run from the right clone with the right python, so no cd
+# and no venv path. Extra flags pass through:
+#   v1report -Days 14
+#   v1report -Start 2026-07-08 -End 2026-07-14
+#   v1report -Days 7 -Symbols EURUSD,GBPUSD
+#   v2report -Days 10
+function __agentPython([string]$dir) {
+    $venv = Join-Path $dir '.venv\Scripts\python.exe'
+    if (Test-Path $venv) { return $venv }
+    return 'python'
+}
+function v1report {
+    param([int]$Days = 7, [string]$Start = '', [string]$End = '',
+          [string]$Symbols = '', [string]$Out = '')
+    $py = __agentPython $global:V1Dir
+    $a = @('scripts\weekly_report.py')
+    if ($Start -and $End) { $a += @('--start', $Start, '--end', $End) }
+    else                  { $a += @('--days', "$Days") }
+    if ($Symbols) { $a += @('--symbols', $Symbols) }
+    if ($Out)     { $a += @('--out', $Out) }
+    Push-Location $global:V1Dir
+    try { & $py @a } finally { Pop-Location }
+}
+function v2report {
+    param([int]$Days = 7, [string]$Start = '', [string]$End = '', [string]$Out = '')
+    $py = __agentPython $global:V2Dir
+    $a = @('scripts\weekly_squad_report.py')
+    if ($Start -and $End) { $a += @('--start', $Start, '--end', $End) }
+    else                  { $a += @('--days', "$Days") }
+    if ($Out) { $a += @('--out', $Out) }
+    Push-Location $global:V2Dir
+    try { & $py @a } finally { Pop-Location }
+}
+
+# Dashboard, token included. The install token lives in the Windows
+# credential store (keyring namespace "bluelock"), NOT in platform.toml,
+# so ask the platform's own loader for it rather than grepping config.
+function v2web {
+    param([int]$Port = 8787)
+    $py = __agentPython $global:V2Dir
+    $tok = ''
+    Push-Location $global:V2Dir
+    try {
+        # No quotes inside the -c payload: PS 5.1 mangles embedded quotes
+        # when passing args to native commands. Prints "0" for no token.
+        $raw = (& $py -c "from agent.platform.auth import load_install_token as t; print(t() or 0)" 2>$null)
+        $raw = "$raw".Trim()
+        if ($raw -and $raw -ne '0' -and $raw -ne 'None') { $tok = $raw }
+    } catch { $tok = '' }
+    finally { Pop-Location }
+    $url = if ($tok) { "http://localhost:${Port}/v2?token=$tok" }
+           else       { "http://localhost:${Port}/v2" }
+    if (-not $tok) {
+        Write-Host "no install token found - opening untokenised (fine on localhost)" -ForegroundColor Yellow
+    }
+    Write-Host $url -ForegroundColor Cyan
+    Start-Process $url
+}
+
+function agenthelp {
+    Write-Host ""
+    Write-Host "v1 (live trading agent, branch main)" -ForegroundColor White
+    Write-Host "  v1status              health report, changes nothing"
+    Write-Host "  v1up                  pull + restart watchdogs + verify"
+    Write-Host "  v1report [-Days 14]   weekly report zip"
+    Write-Host "  v1log / v1cd          tail freshest log / cd to clone"
+    Write-Host ""
+    Write-Host "v2 (squad + dashboard, branch product)" -ForegroundColor White
+    Write-Host "  v2status              health report, changes nothing"
+    Write-Host "  v2up                  pull + restart squad/dashboard + verify"
+    Write-Host "  v2report [-Days 10]   weekly squad report zip"
+    Write-Host "  v2web                 open the dashboard with its token"
+    Write-Host "  v2log / v2cd          tail squad log / cd to clone"
+    Write-Host ""
+    Write-Host "both" -ForegroundColor White
+    Write-Host "  agents                v1status then v2status"
+    Write-Host ""
+    Write-Host "one-time only (already done unless a clone moved):" -ForegroundColor Gray
+    Write-Host "  v1: scripts\setup_self_healing.ps1     (registers 3 symbol tasks)"
+    Write-Host "  v2: scripts\setup_platform_tasks.ps1   (registers the 4 v2 tasks)"
+    Write-Host ""
+}
 # === end trading-agent shortcuts ===
 '@
 
