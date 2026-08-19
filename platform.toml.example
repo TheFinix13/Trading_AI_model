@@ -116,6 +116,14 @@
 # aggregator = "phi41"
 # poll_seconds = 45
 # symbols = ["EURUSD", "GBPUSD", "USDCAD"]
+# burn_in_bars = 2
+# feed_stale_hours = 9.0
+#
+# `equity` is the SHARED book Sentinel R1 sizes against (max admissible
+# stop = 5% of equity at min lot: 50 pips EURUSD at $100, 250 at $500).
+# Set 500 to mirror the v2 Exness demo account. Per-player scoreboard
+# books in state.json also start from this number.
+# equity = 500
 #
 # Phase AN-3 candidacy (chigiri_hyoma:XAGUSD sealed PASS 2026-08-05).
 # Uncomment to shadow-paper silver on the v2 $500 demo semantics.

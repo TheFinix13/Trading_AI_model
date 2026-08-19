@@ -64,11 +64,19 @@ def _defaults(repo_root: Path) -> dict:
         # flags on scripts/run_squad_live.py override these. Default
         # feed is resolved at runtime (mt5 on Windows, cache elsewhere)
         # when left empty.
+        # `equity`, `field_assignments`, `burn_in_bars` and
+        # `feed_stale_hours` default to None/{} so run_squad_live's own
+        # fallbacks ($100 sandbox, no field widening, 2 bars, 9 h) stay
+        # the single source of truth for the unset case.
         "squad_live": {
             "feed": "",
             "aggregator": "phi41",
             "poll_seconds": 45,
             "symbols": ["EURUSD", "GBPUSD", "USDCAD"],
+            "equity": None,
+            "field_assignments": {},
+            "burn_in_bars": None,
+            "feed_stale_hours": None,
         },
         # F009 -- per-install-token rate limit on non-localhost /api/*.
         # `requests_per_minute` sets both bucket capacity and refill rate.
@@ -206,6 +214,26 @@ def load_config(repo_root: Path, path: Path | None = None) -> dict:
                 pass
         if isinstance(sl.get("symbols"), list) and sl["symbols"]:
             cfg["squad_live"]["symbols"] = [str(s) for s in sl["symbols"]]
+        for key, caster in (("equity", float), ("burn_in_bars", int),
+                            ("feed_stale_hours", float)):
+            if sl.get(key) is not None:
+                try:
+                    cfg["squad_live"][key] = caster(sl[key])
+                except (TypeError, ValueError):
+                    pass
+        fa = sl.get("field_assignments")
+        if isinstance(fa, dict) and fa:
+            parsed: dict[str, list[str]] = {}
+            for agent_id, syms in fa.items():
+                items = syms.split(",") if isinstance(syms, str) else syms
+                try:
+                    vals = [str(s).strip() for s in items if str(s).strip()]
+                except TypeError:
+                    continue
+                if vals:
+                    parsed[str(agent_id).strip()] = vals
+            if parsed:
+                cfg["squad_live"]["field_assignments"] = parsed
     rl = raw.get("rate_limit")
     if isinstance(rl, dict):
         if rl.get("requests_per_minute") is not None:
